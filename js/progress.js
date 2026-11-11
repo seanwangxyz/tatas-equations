@@ -74,6 +74,7 @@ function checkBadges(e) {
     var got = false; try { got = b.test(e); } catch (x) { got = false; }
     if (got) { S.badges[b.id] = today(); toastBadge(b); addXP(b.tier === 'gold' ? 50 : b.tier === 'special' ? 100 : b.tier === 'silver' ? 30 : 15, 'Badge: ' + b.name); }
   });
+  if (window.Cards && Cards.check) { try { (Cards.check(e) || []).forEach(function (c) { celebrateQ.push({ type: 'card', card: c }); }); } catch (x) {} }
   persist();
 }
 function toastBadge(b) {
@@ -92,6 +93,7 @@ function closeModal() { $('#modal').classList.remove('on'); var f = modalOnClose
 function drainQueue(done) {
   var it = celebrateQ.shift();
   if (!it) { if (done) done(); return; }
+  if (it.type === 'card') { if (window.Cards && Cards.showNew) Cards.showNew([it.card], function () { drainQueue(done); }); else drainQueue(done); return; }
   if (it.type === 'level') {
     var unl = [].concat(SKINS.filter(function (x) { return x.lvl === it.level; }).map(function (x) { return x.name + ' cubes'; }),
       MATS.filter(function (x) { return x.lvl === it.level; }).map(function (x) { return x.name + ' mat'; }),

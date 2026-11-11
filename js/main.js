@@ -55,6 +55,8 @@ T3.handlers = {
   targetZones: function () { if (!G || G.selected == null || G.phase !== 'move') return []; return ['required', 'permitted', 'forbidden'].filter(canMoveTo); }
 };
 
+if (window.Social) Social.moodHook = function (mood) { creatureMood(mood); };
+
 // ======================= START =======================
 FX.init();
 applyOppNames();
