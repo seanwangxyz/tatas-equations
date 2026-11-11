@@ -4,7 +4,7 @@ var B = null;
 function openGoalBuilder(pi, onDone, noCancel) {
   var pool = zoneCubes('resources').filter(function (c) { return !c.locked; }).map(function (c) { return c.id; });
   B = { kind: 'goal', pi: pi, tokens: [], pools: [{ label: '🎲 Resources', ids: pool }], cubes: G.cubes, onDone: onDone, noCancel: noCancel, fractions: G.fractions,
-    title: (multiHuman() ? esc(G.players[pi].name) + ': ' : '') + 'Build the Goal 🎯', t0: Date.now() };
+    title: (multiHuman() ? esc(G.players[pi].name) + ': ' : '') + 'Build the Goal', t0: Date.now() };
   renderBuilder(); $('#builder').classList.add('on');
 }
 function openSolutionBuilder(pi, mode, cb) {
@@ -17,7 +17,7 @@ function openSolutionBuilder(pi, mode, cb) {
   var t0 = Date.now();
   var titles = { now: 'Now! Write your Solution', impossible: 'Prove it! Write a Solution', last: 'Last cube: write a Solution', free: 'Write a Solution' };
   B = { kind: 'solution', pi: pi, mode: mode, tokens: [], pools: pools, cubes: G.cubes, goal: G.goal, goalTokens: G.goalTokens, fractions: G.fractions,
-    title: (multiHuman() ? esc(G.players[pi].name) + ': ' : '') + titles[mode] + ' ✏️', t0: Date.now(),
+    title: (multiHuman() ? esc(G.players[pi].name) + ': ' : '') + titles[mode] + '', t0: Date.now(),
     onDone: function (tokens, gaveUp) {
       var chk = tokens ? Eq.checkSolution(tokens, solCtx(mode)) : null;
       var ok = !!(chk && chk.ok);
@@ -36,7 +36,7 @@ function renderBuilder() {
       if (g.ok) { live = '= ' + Eq.fmt(g.value); liveCls = 'good'; } else live = g.reasons[0];
     } else {
       var ev = Eq.evaluate(B.tokens, { fractions: B.fractions });
-      if (ev.ok) { live = '= ' + Eq.fmt(ev.value) + (Eq.eqF(ev.value, B.goal) ? ' 🎯 matches the Goal!' : ''); liveCls = Eq.eqF(ev.value, B.goal) ? 'good' : ''; }
+      if (ev.ok) { live = '= ' + Eq.fmt(ev.value) + (Eq.eqF(ev.value, B.goal) ? ' matches the Goal!' : ''); liveCls = Eq.eqF(ev.value, B.goal) ? 'good' : ''; }
       else live = (ev.code === 'incomplete' || ev.code === 'paren') ? '…keep building' : ev.msg;
     }
   } else live = B.kind === 'goal' ? 'Tap cubes to build your Goal' : 'Tap cubes and ( ) to build a Solution';
@@ -56,14 +56,14 @@ function renderBuilder() {
     return '<div class="pool' + (p.forb ? ' forb' : '') + '"><h4>' + p.label + '</h4><div class="cubes">' +
       (p.ids.map(function (id) { var c = cubes[id]; return cubeHTML(c, 'mini' + (used[id] ? ' used' : '') + (p.forb ? '' : '') + (full && !used[id] ? ' used' : ''), '').replace('class="cube', p.forb ? 'class="cube' : 'data-act="bAdd" class="cube'); }).join('') || '<span style="color:#868e96">none</span>') + '</div></div>';
   }).join('');
-  var goalLine = B.kind === 'solution' ? '<div class="b-goal">Goal: <span class="expr" style="padding:4px 8px">' + tokensHTML(B.goalTokens, cubes) + '</span> = ' + Eq.fmt(B.goal) + '</div>' : '';
+  var goalLine = B.kind === 'solution' ? '<div class="b-goal">' + ico('target') + ' Goal: <span class="expr" style="padding:4px 8px">' + tokensHTML(B.goalTokens, cubes) + '</span> = ' + Eq.fmt(B.goal) + '</div>' : '';
   $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + goalLine +
     '<div class="expr" id="bExpr" style="margin-top:8px">' + (B.tokens.length ? tokensHTML(B.tokens, cubes).replace(/data-bi=/g, 'data-act="bRemove" data-bi=') : '<span style="color:rgba(255,255,255,.7)">tap cubes below…</span>') + '</div>' +
     '<div class="b-live ' + liveCls + '">' + live + '</div>' + checks +
     '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button><button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button></div>' +
     pools +
-    '<div class="row" style="margin-top:12px">' + (B.kind === 'goal' ? '<button class="btn big green" data-act="bSubmit">🎯 Set this Goal!</button>' + (B.noCancel ? '' : '<button class="btn" data-act="bCancel">Cancel</button>')
-      : '<button class="btn big green" data-act="bSubmit">✅ Check my Solution!</button>' + (B.mode === 'daily' ? '<button class="btn" data-act="bCancel">Close</button>' : '<button class="btn" data-act="bGiveUp">🏳️ I can\'t find one</button>')) + '</div>' +
+    '<div class="row" style="margin-top:12px">' + (B.kind === 'goal' ? '<button class="btn big green" data-act="bSubmit">' + ico('target') + ' Set this Goal!</button>' + (B.noCancel ? '' : '<button class="btn" data-act="bCancel">Cancel</button>')
+      : '<button class="btn big green" data-act="bSubmit">' + ico('check') + ' Check my Solution!</button>' + (B.mode === 'daily' ? '<button class="btn" data-act="bCancel">Close</button>' : '<button class="btn" data-act="bGiveUp">I can\'t find one</button>')) + '</div>' +
     '<p style="text-align:center;font-size:14px;color:#868e96;margin:6px 0 0">Tip: tap a cube in your expression to take it back out.</p>';
 }
 ACT.bAdd = function (el) {
