@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Monsters",
+  "animations": "UniversalAnimationLibrary.glb",
+  "defaults": {
+    "height": 6.2,
+    "hipsAt": 0.5,
+    "yawDeg": 0,
+    "hide": ["Weapon", "Sword", "Axe", "Club", "Staff", "Shield", "Dagger", "Bow"],
+    "clips": {
+      "idle": ["Idle_Loop", "Idle"],
+      "think": ["Idle_Talking", "Talking"],
+      "happy": ["Victory", "Cheer", "Dance"],
+      "sad": ["Defeat", "Sad", "Hit"],
+      "challenge": ["Taunt", "Point", "Yell"]
+    }
+  },
+  "slots": {
+    "sloth":   { "file": "Ogre.glb",     "style": "sloth",   "arm": { "color": "#7aa35a", "hand": "#7aa35a" } },
+    "penguin": { "file": "Goblin.glb",   "style": "penguin", "arm": { "color": "#6fae5a", "hand": "#6fae5a" } },
+    "fox":     { "file": "Imp.glb",      "style": "fox",     "arm": { "color": "#d9534f", "hand": "#d9534f" } },
+    "owl":     { "file": "Skeleton.glb", "style": "owl",     "arm": { "color": "#e9e4d0", "hand": "#e9e4d0" } },
+    "wizard":  { "file": "Demon.glb",    "style": "wizard",  "arm": { "color": "#8e5bd9", "hand": "#8e5bd9" } }
+  }
+}
