@@ -59,30 +59,100 @@ var OPPONENTS = [
     think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' }
 ];
 var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99'];
-// Creature attitude. All of it is playful teasing: never about being bad at math.
-// gloat = after they win; sore = after they lose; trash = while playing (Settings switch);
-// bluff = claims that may or may not be true (Settings switch, off by default).
+// Creature attitude. All of it is playful teasing between friends: never about being bad at math.
+// Match flow: gloat / sore = after a shake; trash = while playing (Settings switch); bluff = claims that may or may
+// not be true (Settings switch, off by default).
+// Situational: greet = match start; kidGoodMove = grudging respect after the kid does well; kidChallenge = nervous when
+// the kid calls Now!/Impossible!; kidWrong = kind and encouraging after the kid's mistake (never gloating);
+// close = tight match; lastCube = the last cube is about to be played.
+// reply = answers to the kid's emotes, keyed by emote type: friendly, cheeky, think (an object, not an array:
+// use Social.reactionFor(emoteId) rather than talkLine(o, 'reply')).
 var TALK = {
-  snoozy: { gloat: ['I won that one… in my sleep!', 'Zzz… oh, did I win? Nice.', 'Best nap AND a win!'],
-    sore: ['Aww… I need a nap after that.', 'No fair, I was resting my eyes!', '*sniff* Good one.'],
-    trash: ['*yawn* Wake me when it gets tricky.', 'I can play with my eyes closed. They ARE closed.', 'Slow and steady wins the shake…'],
-    bluff: ['Careful… I\'m one cube away from Now!', 'Hmm, this Goal looks impossible to me…', 'I dreamed the Solution already.'] },
-  penny: { gloat: ['Ice cold! That\'s how penguins play!', 'Slide, slide, WIN!', 'Flippers up for me!'],
-    sore: ['My flippers slipped!', 'Brrr… you got me.', 'That was a fishy move. A good one!'],
-    trash: ['Waddle you do now?', 'Your move gave me chills… of joy!', 'Stay cool. I know I will.'],
-    bluff: ['I already see a Solution. Do you?', 'One more cube and I say Now!', 'This one can\'t be made. Probably.'] },
-  fox: { gloat: ['Too quick for you!', 'Number 9 scores again!', 'Outfoxed!'],
-    sore: ['Hmph! Lucky bounce.', 'I LET you have that one.', 'Grr… rematch!'],
-    trash: ['My tail could find a better move! Just kidding… sort of.', 'I\'m three moves ahead, kid.', 'You sure about that one?'],
-    bluff: ['Go on, challenge me. I dare you.', 'I could call Now any second…', 'This Goal? Can\'t be made. Trust me.'] },
-  owl: { gloat: ['Wisdom wins, hoo-hoo!', 'Just as I predicted.', 'Hoo\'s the champion? Me.'],
-    sore: ['Hoo… I did not see that coming.', 'A wise owl knows when it\'s beaten.', 'Well played, owlet.'],
-    trash: ['Hoo taught you that move? Not me.', 'Think carefully, little owlet.', 'I have studied this position for years.'],
-    bluff: ['I have read every Solution here.', 'It would be unwise to challenge me now.', 'There is no Solution. I checked. Hoo.'] },
-  wizard: { gloat: ['Abraca-BEATEN!', 'Ninety-nine problems, all solved!', 'Magic and math win again!'],
-    sore: ['My wand must be broken!', 'Bah! A counter-spell!', 'You out-wizarded me… this once.'],
-    trash: ['My beard has solved harder Goals.', 'I foresee… trouble for you.', 'Presto! Watch and learn.'],
-    bluff: ['My crystal ball says Impossible…', 'I already wrote my Solution. With magic.', 'One wave of my wand and it\'s Now!'] }
+  snoozy: {
+    gloat: ['I won that one… in my sleep!', 'Zzz… oh, did I win? Nice.', 'Best nap AND a win!', 'I scored while dreaming. Cozy!', 'Slow and steady… and ahead!', '*yawn* Another goal for the keeper.', 'Winning is easy when you\'re relaxed.', 'That was my best snooze-play yet.'],
+    sore: ['Aww… I need a nap after that.', 'No fair, I was resting my eyes!', '*sniff* Good one.', 'Zzz… you got me. Nicely done!', 'My pillow was in the way!', 'I\'ll beat you after a snack. And a nap.', 'Great goal! I\'ll clap… tomorrow.', 'Okay okay, you woke me up!'],
+    trash: ['*yawn* Wake me when it gets tricky.', 'I can play with my eyes closed. They ARE closed.', 'Slow and steady wins the shake…', 'Is it nap time yet?', 'I\'m playing at full speed. This is full speed.', 'I\'ll take my time. All of it.', 'Tick tock… zzz… tick tock…', 'Number 1 never rushes!'],
+    bluff: ['Careful… I\'m one cube away from Now!', 'Hmm, this Goal looks impossible to me…', 'I dreamed the Solution already.', 'I think I see something. Or it\'s a sheep.', 'I could say Now! any second. Maybe.', 'This Goal? Pretty sure it can\'t be made. Zzz.', 'My dream said "Impossible!" Hmm.', 'I have a secret plan. I forgot it, though.'],
+    greet: ['*yawn* Oh, hi! Ready to play?', 'Zzz… huh? Kick-off already?', 'Let\'s have a nice, slow game.', 'I\'m in goal. I mean, in the game. Hi!', 'Good luck! I brought my pillow.'],
+    kidGoodMove: ['Ooh, that was clever. *yawn* Wow.', 'Nice move! I\'m awake now.', 'Hey, that was good!', 'Whoa. Did you plan that?', 'Zzz… I mean, great play!'],
+    kidChallenge: ['Uh oh… I\'m suddenly awake.', 'Eek! Okay, let\'s see…', 'Ooh, a challenge! My nap is ruined.', 'Gulp… let me check…', 'Wait wait, I\'m still waking up!'],
+    kidWrong: ['That\'s okay! Try again, you can do it.', 'So close! Have another go.', 'No worries. Even I trip over my own paws.', 'It happens! Take your time. I\'m slow too.', 'Good try! Your next one will be great.'],
+    close: ['Wow, so close… I\'m wide awake!', 'It\'s a tight one! Who needs naps?', 'Neck and neck! Ooh, exciting.', 'This is the most awake I\'ve ever been.', 'Tied-ish! Don\'t blink. I will, though.'],
+    lastCube: ['Last cube! Don\'t wake me for the rest.', 'Final cube… *gasp* so exciting.', 'The last cube! Let\'s see who dreams of this.', 'One cube left. I\'m very awake.', 'Last one! Ready, set, zzz… GO!'],
+    reply: {
+      friendly: ['Aww, thanks! You\'re nice. Zzz.', 'Good one! High five. Slowly.', 'You\'re a great opponent. Wait, teammate. Both!', 'Thank you! I\'ll nap happy tonight.'],
+      cheeky: ['Ha! Bring it on. Slowly.', 'Ooh, spicy! I\'ll answer after a yawn.', 'Cheeky! I like it. *yawn*', 'You do your thing. I\'ll do my nap.'],
+      think: ['Hmm… I\'m thinking too. Zzz.', 'Take your time! I will.', 'Ooh, big thoughts. Me too. Mostly.']
+    }
+  },
+  penny: {
+    gloat: ['Ice cold! That\'s how penguins play!', 'Slide, slide, WIN!', 'Flippers up for me!', 'That one was a cool customer. Me!', 'Waddle I say? Good game, me!', 'Chilling at the top of the table!', 'Scored on ice. Smooth!', 'Penguin power, activated!'],
+    sore: ['My flippers slipped!', 'Brrr… you got me.', 'That was a fishy move. A good one!', 'You\'re too cool for me! Nice one.', 'I got the cold shoulder. Well played!', 'Oh, snow way! Great job.', 'That slid right past me!', 'Okay, you\'re ice. Er, nice!'],
+    trash: ['Waddle you do now?', 'Your move gave me chills… of joy!', 'Stay cool. I know I will.', 'This game is a breeze. An arctic one.', 'I\'m on thin ice? More like thick ice!', 'Let\'s break the ice… with a Solution.', 'You\'ll need more than flippers for that.', 'Number 4 never melts under pressure.'],
+    bluff: ['I already see a Solution. Do you?', 'One more cube and I say Now!', 'This one can\'t be made. Probably.', 'I have a cool trick up my flipper.', 'Is that Goal even possible? Hmm, hmm.', 'I could call Impossible. I\'m just being nice.', 'Careful. Penguins love a surprise.', 'My belly says Now! is close.'],
+    greet: ['Hi there! Let\'s make this a cool match!', 'Waddle we play today? Math!', 'Good luck! May the best flipper win.', 'Kick-off! Ice to meet you!', 'Let\'s have fun. And win. Mostly win.'],
+    kidGoodMove: ['Cool move! I\'m impressed.', 'Well, that\'s a chilly-good one!', 'Nice slide! I mean, nice move.', 'Hey, that was smooth!', 'Ooh, you\'re on a roll. A snowball!'],
+    kidChallenge: ['Brrr! A challenge! I\'m shivering.', 'Uh oh, flippers crossed!', 'Ooh, spicy. Let me check!', 'Hold on, my beak is chattering!', 'Okay okay, let\'s see what you\'ve got!'],
+    kidWrong: ['No worries, that happens to all penguins!', 'So close! Slide right back in there.', 'Good try! Try another one.', 'Don\'t let it chill your spirits!', 'It\'s okay! Everyone slips on ice.'],
+    close: ['It\'s a nail-biter! Or a flipper-biter.', 'So close! This is getting hot. For a penguin.', 'Tight game! I love it.', 'Neck and neck on the ice!', 'Whoa, it\'s anyone\'s match!'],
+    lastCube: ['Last cube! Final slide!', 'Here comes the last one. Hold on to your flippers!', 'Last cube, big moment!', 'One cube to go. Brrr, exciting!', 'The last cube! Let\'s slide into it!'],
+    reply: {
+      friendly: ['Aww, thanks! You\'re cool too.', 'Great sportsmanship! High flipper!', 'That warms my heart. Even on ice.', 'You\'re a great player to play with!'],
+      cheeky: ['Ooh, feeling spicy? I\'m on ice!', 'Ha! That\'s the spirit. Waddle you do next?', 'Confident, huh? Let\'s see it!', 'Nice try yourself! Wink, wink.'],
+      think: ['Hmm, chilly thinking!', 'Take your time. I\'m patient. Mostly.', 'Ooh, deep thoughts! I\'m thinking too.']
+    }
+  },
+  fox: {
+    gloat: ['Too quick for you!', 'Number 9 scores again!', 'Outfoxed!', 'That\'s how a striker finishes!', 'Top corner! Well, top of the table.', 'Fast feet, fast brain. That\'s me!', 'I make this look easy. Because it is. Ha!', 'And the crowd goes wild. For me!'],
+    sore: ['Hmph! Lucky bounce.', 'I LET you have that one.', 'Grr… rematch!', 'Okay, that was a good one. Don\'t tell anyone I said that.', 'You got me this time. THIS time.', 'Nice shot, kid. I\'ll get you next round!', 'Whoa, didn\'t see that coming. Respect.', 'Hmph. Fine. You earned it.'],
+    trash: ['My tail could find a better move! Just kidding… sort of.', 'I\'m three moves ahead, kid.', 'You sure about that one?', 'Nobody stops number 9!', 'Blink and you\'ll miss me.', 'I\'ve got the speed. You\'ve got… hope!', 'This pitch is MY pitch.', 'Pssst, I already know how this ends.'],
+    bluff: ['Go on, challenge me. I dare you.', 'I could call Now any second…', 'This Goal? Can\'t be made. Trust me.', 'I see a Solution. It\'s a beauty.', 'Wouldn\'t want to be you right now.', 'Oh, I have a plan. A sneaky one.', 'Call me out. See what happens.', 'Honest! This one is Impossible. Probably.'],
+    greet: ['Ready to lose? Kidding! Let\'s play!', 'Number 9 is in the house!', 'Good luck, you\'ll need it. Just kidding. Mostly!', 'Let\'s see what you\'ve got, kid.', 'Kick-off time! Don\'t blink!'],
+    kidGoodMove: ['Hey, nice one! Not bad at all.', 'Okay, okay. That was sharp.', 'Whoa! I didn\'t expect that.', 'Grr, good move. Hmph.', 'I see you. That was smooth!'],
+    kidChallenge: ['Ooh! You\'re calling me out? Brave!', 'Wait, what? Okay, let\'s see!', 'Uh oh. That\'s a bold move.', 'Gulp. I mean, bring it!', 'Hmm! Didn\'t see that coming.'],
+    kidWrong: ['Tough break! You\'ve got another go.', 'Hey, even the best strikers miss. Shake it off!', 'Good try! That one was tricky.', 'No big deal. Next shake, you\'ll nail it.', 'Hang in there, kid. It happens to everyone.'],
+    close: ['This is getting hot! I love it.', 'A real battle! Respect.', 'Oooh, it\'s anyone\'s match.', 'Now THIS is a game!', 'Neck and neck! Let\'s go!'],
+    lastCube: ['Last cube! Time for a golden goal!', 'The last cube! Make it count.', 'Final play! Here we go!', 'Last cube: showtime!', 'One cube left. Who wants it?'],
+    reply: {
+      friendly: ['Hey, thanks! You\'re alright, kid.', 'Respect! Good game so far.', 'Aw, shucks. You too!', 'That\'s the spirit! Nice one.'],
+      cheeky: ['Ha! I like your style. Bring it!', 'Oh, so you want to play like that?', 'Cocky? Me too. Let\'s go!', 'Ooh, trash talk! Fun. Keep it coming.'],
+      think: ['Thinking, huh? Take your time. I\'ll wait. Barely!', 'Hmm, a deep thinker. I like it.', 'Ooh, plotting! Me too.']
+    }
+  },
+  owl: {
+    gloat: ['Wisdom wins, hoo-hoo!', 'Just as I predicted.', 'Hoo\'s the champion? Me.', 'A well-timed pass of the cubes.', 'Experience matters, little owlet.', 'The midfield belongs to Number 8.', 'I did see that coming. Hoo.', 'A fine shake, if I may say so myself.'],
+    sore: ['Hoo… I did not see that coming.', 'A wise owl knows when it\'s beaten.', 'Well played, owlet.', 'Hoo! You are full of surprises.', 'Even the wisest can be outplayed.', 'A beautiful solution, indeed.', 'I shall study that move. Hoo-hoo.', 'You have taught me something today.'],
+    trash: ['Hoo taught you that move? Not me.', 'Think carefully, little owlet.', 'I have studied this position for years.', 'A wise move is a quiet move.', 'I see all of the pitch from up here.', 'Patience, owlet. Patience wins.', 'I have seen a thousand shakes like this.', 'Hoo-hoo. Interesting. Very interesting.'],
+    bluff: ['I have read every Solution here.', 'It would be unwise to challenge me now.', 'There is no Solution. I checked. Hoo.', 'The answer is clear to me. Is it to you?', 'My feathers tell me Now! is near.', 'I would not call Impossible lightly. Hoo.', 'I already know a Solution. A beautiful one.', 'Trust me. I have studied this.'],
+    greet: ['Hoo-hoo! Welcome, young player.', 'A match! How splendid.', 'Let\'s play. Learn, and have fun.', 'Good luck, owlet. May the best mind win.', 'Number 8 greets you. Kick off!'],
+    kidGoodMove: ['Hoo! A wise move indeed.', 'Impressive. Very impressive.', 'Well done, owlet. Well done!', 'Hoo-hoo! You have a good eye.', 'I tip my wing to you.'],
+    kidChallenge: ['Hoo! A challenge? How bold!', 'Interesting! Let me think carefully.', 'Hmm, a daring call, young one.', 'Hoo-hoo. Very brave.', 'Ah! I did not expect that.'],
+    kidWrong: ['Every mistake teaches us something. Hoo!', 'A fine try! Try again, owlet.', 'Do not worry. Even owls drop things.', 'Close! Have another go.', 'Learning is the goal. You are doing it.'],
+    close: ['A close contest! How exciting. Hoo!', 'The match hangs in the balance.', 'Both of us are playing well.', 'A thrilling match! I am enjoying it.', 'It is anyone\'s game, owlet.'],
+    lastCube: ['The last cube! A decisive moment.', 'Hoo… the final cube.', 'One cube left. Choose wisely.', 'The end approaches. Let us finish with style.', 'The last cube. Let us see what it brings.'],
+    reply: {
+      friendly: ['Thank you, owlet. A kind gesture.', 'Hoo-hoo! Good sportsmanship.', 'Well said! I share the sentiment.', 'You do honor to the game.'],
+      cheeky: ['Hoo-hoo! You have spirit, owlet.', 'Cheeky! I shall allow it.', 'Ah, confidence. Let\'s see it.', 'Hoo? A challenge? Delightful.'],
+      think: ['Ah, you are thinking. Good.', 'Hoo-hoo. Take your time.', 'A thoughtful pause. I approve.']
+    }
+  },
+  wizard: {
+    gloat: ['Abraca-BEATEN!', 'Ninety-nine problems, all solved!', 'Magic and math win again!', 'A spell well cast!', 'Behold! The captain scores!', 'By my beard, that was magnificent!', 'Poof! And the shake is mine!', 'The crowd gasps! And so do I. At me.'],
+    sore: ['My wand must be broken!', 'Bah! A counter-spell!', 'You out-wizarded me… this once.', 'Ha! A worthy opponent!', 'A glorious defeat. I shall write a poem.', 'Magnificent! Bravo, apprentice!', 'My crystal ball did NOT show that!', 'Well cast, young one. Well cast.'],
+    trash: ['My beard has solved harder Goals.', 'I foresee… trouble for you.', 'Presto! Watch and learn.', 'Number 99 does not lose. Number 99 rests.', 'Ooh, a dramatic moment! I love those.', 'I have cast a spell. It\'s called confidence.', 'This Goal bends to my will.', 'Even my hat is grinning.'],
+    bluff: ['My crystal ball says Impossible…', 'I already wrote my Solution. With magic.', 'One wave of my wand and it\'s Now!', 'Beware! The stars say challenge me not.', 'I sense a Solution. A glittering one.', 'The spirits whisper "Impossible!"', 'I could speak the word. But dramatic pause.', 'My wand is tingling. Something is coming.'],
+    greet: ['Welcome, apprentice! Let the match begin!', 'Behold! A new challenger!', 'By my beard, this will be epic!', 'Kick-off! May the best wizard win!', 'Number 99 salutes you! Let\'s play!'],
+    kidGoodMove: ['By my beard! A splendid move!', 'Magnificent! Truly magical!', 'Ooh! My hat is off to you!', 'Behold! A master in the making!', 'Bravo! Even my wand sparkled.'],
+    kidChallenge: ['Gasp! A challenge! How dramatic!', 'By my beard! You dare?', 'Oho! The plot thickens!', 'Gulp! My wand trembles!', 'A bold call! I admire it!'],
+    kidWrong: ['A small stumble, apprentice! Try again!', 'Even great wizards miss a spell. Onward!', 'Fear not! The next one will sparkle.', 'Dust yourself off! You\'ve got this!', 'No worries! Every wizard fizzles sometimes.'],
+    close: ['By my beard, what a match!', 'The tension! I can taste the sparkles!', 'A thrilling duel!', 'Neck and neck! The crowd holds its breath!', 'The stars are watching this one!'],
+    lastCube: ['The LAST cube! Drumroll, please!', 'Behold! The final cube!', 'The last cube! The moment of destiny!', 'One cube left! My heart is a drum!', 'Final cube! Let the magic happen!'],
+    reply: {
+      friendly: ['Thank you, kind apprentice!', 'A noble gesture! My beard bows.', 'Splendid sportsmanship! I am touched.', 'Hurrah! A friend indeed!'],
+      cheeky: ['Ha! A spirited apprentice!', 'Ooh, sassy! I adore it!', 'By my beard! Confidence! Bravo!', 'You have the flair of a wizard!'],
+      think: ['Ah! The apprentice ponders. Wise.', 'Take your time. Great magic needs thought.', 'Hmm! A deep ponder. I approve.']
+    }
+  }
 };
 OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i]; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
 var DEFAULT_OPP_NAMES = OPPONENTS.map(function (o) { return o.name; });
