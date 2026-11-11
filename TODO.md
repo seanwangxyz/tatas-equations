@@ -14,6 +14,8 @@
 - **Creature thinking speed with all operations unlocked**: in the playtest a whole shake used 4-6 seconds of thinking in total on a laptop (a turn can take close to a second; an iPad is slower, and the screen freezes while it thinks). Move the solver into a background worker.
 - **Playtest with the real kid**: the simulated "beginner" is only a rough stand-in. Retune Snoozy/Penny after watching him play (tests/playtest.js prints the numbers).
 
+- **Math tastes per creature** (idea from Tata, not started): Snoozy small numbers and +; Penny loves −; Rusty × and ÷; Ollie prime-number Goals; Mondo powers and roots. Tastes show in the Goals they set, what they put in Required, the Solutions they write and their lines; they follow the unlock ladder.
+
 ## To mull over
 - **Logs and trig (sin/cos)** as a far-future stage of the ladder.
   - The official cubes have no log/sin symbols, so this is a house rule (e.g. bonus cubes).

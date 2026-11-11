@@ -63,7 +63,7 @@ var UNLOCK_LESSONS = {
 //     Lesson: be careful what you leave in Required/Permitted; risky moves that make the Goal
 //     harder are safe against Penny; when Penny makes the Goal impossible, call Impossible! yourself.
 var OPPONENTS = [
-  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, style: 'shortsighted', shortView: true, maxDigits: 2, timeMs: 150, seeNow: 0.75, seeImp: 0.75, smart: 1, goalCubes: 1, goalMax: 12, tip: 'Snoozy only spots short Solutions.',
+  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, style: 'shortsighted', shortView: true, maxDigits: 2, timeMs: 150, seeNow: 0.75, seeImp: 0.45, smart: 1, goalCubes: 1, goalMax: 12, tip: 'Snoozy only spots short Solutions.',
     think: ['Zzz… oh! Is it my turn?', 'Slooowly thinking…', '*yawn* Let me see…'], now: '*yawn*… NOW!', imp: 'Zzz… IMPOSSIBLE!', goal: 'Here is a Goal… *yawn*', lose: 'Zzz… you got me! Good game!', win: 'I won? While napping?' },
   { id: 'penny', name: 'Penny', title: 'the Puzzle Penguin', emoji: '🐧', color: '#d0ebff', stars: 2, style: 'no-impossible', callsImpossible: false, keepGoal: false, maxDigits: 3, timeMs: 250, seeNow: 0.9, seeImp: 0, smart: 1, goalCubes: 2, goalMax: 25, tip: 'Penny never calls Impossible!',
     think: ['Waddle, waddle… thinking!', 'Hmm, chilly choices…', 'Let me slide this over…'], now: 'Flippers up: NOW!', imp: 'Brrr… IMPOSSIBLE!', goal: 'Try this Goal on for size!', lose: 'Great waddling! You win!', win: 'Penguin power!' },
