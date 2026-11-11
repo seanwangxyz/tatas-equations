@@ -55,7 +55,7 @@ function newShake(fixedCubes) {
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
   xpLog = [];
   G.phase = 'roll'; G.rolling = true;
-  cue('reset'); Snd.setMood('play');
+  cue('reset'); Snd.setMood('play'); board('');
   say('pip', 'Rolling the cubes…');
   if (T3.active()) {
     renderGame();
@@ -76,6 +76,8 @@ function newShake(fixedCubes) {
   }
 }
 function cue(name) { if (T3.cue) T3.cue(name); }
+function fx3(name, opts) { if (T3.fx) T3.fx(name, opts); }
+function board(text) { if (T3.setBoard) T3.setBoard(text); }
 // Read a line aloud (only when 'Read lines aloud' is on in Settings).
 function speakLine(who, text) { if (S.set.voice !== true || !Snd.speak) return; var ai = who === 'opp' ? firstAI() : null; Snd.speak(text, ai ? ai.kind : 'pip'); }
 function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', text); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
@@ -251,7 +253,7 @@ ACT.buildGoal = function () {
 function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
-  Snd.thunk(); Snd.chime();
+  Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val));
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
@@ -309,7 +311,7 @@ function challenge(kind, who) {
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', G.players[who].name + ' challenges!');
   if (isAI(who)) creatureMood('challenge');
   else if (isAI(mover)) { creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
-  Snd.slam(); Snd.setMood('challenge'); cue('challenge');
+  Snd.slam(); Snd.setMood('challenge'); cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(G.players[who].name) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(G.players[mover].name) + ' must try to write a Solution.', 'cheer');
   renderGame();
@@ -498,7 +500,7 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
   var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
@@ -527,7 +529,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); cue('win');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); cue('win'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); cue('lose'); }
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });

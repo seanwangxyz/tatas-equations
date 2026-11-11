@@ -28,6 +28,7 @@ body.mat-felt{background:
   radial-gradient(circle at 30% 15%,#2f9a68,#14633f 70%),#14633f}
 body.mat-space{background:radial-gradient(1px 1px at 20% 30%,#fff 50%,transparent 51%),radial-gradient(1.5px 1.5px at 70% 60%,#fff 50%,transparent 51%),radial-gradient(1px 1px at 40% 80%,#fff 50%,transparent 51%),radial-gradient(2px 2px at 85% 20%,#ffe 50%,transparent 51%),radial-gradient(1px 1px at 10% 70%,#fff 50%,transparent 51%),radial-gradient(ellipse at top,#3a2f8b,#0b0d24 70%);background-size:220px 220px,300px 300px,260px 260px,380px 380px,180px 180px,100% 100%}
 body.mat-jungle{background:radial-gradient(circle at 10% 10%,rgba(160,230,90,.35) 0 60px,transparent 61px),radial-gradient(circle at 90% 30%,rgba(30,90,30,.5) 0 90px,transparent 91px),radial-gradient(circle at 20% 90%,rgba(60,140,40,.45) 0 120px,transparent 121px),linear-gradient(160deg,#3a8f3c,#174d1c)}
+body.mat-stadium{background:linear-gradient(180deg,#0c1638,#1d5a2a)}
 body.mat-ocean{background:radial-gradient(circle at 15% 85%,rgba(255,255,255,.25) 0 6px,transparent 7px),radial-gradient(circle at 18% 75%,rgba(255,255,255,.2) 0 4px,transparent 5px),radial-gradient(circle at 80% 60%,rgba(255,255,255,.2) 0 8px,transparent 9px),radial-gradient(circle at 84% 48%,rgba(255,255,255,.18) 0 5px,transparent 6px),linear-gradient(180deg,#36c2f0,#0b4f8a 75%,#083a66)}
 button{font-family:inherit;font-weight:inherit}
 h1,h2,h3{margin:.2em 0;font-family:var(--display);font-weight:400;letter-spacing:.3px}

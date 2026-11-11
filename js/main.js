@@ -58,6 +58,8 @@ T3.handlers = {
 if (window.Social) Social.moodHook = function (mood) { creatureMood(mood); };
 
 // ======================= START =======================
+// One-time: older saves switch to the new Stadium setting (it can be changed back in the Trophy Room).
+if (!S.cos.stadiumSeen) { S.cos.mat = 'stadium'; S.cos.stadiumSeen = true; persist(); }
 FX.init();
 applyOppNames();
 applyCosmetics();
