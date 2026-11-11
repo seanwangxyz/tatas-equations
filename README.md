@@ -25,7 +25,9 @@ node tests/engine.test.js
 To see how strong each creature is (they play each other at full speed):
 
 ```bash
-node tests/playtest.js 40 0
+node tests/playtest.js 40 0   # prints a SUMMARY block at the end
+# Snoozy only sees short Solutions; Penny never calls Impossible! (see js/config.js).
+# The "Kid who knows the trick" shows those blind spots can be learned.
 ```
 
 135 checks: the evaluator, the Solution validator, the solver, and the official 2- and

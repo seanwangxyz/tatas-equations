@@ -226,9 +226,8 @@ function aiInterject() {
   if (G.mode === 'tutorial' || nP() < 3) return false;
   var cands = idxs().filter(function (i) { return isAI(i) && i !== G.lastMover && i !== G.turn; });
   for (var k = 0; k < cands.length; k++) {
-    var p = cands[k], o = G.players[p].ai, st = snapshot(), base = { goal: G.goal, req: st.req, opt: st.perm, res: st.res, fractions: G.fractions, maxDigits: o.maxDigits, timeMs: o.timeMs };
-    if (!nowCheckFor(p) && Math.random() < o.seeNow * 0.8) { var r = Eq.solve(Object.assign({ mode: 'now' }, base)); if (r.found) { G.aiPlan = r; challenge('now', p); return true; } }
-    if (Math.random() < o.seeImp * 0.8) { var r2 = Eq.solve(Object.assign({ mode: 'impossible' }, base)); if (!r2.found && r2.complete) { challenge('impossible', p); return true; } }
+    var p = cands[k], o = G.players[p].ai, d = aiDecideChallenge(o, snapshot(), G.goal, G.fractions, !nowCheckFor(p), 0.8, true);
+    if (d) { if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, p); return true; }
   }
   return false;
 }
@@ -386,8 +385,7 @@ function lastCubePlayed() {
     var p = ais[0], o = G.players[p].ai, st = snapshot();
     say('opp', pick(o.think)); renderGame();
     setTimeout(function () {
-      var r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: [], mode: 'free', fractions: G.fractions, maxDigits: o.maxDigits, timeMs: o.timeMs });
-      if (!r.found && Math.random() < o.seeImp) { G.lastMover = mover; challenge('impossible', p); }
+      if (aiCallsLastImpossible(o, st, G.goal, G.fractions)) { G.lastMover = mover; challenge('impossible', p); }
       else askHumans();
     }, 1200);
   } else askHumans();
@@ -564,13 +562,43 @@ function applySym(st, s, zone) {
   if (zone === 'required') o.req.push(s); else if (zone === 'permitted') o.perm.push(s);
   return o;
 }
+// ---- Decisions shared by the game and tests/playtest.js (so they cannot drift apart) ----
+// How long a Solution a creature can think about when WRITING or checking an opponent's move.
+// Normal creatures can stretch one number cube past what they notice; a shortView creature cannot.
+function aiViewDigits(o) { return o.shortView ? o.maxDigits : Math.min(6, o.maxDigits + 1); }
+// How long a Solution it looks for when choosing a Goal (shortView creatures set Goals they can solve themselves).
+function aiGoalDigits(o) { return o.shortView ? o.maxDigits : 3; }
+// Should this creature challenge the move just made? Returns {kind:'now', plan} / {kind:'impossible'} / null.
+//   nowOk = a Now! challenge is allowed here; scale = 1 on its own turn, 0.8 when it interjects (3 players);
+//   strictImp = only call Impossible! when the search was complete (interjecting).
+// Creature style flags (js/config.js): shortView = "I can't find one" counts as "there is none";
+// callsImpossible === false = never calls Impossible!.
+function aiDecideChallenge(o, st, goal, fractions, nowOk, scale, strictImp) {
+  var base = { goal: goal, req: st.req, opt: st.perm, res: st.res, fractions: fractions, maxDigits: o.maxDigits, timeMs: o.timeMs };
+  if (nowOk && Math.random() < o.seeNow * scale) {
+    var r = Eq.solve(Object.assign({ mode: 'now' }, base));
+    if (r.found) return { kind: 'now', plan: r };
+  }
+  if (o.callsImpossible !== false && Math.random() < o.seeImp * scale) {
+    var r2 = Eq.solve(Object.assign({ mode: 'impossible' }, base));
+    if (!r2.found && (o.shortView || r2.complete || (!strictImp && Math.random() < 0.3))) return { kind: 'impossible' };
+  }
+  return null;
+}
+// After the last cube: does this creature (not the mover) call Impossible!?
+function aiCallsLastImpossible(o, st, goal, fractions) {
+  if (o.callsImpossible === false || !(Math.random() < o.seeImp)) return false;
+  return !Eq.solve({ goal: goal, req: st.req, opt: st.perm, res: [], mode: 'free', fractions: fractions, maxDigits: o.maxDigits, timeMs: o.timeMs }).found;
+}
 function aiChooseMove(o) {
   var st = snapshot(), res = zoneCubes('resources').filter(function (c) { return !c.locked; });
   if (!res.length) return null;
   var base = { goal: G.goal, fractions: G.fractions, maxDigits: o.maxDigits, timeMs: 90 };
   function possible(after) { return Eq.solve(Object.assign({ req: after.req, opt: after.perm, res: after.res, mode: 'impossible' }, base)).found; }
   if (res.length === 1) {
-    var c = res[0], zr = possible(applySym(st, c.s, 'required')), zp = possible(applySym(st, c.s, 'permitted'));
+    var c = res[0];
+    if (o.keepGoal === false) return { id: c.id, zone: Math.random() < 0.5 ? 'required' : 'permitted' }; // does not check the Goal (Penny)
+    var zr = possible(applySym(st, c.s, 'required')), zp = possible(applySym(st, c.s, 'permitted'));
     return { id: c.id, zone: zr && (!zp || Math.random() < 0.5) ? 'required' : 'permitted' };
   }
   var bySym = {}; res.forEach(function (c) { if (!bySym[c.s]) bySym[c.s] = c; });
@@ -588,10 +616,10 @@ function aiChooseMove(o) {
   var fallback = null, t0 = Date.now();
   for (var i = 0; i < cands.length; i++) {
     var cd = cands[i], after = applySym(st, cd.s, cd.zone);
-    if (!possible(after)) continue;
+    if (o.keepGoal !== false && !possible(after)) continue; // keepGoal === false: never checks that the Goal stays possible
     if (!fallback) fallback = cd;
     var nowable = after.res.length >= 2 && (after.req.length + after.perm.length) > 0 &&
-      Eq.solve(Object.assign({ req: after.req, opt: after.perm, res: after.res, mode: 'now' }, base, { maxDigits: Math.min(6, o.maxDigits + 1) })).found;
+      Eq.solve(Object.assign({ req: after.req, opt: after.perm, res: after.res, mode: 'now' }, base, { maxDigits: aiViewDigits(o) })).found;
     if (!nowable) return cd;
     if (Date.now() - t0 > 900) break;
   }
@@ -604,16 +632,10 @@ function aiTurn() {
   setTimeout(function () {
     if (!G || G.phase !== 'move') return;
     if (G.mode === 'tutorial') { tutAiMove(); return; }
-    var st = snapshot(), base = { goal: G.goal, req: st.req, opt: st.perm, res: st.res, fractions: G.fractions, maxDigits: o.maxDigits, timeMs: o.timeMs };
+    var st = snapshot();
     if (G.lastMover !== null && G.lastMover !== me) {
-      if (!nowCheck() && Math.random() < o.seeNow) {
-        var r = Eq.solve(Object.assign({ mode: 'now' }, base));
-        if (r.found) { G.busy = false; G.aiPlan = r; challenge('now', me); return; }
-      }
-      if (Math.random() < o.seeImp) {
-        var r2 = Eq.solve(Object.assign({ mode: 'impossible' }, base));
-        if (!r2.found && (r2.complete || Math.random() < 0.3)) { G.busy = false; challenge('impossible', me); return; }
-      }
+      var d = aiDecideChallenge(o, st, G.goal, G.fractions, !nowCheck(), 1, false);
+      if (d) { G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); return; }
     }
     var mv = aiChooseMove(o);
     G.busy = false;
@@ -644,8 +666,7 @@ function aiWrite(pi, mode, cb) {
   setTimeout(function () {
     var st = snapshot(), r = null;
     if (mode === 'now' && G.aiPlan) { r = G.aiPlan; G.aiPlan = null; }
-    else r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: mode === 'last' ? [] : st.res, mode: mode === 'last' ? 'free' : mode, fractions: G.fractions, maxDigits: Math.min(6, o.maxDigits + 1), timeMs: o.timeMs * 2 });
-    if (r && r.found && o.fumble && mode !== 'now' && Math.random() < o.fumble) r = null; // dozed off / got muddled
+    else r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: mode === 'last' ? [] : st.res, mode: mode === 'last' ? 'free' : mode, fractions: G.fractions, maxDigits: aiViewDigits(o), timeMs: o.timeMs * 2 });
     if (r && r.found) {
       var toks = symsToCubeTokens(r.tokens, mode), chk = Eq.checkSolution(toks, solCtx(mode));
       say('opp', chk.ok ? 'Done!' : 'Hmm…'); cb(chk.ok, toks, chk);
@@ -665,7 +686,7 @@ function aiSetGoal() {
   for (var i = 0; i < ideas.length && i < 30 && Date.now() - t0 < 1000; i++) {
     var g = ideas[i], rest = free.map(function (c) { return c.s; });
     g.tokens.forEach(function (s) { rest.splice(rest.indexOf(s), 1); });
-    var r = Eq.solve({ goal: g.value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: 3, timeMs: 60 });
+    var r = Eq.solve({ goal: g.value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: aiGoalDigits(o), timeMs: 60 });
     if (r.found) {
       var used = {}, toks = g.tokens.map(function (s) { var c = free.find(function (x) { return x.s === s && !used[x.id]; }); used[c.id] = 1; return { s: s, id: c.id }; });
       say('opp', o.goal);

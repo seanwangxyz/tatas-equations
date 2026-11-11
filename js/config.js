@@ -44,18 +44,34 @@ var UNLOCK_LESSONS = {
 
 // Skill settings per creature (checked with tests/playtest.js):
 //   seeNow / seeImp = chance per turn that it notices a Now! or Impossible! chance;
-//   smart = chance it checks its move is safe; maxDigits = how long a Solution it can find;
-//   fumble = chance it fails to write a Solution it should have found (sleepy!).
+//   smart = chance it checks its move is safe; maxDigits = how long a Solution it can find
+//   (counted in number cubes); tip = the one-line hint shown on its card in the opponent picker.
+//
+// Snoozy and Penny each have one clear BLIND SPOT instead of random carelessness, so that
+// beating each one teaches the kid one real skill (the playtest has a "Kid who knows the trick"
+// to prove it). The flags below are read by aiDecideChallenge / aiChooseMove / aiWrite in js/game.js.
+//   style 'shortsighted' (Snoozy): shortView = true. Snoozy only thinks about Solutions with two
+//     number cubes and one operation (like 3 + 4): maxDigits is 2 and it uses that same short view
+//     everywhere: spotting Now!, judging whether the Goal is still possible, checking its own
+//     moves, picking Goals it can solve itself, and writing a Solution. It trusts its view, so
+//     "I can't find one" means "Impossible!", and it will call Impossible! when a longer Solution
+//     exists (the kid wins 6 by showing it). Lesson: longer Solutions beat Snoozy.
+//   style 'no-impossible' (Penny): callsImpossible = false (never challenges Impossible!, not even
+//     after the last cube) and keepGoal = false (never checks that her own move keeps the Goal
+//     possible). She DOES notice Now! reliably (seeNow high, normal 3-number view) and always
+//     checks that her move doesn't hand the opponent a Now! (smart = 1).
+//     Lesson: be careful what you leave in Required/Permitted; risky moves that make the Goal
+//     harder are safe against Penny; when Penny makes the Goal impossible, call Impossible! yourself.
 var OPPONENTS = [
-  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, maxDigits: 3, timeMs: 150, seeNow: 0.1, seeImp: 0.08, smart: 0.2, fumble: 0.3, goalCubes: 1, goalMax: 12,
+  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, style: 'shortsighted', shortView: true, maxDigits: 2, timeMs: 150, seeNow: 0.75, seeImp: 0.75, smart: 1, goalCubes: 1, goalMax: 12, tip: 'Snoozy only spots short Solutions.',
     think: ['Zzz… oh! Is it my turn?', 'Slooowly thinking…', '*yawn* Let me see…'], now: '*yawn*… NOW!', imp: 'Zzz… IMPOSSIBLE!', goal: 'Here is a Goal… *yawn*', lose: 'Zzz… you got me! Good game!', win: 'I won? While napping?' },
-  { id: 'penny', name: 'Penny', title: 'the Puzzle Penguin', emoji: '🐧', color: '#d0ebff', stars: 2, maxDigits: 3, timeMs: 250, seeNow: 0.28, seeImp: 0.22, smart: 0.45, fumble: 0.12, goalCubes: 2, goalMax: 25,
+  { id: 'penny', name: 'Penny', title: 'the Puzzle Penguin', emoji: '🐧', color: '#d0ebff', stars: 2, style: 'no-impossible', callsImpossible: false, keepGoal: false, maxDigits: 3, timeMs: 250, seeNow: 0.9, seeImp: 0, smart: 1, goalCubes: 2, goalMax: 25, tip: 'Penny never calls Impossible!',
     think: ['Waddle, waddle… thinking!', 'Hmm, chilly choices…', 'Let me slide this over…'], now: 'Flippers up: NOW!', imp: 'Brrr… IMPOSSIBLE!', goal: 'Try this Goal on for size!', lose: 'Great waddling! You win!', win: 'Penguin power!' },
-  { id: 'fox', name: 'Rusty', title: 'the Clever Fox', emoji: '🦊', color: '#ffd8a8', stars: 3, maxDigits: 4, timeMs: 350, seeNow: 0.55, seeImp: 0.5, smart: 0.7, goalCubes: 3, goalMax: 40,
+  { id: 'fox', name: 'Rusty', title: 'the Clever Fox', emoji: '🦊', color: '#ffd8a8', stars: 3, tip: 'Rusty spots Now! chances fast. Do not leave him an easy one.', maxDigits: 4, timeMs: 350, seeNow: 0.55, seeImp: 0.5, smart: 0.7, goalCubes: 3, goalMax: 40,
     think: ['Hmm… a sly move…', 'Let me sniff this out…', 'Foxy thinking…'], now: 'Gotcha! NOW!', imp: 'Sneaky… IMPOSSIBLE!', goal: 'A clever Goal for you!', lose: 'Outfoxed! Well played!', win: 'Too clever for you this time!' },
-  { id: 'owl', name: 'Ollie', title: 'the Wise Owl', emoji: '🦉', color: '#e5dbff', stars: 4, maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.75, smart: 0.9, goalCubes: 3, goalMax: 60,
+  { id: 'owl', name: 'Ollie', title: 'the Wise Owl', emoji: '🦉', color: '#e5dbff', stars: 4, tip: 'Ollie almost never misses. Plan two moves ahead.', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.75, smart: 0.9, goalCubes: 3, goalMax: 60,
     think: ['Hoo-hoo… let me think…', 'Wise moves only…', 'Hmm, hoo…'], now: 'Hoo! NOW!', imp: 'Hoo-hoo… IMPOSSIBLE!', goal: 'A wise Goal…', lose: 'Hoo! You are wise indeed!', win: 'Wisdom wins today!' },
-  { id: 'wizard', name: 'Mondo', title: 'the Math Wizard', emoji: '🧙', color: '#fff3bf', stars: 5, maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99,
+  { id: 'wizard', name: 'Mondo', title: 'the Math Wizard', emoji: '🧙', color: '#fff3bf', stars: 5, tip: 'Mondo sees everything. Check every move twice.', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99,
     think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' }
 ];
 var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99'];

@@ -86,6 +86,7 @@ function renderSetup() {
     var open = i === 0 || S.beaten[i - 1];
     return '<div class="opp' + (open ? '' : ' lock') + '" data-act="' + (open ? 'playOpp' : 'lockedOpp') + '" data-arg="' + i + '">' + (S.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') +
       '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + '★'.repeat(o.stars) + '<span style="opacity:.3">' + '★'.repeat(5 - o.stars) + '</span></div>' +
+      (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   }).join('');
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
