@@ -17,7 +17,8 @@ const DEFAULT_CLIPS = {
   think: ['Idle_Talking', 'Talking', 'think', 'Thinking'],
   happy: ['Victory', 'Cheer', 'Celebrate', 'Happy', 'Dance', 'Wave', 'Jump'],
   sad: ['Defeat', 'Sad', 'Hit', 'Death', 'Hurt', 'Sit'],
-  challenge: ['Taunt', 'Point', 'Roar', 'Attack', 'Punch', 'Yell']
+  challenge: ['Taunt', 'Point', 'Roar', 'Attack', 'Punch', 'Yell'],
+  wave: ['Wave', 'Hello']
 };
 const hexv = (v) => (typeof v === 'string' ? parseInt(v.replace(/^#|^0x/i, ''), 16) : v);
 const _pq = new THREE.Quaternion(), _hq = new THREE.Quaternion(), _R = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _v = new THREE.Vector3();
@@ -132,7 +133,7 @@ export const MonstersPack = {
 
     // animation
     let mixer = null, idle = null, moodAct = null;
-    const find = (key) => { const cands = (slot.clips && slot.clips[key]) ? [].concat(slot.clips[key]) : DEFAULT_CLIPS[key]; for (const n of cands) { const c = entry.clips.find((cl) => cl.name === n) || entry.clips.find((cl) => cl.name.toLowerCase().indexOf(String(n).toLowerCase()) >= 0); if (c) return c; } return null; };
+    const find = (key) => { const cands = (slot.clips && slot.clips[key]) ? [].concat(slot.clips[key]) : (DEFAULT_CLIPS[key] || []); for (const n of cands) { const c = entry.clips.find((cl) => cl.name === n) || entry.clips.find((cl) => cl.name.toLowerCase().indexOf(String(n).toLowerCase()) >= 0); if (c) return c; } return null; };
     if (entry.clips.length) {
       mixer = new THREE.AnimationMixer(model);
       const ic = find('idle'); if (ic) { idle = mixer.clipAction(ic); idle.play(); }
