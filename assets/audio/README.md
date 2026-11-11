@@ -45,6 +45,11 @@ sound may still be the synthesized one. Serve over http (not `file://`) so the f
 | `fanfare` | badge, level up, win |
 | `crowd` | stadium cheer for big wins |
 | `whistle` | referee whistle |
+| `crowd_ooh` `crowd_aww` `crowd_cheer` `crowd_gasp` `crowd_laugh` `crowd_clap` `crowd_chant` | `Snd.crowdReact(kind)` one-shots |
+| `theme_pip` `theme_sloth` `theme_penguin` `theme_fox` `theme_owl` `theme_wizard` | `Snd.theme(who)` creature entrance sting |
+| `sting_card` `sting_vs` `sting_emote` `sting_levelup` | `Snd.sting(kind)` |
+
+Babble voices, ambience beds and the dance loop are always synthesized.
 
 A recorded `fanfare`, `crowd`, `slam` or `clatter` replaces the whole synthesized sound.
 Music is always synthesized (mood beds are not file-mapped yet).
