@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1d6a46">
+<title>Tata's Equations</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="mat-felt skin-classic">
+<section id="splash" class="screen on">
+  <div class="logo">Tata's<span class="eq">Equations</span></div>
+  <div id="splashPip" class="pip bob" style="width:130px;height:140px"></div>
+  <button class="btn big yellow tapgo" data-act="start">▶ Tap to Play!</button>
+</section>
+<section id="intro" class="screen"></section>
+<section id="dedication" class="screen"></section>
+<section id="title" class="screen"></section>
+<section id="setup" class="screen"></section>
+<section id="game" class="screen"></section>
+<section id="daily" class="screen"></section>
+<section id="trophies" class="screen"></section>
+<section id="stats" class="screen"></section>
+<section id="settings" class="screen"></section>
+<div id="builder" class="modal-back"><div class="modal wide" id="builderBox"></div></div>
+<div id="modal" class="modal-back"><div class="modal" id="modalBox"></div></div>
+<div id="toasts"></div>
+<div id="ghost"></div>
+<canvas id="fx"></canvas>
+
+<!-- 3D and physics libraries (pinned versions) -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+} }
+</script>
+<script src="js/engine.js"></script>
+<script src="js/config.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/progress.js"></script>
+<script src="js/game.js"></script>
+<script src="js/builder.js"></script>
+<script src="js/screens.js"></script>
+<script src="js/tutorial.js"></script>
+<script src="js/main.js"></script>
+<script type="module" src="js/three/table.js"></script>
+<script type="module" src="js/three/creatures.js"></script>
+</body>
+</html>
