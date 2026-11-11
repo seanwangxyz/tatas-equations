@@ -230,6 +230,7 @@ function placeCube(id, zone, who) {
   if (left === 0) { renderGame(); setTimeout(lastCubePlayed, 600); return; }
   G.turn = nextP(who); // play passes to the left
   if (!isAI(who)) say('pip', pick(['Nice move!', 'Good thinking!', 'Thunk! Placed.', 'Ooh, interesting!']), 'happy');
+  if (!isAI(who) && firstAI() && Math.random() < 0.25) creatureMood(pick(['nod', 'nod', 'gasp']));
   renderGame();
   nextTurn();
 }
