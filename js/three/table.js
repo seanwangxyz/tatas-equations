@@ -416,7 +416,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       var lift = (G.selected === c.id) ? 0.8 : 0;
       var pos = new THREE.Vector3(t.x, 0.5 * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData;
       m.userData.lock.visible = !!c.locked;
-      m.material.forEach(function (mt) { mt.color.setHex(c.locked ? 0x9a9a9a : 0xffffff); mt.emissive.setHex(G.selected === c.id ? 0x6b5200 : 0x000000); });
+      m.material.forEach(function (mt) { mt.color.setHex(c.locked ? 0x9a9a9a : 0xffffff); mt.emissive.setHex(G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000); });
       var same = u.tpos && u.tpos.distanceTo(pos) < 0.01 && Math.abs(u.tscale - t.scale) < 0.01 && u.tq && u.tq.angleTo(q) < 0.01;
       if (same && !force) return;
       var moved = u.zone && u.zone !== c.zone, fromPour = u.fromPour, dropped = u.dropped; u.dropped = false;
@@ -588,7 +588,6 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       zp.visible = zp.material.opacity > 0.004; dirty = true;
     });
     hooks.frame.forEach(function (f) { f(now); });
-    if (pulseId != null && meshes[pulseId]) { var p = 0.5 + 0.5 * Math.sin(now / 420); meshes[pulseId].material.forEach(function (mt) { mt.emissive.setRGB(0.45 * p, 0.36 * p, 0); }); dirty = true; }
     var rendered = false;
     if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') {
       // soft contact shadow under every visible cube (follows drags and lifts too)
