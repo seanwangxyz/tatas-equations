@@ -55,7 +55,32 @@ var OPPONENTS = [
     think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' }
 ];
 var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99'];
-OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i]; o.num = JERSEYS[i]; });
+// Creature attitude. All of it is playful teasing: never about being bad at math.
+// gloat = after they win; sore = after they lose; trash = while playing (Settings switch);
+// bluff = claims that may or may not be true (Settings switch, off by default).
+var TALK = {
+  snoozy: { gloat: ['I won that one… in my sleep!', 'Zzz… oh, did I win? Nice.', 'Best nap AND a win!'],
+    sore: ['Aww… I need a nap after that.', 'No fair, I was resting my eyes!', '*sniff* Good one.'],
+    trash: ['*yawn* Wake me when it gets tricky.', 'I can play with my eyes closed. They ARE closed.', 'Slow and steady wins the shake…'],
+    bluff: ['Careful… I\'m one cube away from Now!', 'Hmm, this Goal looks impossible to me…', 'I dreamed the Solution already.'] },
+  penny: { gloat: ['Ice cold! That\'s how penguins play!', 'Slide, slide, WIN!', 'Flippers up for me!'],
+    sore: ['My flippers slipped!', 'Brrr… you got me.', 'That was a fishy move. A good one!'],
+    trash: ['Waddle you do now?', 'Your move gave me chills… of joy!', 'Stay cool. I know I will.'],
+    bluff: ['I already see a Solution. Do you?', 'One more cube and I say Now!', 'This one can\'t be made. Probably.'] },
+  fox: { gloat: ['Too quick for you!', 'Number 9 scores again!', 'Outfoxed!'],
+    sore: ['Hmph! Lucky bounce.', 'I LET you have that one.', 'Grr… rematch!'],
+    trash: ['My tail could find a better move! Just kidding… sort of.', 'I\'m three moves ahead, kid.', 'You sure about that one?'],
+    bluff: ['Go on, challenge me. I dare you.', 'I could call Now any second…', 'This Goal? Can\'t be made. Trust me.'] },
+  owl: { gloat: ['Wisdom wins, hoo-hoo!', 'Just as I predicted.', 'Hoo\'s the champion? Me.'],
+    sore: ['Hoo… I did not see that coming.', 'A wise owl knows when it\'s beaten.', 'Well played, owlet.'],
+    trash: ['Hoo taught you that move? Not me.', 'Think carefully, little owlet.', 'I have studied this position for years.'],
+    bluff: ['I have read every Solution here.', 'It would be unwise to challenge me now.', 'There is no Solution. I checked. Hoo.'] },
+  wizard: { gloat: ['Abraca-BEATEN!', 'Ninety-nine problems, all solved!', 'Magic and math win again!'],
+    sore: ['My wand must be broken!', 'Bah! A counter-spell!', 'You out-wizarded me… this once.'],
+    trash: ['My beard has solved harder Goals.', 'I foresee… trouble for you.', 'Presto! Watch and learn.'],
+    bluff: ['My crystal ball says Impossible…', 'I already wrote my Solution. With magic.', 'One wave of my wand and it\'s Now!'] }
+};
+OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i]; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
 var DEFAULT_OPP_NAMES = OPPONENTS.map(function (o) { return o.name; });
 function applyOppNames() { OPPONENTS.forEach(function (o, i) { var n = (S.oppNames && S.oppNames[i] || '').trim(); o.name = n || DEFAULT_OPP_NAMES[i]; }); }
 var PIP = { id: 'pip', kind: 'pip', name: 'Pip', title: 'the Cube', emoji: '🟨', color: '#ffe066', stars: 0, maxDigits: 5, timeMs: 400, think: ['My turn!'] };
@@ -82,7 +107,7 @@ function defaults() {
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
     ladder: { stage: 0, stars: 0 }, unlockAll: false, beaten: [false, false, false, false, false],
     cos: { skin: 'classic', mat: 'felt', victory: 'confetti' },
-    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false },
+    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false },
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: ['', '', '', '', '']
   };
 }

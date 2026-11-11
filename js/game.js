@@ -14,6 +14,14 @@ function snapshot() { return { req: syms('required'), perm: syms('permitted'), r
 function isAI(i) { return !!G.players[i].ai; }
 function profileIdx() { return 0; } // player 0 is the owner of this device's progress
 
+// How a creature takes losing, by personality.
+function loseMood(o) {
+  var r = Math.random(), k = o && o.kind;
+  if (k === 'fox' || k === 'wizard') return r < 0.6 ? 'tantrum' : r < 0.8 ? 'cry' : 'sad';
+  if (k === 'owl') return r < 0.6 ? 'sad' : r < 0.8 ? 'cry' : 'tantrum';
+  return r < 0.6 ? 'cry' : r < 0.9 ? 'sad' : 'tantrum';
+}
+function talkLine(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
 function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); }
 function setCreature(k) { if (T3.setCreature) T3.setCreature(k); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
@@ -479,13 +487,19 @@ function endShake(r) {
   }
   renderGame();
   var aiI = idxs().filter(isAI)[0];
-  if (aiI !== undefined) creatureMood((r.pts[aiI] || 0) > (r.pts[0] || 0) ? 'happy' : (r.pts[aiI] || 0) < (r.pts[0] || 0) ? 'sad' : null);
+  var aiTalk = '';
+  if (aiI !== undefined) {
+    var ao = G.players[aiI].ai, ap = r.pts[aiI] || 0, hp = r.pts[0] || 0;
+    if (ap > hp) { var gl = S.set.gloat !== false && Math.random() < 0.5; creatureMood(gl ? 'gloat' : 'happy'); if (gl) aiTalk = talkLine(ao, 'gloat'); }
+    else if (ap < hp) { creatureMood(Math.random() < 0.3 ? 'cry' : 'sad'); if (Math.random() < 0.6) aiTalk = talkLine(ao, 'sore'); }
+  }
   var sample = sampleSolution();
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
   if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
+  if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
   var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div>' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
@@ -512,14 +526,14 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood('sad'); Snd.setMood('win'); cue('win');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); cue('win');
     }
-    if (!won && !tie) { creatureMood('happy'); cue('lose'); }
+    if (!won && !tie) { creatureMood('dance'); cue('lose'); }
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect });
     persist();
     var nextO = OPPONENTS[idx + 1];
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
-      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? o.lose : tie ? 'A tie! Let\'s play again!' : o.win + ' Want a rematch?') + '</div></div>' +
+      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
       '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
       (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
@@ -530,7 +544,7 @@ function endMatch() {
     victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); Snd.setMood('win'); cue('win');
     banner('⚽ GOOOAL!', winners.length > 1 ? 'It\'s a tie!' : G.players[winners[0]].name + ' wins!');
     var aiI = idxs().filter(isAI)[0];
-    if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'happy' : 'sad');
+    if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'dance' : loseMood(G.players[aiI].ai));
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
     html = '<h2 class="hero">' + (winners.length > 1 ? 'Tie: ' + names.join(' & ') + '!' : names[0] + ' wins!') + '</h2>' +
@@ -579,7 +593,7 @@ function aiChooseMove(o) {
 function aiTurn() {
   if (!G || G.phase !== 'move' || !isAI(G.turn)) return;
   var me = G.turn, o = G.players[me].ai;
-  G.busy = true; say('opp', pick(o.think)); creatureMood('think'); renderGame();
+  G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
   setTimeout(function () {
     if (!G || G.phase !== 'move') return;
     if (G.mode === 'tutorial') { tutAiMove(); return; }
@@ -597,7 +611,7 @@ function aiTurn() {
     var mv = aiChooseMove(o);
     G.busy = false;
     var c = G.cubes[mv.id];
-    say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.');
+    say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.' + (S.set.bluff === true && o.talk && Math.random() < 0.35 ? ' ' + talkLine(o, 'bluff') : ''));
     aiPlace(mv.id, mv.zone, me);
   }, 900 + Math.random() * 700);
 }
