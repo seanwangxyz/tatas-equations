@@ -34,10 +34,10 @@ function openDaily() {
 }
 function renderDaily() {
   var el = $('#daily');
-  if (!D) { el.innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div><div class="panel">Hmm, no puzzle today. Try again later!</div>'; return; }
+  if (!D) { el.innerHTML = '<div class="hdr"><button class="btn small" data-act="camp">' + ico('back') + ' Camp</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div><div class="panel">Hmm, no puzzle today. Try again later!</div>'; return; }
   function z(name) { return D.cubes.filter(function (c) { return c.zone === name; }).map(function (c) { return cubeHTML(c, 'mini'); }).join('') || '<span class="empty">empty</span>'; }
   var done = S.dailyDone[D.date];
-  el.innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div>' +
+  el.innerHTML = '<div class="hdr"><button class="btn small" data-act="camp">' + ico('back') + ' Camp</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div>' +
     '<div class="panel" style="background:rgba(255,253,246,.97)"><div class="row">' + pipHTML(done ? 'cheer' : 'happy', 70, '') + '<div class="bubble">' +
     (done ? 'You solved today\'s puzzle! 🎉 Come back tomorrow for a new one, or try finding another way!' : 'Today\'s puzzle: make the Goal using ALL the Required cubes and any Permitted cubes. Take as long as you like!') + '</div></div></div>' +
     '<div class="mat" style="margin-top:10px">' +
@@ -58,13 +58,13 @@ ACT.dailySolve = function () {
       xpLog = [];
       var gSave = G; G = null;
       if (chk.ok) {
-        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal);
+        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, !!S.dailyDone[D.date]);
         var first = !S.dailyDone[D.date];
         if (first && !D.revealed) { S.dailyDone[D.date] = true; S.stats.daily++; addXP(40, 'Daily Puzzle solved!'); checkBadges({ type: 'daily' }); persist(); }
         Snd.chime(); victoryFX(); Snd.crowd();
         modal('<h2>🎉 You solved it!</h2>' + exprBox(tokens, D.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') + '<div class="row"><button class="btn green" data-act="closeModal">Yay!</button></div>', function () { drainQueue(renderDaily); });
       } else {
-        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal);
+        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, !!S.dailyDone[D.date]);
         Snd.boop();
         modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, D.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul><p style="text-align:center">You can try as many times as you want. No rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>', function () { ACT.dailySolve(); });
       }

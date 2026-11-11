@@ -1,19 +1,11 @@
 # To-do list
 
-## In progress
-- Visual upgrade (four parallel pieces): table/room/camera, creatures + packs, sound + voices, interface.
+## Done
+- Visual upgrade: table/room/camera, creatures + packs + reactions, sound + voices, interface.
+- Creature attitude: gloating, sore losing, trash talk, bluffing (Settings switches).
+- Training Camp: five solver-made drills with levels; drills earn skill stars; daily puzzle lives inside it and only earns a star once a day.
 
 ## Next
-- **Training Camp** (replaces the Daily Puzzle button; daily puzzle becomes one item inside it).
-  Drills generated and graded by the solver, getting harder as he improves:
-  1. Make the Goal (find a Solution)
-  2. Now or not yet? (spot whether Now! works)
-  3. Impossible detective (can the Goal still be made?)
-  4. Safe move (don't hand the other player a Now!)
-  5. Set a sneaky Goal
-  6. New-operation drills after each unlock
-  Drills earn skill stars toward unlocking operations. No timers, no streak guilt.
-  Also fix: re-solving the same daily puzzle shouldn't earn a star each time.
 - **Online play** (Houston ↔ Atlanta): room codes, synced dice, private Solution writing,
   reconnect after a dropped connection. Voice via FaceTime alongside at first.
 - **Monster pack**: needs the Quaternius "Bestiary - Dungeon Monsters Kit" (Standard zip) and

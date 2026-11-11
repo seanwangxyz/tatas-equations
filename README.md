@@ -40,6 +40,7 @@ node tests/engine.test.js
 | `js/game.js` | Game flow (turns, challenges, last cube, scoring screens) and the computer player |
 | `js/builder.js` | The tap-to-build Goal/Solution screen |
 | `js/screens.js` | Daily puzzle, opponent picker, Trophy Room, Stats, Settings |
+| `js/camp.js` | Training Camp: solver-made drills (make the Goal, Now or not, Impossible detective, safe move, sneaky Goal) |
 | `js/tutorial.js` | The guided practice shake |
 | `js/main.js` | Tap/drag input, 3D table hooks, startup |
 | `js/three/table.js` | 3D table, dice, cup pour (physics), 3D taps and drags |

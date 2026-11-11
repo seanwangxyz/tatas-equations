@@ -184,7 +184,7 @@ function gotoTitle() {
     '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (S.unlockAll || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
     '<div class="menu">' +
     '<button class="btn big green hero" data-act="setup">' + ico('play') + ' Play</button>' +
-    '<button class="btn big yellow" data-act="daily">' + ico('cal') + ' Daily Puzzle</button>' +
+    '<button class="btn big yellow" data-act="camp">' + ico('star') + ' Training Camp</button>' +
     '<button class="btn big purple" data-act="trophies">' + ico('trophy') + ' Trophy Room</button>' +
     '<button class="btn big blue" data-act="settings">' + ico('gear') + ' Settings</button>' +
     '<button class="btn big orange" data-act="tutorial">' + ico('cap') + ' How to Play</button>' +

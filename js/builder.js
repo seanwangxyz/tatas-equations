@@ -93,7 +93,7 @@ ACT.bSubmit = function () {
 };
 
 // Record a Solution attempt by the device owner: stats, XP, personal bests, badges.
-function recordSolution(chk, ms, tokens, mode, goal) {
+function recordSolution(chk, ms, tokens, mode, goal, noStar) {
   var ok = !!(chk && chk.ok);
   S.stats.attempts++;
   S.history.push({ t: Date.now(), ok: ok, ms: ms, g: goal ? Eq.fmt(goal) : '', c: chk ? chk.cubes : 0 });
@@ -115,7 +115,7 @@ function recordSolution(chk, ms, tokens, mode, goal) {
   if (chk.cubes > S.best.mostCubes) S.best.mostCubes = chk.cubes;
   if (chk.madeFraction) S.stats.fractionSolutions++;
   var bounce = S.stats.lastWrong; S.stats.lastWrong = false;
-  addStar();
+  if (!noStar) addStar(); // (a daily puzzle already solved today earns no second star)
   checkBadges({ type: 'solution', ok: true, mode: mode, cubes: chk.cubes, ms: ms, ops: ops, goalAbs: gAbs, bounce: bounce, hasZero: hasZero });
   persist();
 }
