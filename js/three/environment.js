@@ -11,6 +11,7 @@ export var THEMES = {
   felt:   { felt: '#2e8b57', rim: '#8b5a2b', rimMetal: 0.0, rimRough: 0.42, sun: 0xfff0d8, sunI: 2.5, fill: 0xffc98f, fillI: 0.55, sky: 0xfff4e6, ground: 0x6b4a2a, hemiI: 0.7, env: 0.55, bg: ['#47321f', '#150e09'], dust: 0xfff1d6, legs: true,  fog: [0x2a1c12, 60, 150] },
   space:  { felt: '#2b2f77', rim: '#2a3050', rimMetal: 0.75, rimRough: 0.3, sun: 0xd3dcff, sunI: 2.1, fill: 0xff58d8, fillI: 1.0, sky: 0x8fa0ff, ground: 0x1a1040, hemiI: 0.7, env: 0.42, bg: ['#10123a', '#02020a'], dust: 0xbfd0ff, legs: false, fog: null },
   jungle: { felt: '#3f7f2f', rim: '#5d4322', rimMetal: 0.0, rimRough: 0.65, sun: 0xfff2b8, sunI: 2.7, fill: 0x7dffa0, fillI: 0.5, sky: 0xe2ffd8, ground: 0x244018, hemiI: 0.8, env: 0.5, bg: ['#2a5226', '#0a1a0a'], dust: 0xeaffc4, legs: true,  fog: [0x16301a, 45, 120] },
+  stadium:{ felt: '#2fa84f', rim: '#e9ecef', rimMetal: 0.0, rimRough: 0.35, apron: 0x8793a6, sun: 0xf0f5ff, sunI: 2.1, fill: 0xa8c0ff, fillI: 0.45, sky: 0xd5e4ff, ground: 0x1d4a26, hemiI: 0.6, env: 0.42, bg: ['#0c1638', '#03060f'], dust: 0xe8f5e0, spark: 0xfff0b0, legs: true, fog: [0x0a1330, 60, 150] },
   ocean:  { felt: '#1c6ea4', rim: '#caa56a', rimMetal: 0.0, rimRough: 0.5, sun: 0xfff8ee, sunI: 2.8, fill: 0x62dcff, fillI: 0.6, sky: 0xeaf7ff, ground: 0x0a3a5a, hemiI: 0.9, env: 0.6, bg: ['#79c9f0', '#0b4a78'], dust: 0xffffff, legs: true,  fog: [0x2a7fb0, 55, 150] }
 };
 
@@ -84,9 +85,11 @@ export function paintFelt(g, w, h, theme, name) {
   for (var k = 0; k < 14000; k++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * w, R() * h, 2, 2); }
   if (name === 'space') { for (var s = 0; s < 260; s++) { g.fillStyle = 'rgba(255,255,255,' + (0.15 + R() * 0.5) + ')'; var sz = R() < 0.1 ? 3 : 1.5; g.fillRect(R() * w, R() * h, sz, sz); } }
   if (name === 'jungle') { g.fillStyle = 'rgba(10,50,10,.10)'; for (var l = 0; l < 40; l++) { g.save(); g.translate(R() * w, R() * h); g.rotate(R() * 6.28); g.beginPath(); g.ellipse(0, 0, 50 + R() * 60, 14 + R() * 12, 0, 0, 6.28); g.fill(); g.restore(); } }
+  if (name === 'stadium') { var sw = w / 10; for (var sb = 0; sb < 10; sb++) { g.fillStyle = sb % 2 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)'; g.fillRect(sb * sw, 0, sw, h); } }
   if (name === 'ocean') { g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 3; for (var wv = 0; wv < 60; wv++) { var wy = R() * h, wx = R() * w; g.beginPath(); g.moveTo(wx, wy); g.bezierCurveTo(wx + 40, wy - 14, wx + 80, wy + 14, wx + 120, wy); g.stroke(); } }
   var vg = g.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, w * 0.75);
   vg.addColorStop(0, 'rgba(255,255,255,.09)'); vg.addColorStop(1, 'rgba(0,0,0,.28)'); g.fillStyle = vg; g.fillRect(0, 0, w, h);
+  g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 26; g.lineWidth = 12; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeRect(-6, -6, w + 12, h + 12); g.restore();
 }
 
 // ----- Wood -----

@@ -2,6 +2,8 @@
 // Loaded as an ES module; it fills in window.T3 (see the stand-in in js/config.js).
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { buildStadium } from './stadium.js';
+import { createFx3d } from './fx3d.js';
 import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture, gradientBg, rectShadowTexture, feltBumpTile, paintFelt, woodTexture, buildEnvironment } from './environment.js';
 
 (function () {
@@ -14,7 +16,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
 
   var scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(38, 1.5, 0.1, 300);
   var host = null, layout = null, layoutName = '', felt = null, zonePlanes = {}, rimGroup = null, meshes = [], anims = [], dirty = true;
-  var world = null, pour = null, parenSprites = [], dragS = null, lastHit = 0, lastFrame = 0, pulseId = null;
+  var world = null, pour = null, parenSprites = [], dragS = null, lastHit = 0, lastSpark = 0, lastFrame = 0, pulseId = null;
+  var envFx = null, boardText = '', lightK = 1, baseL = null, sparks = [], sparkPool = [], slow = null, shake = null, shx = 0, shy = 0, fx3 = null;
   var tableGroup = null, blobs = [], squashes = [], puffs = [], puffPool = [], zoneGlow = {};
   var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   renderer.setClearColor(0x000000, 0);
@@ -49,12 +52,16 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var blobTex = blobTexture(), puffTex = softTexture();
   var vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: vignetteTexture(), transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
   vignette.position.z = -0.5; vignette.renderOrder = 1000; vignette.frustumCulled = false; camera.add(vignette);
+  // dim the whole room a little (spotlight effect); no lights are added, so no shader recompiles
+  function setLightK(k) {
+    lightK = k; if (!baseL) return;
+    hemi.intensity = baseL.hemiI * k; sun.intensity = baseL.sunI * k; fill.intensity = baseL.fillI * k; scene.environmentIntensity = baseL.env * k; dirty = true;
+  }
   function applyTheme() {
     var T = THEMES[S.cos.mat] || THEMES.felt;
-    hemi.color.setHex(T.sky); hemi.groundColor.setHex(T.ground); hemi.intensity = T.hemiI;
-    sun.color.setHex(T.sun); sun.intensity = T.sunI;
-    fill.color.setHex(T.fill); fill.intensity = T.fillI;
-    scene.environmentIntensity = T.env;
+    hemi.color.setHex(T.sky); hemi.groundColor.setHex(T.ground);
+    sun.color.setHex(T.sun); fill.color.setHex(T.fill);
+    baseL = T; setLightK(1);
     if (scene.background && scene.background.dispose) scene.background.dispose();
     scene.background = gradientBg(T.bg);
     scene.fog = T.fog ? new THREE.Fog(T.fog[0], T.fog[1], T.fog[2]) : null;
@@ -171,6 +178,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // ----- Table -----
   function disposeTree(o) {
     o.traverse(function (n) {
+      if (n.isInstancedMesh) n.dispose();
       if (n.geometry) n.geometry.dispose();
       var ms = n.material ? (Array.isArray(n.material) ? n.material : [n.material]) : [];
       ms.forEach(function (mt) { Object.keys(mt).forEach(function (k) { var v = mt[k]; if (v && v.isTexture && v !== blobTex && v !== puffTex) v.dispose(); }); mt.dispose(); });
@@ -203,7 +211,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       g.fillStyle = z === 'goal' ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.07)'; rr(g, x, y, w, h, 22); g.fill();
       g.setLineDash(z === 'goal' ? [] : [22, 14]); g.lineWidth = 6; g.strokeStyle = ZCOL[z]; g.globalAlpha = 0.8; rr(g, x, y, w, h, 22); g.stroke(); g.globalAlpha = 1; g.setLineDash([]);
       g.font = '800 ' + Math.round(0.42 * ppu) + 'px "Trebuchet MS", sans-serif'; g.textBaseline = 'middle';
-      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillText(labels[z], x + 0.32 * ppu + 2, y + 0.45 * ppu + 2);
+      g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
       g.fillStyle = '#fff'; g.fillText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
       var zp = new THREE.Mesh(new THREE.PlaneGeometry(r[2], r[3]), new THREE.MeshBasicMaterial({ map: glowTex(r[2], r[3], ZCOL[z] === '#ffffff' ? '#ffe066' : ZCOL[z]), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
       zp.rotation.x = -Math.PI / 2; zp.position.set(r[0] + r[2] / 2, 0.02, r[1] + r[3] / 2); zp.userData.zone = z; zp.visible = false; zp.renderOrder = 2;
@@ -220,9 +228,11 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var rimGeo = new THREE.ExtrudeGeometry(shape, { depth: hgt, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 4, curveSegments: 10 });
     var wood = new THREE.MeshPhysicalMaterial({ map: woodTexture(T.rim, 3, aniso), roughness: T.rimRough, metalness: T.rimMetal, clearcoat: 0.45, clearcoatRoughness: 0.35 });
     var rim = new THREE.Mesh(rimGeo, wood); rim.rotation.x = -Math.PI / 2; rim.position.y = 0; rim.castShadow = true; rim.receiveShadow = true; tableGroup.add(rim);
-    var darkWood = new THREE.MeshStandardMaterial({ map: woodTexture(T.rim, 7, aniso), color: 0x9a8a80, roughness: 0.7 });
+    var darkWood = new THREE.MeshStandardMaterial({ map: woodTexture(T.rim, 7, aniso), color: T.apron || 0x9a8a80, roughness: 0.7 });
     var apron = new THREE.Mesh(new THREE.BoxGeometry(2 * ow - 0.4, 0.9, 2 * od - 0.4), darkWood); apron.position.y = -0.55; apron.castShadow = true; tableGroup.add(apron);
-    var env = buildEnvironment(name, W, D, aniso); tableGroup.add(env.group);
+    if (envFx) { envFx.dispose(); envFx = null; } if (fx3) fx3.reset(); slow = null;
+    var env = name === 'stadium' ? buildStadium(W, D, aniso, layoutName, function () { return qual; }) : buildEnvironment(name, W, D, aniso); tableGroup.add(env.group);
+    if (name === 'stadium') { envFx = env; env.setBoard(boardText); }
     if (env.legs) {
       var lh = -0.9 - FLOOR_Y;
       [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
@@ -264,11 +274,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       camLook.copy(base.look); camLook.x += camOff.panX; camLook.z += camOff.panZ;
       camera.position.copy(base.look).add(camTmp); camera.position.x += camOff.panX; camera.position.z += camOff.panZ; camera.lookAt(camLook);
     }
+    if (shx || shy) { camera.position.x += shx; camera.position.y += shy; }
     camera.updateMatrixWorld();
   }
+  // A very small, quick camera shake (translation only). It always ends at exactly zero; a touch ends it at once.
+  function endShake() { shake = null; if (shx || shy) { shx = shy = 0; applyCam(); dirty = true; } }
   // Put the camera exactly on the fitted view right now (taps and drags must be accurate).
   function camSnap() {
-    cueG = null;
+    cueG = null; endShake();
     if (camZero()) return;
     CAMKEYS.forEach(function (k) { camOff[k] = 0; }); applyCam(); dirty = true;
   }
@@ -381,6 +394,38 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     spawnPuff(a.p1.x, a.p1.z, a.s1, power);
     dropSquash(a.m); squashes.push({ m: a.m, t0: now, s: a.s1, y: a.p1.y, amp: power });
   }
+  // Sparks where two dice smack together hard (additive sprites, pooled, thinned by quality)
+  function spawnSparks(x, y, z, power) {
+    if (document.hidden || qual < 1) return;
+    var T = THEMES[S.cos.mat] || THEMES.felt, n = qual >= 2 ? 6 : 3, now = performance.now();
+    for (var i = 0; i < n; i++) {
+      var sp = sparkPool.pop();
+      if (!sp) { if (sparks.length > 36) break; sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false })); sp.renderOrder = 4; scene.add(sp); }
+      var a = Math.random() * 6.283, v = 2.5 + Math.random() * 3.5 * power, u = sp.userData;
+      u.t0 = now; u.x = x; u.y = Math.max(0.2, y); u.z = z; u.vx = Math.cos(a) * v; u.vz = Math.sin(a) * v; u.vy = 2 + Math.random() * 3; u.life = 260 + Math.random() * 160; u.sz = 0.22 + Math.random() * 0.16;
+      sp.material.color.setHex(T.spark || 0xffd27a); sp.material.opacity = 1; sp.position.set(x, u.y, z); sp.scale.set(u.sz, u.sz, 1); sp.visible = true;
+      sparks.push(sp);
+    }
+    dirty = true;
+  }
+  function stepSparks(now, dt) {
+    if (!sparks.length) return;
+    sparks = sparks.filter(function (sp) {
+      var u = sp.userData, k = (now - u.t0) / u.life;
+      if (k >= 1) { sp.visible = false; sparkPool.push(sp); return false; }
+      u.vy -= 14 * dt; u.x += u.vx * dt; u.z += u.vz * dt; u.y = Math.max(0.06, u.y + u.vy * dt);
+      sp.position.set(u.x, u.y, u.z); var sz = u.sz * (1 - 0.6 * k); sp.scale.set(sz, sz, 1); sp.material.opacity = 1 - k;
+      return true;
+    });
+    dirty = true;
+  }
+  // Slow-motion beat as the last die settles: physics time eases to ~30% and back (adds about 0.2s)
+  function slowScale(now) {
+    if (!slow) return 1;
+    var k = (now - slow.t0) / slow.dur; if (k >= 1) { slow = null; return 1; }
+    var e = function (x) { return x * x * (3 - 2 * x); };
+    return 1 - 0.7 * Math.min(e(Math.min(1, k / 0.22)), e(Math.min(1, (1 - k) / 0.38)));
+  }
   api.sync = function (G, force) {
     api.lastG = G;
     if (!G || !layout) return;
@@ -484,10 +529,17 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       var n = performance.now(); if (n - lastHit < 14) return; lastHit = n;
       Snd.diceHit(Math.min(1, v / 11));
       if (v > 4 && b.position.y < 1.2 && !document.hidden) spawnPuff(b.position.x, b.position.z, 0.8, Math.min(1, v / 12));
+      if (v > 6.5 && e.body && e.body.material === world.diceMat && n - lastSpark > 45) { lastSpark = n; var c = e.contact; spawnSparks(c.bi.position.x + c.ri.x, c.bi.position.y + c.ri.y, c.bi.position.z + c.ri.z, Math.min(1, v / 12)); }
     });
     world.addBody(b); pour.bodies[i] = b; m.visible = true; m.scale.setScalar(1);
   }
-  function syncBodies() { pour.bodies.forEach(function (b, i) { if (!b) return; meshes[i].position.set(b.position.x, b.position.y, b.position.z); meshes[i].quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w); }); }
+  function syncBodies() {
+    var ip = !!slow;
+    pour.bodies.forEach(function (b, i) {
+      if (!b) return; var p = ip ? b.interpolatedPosition : b.position, q = ip ? b.interpolatedQuaternion : b.quaternion;
+      meshes[i].position.set(p.x, p.y, p.z); meshes[i].quaternion.set(q.x, q.y, q.z, q.w);
+    });
+  }
   function finishPour() {
     var results = pour.bodies.map(function (b, i) {
       var q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), best = 0, by = -9;
@@ -496,7 +548,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       meshes[i].userData.fromPour = true;
       return Eq.CUBE_FACES[meshes[i].userData.color][best];
     });
-    cup.visible = false;
+    cup.visible = false; slow = null;
     var done = pour.done; pour = null; dirty = true;
     done(results);
   }
@@ -514,7 +566,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (t > 2.1) cup.visible = false;
     cup.updateMatrixWorld();
     if (t > 0.72) { var want = Math.min(24, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); }
-    if (pour.spawned) { world.step(1 / 60, dt, 5); pour.sim += dt; syncBodies(); }
+    if (pour.spawned) {
+      var ts = slowScale(now); world.step(1 / 60, dt * ts, 5); pour.sim += dt * ts; syncBodies();
+      if (!pour.slowDone && pour.spawned === 24 && !pour.settledAt && !document.hidden && qual >= 1) {
+        var moving = pour.bodies.filter(function (b) { return b.sleepState !== CANNON.Body.SLEEPING && b.velocity.length() > 0.3; });
+        if (moving.length === 1) { var sp1 = moving[0].velocity.length(); if (sp1 < 5) { pour.slowDone = true; if (sp1 > 0.6) { slow = { t0: now, dur: 430 }; } } }
+      }
+    }
     if (pour.spawned === 24 && !pour.settledAt) {
       var asleep = pour.bodies.every(function (b) { return b.sleepState === CANNON.Body.SLEEPING || b.velocity.length() < 0.08; });
       if (asleep || pour.sim > 5.5 || t > 9) pour.settledAt = now;
@@ -580,6 +638,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       dirty = true;
     }
     stepCam(now, dt);
+    if (shake) {
+      var sk = (now - shake.t0) / shake.dur;
+      if (sk >= 1) { shake = null; shx = shy = 0; } else { var se = Math.exp(-sk * 3.5) * shake.amp; shx = Math.sin(sk * 38) * se; shy = Math.cos(sk * 47) * se * 0.6; }
+      applyCam(); dirty = true;
+    }
+    if (envFx && envFx.step(now)) dirty = true;
+    if (fx3 && fx3.step(now, dt)) dirty = true;
+    stepSparks(now, dt);
     var zk = 1 - Math.exp(-dt * 13);
     Object.keys(zonePlanes).forEach(function (z) {
       var zp = zonePlanes[z], tgt = zoneGlow[z] || 0, d = tgt - zp.material.opacity;
@@ -604,6 +670,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (!fromWatchdog) requestAnimationFrame(frame);
   }
   api.kick = function () { dirty = true; startLoop(); };
+  api._frame = function (now) { frame(now, true); }; // test hook: advance one frame with a given clock (used by headless checks)
   // ----- Taps and drags on the 3D table -----
   function pick(ev, objs) {
     var r = renderer.domElement.getBoundingClientRect();
@@ -615,7 +682,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.6), hitP = new THREE.Vector3();
   renderer.domElement.addEventListener('pointerdown', function (ev) {
     if (pour) return;
-    cueG = null; // a touch ends any camera cue; picking always uses the camera as drawn, so taps stay accurate while it eases home
+    cueG = null; endShake(); // a touch ends any camera cue; picking always uses the camera as drawn, so taps stay accurate while it eases home
     var h = pick(ev, meshes.filter(function (m) { return m.visible; }));
     dragS = { x: ev.clientX, y: ev.clientY, id: h ? h.object.userData.id : null, on: false };
     if (dragS.id != null && api.handlers.canDrag && api.handlers.canDrag(dragS.id)) { dragS.can = true; renderer.domElement.setPointerCapture(ev.pointerId); }
@@ -645,6 +712,25 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
   };
   api.isPouring = function () { return !!pour; };
+  // Text for the stadium scoreboard (e.g. 'GOAL 24'); a no-op in the other themes. Remembered across theme changes.
+  api.setBoard = function (text) {
+    boardText = text == null ? '' : String(text);
+    if (envFx) { envFx.setBoard(boardText); dirty = true; startLoop(); }
+  };
+  // One-shot effects: 'confetti' | 'flash' | 'wave' | 'shake' | 'spotlight' ({zone:'goal'} or {cube:id}). Safe no-ops when unavailable.
+  api.fx = function (name, opts) {
+    try {
+      if (!layout || !host || document.hidden || current !== 'game') return false;
+      var ok = false;
+      if (name === 'confetti') ok = !!(fx3 && fx3.confetti(opts));
+      else if (name === 'spotlight') ok = !!(fx3 && fx3.spotlight(opts));
+      else if (name === 'flash') ok = !!(envFx && envFx.flash());
+      else if (name === 'wave') ok = !!(envFx && envFx.wave());
+      else if (name === 'shake') { if (!pour && !dragS) { shake = { t0: performance.now(), dur: 320, amp: (opts && opts.amp) || 0.28 }; ok = true; } }
+      if (ok) { dirty = true; startLoop(); }
+      return ok;
+    } catch (e) { return false; }
+  };
   // What other 3D modules may use
   Object.assign(ctx, {
     scene: scene, camera: camera, renderer: renderer, meshes: meshes, hooks: hooks,
@@ -654,6 +740,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   });
   Object.defineProperty(ctx, 'layout', { get: function () { return layout; } });
   Object.defineProperty(ctx, 'layoutName', { get: function () { return layoutName; } });
+  fx3 = createFx3d({ scene: scene, layout: function () { return layout; }, layoutName: function () { return layoutName; }, quality: function () { return qual; }, dim: setLightK,
+    cubePos: function (id) { var m = meshes[id]; return m && m.visible ? m.position : null; }, dirty: function () { dirty = true; }, startLoop: startLoop });
   applyQuality();
   api.ctx = ctx;
 })();
