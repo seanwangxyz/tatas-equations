@@ -3,3 +3,4 @@ node_modules/
 Thumbs.db
 *.zip
 assets-src/
+.claude/worktrees/
