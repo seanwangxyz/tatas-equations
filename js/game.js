@@ -32,7 +32,7 @@ function startMatch(mode, oppIdx, cfg) {
     else G.players.push({ name: cfg.n3 || 'Mama', ai: null, score: 0, list: [] });
   }
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
-  go('game'); Snd.musicOff();
+  go('game'); Snd.setMood('play');
   var ai = firstAI();
   setCreature(ai ? ai.kind : null);
   newShake();
@@ -46,6 +46,7 @@ function newShake(fixedCubes) {
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
   xpLog = [];
   G.phase = 'roll'; G.rolling = true;
+  cue('reset'); Snd.setMood('play');
   say('pip', 'Rolling the cubes…');
   if (T3.active()) {
     renderGame();
@@ -65,7 +66,10 @@ function newShake(fixedCubes) {
     setTimeout(function () { G.rolling = false; G.phase = 'goal'; startGoalPhase(); }, 1500);
   }
 }
-function say(who, text, mood) { if (!G) return; G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
+function cue(name) { if (T3.cue) T3.cue(name); }
+// Read a line aloud (only when 'Read lines aloud' is on in Settings).
+function speakLine(who, text) { if (S.set.voice !== true || !Snd.speak) return; var ai = who === 'opp' ? firstAI() : null; Snd.speak(text, ai ? ai.kind : 'pip'); }
+function say(who, text, mood) { if (!G) return; if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
 function speechHTML() {
   var sp = G.speech || { who: 'pip', text: '' }, face;
   if (sp.who === 'opp' && firstAI()) face = avatarHTML(firstAI());
@@ -295,7 +299,7 @@ function challenge(kind, who) {
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', G.players[who].name + ' challenges!');
   if (isAI(who)) creatureMood('challenge');
-  Snd.slam();
+  Snd.slam(); Snd.setMood('challenge'); cue('challenge');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(G.players[who].name) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(G.players[mover].name) + ' must try to write a Solution.', 'cheer');
   renderGame();
@@ -462,6 +466,7 @@ function solHTML(i, s) {
 }
 function endShake(r) {
   G.phase = 'over'; G.busy = false; G.carrying = false;
+  Snd.setMood('play');
   idxs().forEach(function (i) { var v = r.pts[i] || 0; G.players[i].score += v; G.players[i].list.push(v); });
   var best = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
   if (G.players[0].score < best) G.trailed = true;
@@ -507,9 +512,9 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood('sad');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood('sad'); Snd.setMood('win'); cue('win');
     }
-    if (!won && !tie) creatureMood('happy');
+    if (!won && !tie) { creatureMood('happy'); cue('lose'); }
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect });
     persist();
     var nextO = OPPONENTS[idx + 1];
@@ -522,7 +527,7 @@ function endMatch() {
     var top = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
     var winners = idxs().filter(function (i) { return G.players[i].score === top; });
     var names = winners.map(function (i) { return esc(G.players[i].name); });
-    victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500);
+    victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); Snd.setMood('win'); cue('win');
     banner('⚽ GOOOAL!', winners.length > 1 ? 'It\'s a tie!' : G.players[winners[0]].name + ' wins!');
     var aiI = idxs().filter(isAI)[0];
     if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'happy' : 'sad');

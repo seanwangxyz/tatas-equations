@@ -82,7 +82,7 @@ function defaults() {
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
     ladder: { stage: 0, stars: 0 }, unlockAll: false, beaten: [false, false, false, false, false],
     cos: { skin: 'classic', mat: 'felt', victory: 'confetti' },
-    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true },
+    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false },
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: ['', '', '', '', '']
   };
 }

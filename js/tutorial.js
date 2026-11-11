@@ -9,7 +9,7 @@ function startTutorial() {
   setCreature('pip');
   G = { mode: 'tutorial', shakes: 1, shake: 1, setter: 0, players: [{ name: S.name, ai: null, score: 0, list: [] }, { name: 'Pip', ai: PIP, score: 0, list: [] }], trailed: false };
   TUT = { step: 0 };
-  go('game'); Snd.musicOff();
+  go('game'); Snd.setMood('play');
   var saveUnlock = S.unlockAll; S.unlockAll = false;
   var saveStage = S.ladder.stage; S.ladder.stage = 0;
   newShake(cubes);

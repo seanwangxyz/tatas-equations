@@ -178,6 +178,7 @@ function renderSettings() {
     '<div class="row" style="justify-content:flex-start;margin:8px 0 4px"><button class="btn small" data-act="saveOppNames">Save names</button></div></div>' +
     '<div class="group"><h3>' + ico('dice') + ' The game</h3>' +
     '<div class="setrow"><label>Shakes per match</label><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes2" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div>' +
+    '<div class="setrow"><label>Read lines aloud</label><button class="btn small ' + (S.set.voice === true ? 'green' : '') + '" data-act="toggleVoice">' + (S.set.voice === true ? '✔ Voice on' : 'Voice off') + '</button></div>' +
     '<div class="setrow"><label>3D table and dice</label>' + (T3.supported ? '<button class="btn small ' + (S.set.three !== false ? 'green' : '') + '" data-act="toggle3d">' + (S.set.three !== false ? '✔ 3D on' : '3D off (flat mat)') + '</button>' : '<span>Not available on this device (or no internet to load it), so the flat mat is used.</span>') + '</div>' +
     '<div class="setrow"><label>Watch the intro again</label><button class="btn small" data-act="replayIntro">Play intro</button></div></div>' +
     '<div class="group"><h3>' + ico('disk') + ' Move progress to another device</h3>' +
@@ -191,6 +192,7 @@ function renderSettings() {
     '<div class="setrow"><label>Start over from zero</label><button class="btn small pink" data-act="resetAsk">Reset progress</button></div></div>' +
     '</div>';
 }
+ACT.toggleVoice = function () { S.set.voice = S.set.voice !== true; persist(); if (S.set.voice) Snd.speak('Hi! I will read the lines out loud.', 'pip'); else if (Snd.stopSpeak) Snd.stopSpeak(); renderSettings(); };
 ACT.toggle3d = function () { S.set.three = S.set.three === false; persist(); renderSettings(); };
 ACT.toggleMute = function () { S.set.mute = !S.set.mute; persist(); Snd.apply(); if (!S.set.mute) Snd.musicOn(); renderSettings(); };
 ACT.saveJersey = function () { var v = ($('#jerseyInput').value || '').replace(/[^0-9]/g, '').slice(0, 2); if (v) { S.jersey = v; persist(); Snd.chime(); } renderSettings(); };

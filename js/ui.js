@@ -192,5 +192,5 @@ function gotoTitle() {
     '<div class="menu-sub"><button class="btn ghost" data-act="stats">' + ico('chart') + ' My Stats</button></div>' +
     (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>');
   go('title');
-  Snd.musicOn();
+  Snd.setMood('menu');
 }
