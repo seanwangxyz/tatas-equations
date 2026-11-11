@@ -574,12 +574,19 @@ function aiChooseMove(o) {
     return { id: c.id, zone: zr && (!zp || Math.random() < 0.5) ? 'required' : 'permitted' };
   }
   var bySym = {}; res.forEach(function (c) { if (!bySym[c.s]) bySym[c.s] = c; });
-  var cands = [];
-  Object.keys(bySym).forEach(function (s) { ['forbidden', 'permitted', 'required'].forEach(function (z) { cands.push({ id: bySym[s].id, s: s, zone: z, w: Math.random() + (z === 'forbidden' ? 0.35 : 0) }); }); });
-  cands.sort(function (a, b) { return b.w - a.w; });
+  // Choose WHERE to play first, so the computer uses the whole mat (not just Forbidden),
+  // then look for a cube that is safe to put there. Zones are tried in a weighted random order.
+  var W = { required: 0.36, permitted: 0.32, forbidden: 0.32 }, zones = [], pool = ['required', 'permitted', 'forbidden'];
+  while (pool.length) {
+    var tot = pool.reduce(function (a, z) { return a + W[z]; }, 0), r = Math.random() * tot, pick1 = pool[pool.length - 1];
+    for (var zi = 0; zi < pool.length; zi++) { r -= W[pool[zi]]; if (r <= 0) { pick1 = pool[zi]; break; } }
+    zones.push(pick1); pool.splice(pool.indexOf(pick1), 1);
+  }
+  var symList = Object.keys(bySym), cands = [];
+  zones.forEach(function (z) { shuffle(symList.slice()).slice(0, 4).forEach(function (s) { cands.push({ id: bySym[s].id, s: s, zone: z }); }); });
   if (Math.random() > o.smart) return cands[0]; // a casual (not-so-careful) move
   var fallback = null, t0 = Date.now();
-  for (var i = 0; i < cands.length && i < 8; i++) {
+  for (var i = 0; i < cands.length; i++) {
     var cd = cands[i], after = applySym(st, cd.s, cd.zone);
     if (!possible(after)) continue;
     if (!fallback) fallback = cd;
