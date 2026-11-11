@@ -1,7 +1,16 @@
 'use strict';
 // ======================= PROGRESS: stages, XP, badges =======================
 function stageIdx() { return S.unlockAll ? STAGES.length - 1 : Math.min(S.ladder.stage, STAGES.length - 1); }
-function stageInfo() { return STAGES[stageIdx()]; }
+// Tata can pick the operations by hand in Settings (S.opsManual = {ops:[...], fractions:bool}).
+// While that is set, it replaces the ladder and stars stop counting toward unlocks.
+function manualStage() {
+  var m = S.opsManual; if (!m || !m.ops) return null;
+  var ops = Eq.OPS.filter(function (o) { return m.ops.indexOf(o) >= 0; }); if (!ops.length) ops = ['+'];
+  var hard = ops.indexOf('^') >= 0 || ops.indexOf('r') >= 0, mid = ops.indexOf('*') >= 0 || ops.indexOf('/') >= 0;
+  return { id: 'custom', name: ops.map(show).join(' ') + (m.fractions ? ' and fractions' : ''), icon: '🎛️', ops: ops, fractions: !!m.fractions, need: 0, maxGoal: hard ? 99 : mid ? 50 : 20 };
+}
+function ladderOff() { return !!(S.unlockAll || S.opsManual); }
+function stageInfo() { return manualStage() || STAGES[stageIdx()]; }
 var xpLog = [];
 var celebrateQ = [];
 function addXP(n, why) {
@@ -12,7 +21,7 @@ function addXP(n, why) {
   persist();
 }
 function addStar() {
-  if (S.unlockAll || S.ladder.stage >= STAGES.length - 1) return;
+  if (ladderOff() || S.ladder.stage >= STAGES.length - 1) return;
   S.ladder.stars++;
   if (S.ladder.stars >= STAGES[S.ladder.stage].need) {
     S.ladder.stage++; S.ladder.stars = 0;

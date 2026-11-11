@@ -29,9 +29,9 @@
 ## Unlock ladder (for reference)
 | To unlock | Stars needed | Running total |
 |---|---|---|
-| × and ÷ (whole answers) | 5 | 5 |
-| Fractions | 6 more | 11 |
-| Powers (^) | 6 more | 17 |
-| Roots (√) | 6 more | 23 |
+| × and ÷ (whole answers) | available from the start | 0 |
+| Fractions | 6 | 6 |
+| Powers (^) | 6 more | 12 |
+| Roots (√) | 6 more | 18 |
 
-A star = one correct Solution or one correct Impossible! call. Settings → Parent corner can unlock everything.
+A star = one correct Solution or one correct Impossible! call. Settings → Parent corner has a switch for each operation (and "Back to automatic" for the ladder).

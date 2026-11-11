@@ -127,7 +127,7 @@ function campHdr(title) { return '<div class="hdr"><button class="btn small" dat
 function coach(text, mood) { return '<div class="panel" style="background:rgba(255,253,246,.97)"><div class="row">' + pipHTML(mood || 'happy', 70, '') + '<div class="bubble">' + text + '</div></div></div>'; }
 
 function renderCamp() {
-  var st = STAGES[stageIdx()], daily = S.dailyDone[today()];
+  var st = stageInfo(), daily = S.dailyDone[today()];
   var cards = DRILLS.map(function (d) {
     var c = campState(d.id);
     return '<div class="opp mode" data-act="campDrill" data-arg="' + d.id + '"><span class="avatar lg" style="background:' + d.color + ';color:#1d2340;font-size:44px">' + ico(d.icon) + '</span><h3>' + d.name + '</h3><div class="otitle">' + d.blurb + '</div>' +
@@ -136,7 +136,7 @@ function renderCamp() {
   $('#camp').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('cap') + ' Training Camp</h2></div>' +
     coach('Welcome to Training Camp! Pick a drill. Every one makes you better at the real game. Take as long as you like on each puzzle.') +
     '<div class="panel" style="margin-top:12px"><div style="font-weight:800;margin-bottom:10px">' + st.icon + ' Training with: ' + st.name +
-    (S.unlockAll || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
+    (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
     '<div class="opps">' + cards +
     '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Daily Puzzle</h3><div class="otitle">One special puzzle each day.</div><div class="otitle">' + (daily ? '✔ Solved today' : 'New today!') + '</div></div>' +
     '</div></div>';

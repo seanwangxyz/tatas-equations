@@ -10,10 +10,10 @@ function startTutorial() {
   G = { mode: 'tutorial', shakes: 1, shake: 1, setter: 0, players: [{ name: S.name, ai: null, score: 0, list: [] }, { name: 'Pip', ai: PIP, score: 0, list: [] }], trailed: false };
   TUT = { step: 0 };
   go('game'); Snd.setMood('play');
-  var saveUnlock = S.unlockAll; S.unlockAll = false;
+  var saveUnlock = S.unlockAll, saveManual = S.opsManual; S.unlockAll = false; S.opsManual = null;
   var saveStage = S.ladder.stage; S.ladder.stage = 0;
   newShake(cubes);
-  S.unlockAll = saveUnlock; S.ladder.stage = saveStage;
+  S.unlockAll = saveUnlock; S.opsManual = saveManual; S.ladder.stage = saveStage;
   say('pip', 'Hi! I\'m Pip! Let\'s play one practice shake together. First the cubes get rolled…', 'cheer');
   setTimeout(function () {
     TUT.step = 1;

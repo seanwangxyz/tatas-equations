@@ -176,12 +176,12 @@ function xpBarHTML() {
 function gotoTitle() {
   applyCosmetics();
   var greets = ['Hi, ' + esc(S.name) + '! Ready to make some equations?', 'Welcome back, ' + esc(S.name) + '! Let\'s roll some cubes!', 'Math time! I\'ve been practicing my moves.', 'Hi ' + esc(S.name) + '! Every Solution makes your brain stronger!'];
-  var st = STAGES[stageIdx()];
+  var st = stageInfo();
   $('#title').innerHTML =
     '<div class="title-top"><div class="logo">Tata\'s<span class="eq">Equations</span></div></div>' +
     '<div class="row" style="margin:4px 0 10px;flex-wrap:nowrap">' + pipHTML('happy', 100, '') + '<div class="bubble">' + greets[Math.floor(Math.random() * greets.length)] + '</div></div>' +
     '<div class="playercard"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + '</div>' + xpBarHTML() + '</div></div>' +
-    '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (S.unlockAll || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
+    '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
     '<div class="menu">' +
     '<button class="btn big green hero" data-act="setup">' + ico('play') + ' Play</button>' +
     '<button class="btn big yellow" data-act="camp">' + ico('star') + ' Training Camp</button>' +

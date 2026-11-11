@@ -195,7 +195,7 @@ function defaults() {
     v: 1, name: 'Champ', xp: 0, badges: {},
     stats: { correct: 0, attempts: 0, nowWins: 0, impWins: 0, goalsSet: 0, pvpShakes: 0, daily: 0, fractionSolutions: 0, streak: 0, noHint: 0, lastWrong: false, bestMatch: 0, shakes: 0, challenges: 0, challengeWins: 0 },
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
-    ladder: { stage: 0, stars: 0 }, unlockAll: false, beaten: [false, false, false, false, false],
+    ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: [false, false, false, false, false],
     cos: { skin: 'classic', mat: 'stadium', victory: 'confetti' },
     set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false },
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: ['', '', '', '', '']
@@ -213,6 +213,9 @@ var storageOK = true;
 function loadSave() { try { var raw = window.localStorage.getItem(SAVE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { storageOK = false; return null; } }
 function persist() { try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { storageOK = false; } }
 var S = merge(defaults(), loadSave());
+// Times and divide are available from the start now, so saves still on the first stage move up one.
+function normalizeSave() { if (!S.ladder || S.ladder.stage < 1) S.ladder = { stage: 1, stars: 0 }; }
+normalizeSave();
 
 function checksum(str) { var h = 0; for (var i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; } return (h % 65536).toString(16).padStart(4, '0'); }
 function exportCode() { var json = JSON.stringify(S); var b = btoa(unescape(encodeURIComponent(json))); return 'TATA-' + b + '-' + checksum(b); }
@@ -220,7 +223,7 @@ function importCode(code) {
   code = String(code || '').trim().replace(/\s+/g, '');
   var m = code.match(/^TATA-(.+)-([0-9a-f]{4})$/);
   if (!m || checksum(m[1]) !== m[2]) return false;
-  try { var data = JSON.parse(decodeURIComponent(escape(atob(m[1])))); S = merge(defaults(), data); persist(); return true; } catch (e) { return false; }
+  try { var data = JSON.parse(decodeURIComponent(escape(atob(m[1])))); S = merge(defaults(), data); normalizeSave(); persist(); return true; } catch (e) { return false; }
 }
 
 // The 3D table loads as a module (js/three/table.js). Until it does, this stand-in says "not ready",

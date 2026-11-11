@@ -166,7 +166,7 @@ function renderStats() {
 }
 
 function renderSettings() {
-  var st = STAGES[stageIdx()];
+  var st = stageInfo();
   var faces = Eq.COLORS.map(function (c) { return '<tr><td><b>' + c + '</b></td><td>' + Eq.CUBE_FACES[c].map(function (s) { return '<span class="cube tiny c-' + c + '"><span>' + show(s) + '</span></span>'; }).join(' ') + '</td></tr>'; }).join('');
   $('#settings').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('gear') + ' Settings</h2></div><div class="panel">' +
     '<div class="group"><h3>' + ico('sound') + ' Sound</h3>' +
@@ -190,7 +190,10 @@ function renderSettings() {
     '<textarea id="exportBox" readonly>' + exportCode() + '</textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small" data-act="copyCode">Copy code</button></div>' +
     '<textarea id="importBox" placeholder="Paste a TATA-… code here"></textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small blue" data-act="importIt">Load</button></div></div>' +
     '<div class="group"><h3>' + ico('cap') + ' Parent corner</h3>' +
-    '<div class="setrow"><label>Operations ladder: now on <b>' + st.icon + ' ' + st.name + '</b></label><button class="btn small ' + (S.unlockAll ? 'green' : '') + '" data-act="toggleUnlock">' + (S.unlockAll ? '✔ All operations unlocked' : 'Unlock all operations') + '</button></div>' +
+    '<div class="setrow"><label>Operations in play<br><small style="font-weight:600">Tap to switch each one on or off. Locked ones start in Forbidden with a 🔒.</small></label><div class="row" style="gap:6px;justify-content:flex-start">' +
+      Eq.OPS.map(function (o) { var on = st.ops.indexOf(o) >= 0; return '<button class="btn small ' + (on ? 'green' : '') + '" data-act="opToggle" data-arg="' + o + '" style="min-width:52px;font-size:20px">' + show(o) + '</button>'; }).join('') +
+      '<button class="btn small ' + (st.fractions ? 'green' : '') + '" data-act="opToggle" data-arg="frac">Fractions</button></div></div>' +
+    '<div class="setrow"><label>' + (S.opsManual ? 'You picked these by hand. Stars are not unlocking anything right now.' : 'Automatic: he unlocks more by earning skill stars (now on <b>' + st.icon + ' ' + st.name + '</b>).') + '</label><button class="btn small ' + (S.opsManual ? '' : 'green') + '" data-act="opsAuto">' + (S.opsManual ? 'Back to automatic' : '✔ Automatic') + '</button><button class="btn small" data-act="opsAll">All on</button></div>' +
     '<div class="setrow"><label>"Beat Tata\'s Record" needs ' + TATA_RECORD + ' points in one match (change <code>TATA_RECORD</code> near the top of the game code). Best so far: ' + S.stats.bestMatch + '</label></div>' +
     '<div class="setrow"><label>Cube faces in this game (see RULES_SUMMARY.md)</label><table class="facetable">' + faces + '</table></div>' +
     '<div class="setrow"><label>Start over from zero</label><button class="btn small pink" data-act="resetAsk">Reset progress</button></div></div>' +
@@ -211,6 +214,14 @@ ACT.importIt = function () {
   if (importCode($('#importBox').value)) { applyOppNames(); applyCosmetics(); Snd.chime(); modal('<h2>✅ Progress loaded!</h2><div class="row"><button class="btn green" data-act="closeModal">Great</button></div>', function () { renderSettings(); }); }
   else { Snd.boop(); modal('<h2>Hmm, that code didn\'t work</h2><p style="text-align:center">Make sure you copied the whole code, starting with TATA-.</p><div class="row"><button class="btn" data-act="closeModal">OK</button></div>'); }
 };
+ACT.opToggle = function (el) {
+  var st = stageInfo(), m = { ops: st.ops.slice(), fractions: !!st.fractions }, k = el.dataset.arg;
+  if (k === 'frac') m.fractions = !m.fractions;
+  else { var i = m.ops.indexOf(k); if (i >= 0) { if (m.ops.length === 1) { Snd.boop(); return; } m.ops.splice(i, 1); } else m.ops.push(k); }
+  S.opsManual = m; S.unlockAll = false; persist(); Snd.click(); renderSettings();
+};
+ACT.opsAuto = function () { S.opsManual = null; S.unlockAll = false; persist(); Snd.pop(); renderSettings(); };
+ACT.opsAll = function () { S.opsManual = { ops: Eq.OPS.slice(), fractions: true }; S.unlockAll = false; persist(); Snd.pop(); renderSettings(); };
 ACT.toggleUnlock = function () { S.unlockAll = !S.unlockAll; persist(); renderSettings(); };
 ACT.resetAsk = function () { modal('<h2>Reset everything?</h2><p style="text-align:center">This erases XP, badges, unlocks and stats on this device. It can\'t be undone (unless you saved an export code).</p><div class="row"><button class="btn" data-act="closeModal">Cancel</button><button class="btn pink" data-act="resetYes">Yes, reset</button></div>'); };
 ACT.resetYes = function () { S = defaults(); applyOppNames(); S.lastDedication = today(); persist(); applyCosmetics(); closeModal(); gotoTitle(); };
