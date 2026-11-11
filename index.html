@@ -2,17 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#1d6a46">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Equations">
+<meta name="theme-color" content="#0f4d33">
+<meta name="description" content="Tata's Equations: a math dice game of creative equations.">
 <title>Tata's Equations</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="assets/icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="mat-felt skin-classic">
 <section id="splash" class="screen on">
   <div class="logo">Tata's<span class="eq">Equations</span></div>
-  <div id="splashPip" class="pip bob" style="width:130px;height:140px"></div>
-  <button class="btn big yellow tapgo" data-act="start">▶ Tap to Play!</button>
+  <div id="splashPip" class="pip" style="width:130px;height:146px"></div>
+  <button class="btn big yellow tapgo" data-act="start"><svg class="ico f" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg> Tap to Play!</button>
 </section>
 <section id="intro" class="screen"></section>
 <section id="dedication" class="screen"></section>

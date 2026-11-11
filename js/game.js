@@ -106,7 +106,7 @@ function renderGame() {
   var el = $('#game'), three = T3.active(), resC = zoneCubes('resources');
   var scores = G.players.map(function (p, i) {
     var face = p.ai ? avatarHTML(p.ai, 'sm') : (i === 0 ? '<span class="jersey">' + esc(S.jersey || '7') + '</span>' : '<span class="jersey j' + (i + 1) + '">' + (i + 1) + '</span>');
-    return '<div class="pl' + (i === G.turn && G.phase === 'move' ? ' turn' : '') + '">' + face + '<b>' + esc(p.name) + '</b><span class="pts">' + p.score + '</span></div>';
+    return '<div class="pl' + (i === G.turn && G.phase === 'move' ? ' turn' + (isAI(i) ? ' opp-turn' : '') : '') + '" data-pi="' + i + '">' + face + '<b>' + esc(p.name) + '</b><span class="pts" data-v="' + p.score + '">' + p.score + '</span></div>';
   }).join('');
   var goalHTML = G.goalTokens.length ? G.goalTokens.map(function (t) { return typeof t === 'string' ? ((t === '(' || t === ')') ? '<span class="paren">' + t + '</span>' : '<div class="cube c-none"><span>' + show(t) + '</span></div>') : cubeHTML(G.cubes[t.id], t.id === G.justMoved ? 'thunk' : ''); }).join('') : '<span class="empty">' + (G.phase === 'goal' ? 'waiting for the Goal…' : '') + '</span>';
   var resHTML = resC.map(function (c, i) {
@@ -116,10 +116,10 @@ function renderGame() {
   }).join('') || '<span class="empty">empty</span>';
   if (!$('#gTop')) el.innerHTML = '<div id="gTop" class="game-top"></div><div id="gGoal"></div><div id="gMat"></div><div id="gAct" class="actionbar"></div>';
   el.classList.toggle('three', three);
-  $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame">⟵ Menu</button><div class="scores">' + scores + '</div>' +
-    '<div class="shake-no">' + (G.mode === 'tutorial' ? 'Practice' : 'Shake ' + G.shake + '/' + G.shakes) + '</div>';
+  $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
+    '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>';
   if (three) {
-    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud">🎯 Goal: <span class="expr">' + tokensHTML(G.goalTokens, G.cubes) + '</span> = ' + Eq.fmt(G.goal) + '</div>' : '';
+    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + tokensHTML(G.goalTokens, G.cubes) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + '</span></div>' : '';
     T3.attach($('#gMat')); T3.sync(G);
   } else {
     $('#gGoal').innerHTML = '';
@@ -131,25 +131,26 @@ function renderGame() {
   }
   $('#gAct').innerHTML = speechHTML() + '<div class="acts">' + actionsHTML() + '</div>';
   G.justMoved = null;
+  hudCountUp();
 }
 function actionsHTML() {
   if (G.phase === 'goal' && !isAI(G.setter) && !G.busy) {
     return (multiHuman() ? '<div style="width:100%;text-align:center;font-weight:800">' + esc(G.players[G.setter].name) + ' sets the Goal</div>' : '') +
-      '<button class="btn big green" data-act="buildGoal">🎯 Build the Goal</button>' + (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="noGoal">🤷 No Goal possible</button>');
+      '<button class="btn big green" data-act="buildGoal">' + ico('target') + ' Build the Goal</button>' + (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="noGoal">No Goal possible</button>');
   }
   if (G.phase !== 'move') return '';
   var out = '';
   if (humanTurn()) {
     var nc = nowCheck();
     out += (multiHuman() ? '<div style="width:100%;text-align:center;font-weight:800">' + esc(G.players[G.turn].name) + ': your turn!</div>' : '') +
-      '<button class="btn now" data-act="callNow" data-arg="' + G.turn + '"' + (nc ? ' title="' + esc(nc) + '"' : '') + '>⚡ Now!</button>' +
-      '<button class="btn imp" data-act="callImp" data-arg="' + G.turn + '">🚫 Impossible!</button>' +
-      (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="hint">💡 Hint</button>');
+      '<button class="btn now" data-act="callNow" data-arg="' + G.turn + '"' + (nc ? ' title="' + esc(nc) + '"' : '') + '>' + ico('bolt') + ' Now!</button>' +
+      '<button class="btn imp" data-act="callImp" data-arg="' + G.turn + '">' + ico('ban') + ' Impossible!</button>' +
+      (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="hint">' + ico('bulb') + ' Hint</button>');
   }
   if (nP() > 2 && G.lastMover !== null && !G.carrying) {
     var others = humans().filter(function (i) { return i !== G.turn && i !== G.lastMover; });
     if (others.length) out += '<div class="also">' + others.map(function (i) {
-      return '<span>' + esc(G.players[i].name) + ' can challenge too:</span><button class="btn small now" data-act="callNow" data-arg="' + i + '">⚡ Now!</button><button class="btn small imp" data-act="callImp" data-arg="' + i + '">🚫 Impossible!</button>';
+      return '<span>' + esc(G.players[i].name) + ' can challenge too:</span><button class="btn small now" data-act="callNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="callImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
     }).join('') + '</div>';
   }
   return out;
@@ -285,7 +286,7 @@ ACT.hint = function () {
 
 // ----- Challenges -----
 function banner(text, sub) {
-  var b = document.createElement('div'); b.className = 'banner'; b.innerHTML = text + (sub ? '<small>' + esc(sub) + '</small>' : '');
+  var b = document.createElement('div'); b.className = 'banner' + (/GOOO/.test(text) ? ' goal' : /IMPOSS/.test(text) ? ' imp' : /NOW/.test(text) ? ' now' : ''); b.innerHTML = text + (sub ? '<small>' + esc(sub) + '</small>' : '');
   document.body.appendChild(b); setTimeout(function () { b.remove(); }, 1400);
 }
 function thirdOf(a, b) { if (nP() < 3) return null; var r = idxs().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
@@ -312,7 +313,7 @@ function writeSolution(pi, mode, cb) {
   else openSolutionBuilder(pi, mode, cb);
 }
 function passTo(pi, mode, then) {
-  modal('<h2>📱 Pass to ' + esc(G.players[pi].name) + '</h2><p style="text-align:center">' + esc(G.players[pi].name) + ', it\'s your turn to write a Solution.' + (mode === 'last' || nP() > 2 ? ' No peeking, everybody else!' : '') + '</p><div class="row"><button class="btn green" data-act="closeModal">I\'m ready!</button></div>', then);
+  modal('<h2 class="hero">Pass to ' + esc(G.players[pi].name) + '</h2><p style="text-align:center">' + esc(G.players[pi].name) + ', it\'s your turn to write a Solution.' + (mode === 'last' || nP() > 2 ? ' No peeking, everybody else!' : '') + '</p><div class="row"><button class="btn green big" data-act="closeModal">I\'m ready!</button></div>', then);
 }
 // After a challenge in a 3-player game, the Third Party MAY also write a Solution.
 function askThirdParty(tp, kind, cb) {
@@ -330,9 +331,9 @@ function askThirdParty(tp, kind, cb) {
   }
   ACT.tpYes = function () { closeModal(); writeSolution(tp, kind, function (ok, tokens, chk) { cb({ presented: true, ok: ok, tokens: tokens, chk: chk }); }); };
   ACT.tpNo = function () { closeModal(); cb({ presented: false }); };
-  modal('<h2>🙋 ' + esc(G.players[tp].name) + ': you\'re the Third Party</h2><p style="text-align:center">You may write a Solution too, but you don\'t have to.</p>' +
+  modal('<h2 class="hero">' + esc(G.players[tp].name) + ': Third Party</h2><p style="text-align:center">You may write a Solution too, but you don\'t have to.</p>' +
     '<ul class="reasons" style="background:#e7f5ff"><li>Write a correct one: you score <b>4 or 6</b>.</li><li>Write a wrong one: you score <b>2</b>.</li><li>Skip it: you score by who turns out to be right' + (kind === 'impossible' ? ' (4 if Impossible was right)' : ' (6 if the Now! Solution is wrong)') + '.</li></ul>' +
-    '<div class="row"><button class="btn green" data-act="tpYes">✏️ I\'ll write one</button><button class="btn" data-act="tpNo">No thanks</button></div>');
+    '<div class="row"><button class="btn green" data-act="tpYes">' + ico('pencil') + ' I\'ll write one</button><button class="btn" data-act="tpNo">No thanks</button></div>');
 }
 var scoreChallenge = Eq.scoreChallenge; // official 2/3-player scoring lives in the engine (unit-tested)
 function resolveChallenge(ok, tokens, chk, tpRes) {
@@ -365,9 +366,9 @@ function lastCubePlayed() {
     var hs = others.filter(function (i) { return !isAI(i); });
     if (!hs.length) { startLastWrite(); return; }
     say('pip', 'The last cube is on the mat!', 'think'); renderGame();
-    modal('<h2>🧊 Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
-      '<div class="row">' + hs.map(function (i) { return '<button class="btn imp" data-act="lastImp" data-arg="' + i + '">🚫 ' + (multiHuman() ? esc(G.players[i].name) + ': ' : '') + 'Impossible!</button>'; }).join('') +
-      '<button class="btn green" data-act="lastWrite">✏️ Let\'s write!</button></div>');
+    modal('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
+      '<div class="row">' + hs.map(function (i) { return '<button class="btn imp" data-act="lastImp" data-arg="' + i + '">' + ico('ban') + ' ' + (multiHuman() ? esc(G.players[i].name) + ': ' : '') + 'Impossible!</button>'; }).join('') +
+      '<button class="btn green" data-act="lastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
   }
   if (ais.length) {
     var p = ais[0], o = G.players[p].ai, st = snapshot();
@@ -453,7 +454,7 @@ function sampleSolution() {
 }
 function solHTML(i, s) {
   if (!s) return '';
-  var head = '<b>' + esc(G.players[i].name) + '\'s Solution:</b> ' + (s.ok ? '✅' : '❌');
+  var head = '<b>' + esc(G.players[i].name) + '\'s Solution:</b> ' + (s.ok ? '<span style="color:var(--good)">' + ico('check') + ' correct</span>' : '<span style="color:var(--mute)">not quite</span>');
   if (!s.tokens) return '<p>' + head + ' (no Solution written)</p>';
   var body = exprBox(s.tokens, G.cubes);
   if (!s.ok && s.chk && s.chk.reasons && s.chk.reasons.length) body += '<ul class="reasons">' + s.chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
@@ -480,15 +481,15 @@ function endShake(r) {
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
   if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
-  var html = '<h2>' + (G.mode === 'ai' ? (good ? '🎉 Great shake!' : '💪 Nice try!') : '🎲 Shake over!') + '</h2>' +
+  var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div>' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
     (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + exprBox(sample) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(G.goal) + '</p>' :
-      (G.goal && !anyOk ? '<div class="okbox">🔍 I searched and couldn\'t find any Solution with these cubes.</div>' : '')) +
-    idxs().map(function (i) { return '<div class="score-line"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
+      (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.</div>' : '')) +
+    idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
-    '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results ▶' : 'Next shake ▶') + '</button></div>';
+    '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div>';
   setTimeout(function () { modal(html, function () { drainQueue(nextShake); }); }, 700);
 }
 function nextShake() {
@@ -512,10 +513,10 @@ function endMatch() {
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect });
     persist();
     var nextO = OPPONENTS[idx + 1];
-    html = '<h2>' + (won ? '🏆 YOU WIN!' : tie ? '🤝 It\'s a tie!' : '🌱 Good game!') + '</h2>' +
+    html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
       '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? o.lose : tie ? 'A tie! Let\'s play again!' : o.win + ' Want a rematch?') + '</div></div>' +
       '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
-      (won && nextO ? '<p style="text-align:center">🔓 <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
+      (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
   } else {
     var top = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
@@ -527,11 +528,11 @@ function endMatch() {
     if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'happy' : 'sad');
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
-    html = '<h2>' + (winners.length > 1 ? '🤝 Tie: ' + names.join(' & ') + '!' : '🏆 ' + names[0] + ' wins!') + '</h2>' +
-      order.map(function (i) { return '<div class="score-line"><span>' + (G.players[i].score === top ? '🏆 ' : '') + esc(G.players[i].name) + '</span><span class="p">' + G.players[i].score + '</span></div>'; }).join('') +
+    html = '<h2 class="hero">' + (winners.length > 1 ? 'Tie: ' + names.join(' & ') + '!' : names[0] + ' wins!') + '</h2>' +
+      order.map(function (i) { return '<div class="score-line' + (G.players[i].score === top ? ' win' : '') + '"><span>' + (G.players[i].score === top ? ico('trophy') + ' ' : '') + esc(G.players[i].name) + '</span><span class="p">' + G.players[i].score + '</span></div>'; }).join('') +
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
   }
-  html += '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">🔁 Play again</button><button class="btn" data-act="toMenu">🏠 Menu</button></div>';
+  html += '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
   modal(html, null);
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
