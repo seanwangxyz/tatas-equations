@@ -2,57 +2,89 @@
 
 `js/three/creatures.js` builds the opponent across the table from a **pack**. `T3.creaturePacks()` lists them;
 `T3.setCreature(kind, packId)` picks one (default `S.cos.pack`, else `classic`). `kind` is the opponent slot:
-`sloth penguin fox owl wizard pip`. If a pack or one of its models is missing, the game silently uses `classic`.
+`sloth penguin fox owl wizard pip`. If a pack or one of its models is missing or fails to load, the game silently uses
+`classic` for that slot. Pip (the tutorial helper) always stays classic.
 
 | Pack | Source | Needs files? |
 |---|---|---|
 | `classic` | code-built animals in `js/three/creatures/classic.js` | no |
-| `monsters` | glTF models listed in `assets/creatures/monsters/manifest.json` | yes (not in the repo yet) |
+| `monsters` | glTF models listed in `assets/creatures/monsters/manifest.json` (Quaternius Imp and Puglin) | yes, included; see `monsters/CREDITS.md` |
 
-## Monsters pack (Quaternius "Bestiary - Dungeon Monsters Kit", humanoid rig)
+## Monsters pack
 
-Drop the `.glb` files next to `manifest.json` (or in subfolders; paths are relative to the manifest), then edit the
-manifest. The committed manifest uses placeholder file names (Ogre, Goblin, ...): change them to the real ones.
-The pack becomes `available` when the manifest loads and at least one slot's file exists; slots whose file is missing
-fall back to classic individually. Models are preloaded in the background; if one is not ready yet when a game starts,
-the classic stand-in is shown and swapped for the model once it is loaded and the creature is idle.
+Two models, five opponents: each slot names a `.glb` and, optionally, a different base-colour texture, so one geometry
+serves several opponents.
+
+| Slot | Model | Colour | Entrance style |
+|---|---|---|---|
+| `sloth` | Puglin | rose (`puglin_2.webp`) | ambles in, yawns, waves |
+| `penguin` | Puglin | blue (`puglin_3.webp`) | waddles in, slides the last bit |
+| `fox` | Imp | red (embedded variant 1) | darts in |
+| `owl` | Imp | green (`imp_2.webp`) | pops up from behind the table edge |
+| `wizard` | Imp | violet (`imp_3.webp`) | appears in a puff of stars |
+
+The kit has **no animation clips**, so the skeleton is driven in code (`js/three/creatures/monsterrig.js`):
+
+* rest pose: arms down and a little bent, relaxed fingers, a personal slouch/head angle (`pose`), slow breathing through the spine;
+* gaze: neck and head turn toward the moving cube / the player (the same gaze the classic creatures use);
+* moods, dances, entrances, talking: the shared gesture table (`creatures/gestures.js`) asks for a body pose (lean, hop,
+  sway, turn, shrug, head angles) and hand targets; the rig turns those into spine / clavicle / head rotations and
+  two-bone IK on the real arm bones, with the fingers curling to the requested open/closed amount;
+* reaching: the real arm reaches for the die with IK. If the die is farther than the arm, the arm **stretches like rubber**
+  (upper arm and forearm bones are scaled along their length, a little thinner; the hand keeps its size), so the real mesh
+  and textures are always used and the colours always match. Only the arm carrying a die may stretch a long way;
+* soccer kit, built in code from the model's own geometry (`creatures/monsterwear.js`): a **jersey** cut from the torso
+  triangles and skinned to the spine bones (it bends and breathes with the body) with a number, a striped **scarf**, and a
+  **captain's armband** on the left upper arm. Colours come from the opponent's team colours (`TEAM` in `creatures/common.js`,
+  overridable per slot with `team`).
+
+If a clip library ever becomes available, set `"animations": "UniversalAnimationLibrary.glb"` in the manifest (the file
+must exist, it is checked with a HEAD request first) and map moods to clips with `clips`; clips then drive the skeleton and the
+rig only adds the gaze and the reaches on top. (Not exercised yet: no clips were available.)
+
+### Manifest format
+
+Paths are relative to `manifest.json`. The pack is `available` when the manifest loads and at least one slot's file exists;
+slots whose file is missing fall back to classic individually. Models are preloaded in the background one after another
+(each distinct file is fetched once); if one is not ready when a game starts, the classic stand-in is shown and the model is
+swapped in once it has loaded and the creature is idle. Loading never blocks the game.
 
 ```jsonc
 {
   "version": 1,
   "name": "Monsters",                       // shown by T3.creaturePacks()
-  "animations": "UniversalAnimationLibrary.glb",   // optional: clips from the Universal Animation Library (same rig)
+  "animations": "UniversalAnimationLibrary.glb",   // optional (see above); leave it out when the file is not there
   "defaults": { ... },                      // any slot option below, applied to every slot
   "slots": {
-    "sloth": {                              // sloth|penguin|fox|owl|wizard|pip
-      "file": "Ogre.glb",                   // required
-      "style": "sloth",                     // personality preset (speed, blink, gaze rate): a classic kind name
-      "height": 6.2,                        // model is scaled to this height (creature units; cube = 0.77)
-      "hipsAt": 0.5,                        // fraction of height where the hips are; the hips sit on the creature's origin
+    "sloth": {                              // sloth|penguin|fox|owl|wizard
+      "name": "Puglin (rose)",              // display name (informational)
+      "file": "puglin.glb",                 // required
+      "baseColor": "textures/puglin_2.webp",// optional: replaces the model's base-colour texture for this slot
+      "tint": "#ffd0d0",                    // optional: multiplied with the base colour
+      "style": "sloth",                     // personality preset (speed, gaze rate, breathing, mood length): a classic kind name
+      "entrance": "pip",                    // optional: entrance / exit / idle-flair set to use (a classic kind name or "pip"); default = style
+      "height": 4.4,                        // model is scaled to this height (creature units; a die is 0.59 wide)
+      "hipsAt": 0.4275,                     // fraction of height where the pelvis is; the pelvis sits on the creature's origin
       "yawDeg": 0,                          // rotate the model if it does not face +z
       "offset": [0, 0, 0],                  // nudge after fitting
-      "top": 3.4,                           // height above the hips the camera must keep in view (default derived)
-      "hide": ["Weapon", "Shield", "/axe/i"], // node names to hide: substring, or "/regex/flags"
-      "bones": {                            // optional overrides (name substring or /regex/); otherwise auto-detected
-        "head": "Head", "upperArmL": "UpperArm.L", "upperArmR": "UpperArm.R"
-      },
-      "hideArms": true,                     // collapse the rig's own arms (upper-arm bones scaled ~0); procedural arms replace them
-      "shoulders": [[-1, 1.4, 0], [1, 1.4, 0]],  // procedural arm anchors (default: the upper-arm bones' positions)
-      "arm":   { "color": "#7aa35a", "hand": "#7aa35a", "fore": "#7aa35a", "sleeve": true, "L1": 1.3, "L2": 1.4, "handScale": 1.1 },
-      "jersey": { "mode": "shell", "y": -0.2, "h": 2.2, "r": 1.1, "z": 1, "x": 0, "zOff": 0 }, // number jersey wrapped around the torso; "mode":"none" to skip
-      "team": { "jersey": "#2f9e44", "trim": "#d8f5a2", "num": "1" },  // optional overrides of the classic team colors
-      "clips": {                            // clip names (exact, else case-insensitive substring); arrays = candidates in order
-        "idle": ["Idle_Loop"], "think": ["Idle_Talking"], "happy": ["Victory"], "sad": ["Defeat"], "challenge": ["Taunt"]
-      }
+      "top": 3.0,                           // height above the hips the camera must keep in view (default derived)
+      "hide": ["Mace", "/axe/i"],           // node names to hide: substring, or "/regex/flags"
+      "pose": { "slouch": 0.16, "headDown": 0.05, "headTilt": 0, "shoulderDrop": 0.06, "bodyShare": 0.55 },  // radians; resting posture
+      "armLen": 1.3,                        // arms are this much longer than the rig's (default derived so arms reach about as far as the classic ones)
+      "handScale": 0.85,                    // size of the hands relative to the model
+      "rest": [0.17, 0.72, 0.3],            // where the hands hang at rest, as fractions of arm length from the shoulder (side, down, forward)
+      "rig": { "handRoll": 0, "curl": 1.15, "curlAxis": [1, 0, 0], "curlSign": [1, 1] },   // palm roll (deg) and finger curl
+      "scarf": { "R": 0.14, "r": 0.04, "tail": 0.2, "tailW": 0.07, "tails": true, "dy": 0 }, // model units; false = no scarf
+      "armband": { "at": 0.5, "width": 0.2 },   // or false
+      "jersey": { "mode": "fit", "weight": 0.7, "offset": 0.01 },  // "mode": "none" to skip the jersey
+      "team": { "jersey": "#2f9e44", "dark": "#237a35", "trim": "#d8f5a2", "num": "1", "pattern": "sash" },  // overrides TEAM[kind]
+      "clips": { "idle": ["Idle_Loop"], "think": ["Idle_Talking"], "happy": ["Victory"] },   // only with a clip library
+      "bones": { "head": "Head" }           // optional bone-name overrides (default: the Unreal-style names)
     }
   }
 }
 ```
 
-How it behaves: idle clip loops; each mood (`think happy sad challenge`, plus any clip you map for `dance cry tantrum
-gloat`) plays its clip once, then crossfades back to idle. Mood names without a clip still move the head, lean and
-procedural arms. The head bone receives the gaze (world-space rotation on top of the clip). Reach/carry always uses the
-procedural stretchy arm and gripping hand (rig arms cannot reach across the table), anchored at the shoulders.
-
-Not supported for glTF: facial expressions, tears/steam (classic only), eye tracking. `jersey.mode: "shell"` is a
-rigid lathe shell, so it will not deform with the animation; keep it a little smaller than the torso.
+Not supported for glTF: facial expressions, tears/steam, blinking, eye tracking (the models have no face rig).
+The monsters' faces never change; the body language does the acting. Rebuilding the optimised files from the original kit is
+described in `monsters/CREDITS.md` (`assets/creatures/tools/optimize-monsters.mjs`).

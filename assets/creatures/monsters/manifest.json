@@ -1,25 +1,35 @@
 {
   "version": 1,
   "name": "Monsters",
-  "animations": "UniversalAnimationLibrary.glb",
   "defaults": {
-    "height": 6.2,
-    "hipsAt": 0.5,
-    "yawDeg": 0,
-    "hide": ["Weapon", "Sword", "Axe", "Club", "Staff", "Shield", "Dagger", "Bow"],
-    "clips": {
-      "idle": ["Idle_Loop", "Idle"],
-      "think": ["Idle_Talking", "Talking"],
-      "happy": ["Victory", "Cheer", "Dance"],
-      "sad": ["Defeat", "Sad", "Hit"],
-      "challenge": ["Taunt", "Point", "Yell"]
-    }
+    "hide": ["Mace", "Stick", "Chains", "Weapon", "Sword", "Axe", "Club", "Staff", "Shield", "Dagger", "Bow"],
+    "yawDeg": 0
   },
   "slots": {
-    "sloth":   { "file": "Ogre.glb",     "style": "sloth",   "arm": { "color": "#7aa35a", "hand": "#7aa35a" } },
-    "penguin": { "file": "Goblin.glb",   "style": "penguin", "arm": { "color": "#6fae5a", "hand": "#6fae5a" } },
-    "fox":     { "file": "Imp.glb",      "style": "fox",     "arm": { "color": "#d9534f", "hand": "#d9534f" } },
-    "owl":     { "file": "Skeleton.glb", "style": "owl",     "arm": { "color": "#e9e4d0", "hand": "#e9e4d0" } },
-    "wizard":  { "file": "Demon.glb",    "style": "wizard",  "arm": { "color": "#8e5bd9", "hand": "#8e5bd9" } }
+    "sloth": {
+      "name": "Puglin (rose)", "file": "puglin.glb", "baseColor": "textures/puglin_2.webp", "style": "sloth",
+      "height": 4.4, "hipsAt": 0.4275, "pose": { "slouch": -0.04, "headDown": -0.3 },
+      "scarf": { "R": 0.14, "r": 0.04, "tails": false, "dy": -0.02 },
+      "team": { "jersey": "#2f9e44", "dark": "#237a35", "trim": "#d8f5a2", "num": "1", "pattern": "sash" }
+    },
+    "penguin": {
+      "name": "Puglin (blue)", "file": "puglin.glb", "baseColor": "textures/puglin_3.webp", "style": "penguin",
+      "height": 4.4, "hipsAt": 0.4275, "pose": { "slouch": -0.04, "headDown": -0.3 },
+      "scarf": { "R": 0.14, "r": 0.04, "tails": false, "dy": -0.02 },
+      "team": { "jersey": "#f1f3f5", "dark": "#1c4f9c", "trim": "#ffd43b", "num": "4", "pattern": "stripes" }
+    },
+    "fox": {
+      "name": "Imp (red)", "file": "imp.glb", "style": "fox",
+      "height": 6.9, "hipsAt": 0.482,
+      "team": { "jersey": "#f8f9fa", "dark": "#e03131", "trim": "#e03131", "num": "9", "pattern": "hoops" }
+    },
+    "owl": {
+      "name": "Imp (green)", "file": "imp.glb", "baseColor": "textures/imp_2.webp", "style": "owl", "entrance": "pip",
+      "height": 6.9, "hipsAt": 0.482
+    },
+    "wizard": {
+      "name": "Imp (violet)", "file": "imp.glb", "baseColor": "textures/imp_3.webp", "style": "wizard",
+      "height": 6.9, "hipsAt": 0.482
+    }
   }
 }

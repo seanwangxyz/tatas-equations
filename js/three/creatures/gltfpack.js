@@ -4,12 +4,16 @@
 // If the manifest (or every file in it) is missing the pack simply reports available:false and the game uses classic.
 // GLTFLoader / SkeletonUtils are imported lazily so a failed CDN fetch can never break the classic creatures.
 //
-// Arms: the rig's own arms are collapsed (upper-arm bones scaled to ~0) and replaced by the same procedural
-// two-bone stretchy arms and gripping hands the classic pack uses, anchored at the model's shoulder bones. The
-// head bone gets the gaze (world-space rotation on top of whatever clip is playing). Clips map to idle/moods.
+// The models ship without animation clips, so they are driven procedurally (monsterrig.js): breathing, gaze, moods, and
+// arms that reach with real two-bone IK on the model's own arm bones. One .glb can serve several slots: a slot may point
+// at a different base-colour texture ("baseColor") and tint it ("tint"). The soccer kit (fitted jersey + scarf) is built
+// from the model's own torso at load time (monsterwear.js). If a manifest "animations" file (e.g. the Universal Animation
+// Library) and "clips" are present, the clips drive the skeleton instead and the rig only adds gaze and reaches on top.
 import * as THREE from 'three';
-import { std, jerseyTorso, TEAM, ArmRig, clamp } from './common.js';
-import { STYLE, restPos } from './classic.js';
+import { TEAM, clamp } from './common.js';
+import { STYLE } from './classic.js';
+import { MonsterRig, BONE_NAMES } from './monsterrig.js';
+import { buildJerseyData, makeJerseyMesh, makeScarf, makeArmband } from './monsterwear.js';
 
 const MANIFEST = 'assets/creatures/monsters/manifest.json';
 const DEFAULT_CLIPS = {
@@ -20,8 +24,7 @@ const DEFAULT_CLIPS = {
   challenge: ['Taunt', 'Point', 'Roar', 'Attack', 'Punch', 'Yell'],
   wave: ['Wave', 'Hello']
 };
-const hexv = (v) => (typeof v === 'string' ? parseInt(v.replace(/^#|^0x/i, ''), 16) : v);
-const _pq = new THREE.Quaternion(), _hq = new THREE.Quaternion(), _R = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _box = new THREE.Box3();
 
 function matchName(name, pat) {
   if (!pat) return false;
@@ -29,9 +32,10 @@ function matchName(name, pat) {
   return name.toLowerCase().indexOf(String(pat).toLowerCase()) >= 0;
 }
 function matchAny(name, pats) { return (pats || []).some((p) => matchName(name, p)); }
+const exists = async (url, memo) => { if (memo[url] === undefined) memo[url] = (async () => { try { const h = await fetch(url, { method: 'HEAD' }); return h.ok || h.status === 405 || h.status === 501; } catch (e) { return false; } })(); return memo[url]; };
 
 export const MonstersPack = {
-  id: 'monsters', name: 'Monsters', available: false, manifest: null, slots: {}, cache: {}, clipLib: null, _mods: null,
+  id: 'monsters', name: 'Monsters', available: false, settled: false, manifest: null, slots: {}, cache: {}, tex: {}, clipLib: null, _mods: null, _loading: {},
 
   // Fetch the manifest and check which model files exist. Resolves true if the pack is usable.
   probe() {
@@ -42,19 +46,21 @@ export const MonstersPack = {
         if (!r.ok) return false;
         const man = await r.json();
         if (!man || !man.slots || typeof man.slots !== 'object') return false;
-        const base = new URL('.', url).href, def = man.defaults || {};
+        const base = new URL('.', url).href, def = man.defaults || {}, memo = {};
         for (const k of Object.keys(man.slots)) {
           const s = Object.assign({}, def, man.slots[k]); if (!s.file) continue;
           s.url = new URL(s.file, base).href;
-          try { const h = await fetch(s.url, { method: 'HEAD' }); if (!h.ok && h.status !== 405 && h.status !== 501) continue; } catch (e) { continue; }
+          if (!(await exists(s.url, memo))) continue;
+          if (s.baseColor) { s.baseColorUrl = new URL(s.baseColor, base).href; if (!(await exists(s.baseColorUrl, memo))) delete s.baseColorUrl; }
           this.slots[k] = s;
         }
-        if (man.animations) this.animUrl = new URL(man.animations, base).href;
+        if (man.animations) { const au = new URL(man.animations, base).href; if (await exists(au, memo)) this.animUrl = au; }
         this.manifest = man; if (man.name) this.name = man.name;
         this.available = Object.keys(this.slots).length > 0;
         if (this.available) this.preload();
         return this.available;
       } catch (e) { return false; }
+      finally { this.settled = true; }
     })();
     return this._probe;
   },
@@ -62,105 +68,164 @@ export const MonstersPack = {
   ready(kind) { return !!this.cache[kind] && !!this._mods; },
   preload() { const ks = Object.keys(this.slots); ks.reduce((p, k) => p.then(() => this.load(k).catch((e) => { console.warn('monster model', k, e); delete this.slots[k]; })), Promise.resolve()); },
 
-  async load(kind) {
-    const slot = this.slots[kind]; if (!slot) throw new Error('no slot ' + kind);
-    if (this.cache[kind]) return this.cache[kind];
+  async _mod() {
     if (!this._mods) {
       const [g, su] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/utils/SkeletonUtils.js')]);
       this._mods = { GLTFLoader: g.GLTFLoader, SU: su };
     }
-    const loader = new this._mods.GLTFLoader();
-    if (this.animUrl && !this.clipLib) { try { this.clipLib = (await loader.loadAsync(this.animUrl)).animations || []; } catch (e) { console.warn('animation library failed', e); this.clipLib = []; } }
+    return this._mods;
+  },
+  // one network fetch / parse per distinct file, shared by every slot that uses it
+  _gltf(url) {
+    if (!this._loading[url]) this._loading[url] = this._mod().then((m) => new m.GLTFLoader().loadAsync(url));
+    return this._loading[url];
+  },
+  _texture(url) {
+    if (!this.tex[url]) this.tex[url] = new THREE.TextureLoader().loadAsync(url).then((t) => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
+    return this.tex[url];
+  },
+
+  async load(kind) {
+    const slot = this.slots[kind]; if (!slot) throw new Error('no slot ' + kind);
     if (this.cache[kind]) return this.cache[kind];
-    const gltf = await loader.loadAsync(slot.url);
-    return (this.cache[kind] = { gltf, clips: (gltf.animations || []).concat(this.clipLib || []) });
+    await this._mod();
+    if (this.animUrl && !this.clipLib) { try { this.clipLib = (await this._gltf(this.animUrl)).animations || []; } catch (e) { console.warn('animation library failed', e); this.clipLib = []; } }
+    const [gltf, map] = await Promise.all([this._gltf(slot.url), slot.baseColorUrl ? this._texture(slot.baseColorUrl).catch((e) => { console.warn('monster texture', e); return null; }) : null]);
+    if (this.cache[kind]) return this.cache[kind];
+    const entry = { gltf, map, clips: (gltf.animations || []).concat(this.clipLib || []), jersey: null };
+    // the jersey is cut from the model's torso once per slot (it only needs the geometry and the skeleton's bone order)
+    if (!slot.jersey || slot.jersey.mode !== 'none') {
+      try {
+        let sm = null; gltf.scene.traverse((o) => { if (o.isSkinnedMesh && !sm && /body/i.test(o.name)) sm = o; });
+        if (sm) {
+          gltf.scene.updateMatrixWorld(true);
+          const bone = (n) => sm.skeleton.bones.find((b) => b.name === n), y = (b) => (b ? _v.setFromMatrixPosition(b.matrixWorld).y : 0);
+          const jc = Object.assign({ torso: ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'clavicle_l', 'clavicle_r'], weight: 0.7, offset: 0.01 }, slot.jersey || {});
+          const pel = y(bone('pelvis')), s3 = y(bone('spine_03')), nk = y(bone('neck_01')), hs = nk - pel;
+          if (jc.yMin === undefined) jc.yMin = pel + hs * (jc.hem !== undefined ? jc.hem : 0.0);
+          if (jc.yMax === undefined) jc.yMax = s3 + (nk - s3) * (jc.neckline !== undefined ? jc.neckline : 0.6);
+          entry.jersey = buildJerseyData(sm, jc);
+        }
+      } catch (e) { console.warn('jersey', e); }
+    }
+    return (this.cache[kind] = entry);
   },
 
   build(kind) {
     const slot = this.slots[kind], entry = this.cache[kind]; if (!slot || !entry || !this._mods) throw new Error('model not ready');
     const team = Object.assign({}, TEAM[kind] || TEAM.pip, slot.team || {});
-    const H = slot.height || 6.2, hipsAt = slot.hipsAt === undefined ? 0.5 : slot.hipsAt, k = H / 6.2;
+    const H = slot.height || 6.2;
     const root = new THREE.Group(), body = new THREE.Group(), breathG = new THREE.Group(); root.add(body); body.add(breathG);
     const model = this._mods.SU.clone(entry.gltf.scene); breathG.add(model);
 
-    // fit: scale to height, feet at -hipsAt*H, centered
-    const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-    const sc = H / (size.y || 1); model.scale.multiplyScalar(sc);
-    model.position.set(-c.x * sc, -hipsAt * H - box.min.y * sc, -c.z * sc);
-    if (slot.offset) model.position.add(_v.fromArray(slot.offset));
-    model.rotation.y = (slot.yawDeg || 0) * Math.PI / 180;
+    // materials: a private copy per creature so the colour variant / tint of this slot does not leak into the others
     const hide = slot.hide || [], bones = [];
     model.traverse((o) => {
       if (o.isBone) bones.push(o);
       if (matchAny(o.name || '', hide)) o.visible = false;
-      if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; if (o.material && slot.noFog) o.material.fog = false; }
+      if (o.isMesh) {
+        o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false;
+        if (o.material) {
+          o.material = o.material.clone();
+          if (entry.map) o.material.map = entry.map;
+          if (slot.tint) o.material.color.set(slot.tint);
+          if (slot.emissive !== undefined) o.material.emissiveIntensity = slot.emissive;
+          if (slot.metalness !== undefined) o.material.metalness = slot.metalness;
+          if (slot.roughness !== undefined) o.material.roughness = slot.roughness;
+          if (slot.noFog) o.material.fog = false;
+        }
+      }
     });
-    model.updateMatrixWorld(true);
 
     // bones
-    const bn = slot.bones || {};
-    const byPat = (pat) => bones.find((b) => matchName(b.name, pat));
-    let head = bn.head ? byPat(bn.head) : (bones.find((b) => /(^|[^a-z])head($|[^a-z])/i.test(b.name) && !/top|end|tip/i.test(b.name)) || bones.find((b) => /head/i.test(b.name) && !/top|end|tip/i.test(b.name)));
-    let ups = [];
-    if (bn.upperArmL || bn.upperArmR) { ups = [byPat(bn.upperArmL), byPat(bn.upperArmR)].filter(Boolean); }
-    if (ups.length < 2) { ups = bones.filter((b) => /upper.?arm/i.test(b.name) && !/twist|fore|lower/i.test(b.name)); if (ups.length < 2) ups = bones.filter((b) => /(^|[^a-z])arm($|[^a-z])|arm[._\- ]?(l|r|left|right)$/i.test(b.name) && !/fore|lower|hand|twist/i.test(b.name)); }
-    const shoulders = [[-1.0 * k, 1.42 * k, 0], [1.0 * k, 1.42 * k, 0]];
-    let hideBones = [];
-    if (slot.shoulders) { shoulders[0] = slot.shoulders[0]; shoulders[1] = slot.shoulders[1]; }
-    else if (ups.length >= 2) {
-      const ps = ups.map((b) => b.getWorldPosition(new THREE.Vector3())).sort((a, b) => a.x - b.x);
-      shoulders[0] = [ps[0].x, ps[0].y, ps[0].z]; shoulders[1] = [ps[ps.length - 1].x, ps[ps.length - 1].y, ps[ps.length - 1].z];
+    const bn = Object.assign({}, slot.bones || {}), find = (pat) => bones.find((b) => matchName(b.name, pat));
+    const exact = (n) => bones.find((b) => b.name === n);
+    const side = (stem, s) => (bn[stem + s] ? find(bn[stem + s]) : exact(BONE_NAMES[stem] + s));
+    const B = {
+      pelvis: bn.pelvis ? find(bn.pelvis) : exact(BONE_NAMES.pelvis),
+      spine: BONE_NAMES.spine.map((n, i) => (bn['spine' + (i + 1)] ? find(bn['spine' + (i + 1)]) : exact(n))),
+      neck: bn.neck ? find(bn.neck) : exact(BONE_NAMES.neck), head: bn.head ? find(bn.head) : exact(BONE_NAMES.head),
+      clav: ['l', 'r'].map((s) => side('clav', s)), up: ['l', 'r'].map((s) => side('up', s)), lo: ['l', 'r'].map((s) => side('lo', s)), hand: ['l', 'r'].map((s) => side('hand', s)), fingers: [[], []]
+    };
+    const need = [B.pelvis, B.neck, B.head].concat(B.spine, B.clav, B.up, B.lo, B.hand);
+    if (need.some((b) => !b)) throw new Error('monster rig: bones not found (' + kind + ')');
+    B.hand.forEach((h, i) => h.traverse((n) => { if (n !== h && n.isBone && /_0[123]_/.test(n.name)) B.fingers[i].push(n); }));
+
+    // fit: scale so the model is H tall (its box, T-pose arms do not matter), hips on the origin, centred on the pelvis
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), pel = B.pelvis.getWorldPosition(new THREE.Vector3());
+    const sc = H / (size.y || 1), hipsAt = typeof slot.hipsAt === 'number' ? slot.hipsAt : (pel.y - box.min.y) / (size.y || 1);
+    model.scale.multiplyScalar(sc);
+    model.position.set(-pel.x * sc, -hipsAt * H - box.min.y * sc, -pel.z * sc);
+    if (slot.offset) model.position.add(_v.fromArray(slot.offset));
+    model.rotation.y = (slot.yawDeg || 0) * Math.PI / 180;
+    root.updateMatrixWorld(true);
+
+    // soccer kit: jersey skinned to the spine + scarf on the chest
+    const sm = (() => { let r = null; model.traverse((o) => { if (o.isSkinnedMesh && !r && /body/i.test(o.name)) r = o; }); return r; })();
+    if (entry.jersey && sm) { const j = makeJerseyMesh(entry.jersey, team, sm); sm.parent.add(j); }
+    if (slot.scarf !== false && sm) {
+      try {
+        const nk = _v.setFromMatrixPosition(B.neck.matrixWorld), s3 = _v2.setFromMatrixPosition(B.spine[2].matrixWorld);
+        // work in model space (unscaled): convert the neck / chest positions back
+        const inv = new THREE.Matrix4().copy(model.matrixWorld).invert(); const nkm = nk.clone().applyMatrix4(inv), s3m = s3.clone().applyMatrix4(inv);
+        const sk = Object.assign({ R: 0.11, r: 0.032, tail: 0.2, tailW: 0.065, dy: 0.0, dz: 0.0 }, slot.scarf || {});
+        const c = new THREE.Vector3(nkm.x, (nkm.y + s3m.y) / 2 + (nkm.y - s3m.y) * 0.1 + sk.dy, nkm.z + sk.dz);
+        if (sk.front === undefined) {                                             // chest surface under the tails, from the body geometry (bind pose)
+          sk.front = c.z + sk.R; const P = sm.geometry.attributes.position, kx = c.x + sk.R * 0.78;
+          for (let i = 0; i < P.count; i++) { if (Math.abs(P.getX(i) - kx) < 0.05 && P.getY(i) < c.y && P.getY(i) > c.y - sk.tail && P.getZ(i) > c.z - 0.05) sk.front = Math.max(sk.front === c.z + sk.R ? -9 : sk.front, P.getZ(i)); }
+          sk.front += 0.004;
+        }
+        const sg = makeScarf(team, c, sk); model.add(sg); model.updateMatrixWorld(true); B.spine[2].attach(sg);
+      } catch (e) { console.warn('scarf', e); }
     }
-    if (slot.hideArms !== false) hideBones = ups.slice(0, 2);
 
-    // jersey shell (fractions are in actor units relative to the hips; see README)
-    const jc = Object.assign({ mode: 'shell', y: -0.2, h: 2.2, r: 1.1 * k, z: 1 }, slot.jersey || {});
-    if (jc.mode !== 'none') {
-      const j = jerseyTorso(team, 1); j.scale.set(jc.r / 1.1, jc.h / 1.92, jc.r / 1.1 * jc.z); j.position.set(jc.x || 0, jc.y, jc.zOff || 0); body.add(j);
+    // captain's armband on the character's left upper arm (sized from the arm's own geometry)
+    if (slot.armband !== false && sm) {
+      try {
+        const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
+        const pa = B.up[0].getWorldPosition(new THREE.Vector3()).applyMatrix4(inv), pb = B.lo[0].getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+        const ab = makeArmband(sm, pa, pb, team, slot.armband || {});
+        if (ab) { model.add(ab); model.updateMatrixWorld(true); B.up[0].attach(ab); }
+      } catch (e) { console.warn('armband', e); }
     }
 
-    // procedural arms
-    const ac = Object.assign({ color: 0x8a7a6a, hand: 0x8a7a6a, sleeve: true, L1: 1.3 * k, L2: 1.4 * k, handScale: 1.1 * k }, slot.arm || {});
-    const jerseyM = std(new THREE.Color(team.jersey).getHex()), trimM = std(new THREE.Color(team.trim).getHex());
-    const arms = [-1, 1].map((s, i) => {
-      const a = new ArmRig(body, s, {
-        L1: ac.L1, L2: ac.L2, shoulder: shoulders[i], maxStretch: 3.8, rUp: 0.24 * k, rFore: 0.22 * k, sleeveR: 0.32 * k,
-        furMat: std(hexv(ac.color)), foreMat: std(hexv(ac.fore !== undefined ? ac.fore : ac.color)), sleeveMat: ac.sleeve ? jerseyM : null, trimMat: trimM,
-        hand: { mat: std(hexv(ac.hand)), scale: ac.handScale }
-      });
-      a.rest = restPos(s); return a;
-    });
+    // rig
+    const cfg = Object.assign({}, slot.rig || {});
+    if (cfg.curlAxis) cfg.curlAxis = new THREE.Vector3().fromArray(cfg.curlAxis);
+    if (cfg.thumbAxis) cfg.thumbAxis = new THREE.Vector3().fromArray(cfg.thumbAxis);
+    if (slot.pose) cfg.pose = slot.pose; if (slot.handScale !== undefined) cfg.handScale = slot.handScale; if (slot.armLen !== undefined) cfg.armLen = slot.armLen; if (slot.rest) cfg.rest = slot.rest;
+    const rig = new MonsterRig({ model, body, bones: B, sc, cfg });
+    const arms = rig.arms;
 
-    // animation
+    // animation clips (optional: only when a clip library / the model itself provides them)
     let mixer = null, idle = null, moodAct = null;
-    const find = (key) => { const cands = (slot.clips && slot.clips[key]) ? [].concat(slot.clips[key]) : (DEFAULT_CLIPS[key] || []); for (const n of cands) { const c = entry.clips.find((cl) => cl.name === n) || entry.clips.find((cl) => cl.name.toLowerCase().indexOf(String(n).toLowerCase()) >= 0); if (c) return c; } return null; };
+    const findClip = (key) => { const cands = (slot.clips && slot.clips[key]) ? [].concat(slot.clips[key]) : (DEFAULT_CLIPS[key] || []); for (const n of cands) { const c = entry.clips.find((cl) => cl.name === n) || entry.clips.find((cl) => cl.name.toLowerCase().indexOf(String(n).toLowerCase()) >= 0); if (c) return c; } return null; };
     if (entry.clips.length) {
       mixer = new THREE.AnimationMixer(model);
-      const ic = find('idle'); if (ic) { idle = mixer.clipAction(ic); idle.play(); }
+      const ic = findClip('idle'); if (ic) { idle = mixer.clipAction(ic); idle.play(); rig.clipMode = true; }
       mixer.addEventListener('finished', (ev) => { if (ev.action === moodAct && idle) { idle.reset().play(); moodAct.crossFadeTo(idle, 0.35, false); moodAct = null; } });
     }
-    const headPos = head ? head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, (1 - hipsAt) * H * 0.9, 0.1);
+
+    // framing, gaze origin
+    const hp = B.head.getWorldPosition(new THREE.Vector3()), top = box.max.y * 0 + (size.y - hipsAt * size.y) * sc;
+    const headC = new THREE.Vector3(hp.x, hp.y + (box.max.y - hp.y) * 0.5, hp.z + (slot.gazeFwd !== undefined ? slot.gazeFwd : 0.04 * H));
+    if (slot.gazeAt) headC.add(_v.fromArray(slot.gazeAt));
     const invBody = new THREE.Matrix4();
     const styleName = slot.style || kind, style = STYLE[styleName] || STYLE.fox;
+    const bodyShare = rig.pose.bodyShare;
     const actor = {
-      kind, root, body, arms, style, top: slot.top || ((1 - hipsAt) * H + 0.3), headC: headPos, invBody,
+      kind, root, body, arms, style, top: slot.top || (top + 0.35), headC, invBody,
+      styleKey: slot.entrance || styleName,       // which entrance / exit / idle-flair set the gestures use
       playMood(name) {
-        if (!mixer) return; const cl = find(name); if (!cl) return;
+        if (!mixer) return; const cl = findClip(name); if (!cl) return;
         const a = mixer.clipAction(cl); a.reset().setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false;
         if (idle) idle.crossFadeTo(a, 0.25, false); a.play(); moodAct = a;
       },
       apply(P, now) {
-        body.position.set(0, P.hop, P.slide); body.rotation.set(P.lean, P.turn, P.sway); body.updateMatrix(); invBody.copy(body.matrix).invert();
-        const br = P.breath; breathG.scale.set(1 + 0.008 * br, 1 + 0.014 * br, 1 + 0.008 * br);
+        body.position.set(0, P.hop, P.slide); body.rotation.set(P.lean * bodyShare, P.turn, P.sway); body.updateMatrix(); invBody.copy(body.matrix).invert();
         if (mixer) mixer.update(P.dt);
-        for (let i = 0; i < hideBones.length; i++) hideBones[i].scale.setScalar(0.0001);
-        if (head) {
-          model.updateMatrixWorld(true);
-          _e.set(P.headPitch * 0.8, P.headYaw, P.headRoll); _R.setFromEuler(_e);
-          head.parent.getWorldQuaternion(_pq); head.getWorldQuaternion(_hq);
-          _hq.premultiply(_R); head.quaternion.copy(_pq.invert().multiply(_hq));
-        }
-        for (let i = 0; i < 2; i++) arms[i].setShoulderLift(P.shrug * 0.12);
+        rig.update(P);
       },
       dispose() { if (mixer) mixer.stopAllAction(); }
     };
