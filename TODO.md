@@ -11,6 +11,9 @@
 - **Monster pack**: needs the Quaternius "Bestiary - Dungeon Monsters Kit" (Standard zip) and
   "Universal Animation Library" downloaded into `assets-src/`. Classic creatures stay the default.
 
+- **Creature thinking speed with all operations unlocked**: in the playtest a whole shake used 4-6 seconds of thinking in total on a laptop (a turn can take close to a second; an iPad is slower, and the screen freezes while it thinks). Move the solver into a background worker.
+- **Playtest with the real kid**: the simulated "beginner" is only a rough stand-in. Retune Snoozy/Penny after watching him play (tests/playtest.js prints the numbers).
+
 ## To mull over
 - **Logs and trig (sin/cos)** as a far-future stage of the ladder.
   - The official cubes have no log/sin symbols, so this is a house rule (e.g. bonus cubes).

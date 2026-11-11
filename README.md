@@ -22,6 +22,12 @@ python -m http.server 3460 --bind 127.0.0.1
 node tests/engine.test.js
 ```
 
+To see how strong each creature is (they play each other at full speed):
+
+```bash
+node tests/playtest.js 40 0
+```
+
 135 checks: the evaluator, the Solution validator, the solver, and the official 2- and
 3-player challenge scoring.
 

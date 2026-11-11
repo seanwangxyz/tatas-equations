@@ -645,6 +645,7 @@ function aiWrite(pi, mode, cb) {
     var st = snapshot(), r = null;
     if (mode === 'now' && G.aiPlan) { r = G.aiPlan; G.aiPlan = null; }
     else r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: mode === 'last' ? [] : st.res, mode: mode === 'last' ? 'free' : mode, fractions: G.fractions, maxDigits: Math.min(6, o.maxDigits + 1), timeMs: o.timeMs * 2 });
+    if (r && r.found && o.fumble && mode !== 'now' && Math.random() < o.fumble) r = null; // dozed off / got muddled
     if (r && r.found) {
       var toks = symsToCubeTokens(r.tokens, mode), chk = Eq.checkSolution(toks, solCtx(mode));
       say('opp', chk.ok ? 'Done!' : 'Hmm…'); cb(chk.ok, toks, chk);
