@@ -6,12 +6,12 @@ import { std, shade, roundedBox, jerseyTorso, TEAM, ArmRig, clamp } from './comm
 // Personality: speed (<1 faster), anticipate (s), overshoot (0..1), look (gaze follow rate /s),
 // breath (period s), blink {close, open, gap:[min,max]}, lid (resting eyelid openness), moodScale (reaction length).
 export const STYLE = {
-  sloth: { danceAmp: 0.5, turns: 0, speed: 1.35, anticipate: 0.45, overshoot: 0, look: 2.6, breath: 6.2, blink: { c: 0.2, o: 0.28, g: [3.2, 6.5] }, lid: 0.62, moodScale: 1.3, headGain: 0.5, hand: 0.9 },
-  penguin: { danceAmp: 1, turns: 1, speed: 1.0, anticipate: 0.24, overshoot: 0.35, look: 5.5, breath: 4.4, blink: { c: 0.09, o: 0.14, g: [2.6, 5.2] }, lid: 0.9, moodScale: 1, headGain: 0.55, hand: 1.0 },
-  fox: { danceAmp: 1.25, turns: 2, speed: 0.78, anticipate: 0.12, overshoot: 0.9, look: 9, breath: 3.6, blink: { c: 0.07, o: 0.12, g: [2.2, 4.6] }, lid: 0.82, moodScale: 0.85, headGain: 0.55, hand: 1.0 },
-  owl: { danceAmp: 1, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.2, look: 5, breath: 5.0, blink: { c: 0.12, o: 0.2, g: [3.5, 7] }, lid: 0.92, moodScale: 1.1, headGain: 0.85, hand: 1.0 },
-  wizard: { danceAmp: 0.9, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.5, look: 4.5, breath: 5.2, blink: { c: 0.11, o: 0.18, g: [3, 6] }, lid: 0.88, moodScale: 1.1, headGain: 0.55, hand: 1.0, flourish: true },
-  pip: { danceAmp: 1.1, turns: 1, speed: 0.95, anticipate: 0.2, overshoot: 0.6, look: 6.5, breath: 4.0, blink: { c: 0.08, o: 0.13, g: [2.4, 5] }, lid: 0.92, moodScale: 0.95, headGain: 0.55, hand: 1.0 }
+  sloth: { dances: ['sky', 'shuffle', 'slide'], danceAmp: 0.5, turns: 0, speed: 1.35, anticipate: 0.45, overshoot: 0, look: 2.6, breath: 6.2, blink: { c: 0.2, o: 0.28, g: [3.2, 6.5] }, lid: 0.62, moodScale: 1.3, headGain: 0.5, hand: 0.9 },
+  penguin: { dances: ['shuffle', 'plane', 'spin'], danceAmp: 1, turns: 1, speed: 1.0, anticipate: 0.24, overshoot: 0.35, look: 5.5, breath: 4.4, blink: { c: 0.09, o: 0.14, g: [2.6, 5.2] }, lid: 0.9, moodScale: 1, headGain: 0.55, hand: 1.0 },
+  fox: { dances: ['plane', 'slide', 'spin'], danceAmp: 1.25, turns: 2, speed: 0.78, anticipate: 0.12, overshoot: 0.9, look: 9, breath: 3.6, blink: { c: 0.07, o: 0.12, g: [2.2, 4.6] }, lid: 0.82, moodScale: 0.85, headGain: 0.55, hand: 1.0 },
+  owl: { dances: ['robot', 'sky', 'plane'], danceAmp: 1, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.2, look: 5, breath: 5.0, blink: { c: 0.12, o: 0.2, g: [3.5, 7] }, lid: 0.92, moodScale: 1.1, headGain: 0.85, hand: 1.0 },
+  wizard: { dances: ['spin', 'sky', 'shuffle'], danceAmp: 0.9, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.5, look: 4.5, breath: 5.2, blink: { c: 0.11, o: 0.18, g: [3, 6] }, lid: 0.88, moodScale: 1.1, headGain: 0.55, hand: 1.0, flourish: true },
+  pip: { dances: ['robot', 'plane', 'slide'], danceAmp: 1.1, turns: 1, speed: 0.95, anticipate: 0.2, overshoot: 0.6, look: 6.5, breath: 4.0, blink: { c: 0.08, o: 0.13, g: [2.4, 5] }, lid: 0.92, moodScale: 0.95, headGain: 0.55, hand: 1.0 }
 };
 
 const SPEC = {
@@ -83,7 +83,7 @@ export function buildClassic(kind) {
     const gl2 = sph(E.er * 0.08, glintM, pu, -E.er * 0.14, -E.er * 0.16, E.er * 0.18, 1, 1, 0.6);
     const lid = mesh(lidGeo, lidM, g, 0, 0, 0); lid.rotation.x = -Math.PI * 0.95;
     const tears = [0, 1].map(() => { const t = new THREE.Mesh(tearGeo, tearM); t.visible = false; g.add(t); return t; });
-    return { g, pu, lid, side: s, tears };
+    return { g, pu, pp, lid, side: s, tears };
   });
   const eyeZ = (x, y) => E.er * 0.7 * Math.sqrt(Math.max(0.02, 1 - (x / E.er) * (x / E.er) - (y / (E.er * 1.06)) * (y / (E.er * 1.06))));
 
@@ -125,6 +125,7 @@ export function buildClassic(kind) {
     const lo = cone(0.19, 0.4, std(0xf08a00, { roughness: 0.4 }), jaw, 0, 0, 0.17); lo.rotation.x = Math.PI / 2; lo.scale.set(1, 1, 0.55);
     for (let i = -1; i <= 1; i++) { const t = cone(0.07, 0.34, black, head, i * 0.12, 0.98, 0.02, 10); t.rotation.z = -i * 0.35; t.rotation.x = -0.2; }
   }
+  const ears = [];
   if (kind === 'fox') {
     const wm = std(0xfff8ee), or = std(0xf08c3a), tipM = black;
     const sn = sph(1, wm, head, 0, -0.26, 0.86, 0.5, 0.4, 0.62);
@@ -132,7 +133,7 @@ export function buildClassic(kind) {
     sph(0.14, black, head, 0, -0.1, 1.44);
     [-1, 1].forEach((s) => {
       const ch = cone(0.2, 0.62, wm, head, s * 0.82, -0.3, 0.3, 14); ch.rotation.z = -s * 1.2; ch.rotation.y = s * 0.3;
-      const ear = new THREE.Group(); ear.position.set(s * 0.62, 0.8, -0.05); ear.rotation.z = -s * 0.3; ear.rotation.x = -0.1; head.add(ear);
+      const ear = new THREE.Group(); ear.position.set(s * 0.62, 0.8, -0.05); ear.rotation.z = -s * 0.3; ear.rotation.x = -0.1; head.add(ear); ears.push({ g: ear, s: s, z: -s * 0.3, x: -0.1 });
       cone(0.42, 1.08, or, ear, 0, 0.5, 0, 16);
       cone(0.27, 0.8, std(0xfff1dd), ear, 0, 0.43, 0.12, 16);
       cone(0.2, 0.36, tipM, ear, 0, 0.9, -0.01, 14);
@@ -141,6 +142,7 @@ export function buildClassic(kind) {
     sph(1, or, tail, 0, 0.7, 0, 0.55, 0.95, 0.55); sph(1, wm, tail, 0, 1.45, 0, 0.42, 0.55, 0.42);
     bodyParts.tail = tail;
     ex.push((P, now) => { tail.rotation.z = -0.9 + Math.sin(now / 1400) * 0.04 + P.tailLift * 0.35; });
+    ex.push((P) => { for (let i = 0; i < 2; i++) { const e = ears[i], f = e.s < 0 ? P.earL : P.earR; e.g.rotation.z = e.z - e.s * (f - 0.16 * P.earUp + 0.4 * P.sadAmt); e.g.rotation.x = e.x - 0.3 * P.sadAmt + 0.12 * P.earUp; } });
   }
   if (kind === 'owl') {
     const dm = std(0xf4e8c8), dk = std(0x5a3f82);
@@ -148,7 +150,8 @@ export function buildClassic(kind) {
     beakTop = cone(0.15, 0.36, std(0xff9f1c, { roughness: 0.4 }), head, 0, -0.14, 1.04); beakTop.rotation.x = Math.PI / 2 + 0.35; beakTop.scale.set(1, 1, 0.8);
     jaw = new THREE.Group(); jaw.position.set(0, -0.22, 1.0); head.add(jaw);
     const lo = cone(0.1, 0.22, std(0xf08a00), jaw, 0, 0, 0.06); lo.rotation.x = Math.PI / 2 + 0.2;
-    [-1, 1].forEach((s) => { const t = cone(0.22, 0.8, dk, head, s * 0.78, 0.86, -0.05, 14); t.rotation.z = -s * 0.5; t.rotation.x = -0.15; });
+    [-1, 1].forEach((s) => { const t = cone(0.22, 0.8, dk, head, s * 0.78, 0.86, -0.05, 14); t.rotation.z = -s * 0.5; t.rotation.x = -0.15; ears.push({ g: t, s: s, z: -s * 0.5, x: -0.15 }); });
+    ex.push((P) => { for (let i = 0; i < 2; i++) { const e = ears[i], f = e.s < 0 ? P.earL : P.earR; e.g.rotation.z = e.z - e.s * (f - 0.2 * P.earUp + 0.25 * P.sadAmt); } });
   }
   if (kind === 'wizard') {
     const nose = sph(1, std(0xe8a98a), head, 0, -0.1, 1.04, 0.24, 0.24, 0.27);
@@ -168,18 +171,21 @@ export function buildClassic(kind) {
     cone(0.5, 1.2, purple2, tip, 0, 0.45, 0, 28);
     const sg = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.11 : 0.26; sg[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
     const star = mesh(new THREE.ExtrudeGeometry(sg, { depth: 0.05, bevelEnabled: false }), std(0xffe066, { emissive: 0x806000, roughness: 0.4 }), hat, 0, 0.75, 0.82); star.rotation.x = -0.18;
-    ex.push((P, now) => { star.rotation.y = Math.sin(now / 2200) * 0.15; mus.rotation.z = P.smile * 0.12; mus.position.y = -0.3 + P.smile * 0.03; beard.rotation.x = Math.PI + 0.12 + P.beardSway; });
+    ex.push((P, now) => { hat.rotation.z = P.hatTilt; hat.position.y = 0.84 + P.hatLift; star.rotation.y = Math.sin(now / 2200) * 0.15; mus.rotation.z = P.smile * 0.12; mus.position.y = -0.3 + P.smile * 0.03; beard.rotation.x = Math.PI + 0.12 + P.beardSway; });
   }
   if (kind === 'pip') {
     on(sph(1, std(0xff9a3d), head, 0, 0, 0, 0.16, 0.1, 0.05), 0.8, -0.2, 0.08); on(sph(1, std(0xff9a3d), head, 0, 0, 0, 0.16, 0.1, 0.05), -0.8, -0.2, 0.08);
     const ant = new THREE.Group(); ant.position.set(0, H[1] * 0.92, 0); head.add(ant);
     mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.62, 8), std(0xe8590c), ant, 0, 0.31, 0);
     const ball = sph(0.17, std(0xff5a5a, { emissive: 0x4a0000, roughness: 0.3 }), ant, 0, 0.68, 0);
-    ex.push((P, now) => { ant.rotation.z = Math.sin(now / 1900) * 0.05 - P.headRoll * 0.6; ant.rotation.x = P.headPitch * -0.3 + Math.sin(now / 2300) * 0.03; });
+    ex.push((P, now) => { ant.rotation.z = Math.sin(now / 1900) * 0.05 - P.headRoll * 0.6 + P.hatTilt; ant.rotation.x = P.headPitch * -0.3 + Math.sin(now / 2300) * 0.03; });
   }
   const steamM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), puffGeo = new THREE.SphereGeometry(1, 12, 10);
   const puffs = [];
   [-1, 1].forEach((s) => { for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(puffGeo, steamM); m.visible = false; head.add(m); puffs.push({ m, s, k }); } });
+  // sweat drop (nervous): one bead that forms on the temple and runs down
+  const sweat = new THREE.Group(); head.add(sweat); sweat.visible = false;
+  { const bead = mesh(new THREE.SphereGeometry(1, 12, 10), tearM, sweat, 0, 0, 0, 0.13, 0.16, 0.12), tip = cone(0.1, 0.22, tearM, sweat, 0, 0.17, 0, 10); tip.scale.set(1, 1, 0.9); on(sweat, 0.78, 0.45, 0.04); }
   // ----- arms -----
   const armColor = { sloth: 0x9a7b57, penguin: 0x262b36, fox: 0xf08c3a, owl: 0x7d5ba6, wizard: 0xf1c9a5, pip: 0xffd43b }[kind];
   const foreC = armColor;
@@ -211,12 +217,14 @@ export function buildClassic(kind) {
       const br = P.breath;
       body.position.set(0, P.hop, P.slide); body.rotation.set(P.lean, P.turn, P.sway); body.updateMatrix(); invBody.copy(body.matrix).invert();
       torso.scale.set(1 + 0.012 * br, 1 + 0.02 * br, 1 + 0.014 * br);
-      neck.position.y = 1.7 + 0.018 * br + P.shrug * 0.04;
-      neck.rotation.set(P.headPitch, P.headYaw, P.headRoll);
+      neck.position.y = 1.7 + 0.018 * br + P.shrug * 0.04 - P.gulp * 0.07;
+      neck.rotation.set(P.headPitch + P.gulp * 0.1, P.headYaw, P.headRoll);
       // eyes
       for (let i = 0; i < 2; i++) {
-        const e = eyes[i], ex_ = P.eyeX * E.er * 0.42, ey = P.eyeY * E.er * 0.4;
+        let e = eyes[i], ex_ = P.eyeX * E.er * 0.42, ey = P.eyeY * E.er * 0.4;
+        ex_ += P.eyeAddX * E.er * 0.3; ey += P.eyeAddY * E.er * 0.3;
         e.pu.position.set(ex_, ey, eyeZ(ex_, ey) * 0.98); e.pu.rotation.set(-ey / E.er * 0.7, ex_ / E.er * 0.7, 0);
+        e.g.scale.setScalar(1 + 0.2 * P.eyeWide); { const ps = 1 + P.pupil * 0.6; e.pp.scale.set(ps, ps, 0.3); }
         const o = clamp(P.lid * lidBase / 0.9 * (1 - P.blink) + (e.side > 0 ? P.lidAsym : 0), 0, 1);
         e.lid.rotation.x = -Math.PI * (0.04 + 0.96 * Math.pow(o, 0.9)) ;
         const b = brows[i]; b.g.position.y = b.baseY + (P.browRaise + (e.side > 0 ? P.browAsym : -P.browAsym * 0.2)) * 0.13;
@@ -226,8 +234,8 @@ export function buildClassic(kind) {
       const sm = P.smile + M.base * (1 - Math.abs(P.smile)), op = P.open;
       if (mouth) {
         const depth = op > 0.05 ? Math.max(op, sm) : sm;
-        mouth.lip.scale.set(1 + op * 0.1, -(Math.abs(depth) < 0.07 ? 0.07 * (depth < 0 ? -1 : 1) : depth), 1);
-        mouth.fill.scale.set(1, Math.max(0.001, op), 1); mouth.fill.visible = op > 0.04;
+        mouth.lip.scale.set((1 + op * 0.1) * P.mouthW, -(Math.abs(depth) < 0.07 ? 0.07 * (depth < 0 ? -1 : 1) : depth), 1);
+        mouth.fill.scale.set(P.mouthW, Math.max(0.001, op), 1); mouth.fill.visible = op > 0.04;
       }
       if (jaw) { jaw.rotation.x = op * 0.5; if (beakTop) beakTop.rotation.x = Math.PI / 2 + (kind === 'owl' ? 0.35 : 0) - op * 0.14 - sm * 0.06; }
       for (let i = 0; i < ex.length; i++) ex[i](P, now);
@@ -243,6 +251,7 @@ export function buildClassic(kind) {
         const p = puffs[i];
         if (P.steam > 0.03) { const ph = (P.steamT * 1.3 + p.k * 0.33) % 1, sz = P.steam * (0.12 + ph * 0.3) * (1 - ph * ph * ph); p.m.visible = true; p.m.position.set(p.s * (1.15 + ph * 0.35), 0.75 + ph * 1.3, 0); p.m.scale.setScalar(sz); } else p.m.visible = false;
       }
+      if (P.sweat > 0.03) { const ph = Math.min(1, (P.sweatT % 1.5) / 1.1); sweat.visible = true; sweat.scale.setScalar(P.sweat * Math.min(1, ph * 6) * (1 - Math.max(0, (ph - 0.8) / 0.2))); sweat.children[0].position.y = -ph * 0.7; sweat.children[1].position.y = 0.17 - ph * 0.7; } else sweat.visible = false;
       fur.emissive.setRGB(0.28 * P.angry, 0.02 * P.angry, 0);
       // arms
       for (let i = 0; i < 2; i++) arms[i].setShoulderLift(P.shrug * 0.12 + br * 0.015);
