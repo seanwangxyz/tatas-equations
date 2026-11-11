@@ -93,12 +93,12 @@ function closeModal() { $('#modal').classList.remove('on'); var f = modalOnClose
 function drainQueue(done) {
   var it = celebrateQ.shift();
   if (!it) { if (done) done(); return; }
-  if (it.type === 'card') { if (window.Cards && Cards.showNew) Cards.showNew([it.card], function () { drainQueue(done); }); else drainQueue(done); return; }
+  if (it.type === 'card') { if (Snd.sting) Snd.sting('card'); if (window.Cards && Cards.showNew) Cards.showNew([it.card], function () { drainQueue(done); }); else drainQueue(done); return; }
   if (it.type === 'level') {
     var unl = [].concat(SKINS.filter(function (x) { return x.lvl === it.level; }).map(function (x) { return x.name + ' cubes'; }),
       MATS.filter(function (x) { return x.lvl === it.level; }).map(function (x) { return x.name + ' mat'; }),
       VICTORIES.filter(function (x) { return x.lvl === it.level; }).map(function (x) { return x.name + ' victory'; }));
-    Snd.fanfare(); victoryFX();
+    Snd.fanfare(); if (Snd.sting) Snd.sting('levelup'); victoryFX();
     modal('<h2>⬆️ LEVEL UP!</h2><div class="row">' + pipHTML('cheer', 100, 'cheer') + '<div class="bubble">You reached <b>Level ' + it.level + '</b>!</div></div>' +
       (unl.length ? '<p style="text-align:center">🎁 New unlock: <b>' + unl.join(', ') + '</b>! Pick it in the Trophy Room.</p>' : '') +
       '<div class="row"><button class="btn green" data-act="closeModal">Awesome!</button></div>', function () { drainQueue(done); });

@@ -2,12 +2,14 @@
 // ======================= BUILDER (tap-to-build expressions) =======================
 var B = null;
 function openGoalBuilder(pi, onDone, noCancel) {
+  if (Snd.getMood && Snd.getMood() === 'play') Snd.setMood('think'); // calmer music while he works it out
   var pool = zoneCubes('resources').filter(function (c) { return !c.locked; }).map(function (c) { return c.id; });
   B = { kind: 'goal', pi: pi, tokens: [], pools: [{ label: '🎲 Resources', ids: pool }], cubes: G.cubes, onDone: onDone, noCancel: noCancel, fractions: G.fractions,
     title: (multiHuman() ? esc(G.players[pi].name) + ': ' : '') + 'Build the Goal', t0: Date.now() };
   renderBuilder(); $('#builder').classList.add('on');
 }
 function openSolutionBuilder(pi, mode, cb) {
+  if (Snd.getMood && Snd.getMood() !== 'off') Snd.setMood('think');
   var pools = [{ label: '✅ Required (use them ALL)', ids: zoneCubes('required').map(function (c) { return c.id; }), req: true },
     { label: '👍 Permitted (use any)', ids: zoneCubes('permitted').map(function (c) { return c.id; }) }];
   if (mode === 'now') pools.push({ label: '🎲 Resources (you may add ONE)', ids: zoneCubes('resources').map(function (c) { return c.id; }), max: 1 });

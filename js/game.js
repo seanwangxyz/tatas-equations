@@ -22,7 +22,7 @@ function loseMood(o) {
   return r < 0.6 ? 'cry' : r < 0.9 ? 'sad' : 'tantrum';
 }
 function talkLine(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
-function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); }
+function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'dance' && Snd.danceMusic) Snd.danceMusic(3200); }
 function setCreature(k) { if (T3.setCreature) T3.setCreature(k); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
 function aiPlace(id, zone, who) {
@@ -43,7 +43,7 @@ function startMatch(mode, oppIdx, cfg) {
   go('game'); Snd.setMood('play');
   var ai = firstAI();
   setCreature(ai ? ai.kind : null);
-  var begin = function () { if (!G) return; newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(S.cos.mat === 'stadium' ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 function newShake(fixedCubes) {
@@ -79,7 +79,15 @@ function cue(name) { if (T3.cue) T3.cue(name); }
 function fx3(name, opts) { if (T3.fx) T3.fx(name, opts); }
 function board(text) { if (T3.setBoard) T3.setBoard(text); }
 // Read a line aloud (only when 'Read lines aloud' is on in Settings).
-function speakLine(who, text) { if (S.set.voice !== true || !Snd.speak) return; var ai = who === 'opp' ? firstAI() : null; Snd.speak(text, ai ? ai.kind : 'pip'); }
+// Creatures talk in their babble voice (or real speech if 'Read lines aloud' is on) and move their mouth for as long as it lasts.
+// Pip only speaks when 'Read lines aloud' is on, so instructions don't babble constantly.
+function speakLine(who, text) {
+  var ai = who === 'opp' ? firstAI() : null;
+  if (!ai) { if (S.set.voice === true && Snd.speak) Snd.speak(text, 'pip'); return; }
+  var ms = Snd.talk ? Snd.talk(text, ai.kind) : (S.set.voice === true && Snd.speak ? (Snd.speak(text, ai.kind), 1500) : 0);
+  if (ms && T3.creatureTalk) T3.creatureTalk(ms);
+}
+function crowdSay(kind) { if (Snd.crowdReact) Snd.crowdReact(kind); }
 function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', text); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
 function speechHTML() {
   var sp = G.speech || { who: 'pip', text: '' }, face;
@@ -186,7 +194,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (!G) return;
@@ -253,6 +261,7 @@ ACT.buildGoal = function () {
 function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
+  if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val));
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
@@ -311,7 +320,7 @@ function challenge(kind, who) {
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', G.players[who].name + ' challenges!');
   if (isAI(who)) creatureMood('challenge');
   else if (isAI(mover)) { creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
-  Snd.slam(); Snd.setMood('challenge'); cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!');
+  Snd.slam(); Snd.setMood('challenge'); cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(G.players[who].name) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(G.players[mover].name) + ' must try to write a Solution.', 'cheer');
   renderGame();
@@ -500,7 +509,7 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
   var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
@@ -559,7 +568,7 @@ function endMatch() {
   modal(html, null);
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
-ACT.toMenu = function () { closeModal(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
+ACT.toMenu = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
 
 // ======================= COMPUTER PLAYER =======================
 function applySym(st, s, zone) {
