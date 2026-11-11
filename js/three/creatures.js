@@ -12,7 +12,9 @@
 //
 // This file is the runtime (placement, gaze, gestures, reach/carry planner). Characters come from packs:
 //   creatures/classic.js  code-built animals (always available)
-//   creatures/gltfpack.js glTF monsters driven by assets/creatures/monsters/manifest.json (see assets/creatures/README.md)
+//   creatures/gltfpack.js glTF monsters driven by assets/creatures/monsters/manifest.json (see assets/creatures/README.md);
+//                         monsterrig.js drives their skeleton (IK arms, spine, head) from the same pose struct P and hand targets
+//                         the classic creatures use, monsterwear.js builds their jersey / scarf / armband
 // The one-shot gestures themselves (moods, dances, entrances, flairs) live in creatures/gestures.js.
 // Style rule: at rest a creature only breathes and blinks. Everything else here is a one-shot that returns to rest.
 import * as THREE from 'three';
@@ -42,7 +44,7 @@ if (T3 && T3.ctx) (function () {
   var P = { breath: 0, breathAmp: 1, lean: 0, hop: 0, slide: 0, turn: 0, sway: 0, headYaw: 0, headPitch: 0, headRoll: 0, eyeX: 0, eyeY: 0, eyeAddX: 0, eyeAddY: 0, lid: 0.9, blink: 0, lidAsym: 0,
     browRaise: 0, browTilt: 0, browAsym: 0, smile: 0, open: 0, shrug: 0, happyAmt: 0, sadAmt: 0, dt: 0.016,
     rx: 0, ry: 0, rz: 0, rYaw: 0, rScale: 1, eyeWide: 0, pupil: 0, mouthW: 1, sweat: 0, sweatT: 0, gulp: 0, earL: 0, earR: 0, earUp: 0, hatTilt: 0, hatLift: 0, armRate: 9,
-    gazeThink: 0, gazeSad: 0, gazeCam: 0, cry: 0, cryT: 0, steam: 0, steamT: 0, angry: 0, pitchAdd: 0, tailLift: 0, beardSway: 0 };
+    gazeThink: 0, gazeSad: 0, gazeCam: 0, cry: 0, cryT: 0, steam: 0, steamT: 0, angry: 0, pitchAdd: 0, tailLift: 0, beardSway: 0, talk: 0, talkT: 0, task: 0 };
   var task = null;
   var nextBlink = 0, blinkT0 = -1e9;
   var pose = 0;                                                  // 0..1 how far the body leans/slides/steps for a far reach
@@ -142,23 +144,40 @@ if (T3 && T3.ctx) (function () {
   }
   function install(a, kind, packId) {
     clearActor(); actor = a; cur = { kind: kind, pack: packId };
-    ctx.scene.add(a.root); gazeInit = false; lastPosOK = false; gn = null; leanReset(); hidden = false; a.root.visible = true; C.sty = a.style; C.kind = kind;
+    ctx.scene.add(a.root); gazeInit = false; lastPosOK = false; gn = null; leanReset(); hidden = false; a.root.visible = true; C.sty = a.style; C.kind = a.styleKey || kind;
     nextBlink = performance.now() + 1200; idleSince = 0; placeCreature(); ctx.refit(); ctx.dirty(); ctx.startLoop();
   }
   function leanReset() { tiltX = tiltZ = 0; pose = 0; off.x = off.z = 0; }
+  // The classic stand-in is showing while a model loads: swap the real one in once it is ready and the creature is idle
+  // (not entering, reaching, reacting or talking). A creature that has already left the table stays hidden.
+  function swapIn(my, pid, kind) {
+    (function swap() {
+      if (my !== serial) return;
+      if (task || gn || talk) { setTimeout(swap, 400); return; }
+      var wasHidden = hidden;
+      try { install(packs[pid].build(kind), kind, pid); if (wasHidden) setHidden(true); } catch (e) { console.warn('creature swap failed', e); }
+    })();
+  }
   T3.setCreature = function (kind, packId) {
     var my = ++serial;
     if (!kind) { clearActor(); cur = { kind: null, pack: 'classic' }; ctx.refit(); return; }
+    var want = packId || (typeof S !== 'undefined' && S && S.cos && S.cos.pack) || 'classic';
     var pid = resolvePack(packId), pk = packs[pid];
     if (pid !== 'classic' && !pk.has(kind)) pid = 'classic';
     try {
+      if (pid === 'classic' && want !== 'classic' && packs[want] && packs[want].settled === false) {
+        // the pack's manifest is still being read (a very early call): stand in with classic, then upgrade
+        install(buildClassic(kind), kind, 'classic');
+        packs[want].probe().then(function (ok) {
+          if (my !== serial || !ok || !packs[want].has(kind)) return;
+          return packs[want].load(kind, ctx).then(function () { swapIn(my, want, kind); });
+        }).catch(function (e) { console.warn('creature model failed to load', e); });
+        return;
+      }
       if (pid !== 'classic' && !packs[pid].ready(kind)) {
         // model still loading: show the classic stand-in now, swap when the model arrives and the creature is idle
         install(buildClassic(kind), kind, 'classic');
-        packs[pid].load(kind, ctx).then(function () {
-          if (my !== serial) return;
-          (function swap() { if (my !== serial) return; if (task || gn) { setTimeout(swap, 400); return; } try { install(packs[pid].build(kind), kind, pid); } catch (e) { console.warn('creature swap failed', e); } })();
-        }).catch(function (e) { console.warn('creature model failed to load', e); });
+        packs[pid].load(kind, ctx).then(function () { swapIn(my, pid, kind); }).catch(function (e) { console.warn('creature model failed to load', e); });
         return;
       }
       install(pid === 'classic' ? buildClassic(kind) : packs[pid].build(kind), kind, pid);
@@ -172,7 +191,7 @@ if (T3 && T3.ctx) (function () {
     var d = GEST[n], sty = actor.style;
     gn = n; gv = v | 0; gT0 = now; gFired = 0; fadeT0 = 0; gDone = done || null; gSide = Math.random() < 0.5 ? -1 : 1;
     gTempo = n === 'dance' ? clamp(sty.moodScale, 0.85, 1.15) : sty.moodScale;
-    gDur = d.abs ? d.dur(cur.kind) : d.dur * gTempo;
+    gDur = d.abs ? d.dur(actor.styleKey || cur.kind) : d.dur * gTempo;
     if (n !== 'flair' && talk && !talk.cut) talk.cut = now;                  // a reaction interrupts talking
     if (!d.raw && n !== 'flair' && actor.playMood) actor.playMood(n);
     if (gDone) { var my = ++gTimerSerial; gTimer = setTimeout(function () { if (gn && my === gTimerSerial) endGesture(); }, gDur * 1000 + 1500); }
@@ -407,7 +426,7 @@ if (T3 && T3.ctx) (function () {
     P.lean = BASE_LEAN; P.headYaw = 0; P.hop = 0; P.slide = 0; P.turn = 0; P.sway = 0; P.headRoll = 0; P.lid = 0.9; P.lidAsym = 0; P.breathAmp = 1;
     P.browRaise = 0; P.browTilt = 0; P.browAsym = 0; P.smile = 0; P.open = 0; P.shrug = 0; P.happyAmt = 0; P.sadAmt = 0; P.cry = 0; P.cryT = 0; P.steam = 0; P.steamT = 0; P.angry = 0; P.pitchAdd = 0;
     P.rx = 0; P.ry = 0; P.rz = 0; P.rYaw = 0; P.rScale = 1; P.eyeWide = 0; P.pupil = 0; P.mouthW = 1; P.sweat = 0; P.gulp = 0; P.earL = 0; P.earR = 0; P.earUp = 0; P.hatTilt = 0; P.hatLift = 0;
-    P.eyeAddX = 0; P.eyeAddY = 0; P.armRate = 9; P.gazeThink = 0; P.gazeSad = 0; P.gazeCam = 0;
+    P.eyeAddX = 0; P.eyeAddY = 0; P.armRate = 9; P.gazeThink = 0; P.gazeSad = 0; P.gazeCam = 0; P.talk = 0; P.task = task ? task.ai + 1 : 0;
     for (i = 0; i < 2; i++) { a = actor.arms[i]; armSt[i].des.copy(a.rest); aAlign[i] = 0.55; aOpen[i] = 0.3; }
     // blinks
     if (now >= nextBlink) { blinkT0 = now; nextBlink = now + rnd(sty.blink.g[0], sty.blink.g[1]) * 1000; }
@@ -420,7 +439,7 @@ if (T3 && T3.ctx) (function () {
       if (fadeT0) { fd = 1 - sstep((now - fadeT0) / fadeTime); if (fd <= 0) { endGesture(); u = -1; } }
       if (u > gDur) { endGesture(); u = -1; }
       if (gn && u >= 0) {
-        C.u = u; C.un = u / gTempo; C.v = gv; C.side = gSide; C.sty = sty; C.kind = cur.kind; C.amp = sty.danceAmp; C.turns = sty.turns || 1; C.out = (ctx.layout ? ctx.layout.W / 2 : 9) + 6;
+        C.u = u; C.un = u / gTempo; C.v = gv; C.side = gSide; C.sty = sty; C.kind = actor.styleKey || cur.kind; C.amp = sty.danceAmp; C.turns = sty.turns || 1; C.out = (ctx.layout ? ctx.layout.W / 2 : 9) + 6;
         C.e = (gd.raw ? 1 : env(u, gDur, (gd.att || 0.3) * gTempo, gd.rel || 0.8)) * fd;
         gd.fn(C);
       }
@@ -432,6 +451,7 @@ if (T3 && T3.ctx) (function () {
       if (tt > talk.dur || cf <= 0) talk = null;
       else {
         var te = env(tt, talk.dur, 0.15, 0.3) * cf, wg = sstep((Math.sin(tt * TAU * 1.15 + 0.4) + 0.45) * 2.2), syl = 0.5 + 0.5 * Math.sin(tt * TAU * 4.3 + 0.8 * Math.sin(tt * 2.3));
+        P.talk = te; P.talkT = tt;                                  // packs without a face use these for head bobs and hand gestures
         P.open = Math.min(1, P.open + te * wg * (0.1 + 0.5 * syl * (0.65 + 0.35 * Math.sin(tt * 7.1))));
         P.pitchAdd += 0.05 * Math.sin(tt * TAU * 1.15 + 1) * te * wg; P.headYaw += 0.07 * Math.sin(tt * TAU * 0.7) * te; P.browRaise += 0.22 * te * wg * Math.max(0, Math.sin(tt * TAU * 1.15 + 2.6));
       }
