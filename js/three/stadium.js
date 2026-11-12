@@ -4,6 +4,7 @@
 // camera flashbulbs are one-shot effects driven by step(); they finish and stop asking for frames.
 import * as THREE from 'three';
 import { FLOOR_Y, softTexture } from './environment.js';
+import { keyLight } from './arenas/common.js';
 
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function cvs(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
@@ -16,13 +17,14 @@ function ease(x) { return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x); }
 
 var PITCH = 100, PPU = 20.48; // pitch plane size in units, canvas pixels per unit
 
-function pitchTexture(aniso, o) {
-  var c = cvs(2048, 2048), g = c.getContext('2d'), R = rng(77), k = PPU;
+// o.cols (optional): [stripe A, stripe B, trackside] for other venues; o.size: canvas size (default 2048)
+export function pitchTexture(aniso, o) {
+  var S = o.size || 2048, c = cvs(S, S), g = c.getContext('2d'), R = rng(77), k = S / PITCH, cols = o.cols || ['#2f8a36', '#277a2d', '#25422a'];
   var band = 3.6, z0 = o.lineZ - 40; // stripes run parallel to the touchline
-  for (var i = 0; i < 40; i++) { var z = z0 + i * band; g.fillStyle = i % 2 ? '#2f8a36' : '#277a2d'; g.fillRect(0, (z + 50) * k, 2048, band * k + 1); }
-  for (var n = 0; n < 9000; n++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * 2048, R() * 2048, 2, 2); }
+  for (var i = 0; i < 40; i++) { var z = z0 + i * band; g.fillStyle = i % 2 ? cols[0] : cols[1]; g.fillRect(0, (z + 50) * k, S, band * k + 1); }
+  for (var n = 0; n < 9000; n++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * S, R() * S, 2, 2); }
   // everything behind the touchline is plain trackside
-  g.fillStyle = '#25422a'; g.fillRect(0, 0, 2048, (o.lineZ + 50) * k);
+  g.fillStyle = cols[2]; g.fillRect(0, 0, S, (o.lineZ + 50) * k);
   g.strokeStyle = 'rgba(255,255,255,.88)'; g.lineWidth = 0.22 * k; g.lineCap = 'butt';
   var X = function (x) { return (x + 50) * k; }, Z = function (z) { return (z + 50) * k; };
   g.beginPath(); g.moveTo(X(-o.gx), Z(o.lineZ)); g.lineTo(X(o.gx), Z(o.lineZ)); g.stroke(); // touchline
@@ -62,6 +64,15 @@ function flashTexture() {
   return ctex(c, 1);
 }
 
+// Night: floodlit pool of light on the pitch, brightest round the table, fading toward the stands
+function lightPool() {
+  var c = cvs(128, 128), g = c.getContext('2d');
+  g.fillStyle = '#05070c'; g.fillRect(0, 0, 128, 128);
+  var gr = g.createRadialGradient(64, 66, 4, 64, 66, 30); // 100-unit plane: 30px is about 23 units
+  gr.addColorStop(0, '#e8efff'); gr.addColorStop(0.55, '#8e9bb8'); gr.addColorStop(1, 'rgba(5,7,12,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  var t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 function stdm(color, rough, extra) { return new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness: rough == null ? 0.8 : rough, flatShading: true }, extra || {})); }
 
 // Draws text on the big scoreboard
@@ -84,24 +95,27 @@ function paintBoard(cv, text) {
   g.shadowBlur = 0; g.strokeStyle = '#2b4a9a'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
 }
 
-export function buildStadium(W, D, aniso, layoutName, quality) {
-  var g = new THREE.Group(), R = rng(2024), tall = layoutName === 'tall', FY = FLOOR_Y;
+// opts.night: the same ground under floodlights (darker sky, lit pitch, crowd in shadow, beams, a key light).
+export function buildStadium(W, D, aniso, layoutName, quality, opts) {
+  var g = new THREE.Group(), R = rng(2024), tall = layoutName === 'tall', FY = FLOOR_Y, night = !!(opts && opts.night);
   var rows = tall ? 8 : 9, rowD = 1.15, rise = 0.6;
   var lineZ = -D / 2 - (tall ? 2.0 : 3.4);
   var sideGap = tall ? 2.5 : 8.2, standX = W / 2 + sideGap;
   var gx = standX - (tall ? 0.6 : 1.2), goals = !tall, goalZ = -1.5;
   var z0 = lineZ - 2.4; // where the back stand starts
   var backL = tall ? W + 16 : W + 30;
-  var floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: 0x1d4d25, roughness: 1 }));
+  var floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: night ? 0x0d2614 : 0x1d4d25, roughness: 1 }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = FY - 0.04; g.add(floor);
-  var pitch = new THREE.Mesh(new THREE.PlaneGeometry(PITCH, PITCH), new THREE.MeshStandardMaterial({ map: pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ }), roughness: 0.95 }));
+  var pitchMap = pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ });
+  // at night the pitch glows a little by itself (the floodlights), so it reads brighter than the stands
+  var pitch = new THREE.Mesh(new THREE.PlaneGeometry(PITCH, PITCH), new THREE.MeshStandardMaterial(night ? { map: pitchMap, color: 0x3c3c40, lightMap: lightPool(), lightMapIntensity: 7, roughness: 0.95 } : { map: pitchMap, roughness: 0.95 }));
   pitch.rotation.x = -Math.PI / 2; pitch.position.y = FY; pitch.receiveShadow = true; g.add(pitch);
 
   // ----- Stands -----
   var profile = new THREE.Shape(); profile.moveTo(0, 0);
   for (var i = 0; i < rows; i++) { profile.lineTo(i * rowD, (i + 1) * rise); profile.lineTo((i + 1) * rowD, (i + 1) * rise); }
   profile.lineTo(rows * rowD, 0); profile.lineTo(0, 0);
-  var concrete = stdm(0x7d8798, 0.9), seats = [];
+  var concrete = stdm(night ? 0x3a4152 : 0x7d8798, 0.9), seats = [];
   function stand(theta, px, pz, len, team) { // outward = local +x; extruded length = local +z
     var geo = new THREE.ExtrudeGeometry(profile, { depth: len, bevelEnabled: false }), m = new THREE.Mesh(geo, concrete);
     m.rotation.y = theta; m.position.set(px, FY, pz); m.updateMatrix(); g.add(m);
@@ -137,7 +151,7 @@ export function buildStadium(W, D, aniso, layoutName, quality) {
   bodies.frustumCulled = heads.frustumCulled = false;
   pts.forEach(function (p, i) {
     mt.makeScale(p.sc, p.sc, p.sc).setPosition(p.x, p.y, p.z); bodies.setMatrixAt(i, mt); heads.setMatrixAt(i, mt);
-    bodies.setColorAt(i, tmpc.set(p.body)); heads.setColorAt(i, tmpc.set(p.head));
+    bodies.setColorAt(i, night ? tmpc.set(p.body).multiplyScalar(0.3) : tmpc.set(p.body)); heads.setColorAt(i, night ? tmpc.set(p.head).multiplyScalar(0.3) : tmpc.set(p.head));
   });
   g.add(bodies); g.add(heads);
   var baseY = new Float32Array(N), key = new Float32Array(N);
@@ -163,7 +177,19 @@ export function buildStadium(W, D, aniso, layoutName, quality) {
     var head = new THREE.Group(); head.position.set(x, FY + h + 1, z); head.lookAt(0, FY + 3, 0); g.add(head);
     var frame = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.0, 0.4), stdm(0x2a3144, 0.5)); head.add(frame);
     for (var a = 0; a < 3; a++) for (var b = 0; b < 4; b++) { var l = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.12), lampMat); l.position.set(-1.5 + b * 1.0, -0.9 + a * 0.9, 0.26); head.add(l); }
-    var gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xdfeaff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); gl.scale.set(15, 15, 1); gl.position.set(x, FY + h + 1, z); g.add(gl);
+    var gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xdfeaff, transparent: true, opacity: night ? 0.9 : 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); gl.scale.set(night ? 24 : 15, night ? 24 : 15, 1); gl.position.set(x, FY + h + 1, z); g.add(gl);
+    if (night) { // a faint, static beam from the lamp head down to the pitch
+      var top = new THREE.Vector3(x, FY + h + 1, z), aim = new THREE.Vector3(x * 0.25, FY, z * 0.25 + 1), len = top.distanceTo(aim);
+      var beam = new THREE.Mesh(beamGeo, beamMat); beam.scale.set(1, len, 1); beam.position.copy(top).add(aim).multiplyScalar(0.5);
+      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), aim.clone().sub(top).normalize()); beam.renderOrder = 3; g.add(beam);
+    }
+  }
+  var beamGeo = null, beamMat = null;
+  if (night) {
+    var bc = cvs(4, 64), bg2 = bc.getContext('2d'), bgr = bg2.createLinearGradient(0, 0, 0, 64);
+    bgr.addColorStop(0, 'rgba(225,235,255,.55)'); bgr.addColorStop(1, 'rgba(225,235,255,0)'); bg2.fillStyle = bgr; bg2.fillRect(0, 0, 4, 64);
+    beamGeo = new THREE.CylinderGeometry(0.9, 5.5, 1, 20, 1, true);
+    beamMat = new THREE.MeshBasicMaterial({ map: ctex(bc, 1), transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false });
   }
   var tx = backL / 2 + 1.5, tz = z0 - rows * rowD - 1.5;
   tower(-tx, tz); tower(tx, tz); tower(-standX - rows * rowD - 1.5, D / 2 + 4); tower(standX + rows * rowD + 1.5, D / 2 + 4);
@@ -202,6 +228,10 @@ export function buildStadium(W, D, aniso, layoutName, quality) {
   for (var q = 0; q < FN; q++) { var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: fT, color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); sp.visible = false; sp.renderOrder = 4; g.add(sp); flashes.push({ sp: sp, t0: 0, dur: 0 }); }
 
   // ----- One-shot effects: wave and flashbulbs -----
+  // night: the main light comes from the front-left floodlight tower (key light for the stage agent's shadows)
+  var key = null;
+  if (night) { key = keyLight(0xeef3ff, 1.35, -standX - rows * rowD - 1.5, FY + 30, D / 2 + 9, W, D); g.add(key); }
+
   var waveS = null, flashing = false;
   function setWave(t) { // t in 0..1 along the stands
     var ya = bodies.instanceMatrix.array, yb = heads.instanceMatrix.array, f = t * 1.5 - 0.25, wd = 0.15;
@@ -212,7 +242,7 @@ export function buildStadium(W, D, aniso, layoutName, quality) {
     bodies.instanceMatrix.needsUpdate = true; heads.instanceMatrix.needsUpdate = true;
   }
   var api = {
-    group: g, legs: true,
+    group: g, legs: true, key: key,
     setBoard: function (text) { paintBoard(bcv, text); btex.needsUpdate = true; },
     wave: function () { if (document.hidden || quality() < 1) return false; waveS = { t0: performance.now(), dur: 1700 }; return true; },
     flash: function () {

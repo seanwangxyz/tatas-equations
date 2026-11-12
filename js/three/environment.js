@@ -3,6 +3,9 @@
 // Everything here is generated in code (no image downloads) and is static: nothing idles or wobbles.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { buildStadium } from './stadium.js';
+import { buildBeach } from './arenas/beach.js';
+import { buildVolcano } from './arenas/volcano.js';
 
 export var FLOOR_Y = -5;
 
@@ -12,7 +15,11 @@ export var THEMES = {
   space:  { felt: '#2b2f77', rim: '#2a3050', rimMetal: 0.75, rimRough: 0.3, sun: 0xd3dcff, sunI: 2.1, fill: 0xff58d8, fillI: 1.0, sky: 0x8fa0ff, ground: 0x1a1040, hemiI: 0.7, env: 0.42, bg: ['#10123a', '#02020a'], dust: 0xbfd0ff, legs: false, fog: null },
   jungle: { felt: '#3f7f2f', rim: '#5d4322', rimMetal: 0.0, rimRough: 0.65, sun: 0xfff2b8, sunI: 2.7, fill: 0x7dffa0, fillI: 0.5, sky: 0xe2ffd8, ground: 0x244018, hemiI: 0.8, env: 0.5, bg: ['#2a5226', '#0a1a0a'], dust: 0xeaffc4, legs: true,  fog: [0x16301a, 45, 120] },
   stadium:{ felt: '#2fa84f', rim: '#e9ecef', rimMetal: 0.0, rimRough: 0.35, apron: 0x8793a6, sun: 0xf0f5ff, sunI: 2.1, fill: 0xa8c0ff, fillI: 0.45, sky: 0xd5e4ff, ground: 0x1d4a26, hemiI: 0.6, env: 0.42, bg: ['#0c1638', '#03060f'], dust: 0xe8f5e0, spark: 0xfff0b0, legs: true, fog: [0x0a1330, 60, 150] },
-  ocean:  { felt: '#1c6ea4', rim: '#caa56a', rimMetal: 0.0, rimRough: 0.5, sun: 0xfff8ee, sunI: 2.8, fill: 0x62dcff, fillI: 0.6, sky: 0xeaf7ff, ground: 0x0a3a5a, hemiI: 0.9, env: 0.6, bg: ['#79c9f0', '#0b4a78'], dust: 0xffffff, legs: true,  fog: [0x2a7fb0, 55, 150] }
+  ocean:  { felt: '#1c6ea4', rim: '#caa56a', rimMetal: 0.0, rimRough: 0.5, sun: 0xfff8ee, sunI: 2.8, fill: 0x62dcff, fillI: 0.6, sky: 0xeaf7ff, ground: 0x0a3a5a, hemiI: 0.9, env: 0.6, bg: ['#79c9f0', '#0b4a78'], dust: 0xffffff, legs: true,  fog: [0x2a7fb0, 55, 150] },
+  // Venues with their own key light (js/three/arenas/): sun/fill here are the softer helpers around it.
+  night:  { felt: '#2fa84f', rim: '#e9ecef', rimMetal: 0.0, rimRough: 0.35, apron: 0x6c7689, sun: 0xf0f5ff, sunI: 1.15, fill: 0x7d96ff, fillI: 0.35, sky: 0x8ea4d8, ground: 0x0b1d12, hemiI: 0.22, env: 0.2, bg: ['#040818', '#000105'], dust: 0xe0ecff, spark: 0xfff0b0, legs: true, fog: [0x030714, 55, 140] },
+  beach:  { felt: '#178a85', rim: '#d2ad7c', rimMetal: 0.0, rimRough: 0.55, apron: 0xb08a62, sun: 0xfff6e6, sunI: 1.3, fill: 0x9fe6ff, fillI: 0.45, sky: 0xe6f6ff, ground: 0xd9bf8a, hemiI: 0.75, env: 0.5, bg: ['#5fb8ea', '#d4f0fb'], dust: 0xfff3d6, spark: 0xfff4b0, legs: true, fog: [0xcde9f4, 60, 175] },
+  volcano:{ felt: '#4f3a9a', rim: '#6d5c7c', rimMetal: 0.0, rimRough: 0.7, apron: 0x5d4d6c, sun: 0xffe6cf, sunI: 1.0, fill: 0xff8a3d, fillI: 0.55, sky: 0xffc8a8, ground: 0x4a2a44, hemiI: 0.6, env: 0.4, bg: ['#3a1f5c', '#f0905a'], dust: 0xffdcb8, spark: 0xffb347, legs: true, fog: [0x47264a, 70, 165] }
 };
 
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -85,7 +92,9 @@ export function paintFelt(g, w, h, theme, name) {
   for (var k = 0; k < 14000; k++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * w, R() * h, 2, 2); }
   if (name === 'space') { for (var s = 0; s < 260; s++) { g.fillStyle = 'rgba(255,255,255,' + (0.15 + R() * 0.5) + ')'; var sz = R() < 0.1 ? 3 : 1.5; g.fillRect(R() * w, R() * h, sz, sz); } }
   if (name === 'jungle') { g.fillStyle = 'rgba(10,50,10,.10)'; for (var l = 0; l < 40; l++) { g.save(); g.translate(R() * w, R() * h); g.rotate(R() * 6.28); g.beginPath(); g.ellipse(0, 0, 50 + R() * 60, 14 + R() * 12, 0, 0, 6.28); g.fill(); g.restore(); } }
-  if (name === 'stadium') { var sw = w / 10; for (var sb = 0; sb < 10; sb++) { g.fillStyle = sb % 2 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)'; g.fillRect(sb * sw, 0, sw, h); } }
+  if (name === 'beach') { g.strokeStyle = 'rgba(255,255,255,.05)'; g.lineWidth = 3; for (var bw2 = 0; bw2 < 40; bw2++) { var by2 = R() * h, bx2 = R() * w; g.beginPath(); g.moveTo(bx2, by2); g.bezierCurveTo(bx2 + 40, by2 - 12, bx2 + 80, by2 + 12, bx2 + 120, by2); g.stroke(); } }
+  if (name === 'volcano') { for (var vs = 0; vs < 90; vs++) { g.fillStyle = 'rgba(255,200,255,' + (0.03 + R() * 0.05) + ')'; g.beginPath(); g.arc(R() * w, R() * h, 2 + R() * 5, 0, 6.28); g.fill(); } }
+  if (name === 'stadium' || name === 'night') { var sw = w / 10; for (var sb = 0; sb < 10; sb++) { g.fillStyle = sb % 2 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)'; g.fillRect(sb * sw, 0, sw, h); } }
   if (name === 'ocean') { g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 3; for (var wv = 0; wv < 60; wv++) { var wy = R() * h, wx = R() * w; g.beginPath(); g.moveTo(wx, wy); g.bezierCurveTo(wx + 40, wy - 14, wx + 80, wy + 14, wx + 120, wy); g.stroke(); } }
   var vg = g.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, w * 0.75);
   vg.addColorStop(0, 'rgba(255,255,255,.09)'); vg.addColorStop(1, 'rgba(0,0,0,.28)'); g.fillStyle = vg; g.fillRect(0, 0, w, h);
@@ -221,7 +230,14 @@ function spaceScene(g, W, D, R) {
 }
 
 // Builds the world around the table for a theme. Returns { group, legs }.
-export function buildEnvironment(name, W, D, aniso) {
+// The full venues (night, beach, volcano) also return the stadium-style effect API:
+// { setBoard(text), wave(), flash(), step(now), dispose(), key (their main DirectionalLight) }.
+// layoutName and quality are optional (guessed from W/D, and full quality) so older callers keep working.
+export function buildEnvironment(name, W, D, aniso, layoutName, quality) {
+  var lay = layoutName || (W < D ? 'tall' : 'wide'), q = quality || function () { return 2; };
+  if (name === 'night') return buildStadium(W, D, aniso, lay, q, { night: true });
+  if (name === 'beach') return buildBeach(W, D, aniso, lay, q, FLOOR_Y);
+  if (name === 'volcano') return buildVolcano(W, D, aniso, lay, q, FLOOR_Y);
   var g = new THREE.Group(), T = THEMES[name] || THEMES.felt, R = rng(name.length * 7919 + 13), size = 150;
   if (name === 'space') { spaceScene(g, W, D, R); return { group: g, legs: false }; }
   var mat = name === 'jungle' ? grassFloor(size, aniso) : name === 'ocean' ? waterFloor(size, aniso) : plankFloor(size, aniso);
