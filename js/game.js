@@ -31,6 +31,20 @@ function loseMood(o) {
 function talkLine(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
 function playerMood(m, opts) { if (T3.playerMood) T3.playerMood(m, opts); }
 function playerShow() { if (T3.playerShow) T3.playerShow(S.set.avatar !== false); }
+function playerCelebrate() { if (T3.playerCelebrate) T3.playerCelebrate(typeof Kit !== 'undefined' ? Kit.celebration() : undefined); else playerMood('cheer'); }
+function mateShow(o) { if (T3.mate) T3.mate(o || null); }
+function mateMood(m) { if (T3.mateMood) T3.mateMood(m); }
+// Who the people at the table look like. This device's player is a kid unless Settings says grown-up.
+function seatPeople(mode, cfg) {
+  var grown = S.set.me === 'tata';
+  if (T3.playerSet) T3.playerSet({ who: grown ? 'tata' : 'kid', name: S.name, number: S.jersey || '7' });
+  var other = grown ? 'kid' : 'tata', p1 = G.players[1];
+  if (mode === 'pvp') mateShow({ who: other, seat: 'far', name: p1.name, number: grown ? '7' : '17' });
+  else if (mode === 'online') mateShow({ who: other, seat: 'far', name: p1.name, number: p1.jersey || (grown ? '7' : '17') });
+  else if (mode === 'team' && G.team) mateShow({ who: other, seat: 'left', name: G.team.names[1], number: G.team.jerseys[1] });
+  else if (mode === 'p3') mateShow({ who: other, seat: 'left', name: p1.name, number: grown ? '7' : '17' });
+  else mateShow(null);
+}
 function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'dance' && Snd.danceMusic) Snd.danceMusic(3200); }
 function setCreature(k, pack) { if (T3.setCreature) T3.setCreature(k, pack || 'classic'); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
@@ -56,7 +70,7 @@ function startMatch(mode, oppIdx, cfg) {
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
-  setCreature(ai ? ai.kind : null, ai && ai.pack); playerShow();
+  setCreature(ai ? ai.kind : null, ai && ai.pack); playerShow(); seatPeople(mode, cfg);
   var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
@@ -213,7 +227,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); mateShow(null); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (!G) return;
@@ -589,7 +603,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerMood('cheer'); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
@@ -609,7 +623,8 @@ function endMatch() {
     banner('⚽ GOOOAL!', winners.length > 1 ? 'It\'s a tie!' : G.players[winners[0]].name + ' wins!');
     var aiI = idxs().filter(isAI).sort(function (x, y) { return G.players[y].score - G.players[x].score; })[0];
     if (aiI !== undefined) focusAI(aiI);
-    if (G.mode === 'ai3') { var sole = winners.indexOf(0) >= 0 && winners.length === 1; if (window.Trio) Trio.onMatchEnd(sole); playerMood(sole ? 'cheer' : winners.indexOf(0) >= 0 ? 'clap' : 'aw'); if (sole) { fx3('confetti'); fx3('wave'); board('GOOOAL!'); } }
+    if (G.mode === 'ai3') { var sole = winners.indexOf(0) >= 0 && winners.length === 1; if (window.Trio) Trio.onMatchEnd(sole); if (sole) playerCelebrate(); else playerMood(winners.indexOf(0) >= 0 ? 'clap' : 'aw'); if (sole) { fx3('confetti'); fx3('wave'); board('GOOOAL!'); } }
+    if (G.mode !== 'ai3') { if (winners.indexOf(0) >= 0 && winners.length === 1) { playerCelebrate(); mateMood('clap'); } else if (winners.indexOf(1) >= 0 && !isAI(1)) { mateMood('cheer'); playerMood('clap'); } }
     if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'dance' : loseMood(G.players[aiI].ai));
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
@@ -625,7 +640,7 @@ function endMatch() {
   if (window.Review) Review.afterMatch(); // REVIEW: thinks at most ~1.5 s, in small slices
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
-ACT.toMenu = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
+ACT.toMenu = function () { closeModal(); mateShow(null); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
 
 // ======================= COMPUTER PLAYER =======================
 // The decisions themselves live in js/ai.js (shared with the background worker and tests/playtest.js).

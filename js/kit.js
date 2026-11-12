@@ -23,7 +23,7 @@ var Kit = (function () {
   var CELEB = [
     { id: 'jump', name: 'Rocket Jump', icon: '🚀', how: 'A big jump with a fist to the sky' },
     { id: 'spin', name: 'Spin & Point', icon: '🌀', how: 'One full spin, then point at the sky' },
-    { id: 'robot', name: 'Robot Dance', icon: '🤖', how: 'Four stiff robot moves', lvl: 5 },
+    { id: 'robot', name: 'Robot Dance', icon: '🤖', how: 'Four stiff robot moves', crown: 1 },
     { id: 'slide', name: 'Knee Slide', icon: '⚡', how: 'Slide on your knees, arms up', beat: 3 }
   ];
   function defaults() { return { shirt: '#c9342c', pattern: 'waves', trim: '#2f8f7c', shorts: '#1f6b5a', hair: '#3b2314', hairStyle: 'swept', celebrate: 'jump' }; }
@@ -39,11 +39,13 @@ var Kit = (function () {
   function celebOpen(id) {
     var c = typeof id === 'string' ? find(id) : id; if (!c) return false;
     if (S.unlockAll) return true;
+    if (c.crown) return crownCount() >= c.crown;
     if (c.lvl) return lvl() >= c.lvl;
     if (c.beat) return beatCount() >= c.beat;
     return true;
   }
-  function lockText(c) { return c.lvl ? 'Reach Level ' + c.lvl : c.beat ? 'Beat ' + c.beat + ' different creatures (' + Math.min(beatCount(), c.beat) + '/' + c.beat + ')' : ''; }
+  function crownCount() { return window.Trio ? Trio.crowns() : 0; }
+  function lockText(c) { return c.crown ? 'Win a crown in Three at the table' : c.lvl ? 'Reach Level ' + c.lvl : c.beat ? 'Beat ' + c.beat + ' different creatures (' + Math.min(beatCount(), c.beat) + '/' + c.beat + ')' : ''; }
   // the celebration to play after a win: the chosen one if it is unlocked, else the Rocket Jump
   function celebration() { var k = get(); return celebOpen(k.celebrate) ? k.celebrate : 'jump'; }
 

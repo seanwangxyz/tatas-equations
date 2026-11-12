@@ -183,8 +183,8 @@ var Team = (function () {
       var first = !S.teamWins[idx]; S.teamWins[idx] = (S.teamWins[idx] || 0) + 1; S.beaten[idx] = true; // a team win unlocks the next creature too (Tata's choice)
       addXP(first ? 40 : 15, first ? 'First team win against ' + o.name + '!' : 'Team win against ' + o.name);
       victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', both() + ' win!'); creatureMood(loseMood(o)); Snd.setMood('win');
-      if (!shot('win')) cue('win'); playerMood('cheer'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
-    } else if (!tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
+      if (!shot('win')) cue('win'); playerCelebrate(); mateMood('cheer'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
+    } else if (!tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); mateMood('aw'); }
     else playerMood('clap');
     persist();
     var sayO = won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : o.win + ' Want a rematch?';
