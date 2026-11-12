@@ -435,7 +435,7 @@ var Online = (function () {
     else if (p.k === 'vari') { if (v && window.Vari) { var c = Vari.card(v); if (c) say('pip', 'You picked <b>' + c.icon + ' ' + esc(c.name) + '</b>!'); } answer(p, { card: v || '' }); }
   };
   function variPrompt(p) {
-    var cards = (p.cards || []).filter(function (id) { return Vari.card(id); });
+    var cards = (p.cards || []).filter(function (id) { return Vari.card(id); }).filter(function (id) { return !Vari.card(id).tier; });   // Middle cards are not synced online yet
     var v = S.vari || {}, n = Vari.unlockedCount(), fresh = n > (v.seen || 0) ? Vari.unlocked()[n - 1] : null;
     if (fresh) { if (S.vari) S.vari.seen = n; persist(); }
     pendingP = p;
@@ -718,7 +718,7 @@ var Online = (function () {
       if (window.Vari && !G.variDone) {
         G.variDone = true;
         var setter = G.setter, n = (O.guest && O.guest.cards) || 0;
-        var cards = Vari.CARDS.slice(0, n).map(function (c) { return c.id; }).filter(Vari.hasEffect);
+        var cards = Vari.CARDS.slice(0, n).map(function (c) { return c.id; }).filter(Vari.hasEffect).filter(function (id) { return !Vari.card(id).tier; });
         if (cards.length) {
           say('pip', wait(setter, 'pick a variation card')); renderGame();
           ask(setter, { k: 'vari', cards: cards }, function (ans) {

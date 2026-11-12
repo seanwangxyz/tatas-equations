@@ -241,6 +241,7 @@ function renderGame() {
     return '<div class="pl' + (i === G.turn && G.phase === 'move' ? ' turn' + (isAI(i) ? ' opp-turn' : '') : '') + '" data-pi="' + i + '">' + face + '<b>' + esc(p.name) + '</b><span class="pts" data-v="' + p.score + '">' + p.score + '</span></div>';
   }).join('');
   var goalHTML = G.goalTokens.length ? G.goalTokens.map(function (t) { return typeof t === 'string' ? ((t === '(' || t === ')') ? '<span class="paren">' + t + '</span>' : '<div class="cube c-none"><span>' + show(t) + '</span></div>') : cubeHTML(G.cubes[t.id], t.id === G.justMoved ? 'thunk' : ''); }).join('') : '<span class="empty">' + (G.phase === 'goal' ? 'waiting for the Goal…' : '') + '</span>';
+  if (window.Vari && Vari.goalHTML) { var vgH = Vari.goalHTML(''); if (vgH) goalHTML = vgH; } // VARIATIONS: turned cubes and second meanings in the Goal
   var resHTML = resC.map(function (c, i) {
     var cls = (G.selected === c.id ? 'sel' : '') + (G.highlight === c.id ? ' hl' : '');
     if (G.rolling) return cubeHTML(c, 'tumble', '--tx:' + Math.round((Math.random() - 0.5) * 400) + 'px;--rot:' + Math.round((Math.random() - 0.5) * 1080) + 'deg;animation-delay:' + (i * 35) + 'ms');
@@ -251,7 +252,7 @@ function renderGame() {
   $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
     '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>';
   if (three) {
-    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + tokensHTML(G.goalTokens, G.cubes) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + (window.Vari && Vari.wildNote() ? ' <small>(0 is wild)</small>' : '') + '</span></div>' : '';
+    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + ((window.Vari && Vari.goalHTML && Vari.goalHTML('mini')) || tokensHTML(G.goalTokens, G.cubes)) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + (window.Vari && Vari.wildNote() ? ' <small>(0 is wild)</small>' : '') + '</span></div>' : '';
     T3.attach($('#gMat')); T3.sync(G);
   } else {
     $('#gGoal').innerHTML = '';
@@ -624,7 +625,7 @@ function solHTML(i, s) {
   if (!s) return '';
   var head = '<b>' + esc(G.players[i].name) + '\'s Solution:</b> ' + (s.ok ? '<span style="color:var(--good)">' + ico('check') + ' correct</span>' : '<span style="color:var(--mute)">not quite</span>');
   if (!s.tokens) return '<p>' + head + ' (no Solution written)</p>';
-  var body = exprBox(s.tokens, G.cubes);
+  var body = (window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(s.tokens, G.cubes, G.fractions) + '</div>' : exprBox(s.tokens, G.cubes);
   if (!s.ok && s.chk && s.chk.reasons && s.chk.reasons.length) body += '<ul class="reasons">' + s.chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
   return '<div style="margin:8px 0">' + head + body + '</div>';
 }
@@ -666,7 +667,7 @@ function endShake(r) {
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div><!--replay-->' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
-    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + exprBox(sample) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(G.goal) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' :
+    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p style="text-align:center;font-weight:800">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' :
       (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.</div>' : '')) +
     idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +

@@ -139,7 +139,7 @@ function renderCamp() {
     (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
     '<div class="opps">' + cards + (typeof waysTileHTML === 'function' ? waysTileHTML() : '') +
     '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Puzzles</h3><div class="otitle">A Daily Puzzle, then as many more as you like.</div><div class="otitle">' + (daily ? '✔ Daily solved · keep going!' : 'New today!') + '</div></div>' +
-    '</div></div>';
+    '</div>' + (function () { var ls = window.Vari && Vari.unlocked ? Vari.unlocked().filter(function (c) { return c.lesson; }) : []; return ls.length ? '<h3 class="tierh">🃏 How my cards work</h3><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">' + ls.map(function (c) { return '<button class="btn" data-act="variLesson" data-arg="' + c.id + '">' + c.icon + ' ' + esc(c.name) + '</button>'; }).join('') + '</div>' : ''; })() + '</div>';
 }
 ACT.camp = function () { CAMP = null; renderCamp(); go('camp'); Snd.setMood('menu'); };
 ACT.campDrill = function (el) { startDrill(el.dataset.arg); };
