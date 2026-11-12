@@ -4,6 +4,10 @@ Files changed (mine): `js/three/player.js`, `js/three/creatures/kid.js`, `js/thr
 `js/three/table.js` (camera fit + one tween option only; orbit untouched), this note. Nothing else.
 `node tests/engine.test.js`: 379 passed.
 
+**Round 2** (owner: "he tosses the cubes"): only `js/three/player.js` and this note changed. He now carries the cube
+round the table and places it by hand (section 2, rewritten). kid.js / grownup.js unchanged. Tata's far-seat face
+checked (section 2, end). New: `T3.playerWalkSide()` for the 'ai3' second creature (wiring snippet in section 2).
+
 ## 1. His seat: bottom centre
 
 He now stands in the middle of the near side, his back to the seat camera, **feet on the pitch** (no more sinking:
@@ -47,28 +51,110 @@ Mates: `left` (Team-up, beside the left end) and `far` (across the table) work a
 him (he is in the middle of the near side now, far away). Tata as the device's own player (`S.set.me === 'tata'`)
 gets the same bottom seat.
 
-## 2. Grab and place: `T3.playerMove(id, zone, done, opts?)` / `T3.mateMove(...)`
+## 2. Picking a cube up and placing it by hand: `T3.playerMove(id, zone, done, opts?)` / `T3.mateMove(...)`
 
-Same contract as `T3.creatureMove`: done() exactly once; at once if 3D is off (`T3.active()` false; the no-WebGL stub
-also calls it at once), he is hidden / not on screen, the tab is hidden, another cube is in a hand, or anything throws;
-a 2.5 s safety timeout; the tab going hidden mid-move finishes it.
+**Update (round 2, owner feedback "he tosses the cubes"): no more lob.** He now picks the cube up with his hand, runs
+round the nearest end of the table with it, sets it down in its slot by hand like the creatures do, and walks back to
+his seat. Same API and same done() contract, so the game.js wiring below (already in game.js: `humanPlace`,
+`humanGoal`, the tap-to-finish line) works unchanged.
 
-What he does (0.6 s to done(), ~0.8 s for the arm, the cube lands ~1.0 s after the tap):
-- 0-0.26 s reach: leans over the table (at most 0.62 rad) and, for a cube off to one side, a side step along the near
-  edge (one small bob, no loop); arm stretch capped at 1.2x (creatures 1.25x);
-- 0.34 s grab (hand closes, pickup sound), 0.34-0.47 s a small lift;
-- 0.47-0.6 s an underarm lob toward the zone: **done() fires at the release**, the cube flies on its own to its slot
-  (table.js `userData.toss` -> an even-paced parabola, 300-560 ms) and lands with the usual thunk / puff;
-- then he eases back to rest and is completely still (checked: root, body, head and both hands identical over 3 s).
+### What he does
 
-Why a lob: the zones are 8+ units beyond the near rim; no lean or step reaches them without climbing on the table.
-If a slot is ever within easy reach he sets the cube down in it instead (`dropped`). If the cube itself is out of reach
-by < 3 units (back row corners) it hops up into his open hand; by more (the mate across the table picking up a Resource,
-the far end of a tall table) he reaches toward it with an open hand and it lobs straight from where it lies to its slot
-(done() at ~0.32 s). `opts.quick`: 20% faster. `T3.playerMoveFinish()` finishes any move now (cube lobs to its slot,
-done() fires synchronously). `T3.playerMoving()` is true until the release.
+The table is far bigger than his arm: the middle row of zones is 9+ units from every edge except the far one (the
+creature's). So:
 
-### Wiring for js/game.js (you own it)
+- **The way round.** He walks on a "ring" just outside the rim (the table outline grown by the same belly clearance as
+  his seat, corners rounded), so he can never walk through the table. He turns to face the way he runs, with a simple
+  leg swing whose stride matches his ground speed (no sliding), a little forward lean and bob, the free arm swinging,
+  the cube held low at his side (never over the table while he stands at its edge). Short shuffles (< 1.6 of his units)
+  are side steps facing the table.
+- **Reaching.** From the spot on the ring nearest to the cube / slot, one of three ways, whichever reaches:
+  1. *standing*: a lean (up to 0.85 rad) and a small step in;
+  2. *tummy on the rim*: he hops up, belly on the rim, legs hanging down the side of the table, feet off the ground,
+     the other hand on the felt (used when his hips can stay outside the rim);
+  3. *kneeling on the table*: further in, he climbs up onto the felt on his knees (thighs upright, shins flat behind),
+     one hand on the felt, and reaches with the cube hand. Used for the middle of the table (Permitted, the middle of
+     the Goal, middle Resources).
+  The hand path is anchored to the table: up first, then over, down onto the cube / slot, and back up; while the cube
+  is over the table its wrist target is clamped so the cube clears the felt and the rim. The cube is glued to the hand
+  (`ctx.held`, exactly like creatures.js, so table.js leaves it alone), eased from where it lay into the hand at the
+  grab, and eased exactly onto the slot before the release (`userData.dropped`, the same 380 ms settle as a creature's
+  drop). The slot is the same `slotFor` the creatures use (table.js gridSlots / the Goal row).
+- **Choosing.** A small planner tries every ring spot (every 0.6 units) for the grab and for the drop and both ways
+  round, and takes the quickest: walk + grab + drop, plus 0.3 x the walk back. Penalties: kneeling straight away from
+  the seat camera (from behind that reads as standing on the felt and hides the middle) — so middle slots are reached
+  from the side, in profile, where he clearly kneels; deeper slides cost a little more.
+- **Never through anyone.** A creature across the table: the whole far side is off limits (hard), he only goes to its
+  corners. The far mate (2 Players) is the same for the kid. The other person at the table (Team-up mate, or the kid for
+  the mate) is soft: no spot inside him, and the path goes round him on the outside (behind him). `T3.playerWalkSide()`
+  rules out a whole side (below).
+- **Timing.** done() fires the moment the cube is down; the walk back is free and calmer. A new move while he walks
+  back starts from wherever he is. `opts.quick` (Goal cubes): 25% faster run, 20% quicker hands, and he waits 0.45 s
+  where he put the cube before walking back, so the next Goal cube starts from there.
+- **At rest** he stands completely still at his seat (checked: root, body, head, hands and legs identical over 2 s
+  after a move). No loops.
+
+Measured (1280x800, kid scale 1.6, fake clock, tap -> cube down):
+
+| Move | How | Cube down |
+|---|---|---|
+| Required (left zone) | runs round the left end, tummy-grab or stand-grab, places from the left side | 1.31-1.41 s |
+| Forbidden (right zone) | the same on the right | 1.31-1.55 s |
+| Permitted (middle) | tummy-grab at his seat, runs to a side, kneels onto the table and places | 1.23 s |
+| Goal, 3 cubes (quick) | cube 1 at 1.12 s, cube 2 at 1.57 s (same side), cube 3 at 3.74 s (it was the far-right Resource: a run round the near side) | 3.7 s |
+| Team-up: Tata (left seat) to Required / Permitted | grabs and places from his own side | 0.78-0.96 s |
+| Team-up: Tata to Forbidden | runs round the near side behind the kid | 2.1 s |
+| 2 Players: Tata (far seat) | every Resource is on the near half, so he runs round to it and back | 1.5-3.0 s |
+
+The whole trip (with the walk back) is 2-3 s for the kid. Speed knobs: `T3.playerMoveTuning({ v, vBack, quickV, quickT,
+tGrab, tGrabF, tPlace, tPlaceF, linger })` (v / vBack in his own units per second).
+
+`T3.playerMoveFinish()` still finishes everything at once: the cube goes straight into its slot (no flight) and done()
+fires synchronously, exactly once; he then walks back from where he is (no teleport). 3D off / avatar hidden / tab
+hidden / any error: done() at once. Safety timeout: max(2.5 s, planned release + 1.5 s). Hiding him, `T3.playerSet`,
+`T3.mate(...)`, or the tab going hidden snaps him home.
+
+### Walking side: `T3.playerWalkSide('auto' | 'right' | 'left')` (for the 'ai3' second creature)
+
+Applies to both people. `'right'` = never round the left side of the table (spots and paths with x left of the table
+are ruled out). Left-zone slots are then reached from the near side or the near-left corner by kneeling in; if nothing
+is reachable within the normal slide it allows a longer one (he kneels further onto the table) and, as a last resort, sets
+the cube down as close as he gets (it settles into the slot). Wiring in game.js `startMatch` after `setCreature...`:
+
+```js
+if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' ? 'right' : 'auto');   // a second creature sits at the left side
+```
+
+(Or call it from wherever `T3.setCreature2` is called / cleared.) If creatures.js ever exposes the second creature's
+position, a soft or hard obstacle can be added in `obstaclesFor` (player.js) instead.
+
+### Camera / on screen
+
+- Wide screens (1280x800, canvas 1260x632): his head stays inside the picture for the whole trip (0 frames off), also
+  in Team-up and 2 Players.
+- 1024x768 (canvas 1004x578): ~5 frames (80 ms) where the centre of his head touches the bottom edge while he runs
+  along the near side (his seat is sized so his head just shows; running there is the same height). Nothing at the
+  sides.
+- Narrower (749x570 pane): he leaves the picture at the side for about 1 s per trip (the side of the table is outside
+  the view).
+- Tall (400x800, 'tall' layout): the table fills the width, so he runs outside the picture along the side (~1 s each
+  way) and comes into view when he climbs onto the edge to place the cube (the placing itself is visible).
+- Team-up: when Tata has to cross to the right side, he passes behind the kid, i.e. between the kid and the camera,
+  below the bottom edge of the picture for ~0.6 s.
+- The seat, the camera fit and the head room are unchanged (section 1).
+
+### Tata's face across the table (2 Players)
+
+Checked from the seat camera at 1280x800, also with a zoomed render along the seat camera's line of sight: with the
+head lifted by `FAR.look = -0.5` (now a named value in player.js; only applied while he stands at his far seat, not
+while he walks) his face reads well: eyes, brows under the fringe, nose, stubble and the smile, looking toward the
+camera, not craning. Kept as is.
+
+### Wiring for js/game.js (round 1; already in game.js, unchanged by round 2)
+
+Verified again in round 2 with the real `humanGoal` and the `ACT.cubeTap` skip (`G.skipCarry` + `T3.playerMoveFinish()`):
+all Goal cubes land at once, `G.carrying` / `G.busy` clear, he walks home. (The timings quoted in this subsection are
+round 1's lob; see the table above for the new ones.)
 
 Next to `aiPlace` (line ~51):
 
@@ -159,6 +245,29 @@ colour (a little darker). Hair now has per-vertex shading (its own material; the
 Saved kits keep their hair colour.
 
 ## Verified / not verified
+
+**Round 2** (browser pane, port 3491, frames driven by a fake clock + a timer requestAnimationFrame shim, measured
+per frame: done() time and count, the cube's lowest height while held over the table, whether his body ever enters
+the table outline below rim height, distance to the creature / the other person, his head on / off screen):
+moves to Required, Permitted, Forbidden from his seat (ai mode) at 1280x800, 1024x768 and 400x800 (tall); the Goal
+sequence through the real `humanGoal` (3 cubes) and the real tap-to-skip; back-to-back moves (the second starting
+while he walks back); `T3.playerMoveFinish()` before the grab, while carrying, and twice (done() once); a hidden
+avatar (done() at once, once); stillness at rest after moves; Team-up with Tata at the left seat (kid and Tata to each
+zone; the kid never enters Tata's space, Tata passes behind the kid); 2 Players (Tata from the far seat to each zone,
+the kid's moves with the far side ruled out); Tata's far-seat face. The cube always ends exactly on the slot table.js
+syncs it to, never dips below the felt while held (lowest 0.5 = resting height), no console errors.
+Screenshots looked at: running up the side, tummy on the rim, kneeling on the table in profile, placing.
+
+`T3.playerWalkSide('right')` tested without a real second creature: he never goes left of the table (lowest x of his
+body -3.5), Required moves are done in 0.8-0.93 s by kneeling in from the near side / the middle of the table, cube
+exact, done() once. Judgment: that kneel is seen more from behind, so he looks more "on" the table than in profile;
+fine as the 'ai3' fallback, but if it bothers the owner, let creature 2 leave him the near-left corner and add its
+position as an obstacle instead of ruling out the whole side.
+
+Not verified (round 2): with a real second creature (another helper's code); 2000x1000; real devices / 60 fps feel;
+orbiting while he walks (positions are in world space, so the orbit can't disturb him, but not looked at); online.
+
+Round 1:
 
 Verified in the desktop browser pane (port 3481, frames driven by a fake clock for the step-through): the seat at
 1280x800, 2000x1000, 1024x768 and 400x800 (and Tata as the main player); side views (feet on the pitch, leaning over the
