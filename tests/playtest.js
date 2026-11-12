@@ -148,7 +148,7 @@ function pairing(A, B, quiet) {
 }
 
 console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing`);
-for (let i = 0; i < OPPONENTS.length - 1; i++) if (i !== 4) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
+for (let i = 0; i < OPPONENTS.length - 1; i++) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
 OPPONENTS.forEach(o => pairing(BEGINNER, o));
 [0, 1, 2, 4].forEach(i => pairing(PRACTICED, OPPONENTS[i]));
 [0, 1].forEach(i => pairing(TRICK, OPPONENTS[i]));
@@ -158,7 +158,7 @@ const R = (A, B) => results.find(r => r.A === A && r.B === B);
 const line = (A, B) => { const r = R(A, B); return `${A} ${r.a.toFixed(2)} - ${r.b.toFixed(2)} ${B}  (margin ${(r.a - r.b >= 0 ? '+' : '') + (r.a - r.b).toFixed(2)})`; };
 console.log(`\n===== SUMMARY: stage ${STAGE}, ${N} shakes per pairing, average points per shake =====`);
 console.log('Ladder (each should beat the one below it, i.e. the second name should win):');
-for (let i = 0; i < OPPONENTS.length - 1; i++) if (i !== 4) console.log('  ' + line(OPPONENTS[i].name, OPPONENTS[i + 1].name));
+for (let i = 0; i < OPPONENTS.length - 1; i++) console.log('  ' + line(OPPONENTS[i].name, OPPONENTS[i + 1].name));
 console.log('Kids:');
 console.log('  ' + line('Beginner kid', OPPONENTS[0].name));
 console.log('  ' + line('Beginner kid', OPPONENTS[1].name));

@@ -85,14 +85,14 @@ function renderSetup() {
   var oppCards = OPPONENTS.map(function (o, i) {
     var open = oppOpen(i);
     return '<div class="opp' + (open ? '' : ' lock') + '" data-act="' + (open ? 'playOpp' : 'lockedOpp') + '" data-arg="' + i + '">' + (S.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') +
-      '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + '★'.repeat(o.stars) + '<span style="opacity:.3">' + '★'.repeat(5 - o.stars) + '</span></div>' +
+      '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + oppStars(o) + '</div>' +
       (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
   var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE).join('');
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
     '<div class="panel"><h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
-    '<h3 class="tierh">👹 Monster League</h3><div class="opps">' + monsters + '</div>' +
+    '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
     '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
