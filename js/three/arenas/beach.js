@@ -1,8 +1,8 @@
 // Beach venue: a sunny beach-soccer pitch. Sand with rope lines, the sea and a hazy horizon behind,
 // palm trees, umbrellas and towels, and a small wooden stand of spectators beside a wooden scoreboard.
-// All static (no waves rolling, no swaying palms); the crowd wave and camera flashes are one-shot.
+// All static (no waves rolling, no swaying palms); the crowd reactions and camera flashes are one-shot.
 import * as THREE from 'three';
-import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, makeBoard, makeCrowd, venueApi, keyLight, venueLayout } from './common.js';
+import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, makeBoard, makeBlockCrowd, HEAD_TOP, venueApi, keyLight, venueLayout } from './common.js';
 
 var BOARD = { bg0: '#0b4f6c', bg1: '#06324a', rows: 'rgba(255,255,255,.035)', head: '#f08c00', headText: '#fff4d6', title: "🌴  TATA'S EQUATIONS  🌴", text: '#ffe066', glow: '#ff9500', edge: '#c98a3c' };
 
@@ -130,24 +130,22 @@ export function buildBeach(W, D, aniso, layoutName, quality, FY) {
   var roof = new THREE.Mesh(mergeGeos(roofParts), stdm(0xffffff, 0.8, { vertexColors: true })); roof.castShadow = true; g.add(roof);
 
   var shirts = ['#ff6b6b', '#4dabf7', '#ffd43b', '#51cf66', '#ff922b', '#f783ac', '#ffffff', '#20c997', '#cc5de8'], skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a9714b'];
-  var pts = [], hatPts = [], v = new THREE.Vector3();
+  var hairs = ['#2b1d14', '#3b2416', '#1a1a1a', '#6b4423', '#e0b96a', '#c8a165', '#8a3b1c'], hatCols = ['#fff3bf', '#ffe8cc', '#ff8787', '#74c0fc'];
+  var pts = [], v = new THREE.Vector3();
   for (var r = 0; r < standRows; r++) {
     var step = 0.66, cnt = Math.floor((standL - 1.0) / step);
     for (var k = 0; k < cnt; k++) {
       if (R() < 0.1) continue;
       v.set(r * rowD + rowD * 0.55 + (R() - 0.5) * 0.1, (r + 1) * rise, 0.5 + k * step + (R() - 0.5) * 0.14).applyMatrix4(stand.matrix);
-      var p = { x: v.x, y: v.y, z: v.z, ry: 0, sc: 0.9 + R() * 0.25, body: shirts[Math.floor(R() * shirts.length)], head: skins[Math.floor(R() * skins.length)], key: (v.x - (standX - standL / 2)) / standL };
-      pts.push(p);
-      if (R() < 0.4) hatPts.push({ x: p.x, y: p.y, z: p.z, sc: p.sc, key: p.key, hat: ['#fff3bf', '#ffe8cc', '#ff8787', '#74c0fc'][Math.floor(R() * 4)] });
+      var hat = R() < 0.4 ? hatCols[Math.floor(R() * 4)] : null; // people in sun hats have no hair cap
+      pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z) + (R() - 0.5) * 0.3, sc: 0.9 + R() * 0.25, shirt: shirts[Math.floor(R() * shirts.length)], skin: skins[Math.floor(R() * skins.length)],
+        hair: hat ? null : hairs[Math.floor(R() * hairs.length)], hat: hat, key: (v.x - (standX - standL / 2)) / standL });
     }
   }
-  var crowd = makeCrowd(g, pts, [
-    { geo: new THREE.BoxGeometry(0.46, 0.5, 0.34).translate(0, 0.27, 0), mat: stdm(0xffffff, 0.85), col: 'body' },
-    { geo: new THREE.IcosahedronGeometry(0.19, 0).translate(0, 0.74, 0), mat: stdm(0xffffff, 0.8), col: 'head' }
-  ]);
-  // sun hats (a separate instanced set on some heads; they ride along with the wave)
-  var hats = makeCrowd(g, hatPts, [{ geo: mergeGeos([{ geo: new THREE.CylinderGeometry(0.34, 0.34, 0.03, 12), m: mtx(0, 0.86, 0) }, { geo: new THREE.CylinderGeometry(0.15, 0.19, 0.16, 10), m: mtx(0, 0.93, 0) }]), mat: stdm(0xffffff, 0.9, { vertexColors: true }), col: 'hat' }]);
-  var both = { N: crowd.N, setWave: function (t) { crowd.setWave(t); hats.setWave(t); } };
+  // block people in t-shirts (bare arms); sun hats ride on the heads as an extra instanced set
+  var hatGeo = mergeGeos([{ geo: new THREE.CylinderGeometry(0.34, 0.34, 0.03, 12), m: mtx(0, HEAD_TOP + 0.015, 0) }, { geo: new THREE.CylinderGeometry(0.17, 0.2, 0.12, 10), m: mtx(0, HEAD_TOP + 0.07, 0) }]);
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, armCol: 'skin', extras: [{ geo: hatGeo, mat: stdm(0xffffff, 0.9, { vertexColors: true }), has: 'hat', col: 'hat' }] });
+  pts = crowd.pts;
 
   // ----- Wooden scoreboard on posts in the sand -----
   var bw = L.boardW, bh = L.boardH, bx = L.boardX, bz = z0 - 1.4, by = FY + (tall ? 3.4 : 1.6) + bh / 2; // taller posts in portrait so the table corner never hides the text
@@ -180,5 +178,5 @@ export function buildBeach(W, D, aniso, layoutName, quality, FY) {
   var sunG = new THREE.Sprite(new THREE.SpriteMaterial({ map: softTex(), color: 0xfff4c2, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   sunG.scale.set(40, 40, 1); sunG.position.set(30, FY + 18, shoreZ - 90); g.add(sunG);
 
-  return venueApi({ group: g, crowd: both, pts: pts, quality: quality, setBoard: board.setBoard, flashColor: 0xfff6d0, flashN: 16, key: key });
+  return venueApi({ group: g, crowd: crowd, pts: pts, quality: quality, setBoard: board.setBoard, flashColor: 0xfff6d0, flashN: 16, key: key });
 }

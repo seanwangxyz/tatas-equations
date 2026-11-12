@@ -1,0 +1,125 @@
+'use strict';
+// ======================= CROWD SOUNDS + crowdReact() (classic script) =======================
+// CrowdSfx.play(kind)   kind: 'clap' | 'ooh' | 'gasp' | 'cheer' | 'aw' ('aww' accepted). Returns ms, 0 if nothing played.
+//   Small, soft, synthesised with the Web Audio API (no audio files). At most one crowd sound about every
+//   second (CrowdSfx.GAP ms); honours S.set.mute and the S.set.sfx volume (0..1, default 0.8).
+//   Uses the game's audio context if js/sound.js exposes one (Snd.context() / Snd.ctx), otherwise makes its
+//   own, unlocked by the first tap or key press (iPad Safari needs a gesture).
+// crowdReact(kind, opts) one call for game code: the 3D crowd reacts (T3.crowd, when the 3D table is on)
+//   and the matching sound plays. Does nothing when S.set.crowd === false. Never throws.
+var CrowdSfx = (function () {
+  var ac = null, own = false, out = null, noise = null, last = -1e9, hooked = false, GAP = 950;
+  function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
+  function level() {
+    var st = setg(); if (st.mute) return 0;
+    var v = st.sfx; v = (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.8;
+    return v;
+  }
+  function shared() {
+    try {
+      if (typeof Snd === 'undefined' || !Snd) return null;
+      var c = typeof Snd.context === 'function' ? Snd.context() : Snd.ctx;
+      return c && c.createGain ? c : null;
+    } catch (e) { return null; }
+  }
+  function ctx() {
+    var c = shared();
+    if (c && c !== ac) { ac = c; own = false; out = null; noise = null; }
+    if (!ac) {
+      var AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+      if (!AC) return null;
+      try { ac = new AC(); own = true; } catch (e) { ac = null; return null; }
+    }
+    if (ac.state === 'suspended' && ac.resume) { try { var p = ac.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+    return ac;
+  }
+  function unlock() { if (level() > 0) ctx(); }
+  function hook() {
+    if (hooked || typeof document === 'undefined') return; hooked = true;
+    ['pointerdown', 'touchend', 'keydown'].forEach(function (ev) { document.addEventListener(ev, unlock, { passive: true }); });
+    document.addEventListener('visibilitychange', function () {
+      try { if (!ac || !own) return; var p = document.hidden ? ac.suspend() : ac.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    });
+  }
+  hook();
+  // output chain: gain -> gentle lowpass (nothing harsh) -> soft compressor -> speakers
+  function bus() {
+    if (out && out.ctx === ac) return out;
+    var g = ac.createGain(), lp = ac.createBiquadFilter(), cp = ac.createDynamicsCompressor();
+    lp.type = 'lowpass'; lp.frequency.value = 4200; lp.Q.value = 0.5;
+    cp.threshold.value = -20; cp.knee.value = 12; cp.ratio.value = 4; cp.attack.value = 0.01; cp.release.value = 0.25;
+    g.connect(lp); lp.connect(cp); cp.connect(ac.destination);
+    out = { ctx: ac, g: g }; return out;
+  }
+  function noiseBuf() {
+    if (noise && noise.ctx === ac) return noise.b;
+    var sr = ac.sampleRate, b = ac.createBuffer(1, Math.floor(sr * 2), sr), d = b.getChannelData(0), lp = 0;
+    for (var i = 0; i < d.length; i++) { lp += ((Math.random() * 2 - 1) - lp) * 0.5; d[i] = lp * 1.4; } // slightly softened white noise
+    noise = { ctx: ac, b: b }; return b;
+  }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function pan(node, p) { if (!ac.createStereoPanner) return node; var s = ac.createStereoPanner(); s.pan.value = p; node.connect(s); return s; }
+  function stopAt(nodes, t) { setTimeout(function () { nodes.forEach(function (n) { try { n.disconnect(); } catch (e) {} }); }, Math.max(0, (t - ac.currentTime) * 1000) + 200); }
+  // one filtered noise burst: a hand clap or a breath
+  function burst(t, dur, f, q, vol, p, type, f2) {
+    var s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain();
+    s.buffer = noiseBuf(); fl.type = type || 'bandpass'; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
+    if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.006, dur / 4) + (type === 'lowpass' ? dur * 0.3 : 0)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(fl); fl.connect(g); pan(g, p).connect(bus().g);
+    s.start(t, Math.random() * Math.max(0, 1.9 - dur), dur + 0.05); stopAt([s, fl, g], t + dur);
+  }
+  // one soft voice: a triangle wave through two vowel formants, gliding from f0 to f1
+  var VOW = { oo: [320, 800], oh: [450, 850], ah: [700, 1150], aw: [600, 950], ay: [550, 1700] };
+  function voice(t, dur, f0, f1, vow, vol, p, att) {
+    var o = ac.createOscillator(), g = ac.createGain(), mix = ac.createGain(), fm = VOW[vow] || VOW.ah, nodes = [o, g, mix];
+    o.type = 'triangle'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+    o.detune.value = rnd(-25, 25);
+    for (var k = 0; k < 2; k++) { var b = ac.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = fm[k] * rnd(0.94, 1.06); b.Q.value = 4; g.connect(b); b.connect(mix); nodes.push(b); }
+    var a = att || 0.08;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + a); g.gain.setValueAtTime(vol, t + Math.max(a, dur - 0.25)); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); pan(mix, p).connect(bus().g);
+    o.start(t); o.stop(t + dur + 0.05); stopAt(nodes, t + dur);
+  }
+  function claps(t0, span, n, vol) { for (var i = 0; i < n; i++) { var u = i / n, t = t0 + u * span + rnd(0, 0.05); burst(t, rnd(0.03, 0.06), rnd(1000, 1900), 1.3, vol * (1 - 0.6 * u) * rnd(0.6, 1), rnd(-0.6, 0.6)); } }
+  function crowdOf(n, t0, dur, lo, hi, glide, vow, vol, att) {
+    for (var i = 0; i < n; i++) { var f = rnd(lo, hi), d = t0 + rnd(0, 0.08); voice(d, dur * rnd(0.85, 1.05), f, f * glide * rnd(0.97, 1.03), vow, vol, rnd(-0.7, 0.7), att); }
+  }
+  var KINDS = {
+    clap: function (t) { claps(t, 1.0, 16, 0.45); return 1100; },
+    ooh: function (t) { crowdOf(5, t, 1.0, 170, 260, 1.12, 'oo', 0.06, 0.18); burst(t, 0.9, 500, 0.7, 0.04, 0, 'lowpass'); return 1000; },
+    gasp: function (t) { burst(t, 0.34, 900, 0.8, 0.25, 0, 'bandpass', 2400); crowdOf(3, t + 0.02, 0.3, 230, 320, 1.15, 'ah', 0.06, 0.04); return 400; },
+    cheer: function (t) {
+      burst(t, 1.5, 1600, 0.6, 0.08, 0, 'lowpass'); // the roar under it, soft
+      crowdOf(6, t, 1.2, 220, 360, 1.25, 'ay', 0.05, 0.1);
+      claps(t + 0.25, 1.1, 14, 0.3);
+      return 1500;
+    },
+    aw: function (t) { crowdOf(5, t, 1.0, 230, 300, 0.72, 'aw', 0.08, 0.12); return 1000; }
+  };
+  function play(kind) {
+    try {
+      kind = kind === 'aww' ? 'aw' : String(kind || '');
+      var f = KINDS[kind], v = level(); if (!f || v <= 0) return 0;
+      var now = Date.now(); if (now - last < GAP) return 0; // rate limit: about one crowd sound a second
+      var c = ctx(); if (!c || c.state === 'closed') return 0;
+      last = now;
+      var b = bus(); b.g.gain.setValueAtTime(1.1 * v, c.currentTime); // about half as loud as the game's own crowd sounds
+      return f(c.currentTime + 0.02);
+    } catch (e) { return 0; }
+  }
+  return { play: play, kinds: Object.keys(KINDS), GAP: GAP, _ctx: function () { return ac; } };
+})();
+
+// Game code calls this: the crowd reacts in 3D (if the 3D table is on) and makes the matching sound.
+// kind: 'clap' (ordinary move), 'ooh' (clever move), 'gasp' (a challenge), 'cheer' (win / Goal set / correct
+// Solution; opts.wave also sends a wave round the stands), 'aw' (lost a shake). Returns true if anything happened.
+function crowdReact(kind, opts) {
+  try {
+    if (typeof S !== 'undefined' && S && S.set && S.set.crowd === false) return false;
+    var seen = false;
+    if (typeof T3 !== 'undefined' && T3 && typeof T3.crowd === 'function' && (!T3.active || T3.active())) seen = !!T3.crowd(kind, opts || {});
+    var heard = CrowdSfx.play(kind) > 0;
+    return seen || heard;
+  } catch (e) { return false; }
+}
