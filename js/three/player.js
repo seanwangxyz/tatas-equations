@@ -217,7 +217,7 @@ if (T3 && T3.ctx) (function () {
   // covers the felt. He is sized so that the outline of his head (hair included) just touches that line: his hair
   // may overlap the wooden rim a little, never the felt, cubes or zone labels. The camera fit (extents hook) then
   // makes a band of room below the rim for his head and shoulders. Same rule on wide and tall screens.
-  var SEAT = { gap: 0.25, hair: 1.16, into: 1.4, low: 0.75, minS: { kid: 1.15, tata: 0.95 }, maxS: { kid: 2.3, tata: 1.9 } };
+  var SEAT = { gap: 0.25, hair: 1.16, into: 1.4, low: 0.15, minS: { kid: 1.0, tata: 0.85 }, maxS: { kid: 1.6, tata: 1.4 } };
   function headInfo(D, s, z) {
     // head centre (world y, z) and radius with the hair, for a person standing on the pitch with hips at z
     var hy = FLOOR_Y + (D.NECK_Y + D.HEAD_UP - D.FOOT) * s, hz = z - 0.12 * s;   // he looks a little down: the head sits a bit forward
