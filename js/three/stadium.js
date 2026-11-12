@@ -107,7 +107,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var backL = tall ? W + 16 : W + 30;
   var floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: night ? 0x0d2614 : 0x1d4d25, roughness: 1 }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = FY - 0.04; g.add(floor);
-  var pitchMap = pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ });
+  var pitchMap = pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ, size: opts && opts.pitchSize }); // opts.pitchSize: smaller canvas (title screen on tablets)
   // at night the pitch glows a little by itself (the floodlights), so it reads brighter than the stands
   var pitch = new THREE.Mesh(new THREE.PlaneGeometry(PITCH, PITCH), new THREE.MeshStandardMaterial(night ? { map: pitchMap, color: 0x3c3c40, lightMap: lightPool(), lightMapIntensity: 7, roughness: 0.95 } : { map: pitchMap, roughness: 0.95 }));
   pitch.rotation.x = -Math.PI / 2; pitch.position.y = FY; pitch.receiveShadow = true; g.add(pitch);
@@ -150,7 +150,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var bx0 = boardX - boardW / 2 - 0.3, bx1 = boardX + boardW / 2 + 0.3, bzA = z0 - 1.0 * rowD, boardY0 = FY + 1.2;
   pts = pts.filter(function (p) { return !(p.x > bx0 && p.x < bx1 && p.z < bzA - 0.2 && p.y < boardY0 + boardH + 0.4); });
   pts.forEach(function (p) { var th = Math.atan2(p.x, -(p.z - D / 2)); p.key = (th + 1.75) / 3.5; }); // 0..1 from the left side, round the back, to the right
-  var crowd = makeBlockCrowd(g, pts, { quality: quality, dim: night ? 0.34 : 1, style: 'fans', seed: 2024 });
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, dim: night ? 0.34 : 1, style: 'fans', seed: 2024, detached: !!(opts && opts.detached) }); // opts.detached: see crowd.js
   pts = crowd.pts; var N = pts.length;
 
   // ----- Ad boards along the touchline, trackside -----

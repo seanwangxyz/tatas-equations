@@ -121,6 +121,7 @@ function go(id) {
     s.classList.toggle('on', on);
   });
   current = id;
+  if (window.Title3D) Title3D.screen(id); // TITLE: the 3D title scene stops (and later frees itself) on any other screen
 }
 var lastTheme = '';
 function applyCosmetics() {
@@ -131,6 +132,8 @@ function applyCosmetics() {
 // ----- Intro -----
 var introTimers = [];
 function runIntro() {
+  if (window.TitleSfx) TitleSfx.unlock(); // TITLE: this is the first tap, so the title's own sounds can start
+  if (title3dOK()) { finishIntro(); return; } // the 3D title has its own opening (js/three/title.js)
   go('intro');
   var colors = ['red', 'blue', 'green', 'black'], k = 0;
   function row(word) {
@@ -173,24 +176,59 @@ function xpBarHTML() {
   var L = level(), a = xpForLevel(L), b = xpForLevel(L + 1), pct = Math.round(100 * (S.xp - a) / (b - a));
   return '<div class="xpbar"><i style="width:' + pct + '%"></i><span>Level ' + L + ' · ' + S.xp + ' / ' + b + ' XP</span></div>';
 }
+// ----- 3D title (js/three/title.js fills in window.Title3D; js/title-sfx.js the sounds) -----
+// Without WebGL, with 3D switched off, or until the module has loaded, the flat title below is used as before.
+var titleSeen = false;
+function title3dOK() { return !!(window.Title3D && Title3D.ok()); }
+// the module has loaded: upgrade whatever is on screen
+window.titleSceneReady = function () {
+  // the menu music waits for the end of the first opening (also when he leaves the title before it ends)
+  Title3D.onIntroEnd = function (kind) { if (kind === 'full' && current !== 'game') Snd.setMood('menu'); };
+  if (current === 'splash' || current === 'dedication') splash3d();
+  else if (current === 'title') gotoTitle();
+};
+// the 3D scene could not be built: back to the flat title
+window.titleSceneFailed = function () {
+  $('#splash').classList.remove('t3'); $('#title').classList.remove('t3', 't3-rest');
+  if (current === 'title') gotoTitle();
+};
+function splash3d() { if (title3dOK() && Title3D.show('splash')) $('#splash').classList.add('t3'); }
+// soft hover / press sounds on the title's buttons (mouse hover only: a finger has no hover)
+(function () {
+  function onBtn(e) { var b = e.target && e.target.closest && e.target.closest('#title .btn, #splash .btn'); return b; }
+  document.addEventListener('pointerover', function (e) { if (e.pointerType === 'mouse' && window.TitleSfx && onBtn(e) && !(e.relatedTarget && onBtn(e) && onBtn(e).contains(e.relatedTarget))) TitleSfx.ui('hover'); });
+  document.addEventListener('pointerdown', function (e) { if (window.TitleSfx && onBtn(e)) { TitleSfx.unlock(); TitleSfx.ui('press'); } });
+})();
 function gotoTitle() {
   applyCosmetics();
   var greets = ['Hi, ' + esc(S.name) + '! Ready to make some equations?', 'Welcome back, ' + esc(S.name) + '! Let\'s roll some cubes!', 'Math time! I\'ve been practicing my moves.', 'Hi ' + esc(S.name) + '! Every Solution makes your brain stronger!'];
-  var st = stageInfo();
-  $('#title').innerHTML =
-    '<div class="title-top"><div class="logo">Tata\'s<span class="eq">Equations</span></div></div>' +
-    '<div class="row" style="margin:4px 0 10px;flex-wrap:nowrap">' + pipHTML('happy', 100, '') + '<div class="bubble">' + greets[Math.floor(Math.random() * greets.length)] + '</div></div>' +
+  var st = stageInfo(), t3 = title3dOK();
+  function item(cls, act, icon, label) { return '<button class="btn big ' + cls + '" data-act="' + act + '"><span class="bi">' + ico(icon) + '</span><span class="bl">' + label + '</span></button>'; }
+  var el = $('#title');
+  el.classList.toggle('t3', t3); el.classList.remove('t3-rest');
+  el.innerHTML =
+    '<div class="title-top"><h1 class="logo t-logo">Tata\'s<span class="eq">Equations</span></h1></div>' +
+    '<div class="t-greet">' + pipHTML('happy', 100, 't-pip') + '<div class="bubble">' + greets[Math.floor(Math.random() * greets.length)] + '</div></div>' +
+    '<div class="t-panel">' +
     '<div class="playercard"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + '</div>' + xpBarHTML() + '</div></div>' +
     '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
-    '<div class="menu">' +
-    '<button class="btn big green hero" data-act="setup">' + ico('play') + ' Play</button>' +
-    '<button class="btn big yellow" data-act="camp">' + ico('star') + ' Training Camp</button>' +
-    '<button class="btn big purple" data-act="trophies">' + ico('trophy') + ' Trophy Room</button>' +
-    '<button class="btn big blue" data-act="settings">' + ico('gear') + ' Settings</button>' +
-    '<button class="btn big orange" data-act="tutorial">' + ico('cap') + ' How to Play</button>' +
-    '</div>' +
+    '<nav class="menu" aria-label="Main menu">' +
+    '<button class="btn big green hero" data-act="setup"><span class="bi">' + ico('play') + '</span><span class="bl">Play</span></button>' +
+    item('yellow', 'camp', 'star', 'Training Camp') +
+    item('purple', 'trophies', 'trophy', 'Trophy Room') +
+    item('blue', 'settings', 'gear', 'Settings') +
+    item('orange', 'tutorial', 'cap', 'How to Play') +
+    '</nav>' +
     '<div class="menu-sub"><button class="btn ghost" data-act="stats">' + ico('chart') + ' My Stats</button></div>' +
-    (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>');
+    (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>') +
+    '</div>';
   go('title');
-  Snd.setMood('menu');
+  var full = !titleSeen; titleSeen = true;
+  if (t3 && Title3D.show('title', { intro: full ? 'full' : 'short' })) {
+    // the game's menu music (if it is on) waits for the end of the first opening, so it never plays over the fanfare
+    if (full) Snd.setMood('off'); else Snd.setMood('menu');
+  } else {
+    el.classList.remove('t3');
+    Snd.setMood('menu');
+  }
 }

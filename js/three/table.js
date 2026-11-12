@@ -1334,5 +1334,6 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     } catch (e) { return ''; }
   };
   Q = createQuality(applyQuality);
+  api.drawCubeFace = drawFace; // (g, color, symbol, skin) on a 128x128 canvas space: the title screen's cubes (js/three/title.js) use it
   api.ctx = ctx;
 })();
