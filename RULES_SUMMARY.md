@@ -234,11 +234,7 @@ The engine can play several cards at once (they are tested together a little), b
 
 | Variation | Why not (for now) |
 |---|---|
-| 1 Sideways (a number cube means 1 ÷ that number) | Needs fractions, and a way to show a sideways number cube. Could come after Fractions unlock |
-| 2 Upside-down (a number cube means its negative) | Negative numbers; the game avoids minus signs in front of numbers |
-| 4 Factorial (two ! signs, written in) | ! is not a cube, and the writer may also put ! into the **Goal** (the rules' example reads the Goal 9 ÷ 8 as 9! ÷ 8!), so the Goal's value would change with the writer. Numbers get huge fast |
-| 9 LCM, 10 GCF, 11 Number of Factors (2026-27 list) | They give √, ^ and × a second meaning; middle-school ideas; confusing next to the normal meaning |
-| 12–15 Average, Smallest Prime, Percent, Decimal Point | The even-year list: not played in Elementary in 2026-27 |
+| 1 Sideways, 2 Upside-down, 4 Factorial, 9 LCM, 10 GCF, 11 Number of Factors, 12–15 Average, Smallest Prime, Percent, Decimal Point | Now built as second-tier cards, after the five above: see section 6 |
 
 ### When cards unlock (house rule, not in the rulebook)
 - Cards start only after the basics: the first card arrives when the ladder reaches **Fractions**
@@ -248,3 +244,162 @@ The engine can play several cards at once (they are tested together a little), b
 - A new card is announced once, calmly, the next time a Goal is set.
 - A creature only picks cards the kid has already unlocked.
 - Parent corner switch "Variation cards" turns them all off (see docs/handoff/variations.md).
+
+---
+
+## 6. Middle-division variation cards (the second tier)
+
+Sources, read for this tier on 2026-11-12:
+- the same *Equations Tournament Rules 2026-27* PDF, downloaded again from agloa.org; sections XIII-A (Elementary list,
+  where several of these cards have their examples), XIII-B (Middle list, pages E20–E23), VII-B-6 (default groupings),
+  VII-C-5 (checking), and Appendix A (how a writer marks a turned cube or a second meaning, pages EA1–EA7). The text
+  conversion drops symbols such as √, ÷ and the drawn upside-down radical, so I read those pages as page images too;
+- the judges' manual (sections B-II, C-II, E-II). It is copyrighted, so below I only cite situation numbers (B45, E58, …).
+  Every number cited here is also in a test in `tests/engine.test.js` (block "MIDDLE-DIVISION VARIATION CARDS").
+
+### Which list each card comes from
+
+The owner asked for "Middle division" cards. In the 2026-27 PDF they are not all on the Middle list:
+
+| Card | Official place (2026-27 PDF) | Played in Middle? |
+|---|---|---|
+| Upside-down, Sideways, Factorial | XIII-B-1, B-2, B-4 (examples under XIII-A-1, A-2, A-4) | yes, every year |
+| Base m, Multiple of k | XIII-B-6, B-7 | yes, every year |
+| Number of Factors | XIII-B-8 (examples under XIII-A-11) | yes, 2026-27 |
+| Exponent, Powers of the Base | XIII-B-9, B-10 | yes, 2026-27 |
+| Average, Percent, Decimal Point | XIII-B-11, B-12, B-13 (examples under XIII-A-12, A-14, A-15) | 2027-28 |
+| Smallest Prime, LCM, GCF | XIII-A-13, A-9, A-10 | **Elementary list only** (not on the Middle list) |
+
+All fourteen are official AGLOA variations; the card shows its reference. Smallest Prime, LCM and GCF use their
+Elementary wording (Smallest Prime: A ≤ 200; Number of Factors uses the Middle limit A ≤ 1000).
+
+### How cards work in the game (same as section 5, plus)
+
+- One card per shake, picked by the Goal-setter, "No card" always allowed, no timer (section 5).
+- **Unlocking:** after the five Elementary cards, the same rule continues: one new card every **4 skill points**, in
+  this order (easiest first for an 8-year-old):
+  Average → Upside-down → Sideways → Exponent Colour → Multiple of k → Powers of Ten → Factorial → Number of Factors →
+  Smallest Prime → LCM → GCF → Percent → Decimal Point → Base m. (`CARDS` order and `STAR_STEP` in `js/variations.js`.)
+  So the last card arrives 72 skill points after the first one.
+- **Cards with a setting** (official: the player fills in a blank when circling the card, II-B-1-c): Multiple of k asks
+  for k = 6 to 11 (XIII-B-7), Base m for 8 or 9, Exponent Colour for a colour. A creature picks a random setting.
+- **"Must be able to affect the shake"** (II-B-2; manual General Principle 1). A card is offered only when:
+  Average: a + in Resources (the PDF's own example); Upside-down: a nonzero digit (an upside-down 0 is 0, manual B52);
+  Sideways: a nonzero digit and fractions on; Exponent: powers (^) unlocked and the chosen colour has a digit in
+  Resources (XIII-B-9 comment (c): picking a colour with no digits is illegal; only colours with digits are shown);
+  Powers of Ten: a 1; Number of Factors / Smallest Prime: a ×; LCM / Percent: a √ (Percent also needs fractions on);
+  GCF / Decimal Point: a ^ (Decimal also needs fractions on); Multiple of k, Factorial, Base m: two digits.
+  Locked operations sit in Forbidden, so a card that needs a locked cube is never offered.
+- **Creatures:** only creatures with 4 stars or more (Ollie, Mondo, Splosh, Blaze, Hex, Messy) pick Middle cards; weaker
+  ones never do but play correctly when the kid picks one (their search uses the card, they are just less clever with it).
+- **Parent corner:** one on/off switch per card (all 19), plus the existing master switch.
+
+### The fourteen cards: rule, how the game reads it, and judgment calls
+
+In the tables, ⚠ marks a judgment call or a deviation from the official rule.
+
+**Average** (XIII-B-11; examples XIII-A-12). Official: + no longer adds; it averages two numbers.
+- Game: every + (Goal and Solution) is the average; the builder writes it as "+ average". 7 + 9 = 8; 5 + (4 × 2) = 6.5.
+- ⚠ A chain like 4 + 6 + 9 has two official values ((4+6)+9 = 7, 4+(6+9) = 5.75); the game reads left to right (7)
+  and shows the value, as for the order of operations (section 4, #2). Parentheses give the other reading.
+- ⚠ With fractions switched off, an average must come out whole (like division).
+- Manual VII-C-5-f example (b): a Solution that only works if + adds is wrong. The feedback says so.
+
+**Upside-down** (XIII-B-2; examples XIII-A-2). Official: a number cube upside-down is its additive inverse.
+- Game: tap a number cube in the builder to turn it; it is drawn upside-down with "−3" underneath. Goal and Solution.
+- A turned cube is a number by itself: it cannot touch another digit (PDF "62 is not legal"; manual B48, B49, E33, E34).
+- An upside-down 0 is 0, so 0 is not offered for turning (manual B52 says it can't even be told apart).
+- One 2 upright and another upside-down is fine (manual E32). The placement on the mat binds nobody (manual C31).
+- ⚠ Powers and roots still follow the Elementary "General Rule" (section 3): (−2)^2 is refused, although the manual's
+  B62/E53 allow negative bases in Middle. Kept for one rule set and exact whole-number powers.
+
+**Sideways** (XIII-B-1; examples XIII-A-1). Official: a nonzero number cube sideways is its reciprocal.
+- Game: tap to turn; drawn on its side with "1/3" underneath. 1 + 2 + ½ = 3.5; 1 ÷ ⅓ = 3. A sideways 0 is never allowed.
+- Same "number by itself" rule (manual B45, E30), mixed use fine (E29).
+- ⚠ Only offered with fractions on (a sideways cube IS a fraction). Both turns at once (allowed when Upside-down and
+  Sideways are both chosen) never happens: one card per shake.
+
+**Exponent Colour** (XIII-B-9; VII-B-6-b-iii). Official: a numeral on a cube of the chosen colour may be an exponent
+without a ^ cube; it applies to the numeral right before it unless grouped.
+- Game: in a Solution, a digit of that colour tapped right after a number goes in as its exponent (drawn small and raised,
+  labelled "power"); tap it to bring it down. In the Goal it goes in plain (Appendix A's default for two digits) and a
+  tap raises it. 5² = 25; (5²)³, never 5^(2^3) (PDF (c)); 4 + 3² = 13 (E50); Goal 25 then a red 3 = 25³ (PDF (a)).
+- Only a cube of that colour can be an exponent (checked in `checkSolution` with the colour's cube ids).
+- ⚠ The PDF calls some mixes ambiguous (manual E54, E55: √5!², ×12²); the game reads every postfix sign (exponent, !)
+  as binding tightest, so √9² = √(9²), and shows the value.
+- ⚠ Technical: which cubes have the colour is fixed, but their zone changes with every move. While this card is in play
+  `G.fractions` is a live value that adds fresh per-zone counts each time it is read (see `makeLive` in
+  `js/variations.js`). Everything else stays plain data.
+
+**Multiple of k** (XIII-B-7; manual E58–E61). Official: the Solution must not equal the Goal but differ from it by a
+nonzero whole multiple of k (k = 6 to 11); the Goal must be between −1000 and 1000.
+- Game: exactly that, including fractional Goals (Goal ½, Solution 6½ is fine; a whole number never is, E60). The
+  builder says "= 11: that is 6 away from the Goal, a multiple of 6. It counts!" and refuses a Solution equal to the Goal.
+- The solver (and so hints, Now!, Impossible! and the creatures) looks for any value that qualifies.
+
+**Powers of Ten** (XIII-B-10 "Powers of the Base"). Official: a 1 may stand for any integral power of ten (10, 100, …,
+0.1, 0.01, …); inside a two-digit numeral it is just 1.
+- Game: tap a 1 to cycle 1 → 10 → 100 → 1000 → 0.1 → 0.01 → 0.001. Two 1s may be different powers (E57).
+- ⚠ "Any power" is unbounded; the checker's own limit (numbers past ±1,000,000 are refused, section 4 #9) makes it
+  10^−6 … 10^6, and the solver searches all of those, so "impossible" stays truthful within the game's limits. The
+  builder's tap cycle stops at 1000 and 0.001 (larger ones are never useful with these cubes).
+- ⚠ With fractions off, only 10, 100, … (no 0.1).
+- A turned 1 can't glue into a two-digit number (the official "it stands for 1" inside a numeral).
+
+**Factorial** (XIII-B-4; examples XIII-A-4; manual E44–E46). Official: two ! signs for the whole Equation, written in,
+in the Goal and/or the Solution.
+- Game: a "!" button in both builders; the Goal and the Solution share the two (the chip says how many are left).
+  5 × 4 ÷ 0! = 20; (8 − 5)! + 2 = 4! ÷ 3; 3!! = 720; a Solution of just 5! is one cube (E44).
+- ⚠ **Deviation:** officially the Equation-writer may add ! to the Goal when writing (the PDF reads the Goal 9 ÷ 8 as
+  9! ÷ 8!). In the game the Goal-setter places any ! when setting the Goal, and that Goal is fixed for everyone (the same
+  choice as section 4 #3: one clear Goal value on screen). Solution-writers can't add ! to the Goal.
+- ⚠ 9! (362,880) is the biggest factorial the checker allows; 10! is past its limit.
+- ⚠ The PDF calls 4 + ×7! and √9! ambiguous (E41, E46); the game reads ! as binding to the number right before it,
+  before √ or ×: √9! = √(9!).
+
+**Number of Factors** (XIII-B-8; examples XIII-A-11; manual B55, C33, E39, E40). Official: ×A = how many counting
+numbers divide A (A a counting number, ≤ 1000 in Middle); × still multiplies; the place decides.
+- Game: a × with no number in front of it counts factors (start, after an operation, after "("); otherwise it
+  multiplies. The builder labels it "# factors". ×(6 × 2) = 6; ××12 = 4; 3××7 = 6; ×4×2 = 6; ×(5^4) = 5.
+
+**Smallest Prime** (XIII-A-13). Official: ×A = the smallest prime bigger than A (A rational, ≤ 200).
+- Game: same place rule as Number of Factors, labelled "next prime". ×7 = 11; ×(9 ÷ 2) = 5; ×(0 − 3) = 2; ×××9 = 17.
+
+**LCM** (XIII-A-9; manual C35, E47). Official: √ between two counting numbers may be their least common multiple; the
+writer must mark which √ is LCM (root is the default).
+- Game: tap a √ in the builder to switch root ↔ "lcm". 6 lcm 8 = 24; 6 lcm √9 = 6. It binds like a root index.
+
+**GCF** (XIII-A-10; manual E47). Official: ^ may be the greatest common factor of two whole numbers, not both 0; the
+writer marks it (exponent is the default).
+- Game: tap a ^ to switch power ↔ "gcf". 8 gcf 6 = 2; 5 gcf 0 = 5; 0 gcf 0 is refused. It sits with ^ in the order.
+
+**Percent** (XIII-B-12; examples XIII-A-14; manual C37, E48). Official: an upside-down √ means "percent of"; A and B may
+be two-digit numerals in the Goal or Solution.
+- Game: tap a √ to turn it upside-down ("percent of"). 25 % 16 = 4; 6 % 8 = 0.48. In a Solution only the numbers right
+  next to % may have two digits. ⚠ % sits with × and ÷ in the order (the PDF gives no order). Only with fractions on.
+
+**Decimal Point** (XIII-B-13; examples XIII-A-15; manual C38, E49). Official: ^ may be a decimal point joining at most
+three digits; it binds before everything.
+- Game: tap a ^ to switch power ↔ "point". 2.5, .25, 12.5, 255. (= 255), .050; 15.25 has four digits and is refused.
+  One ^ may be a point and another a power (E49). ⚠ 4^.5 = √4 = 2 officially (XIII-B-13 (a)); the game still refuses a
+  fractional exponent (Elementary General Rule, as for Upside-down above). Only with fractions on.
+
+**Base m** (XIII-B-6; manual C42–C44, E62, E63). Official: everything is read in base m (Middle: eight, nine or ten);
+two-digit numerals are allowed in Solutions; 8 and 9 don't exist in base eight.
+- Game: Base 8 or Base 9. 37 + 5 = 6 ^ 2 in base eight (both 36 in base ten). An 8 or 9 can't be used (a 9 in
+  Required makes every Goal impossible, C42). ⚠ Values on screen are shown in base ten, with "(counted in tens)" in the
+  builder: an 8-year-old reading base-8 fractions would be lost. ⚠ Base ten is left out (it would only be Two-digit
+  Numbers again). ⚠ The owner's list said bases 8, 9, 11, 12: bases eleven and twelve are on the **Junior** list
+  (XIII-C-5) and need ^ and √ cubes to act as the digits ten and eleven, so they are not built.
+
+### Left out, and why
+- **Base 11 and 12**: Junior division only (above).
+- **Combinations of cards** (and the Middle 0 Wild, where 0 may stand for an operation): one card per shake, so
+  combinations are neither offered nor tested. The engine flags are independent, but no combination is promised to work.
+
+### How the game reads every new symbol (for parents and other helpers)
+Each new meaning is one internal character, so the solver's text still splits into tokens: an upside-down digit is
+₀–₉, a sideways digit ①–⑨, an exponent ⁰–⁹, a power of ten T H K W V Z (10…10⁶) and t h k w v z (0.1…10⁻⁶), and the
+operations a (average), % (percent), g (GCF), l (LCM), f (number of factors), p (smallest prime), . (decimal point),
+! (factorial, not a cube). `Eq.cubeOf(symbol)` says which cube face each one uses; `Eq.OPDEF` in `js/engine.js` is the
+operator table (see docs/handoff/vari2.md for how to add an operator).

@@ -513,6 +513,325 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   });
 }
 
+// ================= MIDDLE-DIVISION VARIATION CARDS (RULES_SUMMARY.md section 6) =================
+// Hand-checked cases from the 2026-27 rules PDF (section XIII, examples quoted by letter) and the judges'
+// manual (situation numbers like E58). Then: every Solution the solver returns passes checkSolution after
+// the game's own cube mapping (Eq.cubeTokens), and on small cube sets an independent brute-force
+// enumerator agrees with the solver about which Goals can be made at all. Combinations of cards are not
+// supported (one card per shake), so none are tested.
+{
+  const MM = (v, set, goal, fr) => Eq.mathMode(fr !== false, [v], goal ? t(goal) : null, set);
+  const U = Eq.UD, SW = Eq.SW, X = Eq.EX;
+  const vals = (cases, label) => cases.forEach(([e, o, want, why]) => { const got = val(e, o); ok(`${label}: ${e} → ${want}${why ? ' (' + why + ')' : ''}`, got === want, got); });
+  // checkSolution on plain symbols: every token is its own cube (ids 0..n), all Permitted
+  function chkSol(expr, goal, m, extra) {
+    const toks = t(expr).map((s, i) => (s === '(' || s === ')' || s === '!') ? s : { s, id: i });
+    return Eq.checkSolution(toks, Object.assign({ goal, zone: () => 'permitted', required: [], mode: 'impossible', fractions: m, label: id => String(id) }, extra || {}));
+  }
+  const found = (m, goal, cubes, extra) => Eq.solve(Object.assign({ goal, req: [], opt: cubes, res: [], mode: 'free', fractions: m, maxDigits: 6, timeMs: 3000 }, extra || {}));
+
+  // ---- Upside-down (XIII-B-2; XIII-A-2 examples) ----
+  const ud = { fractions: MM('upside') };
+  vals([
+    ['6*' + U[2], ud, '−12', 'PDF XIII-A-2: 6 × (−2) = −12'],
+    ['6' + U[2], ud, 'ERR:flipnext', 'PDF: "62 is not legal for 6 − 2 or 60 + (−2)"; manual B48, B49, E34'],
+    ['7' + U[5], ud, 'ERR:flipnext', 'manual E33: an upside-down 5 is −5, never the minus of 7 − 5'],
+    ['2*2+' + U[2], ud, '2', 'manual E32: one 2 upright and another upside-down is fine'],
+    ['3+' + U[0], ud, '3', 'manual B52: an upside-down 0 is still 0'],
+    ['6*' + U[2], {}, 'ERR:nocard', 'manual E28/B42: a turned cube without the card is undefined'],
+  ], 'Upside-down');
+  ok('Upside-down solver: 5 × 2 can make −10 only with the card', found(MM('upside'), F(-10), ['5', '*', '2']).found && !Eq.solve({ goal: F(-10), req: [], opt: ['5', '*', '2'], mode: 'free', fractions: true, maxDigits: 6 }).found);
+  { const r = found(MM('upside'), F(3), ['5', '*', '2']); ok('Upside-down solver: 5 × 2 cannot make 3 even turned (complete search)', !r.found && r.complete, r); }
+
+  // ---- Sideways (XIII-B-1; XIII-A-1 examples) ----
+  const sw = { fractions: MM('sideways') };
+  vals([
+    ['1+2+' + SW[2], sw, '3 1/2', 'PDF XIII-A-1: 1 + 2 + 1/2 = 3.5'],
+    ['1/' + SW[3], sw, '3', 'PDF XIII-A-1: 1 ÷ (1/3) = 3'],
+    ['5+' + SW[0], sw, 'ERR:sw0', 'PDF: only a NONZERO number may go sideways'],
+    ['6' + SW[3], sw, 'ERR:flipnext', 'manual B45, E30: an operation sign must separate a sideways cube from another digit'],
+    ['2*2+' + SW[2], sw, '4 1/2', 'manual E29: one 2 upright, another sideways'],
+    ['6*' + SW[3], { fractions: MM('sideways', null, null, false) }, 'ERR:frac2', 'game: with fractions switched off a sideways cube (a fraction) is refused'],
+  ], 'Sideways');
+  ok('Sideways solver: 6 × 3 makes 2 only with the card (6 × 1/3)', found(MM('sideways'), F(2), ['6', '*', '3']).found && !found(true, F(2), ['6', '*', '3']).found);
+
+  // ---- Average (XIII-B-11; XIII-A-12 examples) ----
+  const av = { fractions: MM('average') };
+  vals([
+    ['7+9', av, '8', 'PDF XIII-A-12 (a)'],
+    ['7-(0-9)', av, '16', 'PDF (a): − is untouched'],
+    ['5+(4*2)', av, '6 1/2', 'PDF (b)'],
+    ['4+6+9', av, '7', 'PDF (c) (4+6)+9 = 7; the game reads left to right'],
+    ['4+(6+9)', av, '5 3/4', 'PDF (c) 4+(6+9) = 5.75'],
+    ['7a9', av, '8', 'the explicit average symbol'],
+    ['7a9', {}, 'ERR:nocard', 'no card: no average'],
+    ['3+4', { fractions: MM('average', null, null, false) }, 'ERR:frac2', 'game: fractions off, an average must come out whole'],
+  ], 'Average');
+  { const c = chkSol('3+5', F(8), MM('average')); ok('Average: 3 + 5 is 4 (average), so it does not equal 8 (PDF VII-C-5-f example (b))', !c.ok && c.value && Eq.fmt(c.value) === '4', c.reasons); }
+  ok('Average solver: 3 + 5 makes 4, never 8', found(MM('average'), F(4), ['3', '+', '5']).found && !found(MM('average'), F(8), ['3', '+', '5']).found);
+
+  // ---- Exponent colour (XIII-B-9; VII-B-6-b-iii) ----
+  const exm = MM('expo', { ecol: 'red', eids: [1, 2] });
+  const ex = { fractions: exm };
+  vals([
+    ['5' + X[2], ex, '25', 'PDF XIII-B-9 (b): 5² with a blue/red 2'],
+    ['5' + X[2] + X[3], ex, '15625', 'PDF (c): (5²)³ = 5⁶, never 5^(2^3)'],
+    ['4+3' + X[2], ex, '13', 'PDF VII-B-6-b-iii and manual E50: 4 + (3²), not (4 + 3)²'],
+    ['(4+1)' + X[2], ex, '25', 'Appendix A: (4+1)² is a recommended way to write it'],
+    [X[2] + '+3', ex, 'ERR:postfix', 'an exponent needs a number in front of it'],
+  ], 'Exponent');
+  { const g = Eq.checkGoal(['2', '5', X[3]], exm); ok('Exponent: Goal 25 then a red 3 means 25³ (PDF (a)), never a three-digit numeral', g.ok && Eq.fmt(g.value) === '15625'); }
+  ok('Exponent: Goal 932 with a plain 2 is a three-digit numeral, illegal (manual B71)', !Eq.checkGoal(t('932'), exm).ok);
+  { const c = Eq.checkSolution([{ s: '5', id: 0 }, { s: X[2], id: 9 }], { goal: F(25), zone: () => 'permitted', required: [], mode: 'impossible', fractions: exm }); ok('Exponent: a cube that is not the chosen colour cannot be an exponent', !c.ok && c.reasons.some(r => /colour/.test(r)), c.reasons); }
+  {
+    // the solver reads the zones' exponent-colour digits from the mode (`ex`), as the game keeps it fresh
+    const withEx = Eq.mathMode(true, ['expo'], null, { ecol: 'red', eids: [1], ex: { req: { 5: 0 }, perm: { 2: 1 }, res: {} } });
+    const noEx = Eq.mathMode(true, ['expo'], null, { ecol: 'red', eids: [], ex: { req: {}, perm: {}, res: {} } });
+    const r = Eq.solve({ goal: F(25), req: ['5'], opt: ['2'], res: [], mode: 'impossible', fractions: withEx, maxDigits: 6 });
+    ok('Exponent solver: a red 2 in Permitted makes 5² = 25', r.found && r.expr === '5' + X[2], r);
+    ok('Exponent solver: a plain 2 cannot (complete search)', (x => !x.found && x.complete)(Eq.solve({ goal: F(25), req: ['5'], opt: ['2'], res: [], mode: 'impossible', fractions: noEx, maxDigits: 6 })));
+    const cubes = [{ id: 0, s: '5', zone: 'required', color: 'blue' }, { id: 1, s: '2', zone: 'permitted', color: 'red' }];
+    const toks = Eq.cubeTokens(r.tokens, cubes, withEx);
+    ok('Exponent: the exponent is mapped to the red cube', toks[1].id === 1 && Eq.checkSolution(toks, { goal: F(25), zone: id => cubes[id].zone, required: [0], mode: 'impossible', fractions: withEx }).ok, toks);
+  }
+  {
+    // the zone counts: a red 2 that moved to Forbidden is not counted
+    const cubes = [{ id: 0, s: '2', color: 'red', zone: 'forbidden' }, { id: 1, s: '2', color: 'red', zone: 'permitted' }, { id: 2, s: '3', color: 'blue', zone: 'permitted' }];
+    const exc = Eq.expCounts(cubes, 'red');
+    ok('Exponent: expCounts counts the colour per zone', exc.perm['2'] === 1 && !exc.req['2'] && !exc.res['2'], exc);
+  }
+
+  // ---- Multiple of k (XIII-B-7; manual E58-E61) ----
+  const k6 = MM('multk', { k: 6 });
+  ok('Multiple of k: k = 6, Goal 5, Solution 11 is correct (PDF example)', chkSol('8+3', F(5), k6).ok);
+  ok('Multiple of k: k = 6, Goal 5, Solution −1 is correct (PDF example)', chkSol('2-3', F(5), k6).ok);
+  { const c = chkSol('2+3', F(5), k6); ok('Multiple of k: a Solution equal to the Goal is wrong (PDF example; manual E58)', !c.ok && /equals the Goal exactly/.test(c.reasons.join(' ')), c.reasons); }
+  { const c = chkSol('5+3', F(5), k6); ok('Multiple of k: 8 is 3 away from 5, not a multiple of 6', !c.ok && /3 away/.test(c.reasons.join(' ')), c.reasons); }
+  ok('Multiple of k: Goal 3, Solution −3 (manual E59)', chkSol('3-6', F(3), k6).ok);
+  ok('Multiple of k: Goal 1/2, Solution 6 1/2 (manual E60)', chkSol('6+1/2', F(1, 2), k6).ok);
+  ok('Multiple of k: Goal 1/2, no whole-number Solution can count (manual E60 comment)', !chkSol('3+3', F(1, 2), k6).ok);
+  ok('Multiple of k: a Goal above 1000 is refused (PDF XIII-B-7)', !Eq.checkGoal(t('99*99'), k6).ok && Eq.checkGoal(t('99*9'), k6).ok);
+  ok('Multiple of k solver: cubes 8 + 3 make 11 for Goal 5 (k = 6)', (r => r.found && r.expr.length === 3)(found(k6, F(5), ['8', '+', '3'])));
+  { const r = found(MM('multk', { k: 7 }), F(5), ['8', '+', '3']); ok('Multiple of k solver: with k = 7 nothing works (complete)', !r.found && r.complete, r); }
+  { const r = found(k6, F(11), ['8', '+', '3']); ok('Multiple of k solver: it never offers a Solution equal to the Goal (8 + 3 = 11, Goal 11)', !r.found && r.complete, r); }
+
+  // ---- Powers of the Base (XIII-B-10; manual E57, C40) ----
+  const pb = { fractions: MM('powbase') };
+  vals([
+    ['9+T', pb, '19', 'PDF (a): 9 + 10'], ['9+K', pb, '1009', 'PDF (a): 9 + 1000'], ['9+t', pb, '9 1/10', 'PDF (a): 9 + 0.1'],
+    ['9+1', pb, '10', 'PDF (a): 1 can still be 1 (10⁰)'],
+    ['T*h', pb, '1/10', 'manual E57: two 1s may be different powers'],
+    ['T2', { fractions: MM('powbase'), multiDigit: true }, 'ERR:flipnext', 'PDF: a 1 inside a two-digit numeral stands for 1'],
+  ], 'Powers of the Base');
+  ok('Powers of the Base solver: 9 + 1 makes 19 only with the card', found(MM('powbase'), F(19), ['9', '+', '1']).found && !found(true, F(19), ['9', '+', '1']).found);
+
+  // ---- Factorial (XIII-B-4; XIII-A-4 examples; manual E44, E45) ----
+  const fa = MM('factorial');
+  vals([
+    ['5*4/0!', { fractions: fa }, '20', 'PDF XIII-A-4 example (c): 0! = 1'],
+    ['3!!', { fractions: fa }, '720', 'PDF example (e)'],
+    ['(1/2)!', { fractions: fa }, 'ERR:factwhole', 'PDF example (f)'],
+    ['1/(2!)', { fractions: fa }, '1/2', 'PDF example (f)'],
+    ['0-(3!)', { fractions: fa }, '−6', 'PDF example (f)'],
+    ['4+7!', { fractions: fa }, '5044', 'manual E45: 4 + (7!), not (4 + 7)!'],
+    ['3+9!', { fractions: fa }, '362883', '9! is the biggest the checker allows'],
+    ['(9+1)!', { fractions: fa }, 'ERR:factbig', 'game limit: 10! is past the checker\'s ±1,000,000'],
+  ], 'Factorial');
+  ok('Factorial: (8 − 5)! + 2 = 4! ÷ 3 is correct (PDF example (d))', (c => c.ok)(chkSol('(8-5)!+2', F(8), Eq.mathMode(true, ['factorial'], ['4', '!', '/', '3']))));
+  { const c = chkSol('5!', F(120), fa); ok('Factorial: 5! is one cube, not a Solution (PDF example (a); manual E44)', !c.ok && /two cubes/.test(c.reasons.join(' ')), c.reasons); }
+  { const c = chkSol('8+1!', F(9), Eq.mathMode(true, ['factorial'], ['9', '!', '/', '8', '!'])); ok('Factorial: the Goal 9! ÷ 8! used both ! signs, so the Solution may use none (PDF example (b))', !c.ok && /already uses 2/.test(c.reasons.join(' ')), c.reasons); }
+  ok('Factorial: a Goal may hold at most two ! signs', !Eq.checkGoal(['3', '!', '!', '!'], fa).ok && Eq.checkGoal(['3', '!', '!'], fa).ok);
+  ok('Factorial solver: 3 + 0 makes 7 as 3! + 0!', (r => r.found && Eq.bangsIn(r.tokens) === 2)(found(fa, F(7), ['3', '+', '0'])));
+  { const r = found(Eq.mathMode(true, ['factorial'], ['5', '!']), F(7), ['3', '+', '0']); ok('Factorial solver: with one ! left in the Goal, 7 from 3 + 0 is not possible (complete)', !r.found && r.complete, r); }
+
+  // ---- Number of Factors (XIII-B-8; XIII-A-11 examples; manual B55, E39, E40) ----
+  const nf = { fractions: MM('nfactors') }, nfG = { fractions: MM('nfactors'), multiDigit: true };
+  vals([
+    ['*1', nf, '1', 'PDF XIII-A-11 (a)'], ['*(6*2)', nf, '6', 'PDF (b)'], ['*(4*4)', nf, '5', 'PDF (c)'], ['*13', nfG, '2', 'PDF (d), in a Goal'],
+    ['*0', nf, 'ERR:nfacwhole', 'PDF (e)'], ['*(1/2)', nf, 'ERR:nfacwhole', 'PDF (e)'], ['*(1-4)', nf, 'ERR:nfacwhole', 'PDF (e)'],
+    ['*(5^4)', nf, '5', 'PDF (f): x625 is allowed in Middle'],
+    ['**12', nfG, '4', 'PDF (g)'], ['3**7', nf, '6', 'PDF (h)'], ['*4*2', nf, '6', 'PDF (i): (x4) × 2'], ['*(4*2)', nf, '4', 'PDF (i): x(4×2)'],
+    ['34*5', nfG, '170', 'manual B55: the × in 34×5 is multiplication'],
+    ['5**(7-3)', nf, '15', 'manual E39: one × multiplies, the other counts factors'],
+    ['*7+9', nf, '11', 'manual E40: (x7) + 9, not x(7 + 9)'],
+    ['f6', nf, '4', 'the explicit symbol the solver writes'],
+  ], 'Number of Factors');
+  ok('Number of Factors: Eq.resolve writes a × with nothing before it as f', Eq.resolve(t('3**7'), MM('nfactors')).join('') === '3*f7');
+  ok('Number of Factors solver: × and 6 make 4 (x6), only with the card', found(MM('nfactors'), F(4), ['*', '6']).found && !found(true, F(4), ['*', '6']).found);
+
+  // ---- Smallest Prime (XIII-A-13 examples; VII-C-5-b) ----
+  const sp = { fractions: MM('sprime') }, spG = { fractions: MM('sprime'), multiDigit: true };
+  vals([
+    ['*7', sp, '11', 'PDF (a)'], ['*(9/2)', sp, '5', 'PDF (b)'], ['*(0-3)', sp, '2', 'PDF (c): 1 is not prime'], ['**5', sp, '11', 'PDF (d)'],
+    ['*r49', spG, '11', 'PDF (e)'], ['2**5', sp, '14', 'PDF (f)'], ['*5*7', sp, '49', 'PDF (g)'], ['*(5*7)', sp, '37', 'PDF (g)'], ['***9', sp, '17', 'PDF (h)'],
+    ['*(20*11)', spG, 'ERR:sprimebig', 'PDF VII-C-5-b: x(20 × 11) is past 200'],
+  ], 'Smallest Prime');
+  ok('Smallest Prime solver: 7 − 2 and a × make 9 (x7 − 2)', found(MM('sprime'), F(9), ['*', '7', '-', '2']).found);
+
+  // ---- LCM (XIII-A-9 examples; manual E47) ----
+  const lc = { fractions: MM('lcm') };
+  vals([
+    ['6l8', lc, '24', 'PDF (a)'], ['(2*3)l(5+4)', lc, '18', 'PDF (b)'], ['2l4', lc, '4', 'PDF (c) with LCM'], ['2r4', lc, '2', 'PDF (c) with root (the default)'],
+    ['0l5', lc, 'ERR:lcmwhole', 'PDF (d)'], ['6lr9', lc, '6', 'PDF (e): LCM of 6 and √9'], ['r9l2', lc, '6', 'manual E47: root and LCM in one expression'],
+  ], 'LCM');
+  ok('LCM solver: 6, √ and 8 make 24', found(MM('lcm'), F(24), ['6', 'r', '8']).found && !found(true, F(24), ['6', 'r', '8']).found);
+
+  // ---- GCF (XIII-A-10 examples) ----
+  const gc = { fractions: MM('gcf') };
+  vals([
+    ['8g6', gc, '2', 'PDF (a) with GCF'], ['8^6', gc, '262144', 'PDF (a) with exponentiation (the default)'], ['(4*2)g(6+3)', gc, '1', 'PDF (b)'],
+    ['5g0', gc, '5', 'PDF: GCF(A, 0) = A'], ['0g0', gc, 'ERR:gcfzero', 'PDF: at least one of them not 0'],
+  ], 'GCF');
+  ok('GCF solver: 8, ^ and 6 make 2', found(MM('gcf'), F(2), ['8', '^', '6']).found && !found(true, F(2), ['8', '^', '6']).found);
+
+  // ---- Percent (XIII-B-12; XIII-A-14 examples; manual E48) ----
+  const pc = { fractions: MM('percent') };
+  vals([
+    ['25%16', pc, '4', 'PDF (a), two-digit numerals next to % in a Solution'], ['6%8', pc, '12/25', 'PDF (b): 0.48'], ['(8-3)%(4+2)', pc, '3/10', 'PDF (c)'],
+    ['25+16', pc, 'ERR:pctdigits', 'two digits only next to %'], ['r4%50', pc, '1', 'manual E48: a root and a percent in one expression'],
+    ['2%6', {}, 'ERR:nocard', 'no card: no percent'], ['25%16', {}, 'ERR:concat', 'no card: 25 is two glued digits'],
+  ], 'Percent');
+  ok('Percent solver: 5, 0, √ and 8 make 4 as 50 % 8', (r => r.found)(found(MM('percent'), F(4), ['5', '0', 'r', '8'])));
+
+  // ---- Decimal Point (XIII-B-13; XIII-A-15 examples; manual E49) ----
+  const dp = { fractions: MM('decimal') };
+  vals([
+    ['2.5', dp, '2 1/2', 'PDF XIII-A-15 (a)'], ['12.5', dp, '12 1/2', 'PDF (c)'], ['1.25', dp, '1 1/4', 'PDF (c)'], ['255.', dp, '255', 'PDF (e)'], ['.050', dp, '1/20', 'PDF (e)'],
+    ['15.25', dp, 'ERR:decbig', 'PDF (f): four digits'], ['2.4*2', dp, '4 4/5', 'PDF (b): 2.4 × 2, not 2.(4 × 2)'], ['4.^5', dp, '1024', 'PDF XIII-B-13 (a): 4.^5'],
+    ['1.5*2^2', dp, '6', 'manual E49: one ^ a point, another a power'], ['2..5', dp, 'ERR:twodots', 'one point per number'],
+    ['23', dp, 'ERR:concat', 'without a point, Solution numbers still have one digit'],
+  ], 'Decimal Point');
+  ok('Decimal Point solver: 2, 5, ^, ×, 2 make 5 as 2.5 × 2, only with the card', found(MM('decimal'), F(5), ['2', '5', '^', '*', '2']).found && !found(true, F(5), ['2', '5', '^', '*', '2']).found);
+
+  // ---- Base m (XIII-B-6 examples; manual C42, E62, E63) ----
+  const b8 = { fractions: MM('basem', { base: 8 }) }, b9 = { fractions: MM('basem', { base: 9 }) };
+  vals([
+    ['37+5', b8, '36', 'PDF (a): 37 + 5 = 6^2 in base eight'], ['6^2', b8, '36', 'PDF (a)'], ['34+5', b9, '36', 'PDF (b): 34 + 5 = 6^2 in base nine'],
+    ['3+8', b8, 'ERR:basedigit', 'PDF (c); manual E62'], ['39', { fractions: MM('basem', { base: 9 }), multiDigit: true }, 'ERR:basedigit', 'PDF (c): 39 is illegal in base nine'],
+    ['07', b8, '7', 'manual E63: 00 to 07 are two-digit numerals in base eight'], ['10', b8, '8', 'base eight: 10 means eight'],
+  ], 'Base m');
+  ok('Base m: the PDF Equation 37 + 5 = 6 ^ 2 is correct in base eight', chkSol('37+5', Eq.checkGoal(t('6^2'), MM('basem', { base: 8 })).value, MM('basem', { base: 8 })).ok);
+  ok('Base m solver: 3, 7, +, 5 make 36 in base eight, not in base ten', found(MM('basem', { base: 8 }), F(36), ['3', '7', '+', '5']).found && !found(true, F(36), ['3', '7', '+', '5']).found);
+  { const r = Eq.solve({ goal: F(8), req: ['8'], opt: ['+', '1'], res: [], mode: 'impossible', fractions: MM('basem', { base: 8 }), maxDigits: 6 }); ok('Base m solver: an 8 in Required makes every Goal impossible in base eight (manual C42)', !r.found && r.complete); }
+
+  // ---- Settings travel with the Goal; plain data ----
+  {
+    const m = Eq.withGoal(Eq.mathMode(true, ['multk'], null, { k: 9 }), t('5'));
+    ok('withGoal keeps a card setting (k)', Eq.rulesOf(m).k === 9 && m.goal.join('') === '5' && JSON.parse(JSON.stringify(m)).k === 9);
+    ok('cubeOf: every Middle symbol names the cube it uses', [U[3], SW[4], X[2], 'T', 'a', 'f', 'p', 'l', 'g', '%', '.'].map(Eq.cubeOf).join(' ') === '3 4 2 1 + * * r ^ r ^');
+    ok('orient/withOrient round trip', Eq.withOrient(3, 'u') === U[3] && Eq.orient(U[3]).o === 'u' && Eq.orient(SW[5]).d === 5 && Eq.withOrient(7, '') === '7');
+  }
+
+  // ---- Round trip: every Solution the solver returns passes checkSolution (mid-shake, random rolls) ----
+  const MIDCARDS = [['upside'], ['sideways'], ['average'], ['expo', { ecol: 'green' }], ['multk', { k: 7 }], ['powbase'], ['factorial'], ['nfactors'], ['sprime'], ['lcm'], ['gcf'], ['percent'], ['decimal'], ['basem', { base: 8 }], ['basem', { base: 9 }]];
+  MIDCARDS.forEach(([id, set0]) => {
+    const rand = Eq.rng(9000 + id.length); let n = 0, good = 0, bad = [], worst = 0;
+    for (let k = 0; k < 10; k++) {
+      const cubes = Eq.roll(rand).map(c => ({ id: c.id, s: c.s, color: c.color, zone: 'resources' }));
+      const order = cubes.slice().sort(() => rand() - 0.5);
+      order.slice(0, 2).forEach(c => c.zone = 'goal'); order.slice(2, 4).forEach(c => c.zone = 'required');
+      order.slice(4, 6).forEach(c => c.zone = 'permitted'); order.slice(6, 9).forEach(c => c.zone = 'forbidden');
+      const set = Object.assign({}, set0 || {});
+      if (id === 'expo') { set.eids = cubes.filter(c => c.color === set.ecol && Eq.isDigit(c.s)).map(c => c.id); set.ex = Eq.expCounts(cubes, set.ecol); }
+      const mode = Eq.mathMode(true, [id], [], set), z = nm => cubes.filter(c => c.zone === nm).map(c => c.s);
+      ['impossible', 'now'].forEach(md => {
+        const goal = F(1 + Math.floor(rand() * 40)), t0 = Date.now();
+        const r = Eq.solve({ goal, req: z('required'), opt: z('permitted'), res: z('resources'), mode: md, fractions: mode, maxDigits: 5, timeMs: 700 });
+        worst = Math.max(worst, Date.now() - t0);
+        if (!r.found) return;
+        n++;
+        const pool = cubes.filter(c => c.zone === 'required' || c.zone === 'permitted' || c.zone === 'resources');
+        const toks = Eq.cubeTokens(r.tokens, pool, mode);
+        const chk = Eq.checkSolution(toks, { goal, zone: i => cubes[i] ? cubes[i].zone : 'forbidden', required: cubes.filter(c => c.zone === 'required').map(c => c.id), mode: md, fractions: mode });
+        if (chk.ok) good++; else bad.push(r.expr + ' → ' + chk.reasons.join(' '));
+      });
+    }
+    ok(`${id}${set0 ? ' ' + JSON.stringify(set0) : ''}: all ${n} solver Solutions pass checkSolution after cube mapping (worst search ${worst}ms)`, n >= 5 && good === n && worst < 1500, bad.slice(0, 2));
+  });
+
+  // ---- Brute force: on small cube sets, the solver finds a Goal exactly when an independent enumeration does ----
+  // brute(items, RU) = every value of every expression using each item at most once (at least two real cubes).
+  // It builds expression trees directly (an operation cube is a two-number op, a one-number op, or a decimal
+  // point), so it shares nothing with the solver's search except the arithmetic (Eq.opCore / Eq.unCore).
+  function brute(items, m) {
+    const RU = Eq.rulesOf(m), memo = new Map();
+    const Bs = RU.basem ? RU.base : 10;
+    function leafVals(d) {
+      const v = +d, out = [];
+      if (v >= Bs) return out;
+      out.push(F(v));
+      if (RU.ud && v) out.push(F(-v));
+      if (RU.sw && v) out.push(F(1, v));
+      if (RU.pob && d === '1') for (let k = -6; k <= 6; k++) if (k) out.push(k > 0 ? F(Math.pow(10, k)) : F(1, Math.pow(10, -k)));
+      return out;
+    }
+    const binOf = { '+': RU.avg ? ['a'] : ['+'], '-': ['-'], '*': ['*'], '/': ['/'], '^': ['^'].concat(RU.gcf ? ['g'] : []), r: ['r'].concat(RU.lcm ? ['l'] : [], RU.pct ? ['%'] : []) };
+    const unOf = { r: ['sqrt'], '*': RU.nfac ? ['f'] : RU.sprime ? ['p'] : [], '!': ['!'] };
+    function vals(key) { // key = sorted item string; every value using exactly these items
+      if (memo.has(key)) return memo.get(key);
+      const it = key.split(''), out = new Map(), add = v => { if (typeof v !== 'string') out.set(v.n + '/' + v.d, v); };
+      const digs = it.filter(Eq.isDigit), ops = it.filter(s => !Eq.isDigit(s));
+      if (it.length === 1 && digs.length === 1) leafVals(it[0]).forEach(add);
+      if (it.length === 2 && digs.length === 2 && (RU.two || RU.basem) && +it[0] < Bs && +it[1] < Bs) { add(F(+it[0] * Bs + +it[1])); add(F(+it[1] * Bs + +it[0])); }
+      for (const o of Eq.uniq(ops)) {
+        const rest = it.slice(); rest.splice(rest.indexOf(o), 1);
+        // one-number ops on the rest
+        if (rest.length) for (const u of (unOf[o] || [])) vals(rest.sort().join('')).forEach(v => add(u === 'sqrt' ? Eq.opCore('r', F(2), v, RU.fr) : Eq.unCore(u, v, RU.fr)));
+        // two-number ops: split the rest into two non-empty parts
+        const n = rest.length;
+        for (let mask = 1; mask < (1 << n) - 1; mask++) {
+          const A = [], Bp = []; rest.forEach((s, i) => (mask >> i) & 1 ? A.push(s) : Bp.push(s));
+          const vA = vals(A.sort().join('')), vB = vals(Bp.sort().join(''));
+          for (const bo of (binOf[o] || [])) vA.forEach(a => vB.forEach(b => add(Eq.opCore(bo, a, b, RU.fr))));
+        }
+      }
+      memo.set(key, out);
+      return out;
+    }
+    const all = new Map(), n = items.length;
+    for (let mask = 1; mask < (1 << n); mask++) {
+      const sub = items.filter((s, i) => (mask >> i) & 1);
+      if (sub.filter(s => s !== '!').length < 2) continue;
+      vals(sub.slice().sort().join('')).forEach((v, k) => all.set(k, v));
+    }
+    return all;
+  }
+  const BF = [
+    ['upside', null, ['3', '5', '-', '*']], ['sideways', null, ['2', '3', '+', '/']], ['average', null, ['4', '7', '+', '-']],
+    ['powbase', null, ['1', '3', '*', '-']], ['nfactors', null, ['6', '4', '*', '+']], ['sprime', null, ['7', '2', '*', '-']],
+    ['lcm', null, ['6', '4', 'r', '+']], ['gcf', null, ['8', '6', '^', '-']], ['factorial', null, ['3', '2', '+', '!', '!']],
+    ['basem', { base: 8 }, ['3', '7', '5', '+']], ['multk', { k: 6 }, ['3', '5', '+', '*']]
+  ];
+  BF.forEach(([id, set, items]) => {
+    const m = Eq.mathMode(true, [id], null, set), cubes = items.filter(s => s !== '!');
+    const reach = brute(items, m), RU = Eq.rulesOf(m);
+    // Goals to try: everything the brute force reached (small ones), plus near misses that it did not reach
+    const goals = [];
+    reach.forEach(v => { if (Math.abs(v.n) <= 2000 && v.d <= 1000) goals.push(v); });
+    for (let g = -12; g <= 40; g++) goals.push(F(g));
+    [F(1, 2), F(3, 4), F(7, 3), F(1, 6), F(5, 2)].forEach(g => goals.push(g));
+    let agree = 0, dis = [];
+    goals.forEach(g => {
+      let want;
+      if (RU.multk) { want = false; reach.forEach(v => { if (Eq.multOk(v, g, RU.k)) want = true; }); }
+      else want = reach.has(g.n + '/' + g.d);
+      const r = Eq.solve({ goal: g, req: [], opt: cubes, res: [], mode: 'free', fractions: m, maxDigits: 6, timeMs: 3000 });
+      if (r.found === want && (r.found || r.complete)) agree++; else if (dis.length < 3) dis.push(Eq.fmt(g) + ' brute ' + want + ' solver ' + r.found + (r.expr ? ' ' + r.expr : ''));
+    });
+    ok(`${id}: solver and brute force agree on ${goals.length} Goals for cubes ${items.join(' ')}`, agree === goals.length, dis);
+  });
+
+  // ---- Goal ideas for creatures under each card: legal Goals that use the card ----
+  {
+    const syms = ['3', '5', '1', '7', '+', '*', '^', 'r', '-', '/'];
+    [['average', 'a'], ['upside', U[5]], ['factorial', '!'], ['nfactors', 'f'], ['lcm', 'l'], ['gcf', 'g'], ['powbase', 'T'], ['decimal', '.']].forEach(([id, s]) => {
+      const m = Eq.mathMode(true, [id]), ideas = Eq.goalIdeas(syms, { fractions: m });
+      ok(`goalIdeas (${id}): some Goals use the card, and all are legal Goals`, ideas.some(g => g.tokens.includes(s)) && ideas.every(g => Eq.checkGoal(g.tokens, m).ok));
+    });
+  }
+}
+// ================= END MIDDLE-DIVISION VARIATION CARDS =================
+
 // ---------------- How Many Ways?: medals ----------------
 {
   const M = Eq.wayMedals;
