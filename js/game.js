@@ -95,6 +95,7 @@ function humanGoal(tokens, val) {
 function startMatch(mode, oppIdx, cfg) {
   var shakes = S.set.shakes || 3;
   G = { mode: mode, oppIdx: oppIdx, cfg: cfg, shakes: shakes, shake: 1, setter: 0, players: [], trailed: false };
+  var wx = T3.matchWeather ? T3.matchWeather() : null;   // this match's time of day and weather (stadium venues)
   G.players.push({ name: S.name, ai: null, score: 0, list: [] });
   if (mode === 'ai') G.players.push({ name: OPPONENTS[oppIdx].name, ai: OPPONENTS[oppIdx], score: 0, list: [] });
   else if (mode === 'ai3') [cfg.a, cfg.b].forEach(function (k) { G.players.push({ name: OPPONENTS[k].name, ai: OPPONENTS[k], score: 0, list: [] }); });
@@ -115,7 +116,12 @@ function startMatch(mode, oppIdx, cfg) {
   else setCreature(ai ? ai.kind : null, ai && ai.pack);
   playerShow(); seatPeople(mode, cfg);
   if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' ? 'right' : 'auto');   // the second creature stands at the far left corner
-  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room');
+    var stadiumMat = ['stadium', 'night'].indexOf(S.cos.mat) >= 0;
+    if (window.WeatherSfx) WeatherSfx.set(stadiumMat && wx ? wx.ambience : 'off');
+    var news = stadiumMat && T3.stadiumNews ? T3.stadiumNews() : '';   // once per new stadium tier
+    if (news) { persist(); setTimeout(function () { if (G) say('pip', news, 'cheer'); }, 2400); }
+    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
@@ -298,7 +304,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once
@@ -737,7 +743,7 @@ function endMatch() {
   if (fw === '3d') setTimeout(function () { if (G) showEnd(); }, 2600); else showEnd();
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
-ACT.toMenu = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
+ACT.toMenu = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
 
 // ======================= COMPUTER PLAYER =======================
 // The decisions themselves live in js/ai.js (shared with the background worker and tests/playtest.js).
