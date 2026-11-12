@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { buildStadium } from './stadium.js';
 import { createFx3d } from './fx3d.js';
+import { createQuality, LEVELS } from './quality.js';
+import { createShots } from './shots.js';
+import { createPostFx } from './postfx.js';
 import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture, gradientBg, rectShadowTexture, feltBumpTile, paintFelt, woodTexture, buildEnvironment } from './environment.js';
 
 (function () {
@@ -18,7 +21,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var host = null, layout = null, layoutName = '', felt = null, zonePlanes = {}, rimGroup = null, meshes = [], anims = [], dirty = true;
   var world = null, pour = null, parenSprites = [], dragS = null, lastHit = 0, lastSpark = 0, lastFrame = 0, pulseId = null;
   var envFx = null, boardText = '', lightK = 1, baseL = null, sparks = [], sparkPool = [], slow = null, shake = null, shx = 0, shy = 0, fx3 = null;
-  var tableGroup = null, blobs = [], squashes = [], puffs = [], puffPool = [], zoneGlow = {};
+  var tableGroup = null, blobs = [], squashes = [], puffs = [], puffPool = [], zoneGlow = {}, shots = null;
   var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -28,24 +31,57 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   renderer.domElement.style.touchAction = 'none';
   scene.add(camera); // the vignette is a child of the camera
 
-  // ----- Quality tiers (the governor in frame() steps down if frames get slow) -----
-  var QUAL = [{ pr: 1, shadow: 0 }, { pr: 1.5, shadow: 1024 }, { pr: 2, shadow: 2048 }], qual = 2;
-  function applyQuality() {
-    var q = QUAL[qual];
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pr));
-    sun.castShadow = q.shadow > 0;
-    if (q.shadow) { if (sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } }
-    if (host) renderer.setSize(host.clientWidth || 800, host.clientHeight || 500, false);
+  // ----- Quality tiers (js/three/quality.js measures frame times and steps down if frames get slow) -----
+  // qual is the numeric level (0 low, 1 medium, 2 high) that the venues and effects read.
+  var qual = 2, Q = null, post = null, texRes = 0;
+  function applyQuality(level, L) {
+    qual = level;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, L.pr));
+    if (host) { renderer.setSize(host.clientWidth || 800, host.clientHeight || 500, false); }
+    if (post) { post.enable(L.glow); post.setSize(host ? host.clientWidth || 800 : 800, host ? host.clientHeight || 500 : 500); }
+    configShadows();
+    var res = level >= 2 ? 512 : 256;
+    if (res !== texRes || (meshes.length && meshes[0].userData.matLevel !== (level > 0))) {
+      texRes = res;
+      if (meshes.length) { Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); }); texCache = {}; meshes.forEach(buildMats); if (api.lastG && !pour) api.sync(api.lastG); }
+    }
     dirty = true;
+  }
+  // Shadows: the venue's key light (userData.key = true) casts them, else the first DirectionalLight found.
+  // Only that one light casts; its shadow camera is fitted tightly around the table so the map stays sharp.
+  var shV = new THREE.Vector3(), shT = new THREE.Vector3(), shadowKey = null;
+  function keyLight() {
+    var key = null, first = null;
+    scene.traverse(function (o) { if (!o.isDirectionalLight) return; if (!first) first = o; if (!key && o.userData && o.userData.key) key = o; });
+    return key || first;
+  }
+  function configShadows() {
+    var L = LEVELS[qual], key = keyLight(), on = L.shadow > 0 && !!layout;
+    scene.traverse(function (o) { if (o.isDirectionalLight) o.castShadow = on && o === key; });
+    shadowKey = on ? key : null;
+    if (!shadowKey) { dirty = true; return; }
+    var sh = key.shadow, cam = sh.camera;
+    if (sh.mapSize.x !== L.shadow) { sh.mapSize.set(L.shadow, L.shadow); if (sh.map) { sh.map.dispose(); sh.map = null; } }
+    sh.bias = -0.0006; sh.normalBias = 0.03;
+    key.updateWorldMatrix(true, false); key.target.updateWorldMatrix(true, false);
+    key.getWorldPosition(shV); key.target.getWorldPosition(shT);
+    cam.position.copy(shV); cam.lookAt(shT); cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+    // receivers: the felt and rim (plus a margin for cubes being lifted or dragged near the edge)
+    var ow = layout.W / 2 + 1.4, od = layout.D / 2 + 1.4, x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    [-1, 1].forEach(function (sx) { [-1, 1].forEach(function (sz) { [-1.2, 2].forEach(function (y) {
+      shT.set(sx * ow, y, sz * od).applyMatrix4(cam.matrixWorldInverse);
+      x0 = Math.min(x0, shT.x); x1 = Math.max(x1, shT.x); y0 = Math.min(y0, shT.y); y1 = Math.max(y1, shT.y); z0 = Math.min(z0, shT.z); z1 = Math.max(z1, shT.z);
+    }); }); });
+    cam.left = x0; cam.right = x1; cam.bottom = y0; cam.top = y1;
+    cam.near = Math.max(0.1, -z1 - 30); cam.far = -z0 + 2; // casters up to 30 units toward the light (the cup, a creature's arms)
+    cam.updateProjectionMatrix();
+    sh.needsUpdate = true; dirty = true;
   }
 
   // ----- Lights (colours and strengths come from the mat theme; see applyTheme) -----
   var hemi = new THREE.HemisphereLight(0xffffff, 0x445566, 0.8); scene.add(hemi);
   var sun = new THREE.DirectionalLight(0xffffff, 2.5);
-  sun.position.set(-6, 22, 10); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  var sc = sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 60;
-  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+  sun.position.set(-6, 22, 10); // shadows are set up in configShadows (on this light unless a venue brings a key light)
   scene.add(sun);
   var fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(14, 10, -12); scene.add(fill);
   try { scene.environment = makeEnvMap(renderer); } catch (e) { scene.environment = null; }
@@ -55,7 +91,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // dim the whole room a little (spotlight effect); no lights are added, so no shader recompiles
   function setLightK(k) {
     lightK = k; if (!baseL) return;
-    hemi.intensity = baseL.hemiI * k; sun.intensity = baseL.sunI * k; fill.intensity = baseL.fillI * k; scene.environmentIntensity = baseL.env * k; dirty = true;
+    hemi.intensity = baseL.hemiI * k; sun.intensity = baseL.sunI * k; fill.intensity = baseL.fillI * k; scene.environmentIntensity = baseL.env * k;
+    // lights a venue brings (its key light, lamps) dim along with the table's own
+    if (tableGroup) tableGroup.traverse(function (o) {
+      if (!o.isLight) return;
+      if (o.userData.baseI === undefined) { if (k === 1) return; o.userData.baseI = o.intensity; }
+      o.intensity = o.userData.baseI * k; if (k === 1) delete o.userData.baseI;
+    });
+    dirty = true;
   }
   function applyTheme() {
     var T = THEMES[S.cos.mat] || THEMES.felt;
@@ -83,10 +126,21 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var CUBECOL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'] };
   var texCache = {};
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-  function faceTex(color, s, skin) {
-    var key = color + s + skin;
+  // All six faces of one colour in a 3 x 2 atlas (face k in cell k % 3, row k / 3), so a cube is one draw call.
+  function atlasTex(color, skin) {
+    var res = texRes || 256, key = 'atlas' + color + skin + res;
     if (texCache[key]) return texCache[key];
-    var cv = document.createElement('canvas'); cv.width = cv.height = 256; var g = cv.getContext('2d'); g.scale(2, 2);
+    var cv = document.createElement('canvas'); cv.width = 3 * res; cv.height = 2 * res; var g = cv.getContext('2d');
+    Eq.CUBE_FACES[color].forEach(function (s, k) {
+      g.save(); g.translate((k % 3) * res, Math.floor(k / 3) * res); g.beginPath(); g.rect(0, 0, res, res); g.clip(); g.scale(res / 128, res / 128);
+      drawFace(g, color, s, skin); g.restore();
+    });
+    var t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texCache[key] = t;
+    return t;
+  }
+  function drawFace(g, color, s, skin) {
     var c = CUBECOL[color], ink = '#fff', shadow = 'rgba(0,0,0,.45)';
     if (skin === 'candy') {
       var light = { red: '#ffc2d1', blue: '#c5e6ff', green: '#d3f9d8', black: '#d0bfff' }[color], dark = { red: '#ff8fab', blue: '#74c0fc', green: '#8ce99a', black: '#9775fa' }[color];
@@ -107,19 +161,20 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     } else {
       var lg = g.createLinearGradient(0, 0, 128, 128); lg.addColorStop(0, c[0]); lg.addColorStop(1, c[1]);
       g.fillStyle = lg; g.fillRect(0, 0, 128, 128);
-      g.fillStyle = 'rgba(255,255,255,.18)'; rr(g, 12, 10, 104, 30, 14); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 3; rr(g, 3, 3, 122, 122, 14); g.stroke();
+      // soft darkening toward the edges so the rounded corners read as rounded, plus a top-left sheen
+      var eg = g.createRadialGradient(54, 50, 40, 64, 64, 98); eg.addColorStop(0, 'rgba(0,0,0,0)'); eg.addColorStop(1, 'rgba(0,0,0,.28)');
+      g.fillStyle = eg; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = 'rgba(255,255,255,.16)'; rr(g, 12, 10, 104, 28, 14); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.24)'; g.lineWidth = 3; rr(g, 3, 3, 122, 122, 14); g.stroke();
     }
     var label = Eq.SHOW[s] || s;
     g.font = '900 ' + (s === 'r' ? 84 : 80) + 'px "Trebuchet MS", "Segoe UI", sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = shadow; g.fillText(label, 66, 70);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.fillStyle = shadow; g.fillText(label, 65.5, 69.5);
+    // a thin dark outline keeps the symbol crisp against every colour and skin
+    g.strokeStyle = ink === '#fff' ? 'rgba(0,0,0,.38)' : 'rgba(255,255,255,.55)'; g.lineWidth = 5; g.strokeText(label, 64, 66);
     g.fillStyle = ink; g.fillText(label, 64, 66);
-    if (s === '6' || s === '9') { g.fillRect(44, 104, 40, 7); } // underline so 6 and 9 can't be confused
-    var t = new THREE.CanvasTexture(cv);
-    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    texCache[key] = t;
-    return t;
+    if (s === '6' || s === '9') { g.strokeRect(44, 104, 40, 7); g.fillRect(44, 104, 40, 7); } // underline so 6 and 9 can't be confused
   }
   function spriteTex(txt, size) {
     var cv = document.createElement('canvas'); cv.width = cv.height = 128; var g = cv.getContext('2d');
@@ -137,6 +192,16 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       inner.set(Math.max(-h, Math.min(h, v.x)), Math.max(-h, Math.min(h, v.y)), Math.max(-h, Math.min(h, v.z)));
       v.sub(inner).normalize(); n.setXYZ(i, v.x, v.y, v.z); v.multiplyScalar(r).add(inner); p.setXYZ(i, v.x, v.y, v.z);
     }
+    // point each face's UVs at its atlas cell (BoxGeometry faces don't share vertices), then drop the groups
+    var uv = g.attributes.uv, idx = g.index, seen = {};
+    g.groups.forEach(function (gr) {
+      var k = gr.materialIndex, cx = k % 3, cy = Math.floor(k / 3);
+      for (var j = gr.start; j < gr.start + gr.count; j++) {
+        var vi = idx.getX(j); if (seen[vi]) continue; seen[vi] = 1;
+        uv.setXY(vi, (cx + 0.004 + uv.getX(vi) * 0.992) / 3, (1 - cy + 0.004 + uv.getY(vi) * 0.992) / 2);
+      }
+    });
+    g.clearGroups();
     return g;
   })();
   // Rotation that puts face k on top with its symbol upright (readable from the player's side).
@@ -151,20 +216,24 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
 
   function skin() { return S.cos.skin || 'classic'; }
   function buildMats(m) {
-    var color = m.userData.color, faces = Eq.CUBE_FACES[color], sk = skin();
-    var gold = sk === 'gold', glossy = sk === 'candy' || sk === 'galaxy';
-    m.material = faces.map(function (s) {
-      return new THREE.MeshPhysicalMaterial({ map: faceTex(color, s, sk), roughness: gold ? 0.28 : glossy ? 0.25 : 0.4, metalness: gold ? 0.55 : 0.0,
-        clearcoat: gold ? 0.2 : glossy ? 1 : 0.55, clearcoatRoughness: glossy ? 0.12 : 0.25, envMapIntensity: gold ? 1.4 : 1 });
-    });
+    var color = m.userData.color, sk = skin();
+    var gold = sk === 'gold', glossy = sk === 'candy' || sk === 'galaxy', rich = qual > 0; // the low tier skips the clear coat (a cheaper shader)
+    var old = m.material && m.material.isMaterial ? m.material : null;
+    var mt = new THREE.MeshPhysicalMaterial({ map: atlasTex(color, sk), roughness: gold ? 0.28 : glossy ? 0.25 : rich ? 0.36 : 0.3, metalness: gold ? 0.55 : 0.0,
+      clearcoat: rich ? (gold ? 0.2 : glossy ? 1 : 0.7) : 0, clearcoatRoughness: glossy ? 0.12 : 0.16, envMapIntensity: gold ? 1.4 : 1.1 });
+    if (old) { mt.color.copy(old.color); mt.emissive.copy(old.emissive); old.dispose(); } // keep locked / selected tints
+    m.material = mt;
+    m.userData.matLevel = rich;
   }
+  // tint one cube: grey when locked, warm glow when selected or highlighted
+  function tint(m, color, emissive) { m.material.color.setHex(color); m.material.emissive.setHex(emissive); }
   function ensureCubes() {
     if (meshes.length) return;
     if (!lockTex) lockTex = spriteTex('🔒', 90);
     var id = 0;
     Eq.COLORS.forEach(function (color) {
       for (var i = 0; i < 6; i++) {
-        var m = new THREE.Mesh(cubeGeo, []);
+        var m = new THREE.Mesh(cubeGeo, null);
         m.userData = { id: id, color: color, jit: (Math.random() - 0.5) * 0.12 };
         buildMats(m); m.castShadow = true; m.receiveShadow = true; m.visible = false;
         var lk = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false })); lk.scale.set(0.6, 0.6, 0.6); lk.position.set(0.35, 0.8, 0); lk.visible = false; lk.renderOrder = 5;
@@ -195,6 +264,29 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2.5; rr(g, 9, 9, cv.width - 18, cv.height - 18, 20); g.stroke();
     var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
+  // The venue's scoreboard screen, for the 'goal' close-up: env.board, or a mesh marked userData.board,
+  // or else the largest unlit (toneMapped: false) picture plane in the venue.
+  var boardRef = null;
+  function findBoard(env) {
+    if (env.board && env.board.isObject3D) return env.board;
+    var marked = null, best = null, area = 0;
+    env.group.traverse(function (o) {
+      if (o.userData && o.userData.board && !marked) marked = o;
+      var m = o.material, p = o.geometry && o.geometry.parameters;
+      if (o.isMesh && m && !Array.isArray(m) && m.isMeshBasicMaterial && m.map && m.toneMapped === false && m.fog === false && o.geometry.type === 'PlaneGeometry' && p.width * p.height > area) { area = p.width * p.height; best = o; }
+    });
+    return marked || best;
+  }
+  var bv1 = new THREE.Vector3(), bv2 = new THREE.Vector3(), bq = new THREE.Quaternion();
+  function boardInfo() {
+    var b = boardRef; if (!b || !b.parent) return null;
+    b.updateWorldMatrix(true, false);
+    var box = new THREE.Box3().setFromObject(b), center = box.getCenter(new THREE.Vector3());
+    b.matrixWorld.decompose(bv1, bq, bv2);
+    var p = b.geometry && b.geometry.parameters, w, h;
+    if (p && p.width) { w = p.width * bv2.x; h = p.height * bv2.y; } else { var s = box.getSize(new THREE.Vector3()); w = Math.max(s.x, s.z); h = s.y; }
+    return { center: center, normal: new THREE.Vector3(0, 0, 1).applyQuaternion(bq).normalize(), w: w, h: h };
+  }
   function buildTable() {
     if (tableGroup) { scene.remove(tableGroup); disposeTree(tableGroup); }
     zonePlanes = {}; zoneGlow = {};
@@ -220,23 +312,23 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
     var bump = feltBumpTile(); bump.repeat.set((W + 2 * PAD) / 1.2, (D + 2 * PAD) / 1.2);
     felt = new THREE.Mesh(new THREE.PlaneGeometry(W + 2 * PAD, D + 2 * PAD), new THREE.MeshPhysicalMaterial({ map: tex, roughness: 1, bumpMap: bump, bumpScale: 1.2, sheen: 1, sheenRoughness: 0.7, sheenColor: new THREE.Color(T.felt).lerp(new THREE.Color(0xffffff), 0.45) }));
-    felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; tableGroup.add(felt);
+    felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; felt.userData.occ = true; tableGroup.add(felt);
     // wooden rim: one rounded, bevelled frame
     var t = 0.7, hgt = 0.5, ow = W / 2 + t - 0.15, od = D / 2 + t - 0.15;
     var shape = new THREE.Shape(); rrp(shape, -ow, -od, 2 * ow, 2 * od, 0.9);
     var hole = new THREE.Path(); rrp(hole, -W / 2, -D / 2, W, D, 0.2); shape.holes.push(hole);
     var rimGeo = new THREE.ExtrudeGeometry(shape, { depth: hgt, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 4, curveSegments: 10 });
     var wood = new THREE.MeshPhysicalMaterial({ map: woodTexture(T.rim, 3, aniso), roughness: T.rimRough, metalness: T.rimMetal, clearcoat: 0.45, clearcoatRoughness: 0.35 });
-    var rim = new THREE.Mesh(rimGeo, wood); rim.rotation.x = -Math.PI / 2; rim.position.y = 0; rim.castShadow = true; rim.receiveShadow = true; tableGroup.add(rim);
+    var rim = new THREE.Mesh(rimGeo, wood); rim.rotation.x = -Math.PI / 2; rim.position.y = 0; rim.castShadow = true; rim.receiveShadow = true; rim.userData.occ = true; tableGroup.add(rim);
     var darkWood = new THREE.MeshStandardMaterial({ map: woodTexture(T.rim, 7, aniso), color: T.apron || 0x9a8a80, roughness: 0.7 });
-    var apron = new THREE.Mesh(new THREE.BoxGeometry(2 * ow - 0.4, 0.9, 2 * od - 0.4), darkWood); apron.position.y = -0.55; apron.castShadow = true; tableGroup.add(apron);
+    var apron = new THREE.Mesh(new THREE.BoxGeometry(2 * ow - 0.4, 0.9, 2 * od - 0.4), darkWood); apron.position.y = -0.55; apron.castShadow = true; apron.userData.occ = true; tableGroup.add(apron);
     if (envFx) { envFx.dispose(); envFx = null; } if (fx3) fx3.reset(); slow = null;
     var env = name === 'stadium' ? buildStadium(W, D, aniso, layoutName, function () { return qual; }) : buildEnvironment(name, W, D, aniso); tableGroup.add(env.group);
     if (name === 'stadium') { envFx = env; env.setBoard(boardText); }
     if (env.legs) {
       var lh = -0.9 - FLOOR_Y;
       [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
-        var leg = new THREE.Mesh(new THREE.BoxGeometry(1.2, lh, 1.2), darkWood); leg.position.set(c[0] * (ow - 1.1), -0.9 - lh / 2, c[1] * (od - 1.1)); leg.castShadow = true; tableGroup.add(leg);
+        var leg = new THREE.Mesh(new THREE.BoxGeometry(1.2, lh, 1.2), darkWood); leg.position.set(c[0] * (ow - 1.1), -0.9 - lh / 2, c[1] * (od - 1.1)); leg.castShadow = true; leg.userData.occ = true; tableGroup.add(leg);
       });
       var sh = new THREE.Mesh(new THREE.PlaneGeometry(2 * ow + 9, 2 * od + 9), new THREE.MeshBasicMaterial({ map: rectShadowTexture(), transparent: true, opacity: 0.55, depthWrite: false, fog: false }));
       sh.rotation.x = -Math.PI / 2; sh.position.y = FLOOR_Y + 0.04; sh.renderOrder = 0; tableGroup.add(sh);
@@ -247,15 +339,16 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         var m = new THREE.Mesh(new THREE.BoxGeometry(b[2], 0.05, b[3]), trim); m.position.set(b[0], 0.66, b[1]); tableGroup.add(m);
       });
     }
-    // sun shadows only need to cover the table
-    sc.left = -(ow + 3); sc.right = ow + 3; sc.top = od + 3; sc.bottom = -(od + 3); sc.updateProjectionMatrix();
+    boardRef = findBoard(env);
+    configShadows(); // the venue may bring its own key light
+    if (post) post.tag();
     if (!pour) world = null; // walls depend on the layout
     dirty = true;
   }
   function chooseLayout() {
     if (!host) return;
     var w = host.clientWidth || 800, h = host.clientHeight || 500, name = (w / h < 0.9) ? 'tall' : 'wide';
-    renderer.setSize(w, h, false);
+    renderer.setSize(w, h, false); if (post) post.setSize(w, h);
     camera.aspect = w / h;
     var vh = 2 * 0.5 * Math.tan(camera.fov * Math.PI / 360); vignette.scale.set(vh * camera.aspect * 1.01, vh * 1.01, 1);
     if (name !== layoutName) { layoutName = name; layout = LAYOUTS[name]; buildTable(); }
@@ -266,15 +359,18 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var base = { pos: new THREE.Vector3(), look: new THREE.Vector3() }, camOff = { dolly: 0, yaw: 0, lift: 0, panX: 0, panZ: 0 }, CAMKEYS = ['dolly', 'yaw', 'lift', 'panX', 'panZ'], cueG = null, camTmp = new THREE.Vector3(), camLook = new THREE.Vector3();
   function camZero() { return CAMKEYS.every(function (k) { return camOff[k] === 0; }); }
   function applyCam() {
-    if (camZero()) { camera.position.copy(base.pos); camera.lookAt(base.look); }
+    if (camZero()) { camera.position.copy(base.pos); camLook.copy(base.look); }
     else {
       camTmp.copy(base.pos).sub(base.look);
       var cy = Math.cos(camOff.yaw), sy = Math.sin(camOff.yaw), x = camTmp.x * cy + camTmp.z * sy, z = -camTmp.x * sy + camTmp.z * cy;
       camTmp.set(x, camTmp.y, z).multiplyScalar(1 - camOff.dolly); camTmp.y += camOff.lift;
       camLook.copy(base.look); camLook.x += camOff.panX; camLook.z += camOff.panZ;
-      camera.position.copy(base.look).add(camTmp); camera.position.x += camOff.panX; camera.position.z += camOff.panZ; camera.lookAt(camLook);
+      camera.position.copy(base.look).add(camTmp); camera.position.x += camOff.panX; camera.position.z += camOff.panZ;
     }
-    if (shx || shy) { camera.position.x += shx; camera.position.y += shy; }
+    var sw = 1;
+    if (shots && shots.active()) { shots.apply(camera.position, camLook); sw = 1 - 0.85 * shots.weight(); } // a shake is much smaller during a close-up
+    camera.lookAt(camLook);
+    if (shx || shy) { camera.position.x += shx * sw; camera.position.y += shy * sw; }
     camera.updateMatrixWorld();
   }
   // A very small, quick camera shake (translation only). It always ends at exactly zero; a touch ends it at once.
@@ -282,6 +378,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // Put the camera exactly on the fitted view right now (taps and drags must be accurate).
   function camSnap() {
     cueG = null; endShake();
+    if (shots && shots.active()) { shots.cancel(); applyCam(); dirty = true; }
     if (camZero()) return;
     CAMKEYS.forEach(function (k) { camOff[k] = 0; }); applyCam(); dirty = true;
   }
@@ -317,19 +414,53 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.cue = function (name) {
     if (document.hidden || !layout) return;
     if (name === 'reset') { cueG = null; dirty = true; startLoop(); return; }
-    var c = CUES[name]; if (!c || pour) return;
+    var c = CUES[name]; if (!c || pour || (shots && shots.active())) return; // a close-up is already framing the moment
     cueG = { t0: performance.now(), dur: c.dur, fn: c.fn }; dirty = true; startLoop();
   };
+  // Fit: the closest distance (along the fixed tilt) at which the table, and then whatever other modules ask
+  // for through hooks.extents (a creature's head, a kid in front), fits on screen. The extra points may push the
+  // camera back by at most 35% beyond what the table alone needs, so a very tall creature or an object right
+  // next to the camera can never shrink the table to a postage stamp. Points behind or right at the camera don't fit.
+  var extraPts = [];
   function fitCamera() {
     var W = layout.W, D = layout.D, tilt = layout.tilt, look = new THREE.Vector3(0, 0, layoutName === 'tall' ? 0.7 : 0.6);
-    var corners = [[-W / 2 - 0.7, 0.6, -D / 2 - 0.7], [W / 2 + 0.7, 0.6, -D / 2 - 0.7], [-W / 2 - 0.7, 0.6, D / 2 + 0.7], [W / 2 + 0.7, 0.6, D / 2 + 0.7]], v = new THREE.Vector3();
-    hooks.extents.forEach(function (f) { f(corners, W, D); });
-    for (var d = 8; d < 120; d += 0.5) {
-      camera.position.set(0, Math.sin(tilt) * d, look.z + Math.cos(tilt) * d); camera.lookAt(look); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-      var ok = corners.every(function (c) { v.set(c[0], c[1], c[2]).project(camera); return Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.97; });
-      if (ok) break;
+    var table = [[-W / 2 - 0.7, 0.6, -D / 2 - 0.7], [W / 2 + 0.7, 0.6, -D / 2 - 0.7], [-W / 2 - 0.7, 0.6, D / 2 + 0.7], [W / 2 + 0.7, 0.6, D / 2 + 0.7]], v = new THREE.Vector3(), extra = [];
+    hooks.extents.forEach(function (f) { try { f(extra, W, D); } catch (e) {} });
+    extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
+    extraPts = extra;
+    camera.updateProjectionMatrix();
+    function at(d) { camera.position.set(0, Math.sin(tilt) * d, look.z + Math.cos(tilt) * d); camera.lookAt(look); camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); }
+    function inView(c) {
+      v.set(c[0], c[1], c[2]).applyMatrix4(camera.matrixWorldInverse); if (v.z > -0.5) return false; // behind or touching the lens
+      v.applyMatrix4(camera.projectionMatrix); return Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.97;
     }
+    function search(pts, lo, hi) { for (var d = lo; d < hi; d += 0.25) { at(d); if (pts.every(inView)) return d; } return hi; }
+    var dT = search(table, 8, 120), d = extra.length ? search(table.concat(extra), dT, dT * 1.35) : dT;
+    at(d);
     base.pos.copy(camera.position); base.look.copy(look); applyCam();
+  }
+  // Where the opponent's head is, for close-ups: T3.creatureFocus() if the creature module offers it, else an
+  // estimate from the highest point the creature asked to keep in view (behind the far edge of the table).
+  function creatureInfo() {
+    if (api.creatureVisible && !api.creatureVisible()) return null;
+    if (api.creatureFocus) { try { var f = api.creatureFocus(); if (f && f.head) return { head: f.head.clone ? f.head.clone() : new THREE.Vector3(f.head.x, f.head.y, f.head.z), height: f.height || 3 }; } catch (e) {} }
+    if (!layout || !api.creatureVisible) return null;
+    // the creature is a top-level object behind the far edge of the table that this module didn't add
+    var found = null, box = new THREE.Box3(), wp = new THREE.Vector3();
+    scene.children.forEach(function (o) {
+      if (found || !o.visible || o.isLight || o.isSprite || o.isCamera || o === tableGroup || o === cup || meshes.indexOf(o) >= 0 || blobs.indexOf(o) >= 0) return;
+      o.getWorldPosition(wp); if (wp.z > -layout.D / 2) return;
+      box.setFromObject(o); if (!box.isEmpty() && box.max.y > 1) found = o;
+    });
+    var top = null;
+    extraPts.forEach(function (c) { if (c[2] < -layout.D / 2 && (!top || c[1] > top[1])) top = c; });
+    if (found) { // a rough guess (the model may lean toward the table), so it is framed a little wider than measured
+      var ty = Math.max(box.max.y, top ? top[1] : 0), hh = Math.max(1.5, ty - Math.max(box.min.y, 0.2));
+      return { head: new THREE.Vector3(wp.x, ty - hh * 0.2, (wp.z + (box.min.z + box.max.z) / 2) / 2), height: hh * 1.25 };
+    }
+    if (!top) return null;
+    var h = Math.max(1.5, top[1] - 0.2);
+    return { head: new THREE.Vector3(0, top[1] - h * 0.18, top[2]), height: h };
   }
   var ro = window.ResizeObserver ? new ResizeObserver(function () { chooseLayout(); if (api.lastG) api.sync(api.lastG, true); }) : null;
   api.attach = function (el) {
@@ -461,7 +592,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       var lift = (G.selected === c.id) ? 0.8 : 0;
       var pos = new THREE.Vector3(t.x, 0.5 * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData;
       m.userData.lock.visible = !!c.locked;
-      m.material.forEach(function (mt) { mt.color.setHex(c.locked ? 0x9a9a9a : 0xffffff); mt.emissive.setHex(G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000); });
+      tint(m, c.locked ? 0x9a9a9a : 0xffffff, G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000);
       var same = u.tpos && u.tpos.distanceTo(pos) < 0.01 && Math.abs(u.tscale - t.scale) < 0.01 && u.tq && u.tq.angleTo(q) < 0.01;
       if (same && !force) return;
       var moved = u.zone && u.zone !== c.zone, fromPour = u.fromPour, dropped = u.dropped; u.dropped = false;
@@ -503,7 +634,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.pour = function (cubes, done) {
     if (!layout) { done(cubes.map(function (c) { return c.s; })); return; }
     ensureCubes(); if (!world) buildWorld();
-    meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; m.material.forEach(function (mt) { mt.color.setHex(0xffffff); mt.emissive.setHex(0); }); });
+    meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; });
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, 0, true); });
     var W = layout.W, D = layout.D, side = layoutName === 'tall';
@@ -587,20 +718,6 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     requestAnimationFrame(frame);
     if (!wd) wd = setInterval(function () { if (looping && performance.now() - lastFrame > 150) frame(performance.now(), true); }, 100);
   }
-  var perf = { n: 0, slow: 0, prev: 0, prevRendered: false };
-  function governor(now, rendered, fromWatchdog) {
-    // Only count gaps between two consecutive rendered animation frames; step quality down if most are slow.
-    if (fromWatchdog || !rendered) { perf.prevRendered = false; return; }
-    if (perf.prevRendered) {
-      var gap = now - perf.prev;
-      if (gap < 120) { perf.n++; if (gap > 26) perf.slow++; }
-      if (perf.n >= 60) {
-        if (perf.slow > 36 && qual > 0) { qual--; applyQuality(); }
-        perf.n = 0; perf.slow = 0;
-      }
-    }
-    perf.prev = now; perf.prevRendered = true;
-  }
   function frame(now, fromWatchdog) {
     if (!looping) return;
     now = now || performance.now();
@@ -638,6 +755,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       dirty = true;
     }
     stepCam(now, dt);
+    if (shots && shots.step(now)) { applyCam(); dirty = true; }
     if (shake) {
       var sk = (now - shake.t0) / shake.dur;
       if (sk >= 1) { shake = null; shx = shy = 0; } else { var se = Math.exp(-sk * 3.5) * shake.amp; shx = Math.sin(sk * 38) * se; shy = Math.cos(sk * 47) * se * 0.6; }
@@ -663,9 +781,10 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         var sc0 = m.scale.x, h = Math.max(0, m.position.y - 0.5 * sc0), size = sc0 * (1.7 + h * 0.45);
         bl.visible = true; bl.position.set(m.position.x, 0.012, m.position.z); bl.scale.set(size, size, 1); bl.material.opacity = 0.34 / (1 + h * 0.9);
       }
-      renderer.render(scene, camera); dirty = false; rendered = true;
+      if (post && post.on) post.render(); else renderer.render(scene, camera);
+      dirty = false; rendered = true;
     }
-    governor(now, rendered, fromWatchdog);
+    if (Q) Q.sample(now, rendered, fromWatchdog);
     if (current !== 'game' && !pour) { looping = false; return; }
     if (!fromWatchdog) requestAnimationFrame(frame);
   }
@@ -682,6 +801,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.6), hitP = new THREE.Vector3();
   renderer.domElement.addEventListener('pointerdown', function (ev) {
     if (pour) return;
+    // a tap during a close-up only skips it (the camera eases home quickly); it doesn't pick a cube seen from the close-up
+    if (shots && shots.active()) { shots.skip(); dragS = null; dirty = true; startLoop(); return; }
     cueG = null; endShake(); // a touch ends any camera cue; picking always uses the camera as drawn, so taps stay accurate while it eases home
     var h = pick(ev, meshes.filter(function (m) { return m.visible; }));
     dragS = { x: ev.clientX, y: ev.clientY, id: h ? h.object.userData.id : null, on: false };
@@ -731,17 +852,48 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       return ok;
     } catch (e) { return false; }
   };
+  // Camera close-ups: 'challenge' | 'win' | 'lose' (the opponent) and 'goal' (the scoreboard, or the Goal row).
+  // Returns true if it started. Off when S.set.shots === false; never during the pour or while a cube is held.
+  // opts: { hold: seconds at the close framing, done: called when the camera is back }
+  api.shot = function (name, opts) {
+    try {
+      if (!shots || (typeof S !== 'undefined' && S.set && S.set.shots === false)) return false;
+      var ok = shots.start(name, opts);
+      if (ok) { cueG = null; dirty = true; startLoop(); }
+      return ok;
+    } catch (e) { return false; }
+  };
+  api.shotActive = function () { return !!(shots && shots.active()); };
+  // Quality: T3.quality() -> 'high' | 'medium' | 'low' (what is in use now); T3.setQuality('auto' | 'low' | 'high')
+  api.quality = function () { return Q ? Q.name() : 'high'; };
+  api.qualityInfo = function () { return Q ? Object.assign(Q.stats(), { glow: !!(post && post.on), shadows: !!shadowKey, pixelRatio: renderer.getPixelRatio(), log: Q.log() }) : null; };
+  api.setQuality = function (q) { if (!Q) return; if (q === 'auto') Q.forget(); Q.set(q); dirty = true; startLoop(); };
   // What other 3D modules may use
   Object.assign(ctx, {
     scene: scene, camera: camera, renderer: renderer, meshes: meshes, hooks: hooks,
     dirty: function () { dirty = true; }, startLoop: startLoop,
-    refit: function () { if (layout) { fitCamera(); dirty = true; } },
+    refit: function () { if (layout) { fitCamera(); if (post) post.tag(); dirty = true; } },
     dropAnims: function (m) { anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m); }
   });
   Object.defineProperty(ctx, 'layout', { get: function () { return layout; } });
   Object.defineProperty(ctx, 'layoutName', { get: function () { return layoutName; } });
   fx3 = createFx3d({ scene: scene, layout: function () { return layout; }, layoutName: function () { return layoutName; }, quality: function () { return qual; }, dim: setLightK,
     cubePos: function (id) { var m = meshes[id]; return m && m.visible ? m.position : null; }, dirty: function () { dirty = true; }, startLoop: startLoop });
-  applyQuality();
+  post = createPostFx(renderer, scene, camera);
+  // what hides a glow behind it: the table itself, and whole characters (creature, kid) and the cup; not the cubes
+  post.isOccluder = function (o) {
+    if (o.userData.occ) return true;
+    var top = o; while (top.parent && top.parent !== scene) top = top.parent;
+    return top !== tableGroup && top !== camera && meshes.indexOf(top) < 0;
+  };
+  shots = createShots({
+    camera: camera,
+    base: function () { return layout ? base : null; },
+    creature: creatureInfo,
+    board: boardInfo,
+    goalZone: function () { if (!layout) return null; var r = layout.z.goal; return { center: new THREE.Vector3(r[0] + r[2] / 2, 0.5, r[1] + r[3] / 2), w: r[2], d: r[3] }; },
+    blocked: function () { return !layout || !host || !!pour || !!dragS || document.hidden || current !== 'game'; }
+  });
+  Q = createQuality(applyQuality);
   api.ctx = ctx;
 })();
