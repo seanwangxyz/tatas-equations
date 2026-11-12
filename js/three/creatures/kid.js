@@ -6,7 +6,7 @@
 //   buildHuman(spec)                     -> model (see the end of this file)
 //     spec: { dims: KID | TATA dims, kit, num, name, look: { skin, hair, hairStyle, eyes, ... }, front: bool }
 //   buildKid(kit, num, name, look)       -> buildHuman with the kid's dims (kept for older callers)
-//   kitFromSave(k)                       -> a kit object from the saved shape S.kit = { shirt, pattern, trim, shorts }
+//   kitFromSave(k)                       -> a full kit object from the saved shape (S.kit; see KIT_DEFAULT, savedKit)
 //
 // Faces: eyes with lids (blink, squint), brows, a conformal mouth with morph targets (open grin, big cheer, warm smile,
 // "hmm", small "o", a shout) and conformal decals (cheeks, stubble). model.setFace(F) applies one expression; it is
@@ -15,30 +15,64 @@ import * as THREE from 'three';
 import { std, ArmRig, clamp } from './common.js';
 
 // Kits. The first one matches his red jersey badge in the HUD.
+// Full kit objects (what buildHuman draws). collar 'v' | 'round'; frontNum: the big number on the chest; crest / mark:
+// our own badge and maker's mark (ids from CRESTS / MARKS below, or 'none'); accent: the colour of the numbers, the name
+// and the marks; trim2: the thin stripe and inner edge of the knitted bands; sleeves 'short' | 'long'; numStyle: one of
+// NUM_STYLES; boots: boot colour; gloves: goalkeeper gloves; armband / armbandCol: the captain's armband.
+const GEAR = { trim2: null, sleeves: 'short', numStyle: 'thin', boots: '#1f2430', gloves: false, armband: false, armbandCol: '#ffd43b' };
 export const KITS = {
-  // Home kit: deep red with sea-green trim and tone-on-tone waves (national-team style; no crest or maker's logo).
-  red: { jersey: '#c9342c', dark: '#b12a23', trim: '#2f8f7c', shorts: '#1f6b5a', sock: '#c9342c', waves: '#e2584b', ink: '#ffffff', pattern: 'waves' },
+  // Home kit: deep red, tone-on-tone waves, a teal V-neck band with a red stripe and edge, an icy-blue number,
+  // our own crest and maker's mark (national-team style, but no real crest, maker's logo or wordmark).
+  red: Object.assign({}, GEAR, { jersey: '#c9342c', dark: '#a9261f', light: '#e2584b', trim: '#2f8f7c', shorts: '#1f6b5a', sock: '#c9342c', waves: '#e2584b', ink: '#ffffff', pattern: 'waves',
+    collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', accent: '#cfe3e6' }),
   purple: { jersey: '#7048e8', dark: '#5730cf', trim: '#ffd43b', shorts: '#2b2f77', sock: '#7048e8' },
   teal: { jersey: '#0ca678', dark: '#087f5b', trim: '#ffffff', shorts: '#1d2b3a', sock: '#0ca678' },
-  // Tata's default: sunny yellow, navy trim and shorts
-  yellow: { jersey: '#f5c518', dark: '#d9a90b', light: '#ffdc4d', trim: '#1f3a68', shorts: '#1f3a68', sock: '#f5c518', ink: '#ffffff', pattern: 'plain' }
+  // Tata's default: sunny yellow, navy trim and shorts, navy numbers, his own crest (the roundel) and mark (the bolt)
+  yellow: Object.assign({}, GEAR, { jersey: '#f5c518', dark: '#d9a90b', light: '#ffdc4d', trim: '#1f3a68', shorts: '#1f3a68', sock: '#f5c518', ink: '#ffffff', pattern: 'plain',
+    collar: 'v', frontNum: true, crest: 'roundel', mark: 'bolt', accent: '#1f3a68' })
 };
-// The saved shape of today's look (S.kit defaults reproduce KITS.red exactly)
-export const KIT_DEFAULT = { shirt: '#c9342c', pattern: 'waves', trim: '#2f8f7c', shorts: '#1f6b5a', hair: '#3b2314', hairStyle: 'swept', celebrate: 'jump' };
-export const TATA_KIT = { shirt: '#f5c518', pattern: 'plain', trim: '#1f3a68', shorts: '#1f3a68' };
+// The saved shape (S.kit is the home kit). Every key after celebrate is optional: old saves get these defaults.
+export const KIT_DEFAULT = { shirt: '#c9342c', pattern: 'waves', trim: '#2f8f7c', shorts: '#1f6b5a', hair: '#3b2314', hairStyle: 'swept', celebrate: 'jump',
+  collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'short', numStyle: 'thin', boots: '#1f2430', gloves: false, armband: false, armbandCol: '#ffd43b' };
+// The away and third kits (S.kits.away / S.kits.third hold only what he changed). trim2 = the bands' stripe colour.
+export const KIT_AWAY = { shirt: '#f1f3f5', pattern: 'waves', trim: '#2f8f7c', trim2: '#c9342c', shorts: '#1d2b3a', collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'short', numStyle: 'thin' };
+export const KIT_THIRD = { shirt: '#16403d', pattern: 'waves', trim: '#cfe3e6', trim2: '#2f8f7c', shorts: '#25262b', collar: 'round', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'long', numStyle: 'block' };
+export const KIT_SLOTS = { home: KIT_DEFAULT, away: KIT_AWAY, third: KIT_THIRD };
+// his own things: the same whichever kit he wears (kept in S.kit)
+export const KIT_PERSONAL = ['hair', 'hairStyle', 'celebrate', 'boots', 'gloves', 'armband', 'armbandCol'];
+export const TATA_KIT = { shirt: '#f5c518', pattern: 'plain', trim: '#1f3a68', shorts: '#1f3a68', collar: 'v', frontNum: true, crest: 'roundel', mark: 'bolt',
+  sleeves: 'short', numStyle: 'thin', boots: '#1f2430', gloves: false, armband: false };
+// The saved shape of the kit he is wearing now: S.kitUse picks home / away / third; his own things come from S.kit.
+export function savedKit(s) {
+  s = s || {}; const home = Object.assign({}, KIT_DEFAULT, s.kit || {}), use = s.kitUse;
+  if (use !== 'away' && use !== 'third') return home;
+  const slot = Object.assign({}, KIT_SLOTS[use], (s.kits && s.kits[use]) || {});
+  KIT_PERSONAL.forEach((k) => { if (home[k] != null) slot[k] = home[k]; });
+  return slot;
+}
 
 // colour helpers
 function mixHex(a, b, t) { const c = new THREE.Color(a).lerp(new THREE.Color(b), t); return '#' + c.getHexString(); }
+function lumOf(hex) { const c = new THREE.Color(hex); return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b; }
 // exact tones for the shirts whose shades were picked by hand (the rest are derived)
-const TONES = { '#c9342c': { dark: '#b12a23', light: '#e2584b' }, '#f5c518': { dark: '#d9a90b', light: '#ffdc4d' } };
+const TONES = { '#c9342c': { dark: '#a9261f', light: '#e2584b' }, '#f5c518': { dark: '#d9a90b', light: '#ffdc4d' } };
+const ICY = '#cfe3e6';
+const isOn = (v) => v === true || v === 'on';
 export function kitFromSave(k) {
   k = k || {};
-  const shirt = String(k.shirt || KIT_DEFAULT.shirt).toLowerCase(), pat = k.pattern || 'waves', t = TONES[shirt] || {};
-  const dark = t.dark || mixHex(shirt, '#000000', 0.18), light = t.light || mixHex(shirt, '#ffffff', 0.24);
-  // a very light shirt needs dark ink for the name and number
-  const lum = new THREE.Color(shirt); const L = 0.3 * lum.r + 0.59 * lum.g + 0.11 * lum.b;
-  return { jersey: shirt, dark: dark, light: light, waves: pat === 'waves' ? light : undefined, trim: k.trim || KIT_DEFAULT.trim, shorts: k.shorts || KIT_DEFAULT.shorts,
-    sock: k.socks || shirt, ink: L > 0.8 ? '#1d2b3a' : '#ffffff', pattern: pat };
+  const shirt = String(k.shirt || KIT_DEFAULT.shirt).toLowerCase(), pat = k.pattern || 'waves', t = TONES[shirt] || {}, L = lumOf(shirt);
+  // a very light shirt gets slightly darker tone-on-tone lines (lighter ones would vanish)
+  const dark = t.dark || mixHex(shirt, '#000000', L > 0.8 ? 0.1 : 0.18), light = t.light || (L > 0.8 ? mixHex(shirt, '#7f93a6', 0.28) : mixHex(shirt, '#ffffff', 0.24));
+  const trim = k.trim || KIT_DEFAULT.trim;
+  // the numbers and maker's marks: icy blue on a dark or strong shirt; on a light one the trim (if dark enough) or navy
+  const accent = L > 0.55 ? (lumOf(trim) < 0.5 ? trim : '#1d2b3a') : ICY;
+  const pick = (v, list, d) => (v === 'none' || (v && list[v])) ? v : d;
+  return { jersey: shirt, dark: dark, light: light, waves: pat === 'waves' ? light : undefined, trim: trim, trim2: k.trim2 || shirt, shorts: k.shorts || KIT_DEFAULT.shorts,
+    sock: k.socks || shirt, ink: L > 0.8 ? '#1d2b3a' : '#ffffff', pattern: pat,
+    collar: k.collar === 'round' ? 'round' : 'v', frontNum: !(k.frontNum === false || k.frontNum === 'off'),
+    crest: pick(k.crest, CRESTS, KIT_DEFAULT.crest), mark: pick(k.mark, MARKS, KIT_DEFAULT.mark), accent: accent,
+    sleeves: k.sleeves === 'long' ? 'long' : 'short', numStyle: NUM_STYLES[k.numStyle] ? k.numStyle : 'thin',
+    boots: k.boots || GEAR.boots, gloves: isOn(k.gloves), armband: isOn(k.armband), armbandCol: k.armbandCol || GEAR.armbandCol };
 }
 
 // Proportions (local units, origin at the hips). player.js reads these for placement and gestures.
@@ -58,75 +92,454 @@ export const KID = {
 export const KID_LOOK = { skin: '#efc19d', hair: '#3b2314', hairStyle: 'swept', eyes: '#3f2412', brows: null, cheeks: '#f0938a', stubble: false, adult: false, streaks: null,
   eyeW: 1.14, eyeH: 0.92, tilt: 0.07, happy: 0.3, iris: 0.74, vneck: false };
 
-// Back of the shirt: lathe u = 0 is the chest (+z), u = 0.5 the back (-z). Name over the number, like a real kit.
-// front: a small number on the chest too (for someone seen from the front, across the table).
-export function kidJerseyTexture(kit, num, name, front) {
-  const W = 512, H = 160, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
-  g.fillStyle = kit.jersey; g.fillRect(0, 0, W, H);
-  const pat = kit.pattern || (kit.waves ? 'waves' : null);
-  if (pat === 'waves') {
-    // tone-on-tone wavy lines all round the shirt (whole number of waves so the seam matches)
-    g.strokeStyle = kit.waves || kit.light; g.globalAlpha = 0.6; g.lineWidth = 1.6;
-    for (let y = 16; y < H; y += 11) { g.beginPath(); for (let x = 0; x <= W; x += 4) { const yy = y + Math.sin(x / W * Math.PI * 2 * 9 + y * 0.35) * 2.6; if (x) g.lineTo(x, yy); else g.moveTo(x, yy); } g.stroke(); }
-    g.globalAlpha = 1;
-  } else if (pat === 'stripes') {
-    g.fillStyle = kit.dark; for (let x = 0; x < W; x += 32) g.fillRect(x, 0, 16, H);
-  } else if (pat === 'hoops') {
-    g.fillStyle = kit.dark; for (let y = 22; y < H; y += 30) g.fillRect(0, y, W, 14);
-  } else if (pat === 'sash') {
-    // one diagonal band over the chest (it wraps across the u = 0 seam) and its continuation on the back
-    g.fillStyle = kit.dark;
-    const band = (x0) => { g.beginPath(); g.moveTo(x0 - 30, 0); g.lineTo(x0 + 6, 0); g.lineTo(x0 + 96, H); g.lineTo(x0 + 60, H); g.closePath(); g.fill(); };
-    band(-50); band(W - 50); band(W * 0.5 - 70);
+// ================= the shirt =================
+// The torso is a lathe. Its texture is laid out by arc length down the profile (canvas y = distance from the middle of
+// the neck, over the shoulders and down to the hem), and by angle round the body (canvas x), with the lathe seam under
+// his right arm so nothing on the front or the back straddles it. torsoProfile(D) gives the surface for any build, so
+// the V-neck band, the badge decals and the texture all agree on where things are.
+const TORSO_CTRL = [[0.001, 0], [0.62, 0.04], [0.82, 0.3], [0.86, 0.75], [0.84, 1.2], [0.8, 1.52], [0.6, 1.78], [0.4, 1.86], [0.001, 1.88]];
+const SEAM = -Math.PI / 2, TAU = Math.PI * 2;
+export function torsoProfile(D) {
+  D = D || KID;
+  const pts = new THREE.SplineCurve(TORSO_CTRL.map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(56);
+  pts[0].x = 0.001; pts[pts.length - 1].x = 0.001;
+  const n = pts.length, S = new Float32Array(n);           // S[j]: arc length from the top (S[n-1] = 0) down to point j
+  for (let j = n - 2; j >= 0; j--) S[j] = S[j + 1] + pts[j].distanceTo(pts[j + 1]);
+  const sTot = S[0];
+  function at(s, o) {
+    o = o || {}; s = clamp(s, 0, sTot);
+    let j = 0; while (j < n - 2 && S[j + 1] > s) j++;
+    const a = pts[j], b = pts[j + 1], L = (S[j] - S[j + 1]) || 1e-6, t = (S[j] - s) / L;
+    o.r = a.x + (b.x - a.x) * t; o.y = a.y + (b.y - a.y) * t;
+    const tr = (a.x - b.x) / L, ty = (a.y - b.y) / L; o.nr = -ty; o.ny = tr;   // outward normal in the (r, y) plane
+    return o;
   }
-  if (pat) {
-    // collar band in the trim colour with a thin shirt-colour line through it; no hem band
-    g.fillStyle = kit.trim; g.fillRect(0, 0, W, 11); g.fillStyle = kit.jersey; g.fillRect(0, 5, W, 1.5);
-    g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(0, 11, W, 3);
-  } else {
-    // two soft side panels in the darker shade (under the arms)
-    g.fillStyle = kit.dark; g.fillRect(W * 0.2, 0, W * 0.07, H); g.fillRect(W * 0.73, 0, W * 0.07, H);
-    // collar and hem trim
-    g.fillStyle = kit.trim; g.fillRect(0, 0, W, 10); g.fillRect(0, H - 9, W, 9);
-    g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(0, 10, W, 4);
-    // little plain badge on the chest (wearer's left), seen only when he turns
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(W * 0.06, 52, 11, 0, 7); g.fill();
-    g.fillStyle = kit.dark; g.beginPath(); g.arc(W * 0.06, 52, 5, 0, 7); g.fill();
+  // first crossing from the top (the front of the body: y falls steadily below the shoulders)
+  function sAtY(y) {
+    for (let j = n - 1; j > 0; j--) { const a = pts[j], b = pts[j - 1]; if (b.y <= y && a.y >= y && a.x > 0.45 * D.torsoX) return S[j] + (a.y - y) / ((a.y - b.y) || 1e-6) * (S[j - 1] - S[j]); }
+    return sTot * 0.5;
   }
-  if (kit.vneck) {
-    // a V-neck: an open V of skin at the front (u = 0, drawn at both canvas edges so the seam joins it), trimmed
-    const vee = (x0) => {
-      g.fillStyle = kit.vneck; g.beginPath(); g.moveTo(x0 - 34, 0); g.lineTo(x0 + 34, 0); g.lineTo(x0, 52); g.closePath(); g.fill();
-      g.strokeStyle = kit.trim; g.lineWidth = 7; g.lineJoin = 'miter'; g.beginPath(); g.moveTo(x0 - 37, 0); g.lineTo(x0, 56); g.lineTo(x0 + 37, 0); g.stroke();
-    };
-    vee(0); vee(W);
+  function sAtR(r) {
+    for (let j = n - 1; j > 0; j--) { const a = pts[j], b = pts[j - 1]; if (b.x >= r && a.x <= r) return S[j] + (r - a.x) / ((b.x - a.x) || 1e-6) * (S[j - 1] - S[j]); }
+    return 0;
   }
-  const cx = W * 0.5;
-  g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-  const FONT = '"Arial Black", Impact, "Trebuchet MS", sans-serif';
-  const darkInk = kit.ink && kit.ink !== '#ffffff';
-  const nm = String(name || '').toUpperCase().slice(0, 12);
-  if (nm) {
-    let fs = 24; g.font = '900 ' + fs + 'px ' + FONT;
-    const maxW = W * 0.3; while (fs > 12 && g.measureText(nm).width > maxW) { fs -= 1; g.font = '900 ' + fs + 'px ' + FONT; }
-    g.lineWidth = kit.ink ? 3 : 5; g.strokeStyle = darkInk ? 'rgba(255,255,255,.35)' : kit.ink ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.35)'; g.strokeText(nm, cx, 34);
-    g.fillStyle = kit.ink || (kit.trim === '#ffffff' ? '#ffffff' : kit.trim); g.fillText(nm, cx, 34);
+  const _o = {};
+  function pos(phi, s, lift, out) { at(s, _o); const r = _o.r + _o.nr * (lift || 0); return out.set(Math.sin(phi) * r, _o.y + _o.ny * (lift || 0), Math.cos(phi) * r); }
+  function nrm(phi, s, out) { at(s, _o); return out.set(Math.sin(phi) * _o.nr, _o.ny, Math.cos(phi) * _o.nr).normalize(); }
+  // nearest profile arc length to a point (r, y): for points just off the surface
+  function nearS(r, y) {
+    let best = 0, bd = 1e9;
+    for (let j = 0; j < n - 1; j++) {
+      const a = pts[j], b = pts[j + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1e-9, t = clamp(((r - a.x) * dx + (y - a.y) * dy) / l2, 0, 1);
+      const ex = a.x + dx * t - r, ey = a.y + dy * t - y, d = ex * ex + ey * ey;
+      if (d < bd) { bd = d; best = S[j] + (S[j + 1] - S[j]) * t; }
+    }
+    return best;
   }
-  const n = String(num || '7').slice(0, 2);
-  const numAt = (x, y, size) => {
-    g.font = '900 ' + size + 'px ' + FONT;
-    if (!kit.ink) { g.lineWidth = 12; g.strokeStyle = 'rgba(0,0,0,.4)'; g.strokeText(n, x, y); }
-    g.lineWidth = kit.ink ? 5 : 6; g.strokeStyle = darkInk ? '#ffffff' : kit.trim === '#ffffff' ? kit.dark : kit.trim; g.strokeText(n, x, y);
-    g.fillStyle = darkInk ? kit.ink : '#fff'; g.fillText(n, x, y);
-  };
-  numAt(cx, 98, n.length > 1 ? 84 : 92);
-  if (front) {
-    // smaller chest number, centred on u = 0 (drawn at both canvas edges so the seam joins it)
-    g.save(); g.scale(0.62, 0.62); const fy = 92 / 0.62; numAt(0, fy, 66); numAt(W / 0.62, fy, 66); g.restore();
+  return { D, pts, S, n, sTot, at, sAtY, sAtR, pos, nrm, nearS };
+}
+const _PROF = new Map();
+function profileOf(D) { let p = _PROF.get(D); if (!p) { p = torsoProfile(D); _PROF.set(D, p); } return p; }
+
+// The neckline as a path round the body, in (phi, s): the round collar ring, and for a V-neck two straight sides
+// down to a point at the middle of the chest. vw: 1 on the V, 0 round the back (the band stands up against the neck there).
+function necklinePath(P, collar) {
+  const D = P.D, tx = D.torsoX, ty = D.torsoY;
+  const s0 = P.sAtR(0.4 * tx), r0 = P.at(s0).r, v = collar !== 'round';
+  const sTip = P.sAtY(1.43 * ty), xc = 0.33 * tx, phiC = v ? xc / r0 : 0;
+  const out = [], NR = 40, NV = 18, ramp = 0.55;
+  const ringW = (phi) => v ? sstep01(1 - (Math.abs(phi) - phiC) / ramp) : 0;
+  for (let k = 0; k <= NR; k++) { const phi = -Math.PI + (Math.PI - phiC) * k / NR; out.push({ phi, s: s0, vw: ringW(phi) }); }
+  if (v) {
+    for (let k = 1; k <= NV; k++) { const t = k / NV, s = s0 + (sTip - s0) * t, X = -xc * (1 - t); out.push({ phi: X / P.at(s).r, s, vw: 1, tip: k === NV }); }
+    for (let k = 1; k <= NV; k++) { const t = k / NV, s = sTip + (s0 - sTip) * t, X = xc * t; out.push({ phi: X / P.at(s).r, s, vw: 1 }); }
   }
-  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2; return tex;
+  for (let k = 1; k <= NR; k++) { const phi = phiC + (Math.PI - phiC) * k / NR; out.push({ phi, s: s0, vw: ringW(phi) }); }
+  return { pts: out, s0, sTip, phiC, v, w: 0.088 * tx, th: 0.03 * tx, stand: 0.065 * ty, rec: 0.035 * tx };
 }
 
+// ---------- the number fonts: digits drawn as strokes (same on every machine, no web fonts) ----------
+// unit box: x 0..1, y 0..2 (y down). Curvy digits (thin, rounded, outlined) ...
+function digitPath(g, ch) {
+  const P = Math.PI;
+  switch (ch) {
+    case '0': g.moveTo(0, 0.5); g.arc(0.5, 0.5, 0.5, P, 2 * P); g.lineTo(1, 1.5); g.arc(0.5, 1.5, 0.5, 0, P); g.closePath(); break;
+    case '1': g.moveTo(0.18, 0.42); g.lineTo(0.62, 0); g.lineTo(0.62, 2); break;
+    case '2': g.moveTo(0.02, 0.5); g.arc(0.5, 0.5, 0.48, P, 2 * P); g.bezierCurveTo(0.98, 0.98, 0.02, 1.42, 0.02, 2); g.lineTo(1, 2); break;
+    case '3': g.moveTo(0.04, 0.3); g.arc(0.5, 0.47, 0.46, P * 1.12, P * 2.5); g.moveTo(0.5, 0.93); g.arc(0.5, 1.47, 0.52, -P / 2, P * 0.88); break;
+    case '4': g.moveTo(0.76, 2); g.lineTo(0.76, 0); g.lineTo(0, 1.42); g.lineTo(1, 1.42); break;
+    case '5': g.moveTo(0.94, 0); g.lineTo(0.12, 0); g.lineTo(0.06, 0.86); g.bezierCurveTo(0.34, 0.72, 1, 0.78, 1, 1.4); g.bezierCurveTo(1, 2.06, 0.18, 2.1, 0, 1.74); break;
+    case '6': g.moveTo(0.86, 0.14); g.bezierCurveTo(0.6, -0.06, 0, 0.02, 0, 1.0); g.lineTo(0, 1.5); g.arc(0.5, 1.5, 0.5, P, 3 * P); break;
+    case '7': g.moveTo(0, 0); g.lineTo(1, 0); g.lineTo(0.3, 2); break;
+    case '8': g.moveTo(0.94, 0.47); g.arc(0.5, 0.47, 0.44, 0, 2 * P); g.moveTo(1, 1.46); g.arc(0.5, 1.46, 0.5, 0, 2 * P); break;
+    case '9': g.moveTo(1, 0.5); g.arc(0.5, 0.5, 0.5, 0, 2 * P); g.lineTo(1, 1.0); g.bezierCurveTo(1, 1.94, 0.42, 2.06, 0.14, 1.86); break;
+    default: break;
+  }
+}
+// ... and square block digits (block, college): straight strokes, mitred corners
+function blockPath(g, ch) {
+  const L = (pts) => { g.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); };
+  switch (ch) {
+    case '0': L([0, 0, 1, 0, 1, 2, 0, 2]); g.closePath(); break;
+    case '1': L([0.22, 0.32, 0.6, 0, 0.6, 2]); break;
+    case '2': L([0, 0, 1, 0, 1, 1, 0, 1, 0, 2, 1, 2]); break;
+    case '3': L([0, 0, 1, 0, 1, 2, 0, 2]); L([0.3, 1, 1, 1]); break;
+    case '4': L([0, 0, 0, 1.25, 1, 1.25]); L([0.78, 0.55, 0.78, 2]); break;
+    case '5': L([1, 0, 0, 0, 0, 1, 1, 1, 1, 2, 0, 2]); break;
+    case '6': L([1, 0, 0, 0, 0, 2, 1, 2, 1, 1, 0, 1]); break;
+    case '7': L([0, 0, 1, 0, 1, 0.3, 0.42, 2]); break;
+    case '8': L([0, 0, 1, 0, 1, 2, 0, 2]); g.closePath(); L([0, 1, 1, 1]); break;
+    case '9': L([1, 1, 0, 1, 0, 0, 1, 0, 1, 2, 0, 2]); break;
+    default: break;
+  }
+}
+// Number styles. w: digit width / height; layers for the front (f) and the back (b): [colour role, line width / height].
+// roles: 'a' the accent (numbers colour), 'e' the edge (trim), 's' the shirt colour (an outlined number's hollow)
+export const NUM_STYLES = {
+  thin: { name: 'Tall & thin', path: digitPath, w: 0.32, bw: 0.42, gap: 0.11, cap: 'round', f: [['a', 0.078]], b: [['e', 0.22], ['a', 0.145]] },
+  block: { name: 'Block', path: blockPath, w: 0.4, gap: 0.14, cap: 'square', f: [['a', 0.13]], b: [['e', 0.21], ['a', 0.15]] },
+  round: { name: 'Rounded', path: digitPath, w: 0.42, gap: 0.13, cap: 'round', f: [['a', 0.15]], b: [['e', 0.24], ['a', 0.17]] },
+  college: { name: 'College', path: blockPath, w: 0.42, gap: 0.16, cap: 'square', f: [['e', 0.2], ['a', 0.12]], b: [['a', 0.28], ['e', 0.2], ['a', 0.12]] },
+  outline: { name: 'Outline', path: digitPath, w: 0.38, gap: 0.13, cap: 'round', f: [['a', 0.14], ['s', 0.075]], b: [['e', 0.24], ['a', 0.17], ['s', 0.09]] }
+};
+// Strokes a number centred at the current origin, h tall. The current transform maps units to pixels.
+// layers: [{ col, lw, dx, dy }] drawn in order (shadow, outline, fill).
+function drawNumber(g, str, h, dw, gap, layers, style) {
+  const st = NUM_STYLES[style] || NUM_STYLES.thin, path = st.path;
+  const n = String(str).replace(/[^0-9]/g, '').slice(0, 2) || '7', tot = n.length * dw + (n.length - 1) * gap;
+  g.lineCap = st.cap; g.lineJoin = st.cap === 'square' ? 'miter' : 'round'; g.miterLimit = 4;
+  layers.forEach((L) => {
+    g.beginPath();
+    for (let i = 0; i < n.length; i++) {
+      g.save(); g.translate(-tot / 2 + i * (dw + gap) + (L.dx || 0), -h / 2 + (L.dy || 0)); g.scale(dw, h / 2);
+      path(g, n[i]); g.restore();
+    }
+    g.strokeStyle = L.col; g.lineWidth = L.lw; g.stroke();
+  });
+}
+// a number in a style: where = 'f' (front, shorts) or 'b' (back); cols = { a, e, s }; shadow: a soft drop shadow colour
+function styledNumber(g, str, h, style, where, cols, shadow) {
+  const st = NUM_STYLES[style] || NUM_STYLES.thin, ls = st[where] || st.f, dw = (where === 'b' && st.bw ? st.bw : st.w) * h, gap = st.gap * h;
+  const layers = ls.map((q) => ({ col: cols[q[0]], lw: q[1] * h }));
+  if (shadow) layers.unshift({ col: shadow, lw: ls[0][1] * h * 1.12, dx: 0.012 * h, dy: 0.02 * h });
+  drawNumber(g, str, h, dw, gap, layers, style);
+}
+// ---------- our own marks and crests (original designs; never a real maker's logo or a real crest) ----------
+function star(g, x, y, r, pts, inner) {
+  g.moveTo(x, y - r);
+  for (let i = 1; i < pts * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / pts, rr = i % 2 ? r * (inner || 0.45) : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  g.closePath();
+}
+// maker's marks: one colour, unit box 0..1
+export const MARKS = {
+  // a cube with motion lines: the game's own cube, zooming along
+  cube: { name: 'Speed cube', draw(g, c) {
+    const cx = 0.6, cy = 0.53, r = 0.3, k = Math.cos(Math.PI / 6) * r, T = [cx, cy - r], UR = [cx + k, cy - r / 2], LR = [cx + k, cy + r / 2], B = [cx, cy + r], LL = [cx - k, cy + r / 2], UL = [cx - k, cy - r / 2];
+    g.fillStyle = c; g.strokeStyle = c; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(T[0], T[1]); g.lineTo(UR[0], UR[1]); g.lineTo(cx, cy); g.lineTo(UL[0], UL[1]); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(UL[0], UL[1]); g.lineTo(LL[0], LL[1]); g.lineTo(B[0], B[1]); g.lineTo(LR[0], LR[1]); g.lineTo(UR[0], UR[1]); g.moveTo(cx, cy); g.lineTo(B[0], B[1]);
+    g.lineWidth = 0.06; g.stroke();
+    // the right face half-filled so it reads as a solid cube at a distance
+    g.globalAlpha = 0.55; g.beginPath(); g.moveTo(cx, cy); g.lineTo(UR[0], UR[1]); g.lineTo(LR[0], LR[1]); g.lineTo(B[0], B[1]); g.closePath(); g.fill(); g.globalAlpha = 1;
+    g.lineWidth = 0.055; g.beginPath(); [[0.07, 0.36, 0.22], [0.02, 0.53, 0.22], [0.1, 0.7, 0.22]].forEach((q) => { g.moveTo(q[0], q[1]); g.lineTo(q[2], q[1]); }); g.stroke();
+  } },
+  // a swift: swept wings and a forked tail, climbing
+  swift: { name: 'Swift', draw(g, c) {
+    g.fillStyle = c; g.beginPath();
+    g.moveTo(0.04, 0.5); g.quadraticCurveTo(0.32, 0.36, 0.5, 0.47); g.quadraticCurveTo(0.66, 0.26, 0.97, 0.16);
+    g.quadraticCurveTo(0.74, 0.42, 0.6, 0.58); g.lineTo(0.7, 0.86); g.lineTo(0.56, 0.68); g.lineTo(0.42, 0.88); g.lineTo(0.46, 0.62);
+    g.quadraticCurveTo(0.3, 0.52, 0.04, 0.5); g.closePath(); g.fill();
+    g.beginPath(); g.arc(0.53, 0.47, 0.075, 0, 7); g.fill();
+  } },
+  // a fox's face: big pointed ears, eyes cut out
+  fox: { name: 'Fox', draw(g, c) {
+    g.fillStyle = c; g.beginPath();
+    g.moveTo(0.14, 0.1); g.lineTo(0.38, 0.34); g.lineTo(0.62, 0.34); g.lineTo(0.86, 0.1); g.lineTo(0.86, 0.5); g.lineTo(0.5, 0.92); g.lineTo(0.14, 0.5); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.beginPath();
+    g.moveTo(0.27, 0.5); g.lineTo(0.42, 0.55); g.lineTo(0.31, 0.62); g.closePath(); g.moveTo(0.73, 0.5); g.lineTo(0.58, 0.55); g.lineTo(0.69, 0.62); g.closePath();
+    g.moveTo(0.22, 0.2); g.lineTo(0.33, 0.33); g.lineTo(0.24, 0.38); g.closePath(); g.moveTo(0.78, 0.2); g.lineTo(0.67, 0.33); g.lineTo(0.76, 0.38); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'source-over';
+  } },
+  // a little rocket with fins and a flame, tilted up and away
+  rocket: { name: 'Rocket', draw(g, c) {
+    g.save(); g.translate(0.5, 0.5); g.rotate(0.6); g.translate(-0.5, -0.5); g.fillStyle = c;
+    g.beginPath(); g.moveTo(0.5, 0.02); g.bezierCurveTo(0.7, 0.18, 0.69, 0.48, 0.63, 0.68); g.lineTo(0.37, 0.68); g.bezierCurveTo(0.31, 0.48, 0.3, 0.18, 0.5, 0.02); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(0.36, 0.5); g.lineTo(0.2, 0.74); g.lineTo(0.38, 0.68); g.closePath(); g.moveTo(0.64, 0.5); g.lineTo(0.8, 0.74); g.lineTo(0.62, 0.68); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(0.4, 0.74); g.quadraticCurveTo(0.5, 1.02, 0.6, 0.74); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(0.5, 0.33, 0.075, 0, 7); g.fill(); g.globalCompositeOperation = 'source-over';
+    g.restore();
+  } },
+  // a lightning bolt
+  bolt: { name: 'Bolt', draw(g, c) {
+    g.fillStyle = c; g.beginPath();
+    g.moveTo(0.6, 0.03); g.lineTo(0.2, 0.56); g.lineTo(0.46, 0.56); g.lineTo(0.36, 0.97); g.lineTo(0.82, 0.4); g.lineTo(0.55, 0.4); g.lineTo(0.72, 0.03); g.closePath(); g.fill();
+  } },
+  // Pip, the game's mascot: a round-cornered cube head with an antenna, eyes and a smile
+  pip: { name: 'Pip', draw(g, c) {
+    g.fillStyle = c; g.strokeStyle = c; g.beginPath(); g.roundRect(0.16, 0.2, 0.68, 0.66, 0.2); g.fill();
+    g.lineWidth = 0.05; g.lineCap = 'round'; g.beginPath(); g.moveTo(0.5, 0.2); g.lineTo(0.5, 0.08); g.stroke(); g.beginPath(); g.arc(0.5, 0.07, 0.055, 0, 7); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(0.37, 0.47, 0.075, 0, 7); g.arc(0.63, 0.47, 0.075, 0, 7); g.fill();
+    g.lineWidth = 0.06; g.beginPath(); g.arc(0.5, 0.57, 0.15, 0.2 * Math.PI, 0.8 * Math.PI); g.stroke(); g.globalCompositeOperation = 'source-over';
+  } }
+};
+// crests: full colour badges, unit box 0..1 wide, 0..CREST_H tall
+const CREST_H = 1.14;
+function shield(g, i) {
+  // a heater shield, inset by i
+  g.beginPath(); g.moveTo(0.08 + i, 0.06 + i); g.lineTo(0.92 - i, 0.06 + i); g.lineTo(0.92 - i, 0.52);
+  g.quadraticCurveTo(0.92 - i, 0.88 - i * 0.4, 0.5, 1.09 - i * 1.3); g.quadraticCurveTo(0.08 + i, 0.88 - i * 0.4, 0.08 + i, 0.52); g.closePath();
+}
+function isoCube(g, cx, cy, r, top, left, right, edge) {
+  const k = Math.cos(Math.PI / 6) * r;
+  const face = (pts, col) => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fillStyle = col; g.fill(); if (edge) { g.strokeStyle = edge; g.lineWidth = r * 0.09; g.lineJoin = 'round'; g.stroke(); } };
+  face([[cx, cy - r], [cx + k, cy - r / 2], [cx, cy], [cx - k, cy - r / 2]], top);
+  face([[cx - k, cy - r / 2], [cx, cy], [cx, cy + r], [cx - k, cy + r / 2]], left);
+  face([[cx + k, cy - r / 2], [cx + k, cy + r / 2], [cx, cy + r], [cx, cy]], right);
+  return k;
+}
+export const CRESTS = {
+  // his default: a gold-edged shield, a red chief with three stars, and the game's cube showing "=" on a white field
+  cube: { name: 'Cube shield', draw(g) {
+    shield(g, 0); g.fillStyle = '#e9b824'; g.fill();
+    shield(g, 0.035); g.fillStyle = '#1d2f5c'; g.fill();
+    shield(g, 0.06); g.fillStyle = '#ffffff'; g.fill();
+    g.save(); shield(g, 0.06); g.clip();
+    g.fillStyle = '#d43a2f'; g.fillRect(0, 0, 1, 0.36); g.fillStyle = '#1d2f5c'; g.fillRect(0, 0.36, 1, 0.025);
+    g.fillStyle = '#ffffff'; g.beginPath(); star(g, 0.3, 0.22, 0.075, 5); star(g, 0.5, 0.2, 0.09, 5); star(g, 0.7, 0.22, 0.075, 5); g.fill();
+    isoCube(g, 0.5, 0.69, 0.22, '#5cc8ae', '#2f8f7c', '#1f6b5a', '#16304f');
+    // "=" printed on the cube's left face (the unit square mapped onto that face)
+    const k = Math.cos(Math.PI / 6) * 0.22, r = 0.22, cx = 0.5, cy = 0.69;
+    g.save(); g.transform(k, r / 2, 0, r, cx - k, cy - r / 2); g.fillStyle = '#ffffff';
+    g.fillRect(0.2, 0.28, 0.6, 0.14); g.fillRect(0.2, 0.56, 0.6, 0.14); g.restore();
+    g.restore();
+  } },
+  // Tata's default: a navy roundel ringed with gold stars, a sunny centre and a white cube with a navy "x"
+  roundel: { name: 'Star roundel', draw(g) {
+    const cx = 0.5, cy = CREST_H / 2;
+    g.beginPath(); g.arc(cx, cy, 0.49, 0, 7); g.fillStyle = '#e9b824'; g.fill();
+    g.beginPath(); g.arc(cx, cy, 0.455, 0, 7); g.fillStyle = '#1f3a68'; g.fill();
+    g.fillStyle = '#ffd43b'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * TAU / 10; star(g, cx + Math.cos(a) * 0.365, cy + Math.sin(a) * 0.365, 0.042, 5); } g.fill();
+    g.beginPath(); g.arc(cx, cy, 0.285, 0, 7); g.fillStyle = '#ffffff'; g.fill();
+    g.beginPath(); g.arc(cx, cy, 0.255, 0, 7); g.fillStyle = '#f5c518'; g.fill();
+    g.save(); g.translate(cx, cy); g.rotate(-0.12);
+    g.beginPath(); g.roundRect(-0.14, -0.14, 0.28, 0.28, 0.06); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 0.022; g.strokeStyle = '#1f3a68'; g.stroke();
+    g.lineWidth = 0.05; g.lineCap = 'round'; g.beginPath(); g.moveTo(-0.07, -0.07); g.lineTo(0.07, 0.07); g.moveTo(0.07, -0.07); g.lineTo(-0.07, 0.07); g.stroke();
+    g.restore();
+  } },
+  // sky-blue and white stripes on a navy-edged shield, a big gold star
+  star: { name: 'Star stripes', draw(g) {
+    shield(g, 0); g.fillStyle = '#1f3a68'; g.fill();
+    g.save(); shield(g, 0.045); g.clip(); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 1, 2);
+    g.fillStyle = '#4dabf7'; for (let x = 0.08; x < 1; x += 0.2) g.fillRect(x, 0, 0.1, 2);
+    g.restore();
+    g.beginPath(); star(g, 0.5, 0.56, 0.27, 5, 0.46); g.fillStyle = '#ffd43b'; g.fill(); g.lineWidth = 0.035; g.lineJoin = 'round'; g.strokeStyle = '#1f3a68'; g.stroke();
+  } },
+  // a green shield with a white chevron, a gold "+" cube and a red ribbon
+  ribbon: { name: 'Plus ribbon', draw(g) {
+    shield(g, 0); g.fillStyle = '#ffffff'; g.fill();
+    shield(g, 0.04); g.fillStyle = '#2f9e44'; g.fill();
+    g.save(); shield(g, 0.04); g.clip();
+    g.beginPath(); g.moveTo(0, 0.98); g.lineTo(0.5, 0.56); g.lineTo(1, 0.98); g.lineTo(1, 1.12); g.lineTo(0.5, 0.7); g.lineTo(0, 1.12); g.closePath(); g.fillStyle = '#ffffff'; g.fill();
+    g.restore();
+    g.beginPath(); g.roundRect(0.36, 0.18, 0.28, 0.28, 0.05); g.fillStyle = '#ffd43b'; g.fill(); g.lineWidth = 0.025; g.strokeStyle = '#1d2f5c'; g.stroke();
+    g.fillStyle = '#1d2f5c'; g.fillRect(0.475, 0.23, 0.05, 0.18); g.fillRect(0.41, 0.295, 0.18, 0.05);
+    // the ribbon across the bottom: folded ends behind, three white dots
+    g.fillStyle = '#9c2a22'; g.beginPath(); g.moveTo(0.0, 0.78); g.lineTo(0.14, 0.76); g.lineTo(0.14, 0.9); g.lineTo(0.0, 0.92); g.lineTo(0.05, 0.85); g.closePath();
+    g.moveTo(1.0, 0.78); g.lineTo(0.86, 0.76); g.lineTo(0.86, 0.9); g.lineTo(1.0, 0.92); g.lineTo(0.95, 0.85); g.closePath(); g.fill();
+    g.fillStyle = '#d43a2f'; g.beginPath(); g.moveTo(0.1, 0.72); g.quadraticCurveTo(0.5, 0.8, 0.9, 0.72); g.lineTo(0.9, 0.86); g.quadraticCurveTo(0.5, 0.94, 0.1, 0.86); g.closePath(); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); [0.36, 0.5, 0.64].forEach((x) => { g.moveTo(x + 0.025, 0.83); g.arc(x, 0.83, 0.025, 0, 7); }); g.fill();
+  } },
+  // an orange sun badge with a white die (five pips)
+  dice: { name: 'Dice sun', draw(g) {
+    const cx = 0.5, cy = CREST_H / 2;
+    g.beginPath(); g.arc(cx, cy, 0.49, 0, 7); g.fillStyle = '#1d2f5c'; g.fill();
+    g.beginPath(); g.arc(cx, cy, 0.45, 0, 7); g.fillStyle = '#f76707'; g.fill();
+    g.fillStyle = '#ffa94d'; g.beginPath(); for (let i = 0; i < 12; i++) { const a = i * TAU / 12, b = a + 0.13; g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * 0.45, cy + Math.sin(a) * 0.45); g.lineTo(cx + Math.cos(b) * 0.45, cy + Math.sin(b) * 0.45); g.closePath(); } g.fill();
+    g.save(); g.translate(cx, cy); g.rotate(0.2);
+    g.beginPath(); g.roundRect(-0.2, -0.2, 0.4, 0.4, 0.08); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 0.03; g.strokeStyle = '#1d2f5c'; g.stroke();
+    g.fillStyle = '#1d2f5c'; g.beginPath(); [[-0.1, -0.1], [0.1, -0.1], [0, 0], [-0.1, 0.1], [0.1, 0.1]].forEach((q) => { g.moveTo(q[0] + 0.04, q[1]); g.arc(q[0], q[1], 0.04, 0, 7); }); g.fill();
+    g.restore();
+  } },
+  // a purple diamond with a gold edge, a white "=" and two little stars
+  diamond: { name: 'Equals diamond', draw(g) {
+    const cx = 0.5, cy = CREST_H / 2, d = (i) => { g.beginPath(); g.moveTo(cx, 0.02 + i); g.lineTo(0.98 - i, cy); g.lineTo(cx, CREST_H - 0.02 - i); g.lineTo(0.02 + i, cy); g.closePath(); };
+    d(0); g.fillStyle = '#e9b824'; g.fill(); d(0.05); g.fillStyle = '#5f3dc4'; g.fill(); d(0.09); g.fillStyle = '#7048e8'; g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(0.33, cy - 0.1, 0.34, 0.07, 0.03); g.roundRect(0.33, cy + 0.03, 0.34, 0.07, 0.03); g.fill();
+    g.fillStyle = '#ffd43b'; g.beginPath(); star(g, 0.5, cy - 0.27, 0.06, 5); star(g, 0.5, cy + 0.27, 0.06, 5); g.fill();
+  } }
+};
+function artCanvas(w, h) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; return cv; }
+function crestCanvas(id, px) {
+  const c = CRESTS[id]; if (!c) return null;
+  const cv = artCanvas(px, Math.round(px * CREST_H)), g = cv.getContext('2d'); g.scale(px, px); c.draw(g); return cv;
+}
+function markCanvas(id, col, px) {
+  const m = MARKS[id]; if (!m) return null;
+  const cv = artCanvas(px, px), g = cv.getContext('2d'); g.scale(px, px); m.draw(g, col); return cv;
+}
+function artTexture(cv) { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
+// for the kit designer (a classic script): thumbnails of the crests and marks
+if (typeof window !== 'undefined') {
+  window.KitArt = {
+    crests: Object.keys(CRESTS).map((k) => [k, CRESTS[k].name]), marks: Object.keys(MARKS).map((k) => [k, MARKS[k].name]),
+    crestURL: (id, px) => { const cv = crestCanvas(id, px || 64); return cv ? cv.toDataURL() : ''; },
+    markURL: (id, col, px) => { const cv = markCanvas(id, col || ICY, px || 64); return cv ? cv.toDataURL() : ''; },
+    crestH: CREST_H
+  };
+}
+
+// ---------- the shirt texture ----------
+// kit: a full kit object (kitFromSave); kit.skin: the colour inside a V-neck. front: legacy flag (a number on the chest
+// for someone seen from the front) - the kit's frontNum now decides, this only matters for kits without it.
+export function kidJerseyTexture(kit, num, name, front, D) {
+  const P = profileOf(D || KID), DD = P.D, tx = DD.torsoX, ty = DD.torsoY;
+  const W = 2048, H = 1024, cv = artCanvas(W, H), g = cv.getContext('2d');
+  const X = (phi) => { let u = (phi - SEAM) / TAU; u -= Math.floor(u); return u * W; };
+  const Y = (s) => s / P.sTot * H, pyU = H / P.sTot;
+  const pxU = (s) => W / (TAU * Math.max(0.05, P.at(s).r));        // pixels per unit round the body at s
+  const place = (phi, s) => g.setTransform(pxU(s), 0, 0, pyU, X(phi), Y(s));
+  const pat = kit.pattern || (kit.waves ? 'waves' : null), light = kit.light || kit.waves || mixHex(kit.jersey, '#ffffff', 0.24);
+  const accent = kit.accent || (lumOf(kit.jersey) > 0.55 ? '#1d2b3a' : ICY);
+  g.fillStyle = kit.jersey; g.fillRect(0, 0, W, H);
+  const sArm = P.sAtY(1.36 * ty), FRONT = X(0);
+  // two soft side panels in the darker shade, under the arms
+  [Math.PI / 2, -Math.PI / 2].forEach((phi) => {
+    const x = X(phi) === 0 ? W : X(phi), hw = 0.13 * tx * pxU(sArm + 0.4);
+    const grd = g.createLinearGradient(x - hw, 0, x + hw, 0);
+    grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(0.18, kit.dark); grd.addColorStop(0.82, kit.dark); grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.save(); g.globalAlpha = pat === 'waves' ? 0.75 : 0.9; g.fillStyle = grd;
+    for (const ox of [0, -W]) { g.beginPath(); g.moveTo(x + ox - hw, H); g.lineTo(x + ox - hw, Y(sArm) + 30); g.quadraticCurveTo(x + ox, Y(sArm) - 20, x + ox + hw, Y(sArm) + 30); g.lineTo(x + ox + hw, H); g.closePath(); g.fill(); }
+    g.restore();
+  });
+  if (pat === 'waves') {
+    // thin tone-on-tone wavy lines all round (a whole number of waves so the seam matches), with a faint shadow
+    // under each line so they read as a woven sheen
+    const step = 0.06 * ty, A = 0.011 * pyU, N = 44;
+    for (let s = 0.03, row = 0; s < P.sTot; s += step, row++) {
+      const y = Y(s), ph = row * 0.9;
+      for (const L of [{ c: 'rgba(0,0,0,.12)', o: 2.2, w: 2.2 }, { c: light, o: 0, w: 2.4, a: 0.5 }]) {
+        g.beginPath(); for (let x = 0; x <= W; x += 4) { const yy = y + L.o + Math.sin(x / W * TAU * N + ph) * A; if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
+        g.globalAlpha = L.a || 1; g.strokeStyle = L.c; g.lineWidth = L.w; g.stroke(); g.globalAlpha = 1;
+      }
+    }
+  } else if (pat === 'stripes') {
+    g.fillStyle = kit.dark; for (let k = 0; k < 16; k++) { const x = (FRONT + W / 64 + k * W / 16) % W; g.fillRect(x, 0, W / 32, H); if (x + W / 32 > W) g.fillRect(x - W, 0, W / 32, H); }
+  } else if (pat === 'hoops') {
+    g.fillStyle = kit.dark; for (let s = P.sAtY(1.5 * ty); s < P.sTot; s += 0.27 * ty) g.fillRect(0, Y(s), W, 0.135 * ty * pyU);
+  } else if (pat === 'sash') {
+    // one diagonal band from his right shoulder across the chest to his left hip, and on round the back
+    g.fillStyle = kit.dark;
+    const band = (p0, s0, p1, s1, wd) => { g.beginPath(); g.moveTo(X(p0) - wd, Y(s0)); g.lineTo(X(p0) + wd, Y(s0)); g.lineTo(X(p1) + wd, Y(s1)); g.lineTo(X(p1) - wd, Y(s1)); g.closePath(); g.fill(); };
+    const sTop = P.sAtR(0.62 * tx), sBot = P.sTot;
+    band(-1.15, sTop, 1.05, sBot, 0.17 * tx * pxU(1.2)); band(Math.PI - 1.05 + TAU * 0, sTop, Math.PI + 1.15, sBot, 0.17 * tx * pxU(1.2));
+  }
+  // inside the collar (the top of the shirt round the neck) a shade darker
+  const NL = necklinePath(P, kit.collar);
+  g.fillStyle = mixHex(kit.jersey, '#000000', 0.3); g.fillRect(0, 0, W, Y(NL.s0 - 0.01));
+  if (NL.v) {
+    // the V: skin inside it, with a soft shadow just under the band
+    const vp = NL.pts.filter((q) => q.vw === 1 || Math.abs(q.phi) <= NL.phiC + 1e-6);
+    g.beginPath(); vp.forEach((q, i) => { const x = X(q.phi), y = Y(q.s); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+    g.lineTo(X(NL.phiC), 0); g.lineTo(X(-NL.phiC), 0); g.closePath();
+    g.save(); g.fillStyle = kit.skin || '#efc19d'; g.fill(); g.clip();
+    g.beginPath(); vp.forEach((q, i) => { const x = X(q.phi), y = Y(q.s); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+    g.strokeStyle = 'rgba(70,30,20,.35)'; g.lineWidth = NL.w * 2.9 * pyU; g.stroke();
+    g.strokeStyle = 'rgba(70,30,20,.25)'; g.lineWidth = NL.w * 3.6 * pyU; g.stroke();
+    g.restore();
+  }
+  // a little four-pointed compass star at the back of the neck, just under the collar band
+  place(Math.PI, NL.s0 + 0.075 * ty); g.beginPath(); star(g, 0, 0, 0.042 * tx, 4, 0.3); g.fillStyle = accent; g.fill();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const dark = lumOf(kit.jersey) > 0.55;
+  // the front number: tall, narrow and thin, centred on the chest and upper belly
+  const showFront = kit.frontNum != null ? kit.frontNum : !!front;
+  const edge = dark ? (lumOf(kit.trim) > 0.5 ? kit.dark : '#ffffff') : kit.trim === '#ffffff' ? kit.dark : kit.trim, cols = { a: accent, e: edge, s: kit.jersey };
+  if (showFront) {
+    place(0, P.sAtY(0.76 * ty));
+    styledNumber(g, num, 0.62 * ty, kit.numStyle, 'f', cols, dark ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.22)');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  // the back: the name in an arc over a big number
+  const nm = String(name || '').toUpperCase().slice(0, 12), FONT = '"Arial Black", Impact, "Trebuchet MS", sans-serif';
+  if (nm) {
+    const sN = P.sAtY(1.33 * ty), sx = pxU(sN), k = sx / pyU;
+    let fs = 0.15 * ty * pyU; g.font = '900 ' + fs + 'px ' + FONT;
+    const maxW = 1.05 * tx * sx; let wid = g.measureText(nm).width * k;
+    if (wid > maxW) { fs *= maxW / wid; g.font = '900 ' + fs + 'px ' + FONT; wid = maxW; }
+    const R = 1.7 * tx * sx, x0 = X(Math.PI), y0 = Y(sN), sp = fs * 0.06;
+    let cur = -(wid + sp * (nm.length - 1)) / 2;
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    for (const ch of nm) {
+      const cw = g.measureText(ch).width * k, a = (cur + cw / 2) / R;
+      g.setTransform(1, 0, 0, 1, x0 + Math.sin(a) * R, y0 + (1 - Math.cos(a)) * R); g.rotate(a); g.scale(k, 1);
+      g.lineWidth = fs * 0.16; g.strokeStyle = dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.3)'; g.strokeText(ch, 0, fs * 0.04);
+      g.fillStyle = accent; g.fillText(ch, 0, 0);
+      cur += cw + sp;
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  place(Math.PI, P.sAtY(0.76 * ty));
+  styledNumber(g, num, 0.76 * ty, kit.numStyle, 'b', cols, dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.35)');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const tex = artTexture(cv); return tex;
+}
+
+// sleeves (and the shoulder balls): the same waves, as rings round the arm; plain otherwise
+function sleeveTexture(kit) {
+  const W = 512, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d');
+  g.fillStyle = kit.jersey; g.fillRect(0, 0, W, H);
+  if ((kit.pattern || (kit.waves ? 'waves' : '')) === 'waves') {
+    const light = kit.light || kit.waves, rows = 10, N = 10;
+    for (let r = 0; r < rows; r++) {
+      const y = (r + 0.5) * H / rows;
+      for (const L of [{ c: 'rgba(0,0,0,.12)', o: 2, w: 2 }, { c: light, o: 0, w: 2.4, a: 0.5 }]) {
+        g.beginPath(); for (let x = 0; x <= W; x += 4) { const yy = y + L.o + Math.sin(x / W * TAU * N + r * 0.9) * 3; if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
+        g.globalAlpha = L.a || 1; g.strokeStyle = L.c; g.lineWidth = L.w; g.stroke(); g.globalAlpha = 1;
+      }
+    }
+  }
+  return artTexture(cv);
+}
+// the knitted band (collar and cuffs): ribs along it, and across it from the shirt side: trim, a thin shirt-colour
+// stripe, trim, then a shirt-colour inner edge
+function bandTexture(kit, repeat) {
+  const W = 64, H = 64, cv = artCanvas(W, H), g = cv.getContext('2d'), trim = kit.trim, red = kit.trim2 || kit.jersey;
+  // canvas y = (1 - v) * H: v = 0 (the shirt side) is the bottom row
+  const rowsV = [[0, 0.08, mixHex(trim, '#000000', 0.25)], [0.08, 0.5, trim], [0.5, 0.6, red], [0.6, 0.8, trim], [0.8, 1, red]];
+  rowsV.forEach((q) => { g.fillStyle = q[2]; g.fillRect(0, (1 - q[1]) * H, W, (q[1] - q[0]) * H + 0.5); });
+  // ribs: soft light / dark lines across the band
+  for (let x = 0; x < W; x += 8) { g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x, 0, 3, H); g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x + 5, 0, 2, H); }
+  const t = artTexture(cv); t.wrapS = THREE.RepeatWrapping; t.repeat.set(repeat || 1, 1); return t;
+}
+// shorts: a side stripe in the trim colour with a thin shirt-colour line, a hem band, a small number on his left leg
+function shortsTexture(kit, num, D) {
+  const W = 1024, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d'), R = D.shortsR, Hh = D.shortsH;
+  const pxX = W / (TAU * R), pxY = H / Hh, X = (phi) => { let u = phi / TAU; u -= Math.floor(u); return u * W; };
+  g.fillStyle = kit.shorts; g.fillRect(0, 0, W, H);
+  const lightShorts = lumOf(kit.shorts) > 0.6, ink = lightShorts ? (lumOf(kit.trim) < 0.4 ? kit.trim : '#1d2b3a') : (kit.accent && lumOf(kit.accent) > 0.5 ? kit.accent : '#ffffff');
+  const stripe = lumOf(kit.trim) > 0.85 && lightShorts ? kit.jersey : kit.trim, line = stripe === kit.jersey ? kit.trim : kit.jersey;
+  g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0, 0, W, 0.05 * pxY);           // the waistband shadow
+  [Math.PI / 2, -Math.PI / 2].forEach((phi) => {
+    const x = X(phi), hw = 0.05 * pxX;
+    g.fillStyle = stripe; g.fillRect(x - hw, 0, hw * 2, H); if (x - hw < 0) g.fillRect(x - hw + W, 0, hw * 2, H);
+    g.fillStyle = line; g.fillRect(x - 0.008 * pxX, 0, 0.016 * pxX, H); if (x < 0.01 * pxX) g.fillRect(x - 0.008 * pxX + W, 0, 0.016 * pxX, H);
+  });
+  g.fillStyle = stripe; g.fillRect(0, H - 0.045 * pxY, W, 0.045 * pxY);
+  g.fillStyle = line; g.fillRect(0, H - 0.062 * pxY, W, 0.01 * pxY);
+  g.setTransform(pxX, 0, 0, pxY, X(0.5), 0.6 * Hh * pxY);
+  styledNumber(g, num, 0.17, kit.numStyle, 'f', { a: ink, e: kit.shorts, s: kit.shorts });
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  return artTexture(cv);
+}
+// socks: a band in the trim colour near the top, with a thin line under it
+function sockTexture(kit) {
+  const W = 128, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d');
+  g.fillStyle = kit.sock || kit.jersey; g.fillRect(0, 0, W, H);
+  const trim = kit.trim, sameish = Math.abs(lumOf(trim) - lumOf(kit.sock || kit.jersey)) < 0.06;
+  g.fillStyle = sameish ? '#ffffff' : trim; g.fillRect(0, 0, W, H * 0.035); g.fillRect(0, H * 0.08, W, H * 0.1); g.fillRect(0, H * 0.21, W, H * 0.025);
+  for (let x = 0; x < W; x += 6) { g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(x, 0, 2, H); }
+  return artTexture(cv);
+}
 // ---------------- head surface ----------------
 // The head is a deformed sphere. surf(d) gives the surface point for a unit direction d, so the hair, the mouth and the
 // cheek decals can all be laid exactly on it (radially), whatever the head shape.
@@ -360,31 +773,131 @@ export function buildHuman(spec) {
   const skin = std(new THREE.Color(look.skin).getHex(), { roughness: 0.68 }), hairM = std(new THREE.Color(look.hair).getHex(), { roughness: 0.8 }), dark = std(0x231a16, { roughness: 0.35 });
   // the hair shell carries per-vertex shading (locks and grooves); a little sheen so it reads as hair, not a helmet
   const hairShellM = std(new THREE.Color(look.hair).getHex(), { roughness: 0.55, vertexColors: true });
-  const vkit = (k) => look.vneck ? Object.assign({}, k, { vneck: look.skin }) : k;
-  const jerseyTex = kidJerseyTexture(vkit(kit), spec.num, spec.name, spec.front);
-  const shirtM = std(0xffffff, { map: jerseyTex, roughness: 0.85 }), sleeveM = std(new THREE.Color(kit.jersey).getHex(), { roughness: 0.85 });
-  const trimM = std(new THREE.Color(kit.trim).getHex(), { roughness: 0.7 }), shortsM = std(new THREE.Color(kit.shorts).getHex(), { roughness: 0.8 });
+  // the kit with what the shirt needs to know about him: his skin (inside a V-neck) and the collar
+  const withSkin = (k) => Object.assign({}, k, { skin: look.skin, collar: k.collar || (look.vneck ? 'v' : 'round') });
+  let K = withSkin(kit);
+  const P = profileOf(D);
+  const shirtM = std(0xffffff, { map: kidJerseyTexture(K, spec.num, spec.name, spec.front, D), roughness: 0.85 });
+  const sleeveM = std(0xffffff, { map: sleeveTexture(K), roughness: 0.85 });
+  const bandM = std(0xffffff, { map: bandTexture(K, 1), roughness: 0.8, side: THREE.DoubleSide }), cuffM = std(0xffffff, { map: bandTexture(K, 14), roughness: 0.8 });
+  const shortsM = std(0xffffff, { map: shortsTexture(K, spec.num, D), roughness: 0.8 });
   const add = (geo, mat, parent, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); parent.add(m); return m; };
 
-  // ----- torso (lathe, u = 0 at the chest so the back number sits mid-texture) -----
-  const pts = new THREE.SplineCurve([[0.001, 0], [0.62, 0.04], [0.82, 0.3], [0.86, 0.75], [0.84, 1.2], [0.8, 1.52], [0.6, 1.78], [0.4, 1.86], [0.001, 1.88]]
-    .map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(22);
-  pts[0].x = 0.001;
-  const torso = add(new THREE.LatheGeometry(pts, 32, 0, Math.PI * 2), shirtM, chest);
-  const collar = add(new THREE.TorusGeometry(0.4 * D.torsoX, 0.075, 6, 24), trimM, chest, 0, 1.8 * D.torsoY, 0); collar.rotation.x = Math.PI / 2;
-  add(new THREE.CylinderGeometry(D.shortsR - 0.02, D.shortsR + 0.02, D.shortsH, 24, 1, true), shortsM, body, 0, D.shortsY, 0);
+  // ----- torso: a lathe whose texture runs by arc length (see torsoProfile); the seam is under his right arm -----
+  const torsoGeo = new THREE.LatheGeometry(P.pts, 64, SEAM, TAU);
+  { const uv = torsoGeo.attributes.uv; for (let i = 0; i <= 64; i++) for (let j = 0; j < P.n; j++) uv.setY(i * P.n + j, 1 - P.S[j] / P.sTot); }
+  const basePos = torsoGeo.attributes.position.array.slice();
+  const torso = add(torsoGeo, shirtM, chest);
+  // ----- the collar: a raised knitted band along the neckline. For a V-neck the shirt inside the V is sunk a little
+  // (the opening) and painted as skin; round the back the band stands up against the neck -----
+  let band = null, collarKind = null;
+  const _t = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  function inPoly(poly, x, y) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; }
+    return c;
+  }
+  function applyCollar(kind) {
+    if (kind === collarKind) return; collarKind = kind;
+    const NL = necklinePath(P, kind), m = NL.pts.length, Pp = [], Nn = [];
+    NL.pts.forEach((q) => { Pp.push(P.pos(q.phi, q.s, 0, new THREE.Vector3())); Nn.push(P.nrm(q.phi, q.s, new THREE.Vector3())); });
+    // per segment: the direction across the band, toward the neck (mitred at the corners and at the point of the V)
+    const Bs = []; let total = 0;
+    for (let k = 0; k < m - 1; k++) {
+      _t.subVectors(Pp[k + 1], Pp[k]); total += _t.length(); _t.normalize();
+      const nn = new THREE.Vector3().addVectors(Nn[k], Nn[k + 1]).normalize(); Bs.push(new THREE.Vector3().crossVectors(nn, _t).normalize());
+    }
+    if (Bs[0].z < 0) Bs.forEach((b) => b.negate());      // at the back (phi = -pi, z < 0) "toward the neck" is +z
+    const reps = Math.max(1, Math.round(total / (0.1 * D.torsoX))), V = [], UVs = [], idx = [], inner = [];
+    // inner edge points (mitred); near the point of the V the two sides' inner edges would cross over the middle, so
+    // any that do are pulled back to the mitre point of the tip (a clean V inside the band)
+    const Qs = Pp.map((Pv, i) => {
+      const b0 = Bs[Math.max(0, i - 1)], b1 = Bs[Math.min(m - 2, i)];
+      const b = new THREE.Vector3().addVectors(b0, b1).normalize(), len = NL.w * Math.min(2.6, 1 / Math.max(0.38, b.dot(b0)));
+      return Pv.clone().addScaledVector(b, len);
+    });
+    const ti = NL.pts.findIndex((q) => q.tip);
+    if (ti >= 0) {
+      const tq = Qs[ti];
+      for (let i = 0; i < m; i++) { const ph = NL.pts[i].phi; if (i !== ti && NL.pts[i].vw === 1 && Math.abs(ph) < 0.6 && (Qs[i].x * Math.sign(ph) < tq.x * Math.sign(ph) || Qs[i].y < tq.y)) Qs[i].copy(tq); }
+    }
+    let arc = 0;
+    for (let i = 0; i < m; i++) {
+      const q = NL.pts[i];
+      const Pv = Pp[i], N = Nn[i], Q = Qs[i], st = NL.stand * (1 - q.vw), rec = NL.rec * q.vw, th = NL.th;
+      if (i) arc += Pp[i].distanceTo(Pp[i - 1]);
+      const u = arc / total * reps;
+      const top = Q.clone().addScaledVector(N, th * 0.9).addScaledVector(UP, st);
+      [[Pv.clone().addScaledVector(N, -0.012), 0], [Pv.clone().addScaledVector(N, th), 0.08], [Pv.clone().addScaledVector(N, th), 0.08],
+        [Pv.clone().lerp(Q, 0.5).addScaledVector(N, th * 1.35).addScaledVector(UP, st * 0.55), 0.45], [top, 0.86], [top.clone(), 0.86],
+        [Q.clone().addScaledVector(N, -rec - 0.012), 1]].forEach((pp) => { V.push(pp[0].x, pp[0].y, pp[0].z); UVs.push(u, pp[1]); });
+      if (q.vw === 1) inner.push([Math.atan2(Q.x, Q.z), P.nearS(Math.hypot(Q.x, Q.z), Q.y)]);
+    }
+    for (let i = 0; i < m - 1; i++) [[0, 1], [2, 3], [3, 4], [5, 6]].forEach((e) => { const A = i * 7 + e[0], B = i * 7 + e[1], C = A + 7, E = B + 7; idx.push(A, C, B, B, C, E); });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(V, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(UVs, 2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    if (band) { chest.remove(band); band.geometry.dispose(); }
+    band = add(geo, bandM, chest);
+    // the opening: sink the shirt inside the band's inner edge (it is painted skin there)
+    const pa = torsoGeo.attributes.position, na = torsoGeo.attributes.normal; pa.array.set(basePos);
+    if (NL.v && inner.length > 2) {
+      const poly = inner.slice(); poly.push([inner[inner.length - 1][0], -0.05], [inner[0][0], -0.05]);
+      for (let i = 0; i <= 64; i++) {
+        let phi = SEAM + i / 64 * TAU; if (phi > Math.PI) phi -= TAU;
+        for (let j = 0; j < P.n; j++) {
+          if (P.S[j] < 0.18 * D.torsoX || !inPoly(poly, phi, P.S[j])) continue;
+          const k = (i * P.n + j) * 3; pa.array[k] -= na.array[k] * NL.rec; pa.array[k + 1] -= na.array[k + 1] * NL.rec; pa.array[k + 2] -= na.array[k + 2] * NL.rec;
+        }
+      }
+    }
+    pa.needsUpdate = true; torsoGeo.computeBoundingSphere();
+  }
+  applyCollar(K.collar);
+  // ----- badges: our crest on his left chest, our maker's mark on his right chest and on both shoulders (decals laid
+  // on the surface, with their own sharp textures so they hold up close) -----
+  const decalMat = () => std(0xffffff, { roughness: 0.7, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const crestM = decalMat(), markM = decalMat();
+  function gridGeo(NU, NV, at) {
+    const pos = [], uv = [], idx = [], v3 = new THREE.Vector3();
+    for (let b = 0; b <= NV; b++) for (let a = 0; a <= NU; a++) { at(a / NU - 0.5, b / NV - 0.5, v3); pos.push(v3.x, v3.y, v3.z); uv.push(a / NU, b / NV); }
+    for (let b = 0; b < NV; b++) for (let a = 0; a < NU; a++) { const i0 = b * (NU + 1) + a; idx.push(i0, i0 + 1, i0 + NU + 1, i0 + 1, i0 + NU + 2, i0 + NU + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+  // fa: across (+ = toward his left), fb: up
+  const torsoDecal = (phi0, sc, w, h, mat) => add(gridGeo(10, 10, (fa, fb, o) => { const s = sc - fb * h; P.pos(phi0 + fa * w / Math.max(0.05, P.at(s).r), s, 0.004, o); }), mat, chest);
+  const sBadge = P.sAtY(1.29 * D.torsoY);
+  const crestMesh = torsoDecal(0.46, sBadge, 0.25 * D.torsoX, 0.25 * D.torsoX * CREST_H, crestM);
+  const markMesh = torsoDecal(-0.46, sBadge - 0.01, 0.19 * D.torsoX, 0.19 * D.torsoX, markM);
+  crestMesh.renderOrder = markMesh.renderOrder = 2;
+  let badgeKey = '', shoulderMarks = [];
+  function setBadges(k) {
+    const key = [k.crest, k.mark, k.accent].join('|'); if (key === badgeKey) return; badgeKey = key;
+    const put = (m, cv) => { const o = m.map; m.map = cv ? artTexture(cv) : null; m.needsUpdate = true; if (o) o.dispose(); };
+    put(crestM, crestCanvas(k.crest, 512)); put(markM, markCanvas(k.mark, k.accent || ICY, 256));
+    crestMesh.visible = !!CRESTS[k.crest]; const mv = !!MARKS[k.mark]; markMesh.visible = mv; shoulderMarks.forEach((s) => { s.visible = mv; });
+  }
+  const shortsMesh = add(new THREE.CylinderGeometry(D.shortsR - 0.02, D.shortsR + 0.02, D.shortsH, 32, 1, true), shortsM, body, 0, D.shortsY, 0);
   // legs with a knee each (hip -> thigh -> knee -> shin, sock and boot). Children of root, so a lean bends only the
   // upper body. The knee lets him crouch, jump and kneel in the celebrations.
-  const sockM = std(new THREE.Color(kit.sock).getHex(), { roughness: 0.85 }), bootM = std(0x1f2430, { roughness: 0.45 });
+  const sockM = std(0xffffff, { map: sockTexture(K), roughness: 0.85 }), bootM = std(0x1f2430, { roughness: 0.45 });
   const lr = D.legR, thighG = new THREE.CylinderGeometry(0.19 * lr, 0.17 * lr, D.thigh + 0.07, 10), sockG = new THREE.CylinderGeometry(0.18 * lr, 0.15 * lr, D.shin * 0.95, 10), bootG = new THREE.SphereGeometry(1, 12, 8);
   const kneeG = new THREE.SphereGeometry(0.175 * lr, 10, 8);
+  // boots: the upper in his colour, a contrasting sole with studs underneath, laces on top and a heel tab
+  const soleM = std(0xf1f3f5, { roughness: 0.5 }), studM = std(0xadb5bd, { roughness: 0.4, metalness: 0.3 });
+  const laceG = new THREE.BoxGeometry(0.11 * lr, 0.016, 0.024), studG = new THREE.CylinderGeometry(0.02 * lr, 0.026 * lr, 0.03, 8);
   const legs = [-1, 1].map((s) => {
     const leg = new THREE.Group(); leg.position.set(s * 0.38 * D.torsoX, D.hipY, 0); root.add(leg);
     add(thighG, skin, leg, 0, -D.thigh / 2 + 0.02, 0);
     const knee = new THREE.Group(); knee.position.set(0, -D.thigh, 0); leg.add(knee);
     add(kneeG, skin, knee, 0, 0, 0);
     add(sockG, sockM, knee, 0, -D.shin * 0.45, 0);
-    const b = add(bootG, bootM, knee, 0, -D.shin, 0.1); b.scale.set(0.2 * lr, 0.13, 0.32 * lr);
+    const bt = new THREE.Group(); bt.position.set(0, -D.shin, 0.1); knee.add(bt);
+    const b = add(bootG, bootM, bt); b.scale.set(0.2 * lr, 0.13, 0.32 * lr);
+    const so = add(bootG, soleM, bt, 0, -0.088, 0.008); so.scale.set(0.213 * lr, 0.045, 0.334 * lr);
+    [[0.07, 0.124], [0.13, 0.112], [0.19, 0.094]].forEach((q) => { const l = add(laceG, soleM, bt, 0, q[1], q[0] * lr); l.rotation.x = q[0] * 1.6; });
+    const tab = add(bootG, soleM, bt, 0, 0.03, -0.3 * lr); tab.scale.set(0.07 * lr, 0.07, 0.03);
+    [[-0.09, -0.2], [0.09, -0.2], [-0.1, 0.06], [0.1, 0.06], [-0.07, 0.22], [0.07, 0.22]].forEach((q) => add(studG, studM, bt, q[0] * lr, -0.128, q[1] * lr));
     leg.userData.knee = knee;
     return leg;
   });
@@ -500,8 +1013,72 @@ export function buildHuman(spec) {
   // ----- arms: index 0 = his right (local -x), 1 = his left (local +x) -----
   const arms = [-1, 1].map((side) => new ArmRig(chest, side, {
     L1: D.L1, L2: D.L2, shoulder: [side * D.SH_X, D.SH_Y, 0], maxStretch: 1.12, rUp: 0.15 * D.armR, rFore: 0.14 * D.armR, sleeveR: 0.22 * D.armR,
-    furMat: skin, sleeveMat: sleeveM, trimMat: trimM, hand: { mat: skin, scale: D.handS }
+    furMat: skin, sleeveMat: sleeveM, trimMat: cuffM, hand: { mat: skin, scale: D.handS }
   }));
+  // cuffs: a knitted band round the end of each sleeve (in place of the plain ring), and the maker's mark on top of
+  // each shoulder (on the shoulder ball, so it stays on the shoulder whatever the arm does)
+  const cuffPts = [[0.93, -0.46], [0.985, -0.44]];
+  for (let k = 0; k <= 7; k++) cuffPts.push([1.0, -0.4 + k * 0.05]);
+  cuffPts.push([0.995, 0.0], [0.96, 0.035], [0.88, 0.03]);
+  const cuffGeo = new THREE.LatheGeometry(cuffPts.map((q) => new THREE.Vector2(q[0], q[1])), 28); cuffGeo.rotateX(Math.PI / 2);
+  arms.forEach((arm) => { if (arm.ring) { arm.ring.geometry.dispose(); arm.ring.geometry = cuffGeo; arm.ring.material = cuffM; } });
+  shoulderMarks = arms.map((arm) => {
+    const side = arm.side, dir = new THREE.Vector3(side * 0.85, 1, 0.04).normalize();
+    const up = new THREE.Vector3(-side, 0, 0).projectOnPlane(dir).normalize(), right = new THREE.Vector3().crossVectors(up, dir), A = 0.6;
+    const mesh = new THREE.Mesh(gridGeo(8, 8, (fa, fb, o) => o.copy(dir).addScaledVector(right, fa * A).addScaledVector(up, fb * A).normalize().multiplyScalar(1.018)), markM);
+    mesh.renderOrder = 2; arm.sBall.add(mesh); return mesh;
+  });
+  setBadges(K);
+  // ----- gear: long sleeves, the captain's armband, goalkeeper gloves, boots -----
+  // A band that must keep its own size on a non-uniformly scaled arm segment (scale = r, length, r): it follows its
+  // parent and corrects its own matrix just before it is drawn.
+  function onSegment(mesh, parent, place) {
+    parent.add(mesh);
+    mesh.onBeforeRender = function () { const f = parent.scale; place(mesh, f.x, f.y); mesh.updateMatrix(); mesh.matrixWorld.multiplyMatrices(parent.matrixWorld, mesh.matrix); };
+    return mesh;
+  }
+  // wrist bands for long sleeves (the knitted cuff, at the end of the forearm)
+  const wristGeo = new THREE.LatheGeometry(cuffPts.map((q) => new THREE.Vector2(q[0], q[1])), 24);
+  const wrists = arms.map((arm) => onSegment(new THREE.Mesh(wristGeo, cuffM), arm.fore, (m, r, len) => {
+    m.scale.set(1.18, 1.18 * r / len, 1.18); m.position.set(0, 0.5 - 0.05 * r / len, 0);
+  }));
+  // the captain's armband: on his left upper arm (arms[1]), over the sleeve just above the cuff
+  const bandArmM = std(0xffffff, { roughness: 0.6 });
+  const armband = onSegment(new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.06, 1, 28, 1, true), bandArmM), arms[1].sleeve || arms[1].upper, (m, r, len) => {
+    const h = 0.15 * D.armR; m.scale.set(1, h / len, 1); m.position.set(0, 0.5 - (0.12 * D.armR + h / 2) / len, 0);
+  });
+  function armbandTexture(col) {
+    const W = 512, H = 64, cv = artCanvas(W, H), g = cv.getContext('2d'), ink = lumOf(col) > 0.6 ? '#1d2b3a' : '#ffffff';
+    g.fillStyle = col; g.fillRect(0, 0, W, H); g.fillStyle = ink; g.fillRect(0, 3, W, 4); g.fillRect(0, H - 7, W, 4);
+    // a "C" (drawn, not typed) three times round the band, so one always faces out
+    g.strokeStyle = ink; g.lineWidth = 9; g.lineCap = 'round';
+    for (let k = 0; k < 3; k++) { g.beginPath(); g.arc((k + 0.5) * W / 3, H / 2, 15, Math.PI * 0.28, Math.PI * 1.72, false); g.stroke(); }
+    return artTexture(cv);
+  }
+  // goalkeeper gloves: the hand grows a little and turns into a padded glove with a wide wrist strap
+  const gloveM = std(0xffffff, { roughness: 0.55 }), strapM = std(0xffffff, { roughness: 0.5 });
+  const gloves = arms.map((arm) => {
+    const parts = []; arm.hand.traverse((o) => { if (o.isMesh) parts.push(o); });
+    const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.15 * D.armR, 0.2 * D.armR, 0.17 * D.handS / 0.6, 18), strapM);
+    strap.position.y = 0.17 * D.handS / 0.6; arm.hand.add(strap);
+    return { arm, parts, strap };
+  });
+  let gearKey = '';
+  function applyGear(k) {
+    const key = [k.sleeves, k.armband, k.armbandCol, k.gloves, k.boots, k.trim, k.jersey].join('|'); if (key === gearKey) return; gearKey = key;
+    const long = k.sleeves === 'long';
+    arms.forEach((arm, i) => {
+      arm.upper.material = long ? sleeveM : skin; arm.fore.material = long ? sleeveM : skin; arm.elbow.material = long ? sleeveM : skin;
+      if (arm.ring) arm.ring.visible = !long; wrists[i].visible = long;
+    });
+    armband.visible = !!k.armband;
+    if (k.armband) { const o = bandArmM.map; bandArmM.map = armbandTexture(k.armbandCol || '#ffd43b'); bandArmM.needsUpdate = true; if (o) o.dispose(); }
+    const gl = !!k.gloves, gcol = lumOf(k.trim) > 0.85 ? k.jersey : k.trim;
+    gloveM.color.set(gcol); strapM.color.set(lumOf(gcol) > 0.6 ? '#1d2b3a' : '#f8f9fa');
+    gloves.forEach((G) => { G.parts.forEach((p) => { p.material = gl ? gloveM : skin; }); G.strap.visible = gl; G.arm.hand.scale.setScalar(gl ? 1.2 : 1); });
+    const bc = k.boots || '#1f2430'; bootM.color.set(bc); soleM.color.set(lumOf(bc) > 0.55 ? '#25262b' : '#f1f3f5');
+  }
+  applyGear(K);
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
 
   // ----- expression -----
@@ -531,8 +1108,12 @@ export function buildHuman(spec) {
   setFace({});
 
   function setKit(k, n, nm, front) {
-    const old = shirtM.map; shirtM.map = kidJerseyTexture(vkit(k), n, nm, front == null ? spec.front : front); shirtM.needsUpdate = true; if (old) old.dispose();
-    sleeveM.color.set(k.jersey); trimM.color.set(k.trim); shortsM.color.set(k.shorts); sockM.color.set(k.sock);
+    K = withSkin(k);
+    const swap = (m, t) => { const o = m.map; m.map = t; m.needsUpdate = true; if (o && o !== t) o.dispose(); };
+    swap(shirtM, kidJerseyTexture(K, n, nm, front == null ? spec.front : front, D));
+    swap(sleeveM, sleeveTexture(K)); swap(bandM, bandTexture(K, 1)); swap(cuffM, bandTexture(K, 14));
+    swap(shortsM, shortsTexture(K, n, D)); swap(sockM, sockTexture(K));
+    applyCollar(K.collar); setBadges(K); applyGear(K);
   }
   function setHair(col, styleId) {
     if (styleId && styleId !== look.hairStyle) { look.hairStyle = styleId; look.hair = col || look.hair; buildHair(styleId, look.hair); }
@@ -544,5 +1125,6 @@ export function buildHuman(spec) {
     legs[0].rotation.x = a0; legs[1].rotation.x = a1; legs[0].userData.knee.rotation.x = b0; legs[1].userData.knee.rotation.x = b1;
   }
   const dims = Object.assign({}, D);
-  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, look };
+  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, look,
+    shirt: { get band() { return band; }, crest: crestMesh, mark: markMesh, shoulderMarks, shorts: shortsMesh, get kit() { return K; } } };
 }
