@@ -523,5 +523,111 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   ok('medals for 10 ways: gold is 6', M(10).gold === 6);
 }
 
+// ======================= PUZZLE FROM TATA: puzzle codes (js/gift.js) =======================
+// Added block (agent `gift`): the code lives in js/gift.js between /*GIFT-CODEC-START*/ and
+// /*GIFT-CODEC-END*/, so these checks run exactly the code the game runs.
+{
+  const gsrc = fs.readFileSync(path.join(root, 'js', 'gift.js'), 'utf8');
+  const gm = gsrc.match(/\/\*GIFT-CODEC-START\*\/([\s\S]*?)\/\*GIFT-CODEC-END\*\//);
+  ok('gift: codec markers found', !!gm);
+  const GC = new Function('Eq', gm[1] + '\nreturn GiftCode;')(Eq);
+  const A = GC.ALPHA;
+  ok('gift: alphabet is 32 characters with no 0, O, 1, I', A.length === 32 && !/[01OI]/.test(A) && new Set(A).size === 32);
+  const cube = (color, s) => ({ color, s });
+  const sample = { fr: false, goal: [cube('blue', '1'), cube('red', '2')], req: [cube('green', '4')], forb: [cube('black', '9')],
+    perm: [cube('red', '3'), cube('blue', '*'), cube('black', '+'), cube('green', '5')] };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const code = GC.encode(sample);
+  ok('gift: code starts with the version character T', code[0] === 'T');
+  ok('gift: 8 cubes make a 14-character code', code.length === 14, code);
+  ok('gift: pretty code is grouped in fours', /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{2}$/.test(GC.pretty(code)), GC.pretty(code));
+  const d0 = GC.decode(code);
+  ok('gift: decode gives the same puzzle back', d0.ok && same(d0.p.goal, sample.goal) && d0.p.fr === false && d0.p.req.length === 1 && d0.p.forb.length === 1 && d0.p.perm.length === 4 && d0.code === code);
+  ok('gift: spaces, dashes and lower case are fine', GC.decode('  ' + GC.pretty(code).toLowerCase().replace(/-/g, ' - ') + ' ').code === code);
+  // the same puzzle with its cubes in another order has the same code
+  const shuffled = Object.assign({}, sample, { perm: sample.perm.slice().reverse() });
+  ok('gift: cube order on the table does not change the code', GC.encode(shuffled) === code);
+  // Goal with ( ) and fractions on
+  const pz = { fr: true, goal: ['(', cube('red', '3'), cube('black', '+'), cube('green', '4'), ')', cube('blue', '/'), cube('red', '2')], req: [], forb: [], perm: [cube('green', '6'), cube('blue', '1'), cube('red', '-'), cube('black', '7')] };
+  const pc = GC.encode(pz), pd = GC.decode(pc);
+  ok('gift: Goal with ( ) and fractions round-trips', pd.ok && same(pd.p.goal, pz.goal) && pd.p.fr === true && pd.p.req.length === 0, pd);
+  // random puzzles from real rolls: encode -> decode -> encode is stable
+  {
+    const rand = Eq.rng(2026), cols = Eq.COLORS;
+    let good = 0, tried = 0, longest = 0;
+    for (let k = 0; k < 400; k++) {
+      const roll = Eq.roll(rand).sort(() => rand() - 0.5), n = 6 + Math.floor(rand() * 9), table = roll.slice(0, n).map(c => cube(c.color, c.s));
+      const gi = table.findIndex(c => Eq.isDigit(c.s) && c.s !== '0');
+      if (gi < 0) continue;
+      const goal = [table[gi]], rest = table.filter((c, i) => i !== gi), p = { fr: rand() < 0.5, goal, req: [], forb: [], perm: [] };
+      rest.forEach(c => { const r = rand(); (r < 0.2 ? p.req : r < 0.35 ? p.forb : p.perm).push(c); });
+      if (GC.problem(p)) continue;
+      tried++;
+      const c1 = GC.encode(p), d = GC.decode(c1);
+      longest = Math.max(longest, c1.length);
+      if (d.ok && d.code === c1 && GC.encode(d.p) === c1 && d.p.req.length === p.req.length && d.p.forb.length === p.forb.length && d.p.perm.length === p.perm.length && d.p.fr === p.fr) good++;
+    }
+    ok('gift: 400 random rolls: every valid puzzle round-trips (' + tried + ' puzzles)', tried > 200 && good === tried, { good, tried });
+    ok('gift: codes are never longer than 32 characters (longest ' + longest + ')', longest <= 32);
+  }
+  // check character: every single wrong character and every swap of two neighbours is caught
+  {
+    let missed = 0, total = 0;
+    [code, pc].forEach(c => {
+      for (let i = 0; i < c.length; i++) for (const ch of A) {
+        if (ch === c[i]) continue;
+        total++; if (GC.decode(c.slice(0, i) + ch + c.slice(i + 1)).ok) missed++;
+      }
+      for (let i = 0; i + 1 < c.length; i++) {
+        if (c[i] === c[i + 1]) continue;
+        total++; if (GC.decode(c.slice(0, i) + c[i + 1] + c[i] + c.slice(i + 2)).ok) missed++;
+      }
+    });
+    ok('gift: every one-letter typo and neighbour swap is caught (' + total + ' tried)', missed === 0, missed);
+    ok('gift: a typo says the check letter does not match', GC.decode(code.slice(0, 5) + (code[5] === 'A' ? 'B' : 'A') + code.slice(6)).why === 'check');
+    ok('gift: a missing letter is caught', !GC.decode(code.slice(0, -2) + code.slice(-1)).ok);
+  }
+  ok('gift: 0 / O / 1 / I get their own kind message', GC.decode('T0AB-CDEF').why === 'confusable' && GC.decode('TIAB-CDEF').why === 'confusable');
+  ok('gift: other symbols are refused', GC.decode('TA#B-CDEF').why === 'badchar');
+  ok('gift: empty and short codes are refused', GC.decode('  ').why === 'empty' && GC.decode('TAB').why === 'short');
+  {
+    // a code with another version character (and a correct check) is "from a newer version"
+    const vals = code.split('').map(ch => A.indexOf(ch)); vals.pop(); vals[0] = A.indexOf('U');
+    const v2 = vals.map(v => A[v]).join('') + A[GC.checkValue(vals)];
+    ok('gift: unknown version is refused kindly', GC.decode(v2).why === 'version');
+    const f = code.split('').map(ch => A.indexOf(ch)); f.pop(); f[1] = 2;
+    ok('gift: unknown flags are refused', GC.decode(f.map(v => A[v]).join('') + A[GC.checkValue(f)]).why === 'version');
+  }
+  // puzzle rules
+  ok('gift: fewer than 6 cubes is refused', !!GC.problem({ fr: false, goal: [cube('red', '2')], req: [], forb: [], perm: [cube('red', '3'), cube('red', '+'), cube('blue', '1')] }));
+  ok('gift: more than 14 cubes is refused', !!GC.problem({ fr: false, goal: [cube('red', '2')], req: [], forb: [], perm: Array.from({ length: 14 }, (x, i) => cube(Eq.COLORS[i % 4], Eq.CUBE_FACES[Eq.COLORS[i % 4]][0])) }));
+  ok('gift: 7 cubes of one colour is refused', /only 6 red/.test(GC.problem({ fr: false, goal: [cube('red', '2')], req: [], forb: [], perm: Array.from({ length: 6 }, () => cube('red', '3')) })));
+  ok('gift: a fraction Goal needs fractions on', !!GC.problem({ fr: false, goal: [cube('black', '7'), cube('blue', '/'), cube('red', '2')], req: [], forb: [], perm: [cube('red', '3'), cube('red', '+'), cube('blue', '1')] }) &&
+    !GC.problem({ fr: true, goal: [cube('black', '7'), cube('blue', '/'), cube('red', '2')], req: [], forb: [], perm: [cube('red', '3'), cube('red', '+'), cube('blue', '1')] }));
+  ok('gift: a face the cube does not have is refused', !!GC.problem({ fr: false, goal: [cube('red', '9')], req: [], forb: [], perm: sample.perm.concat([cube('blue', '2')]) }));
+  // receipts
+  {
+    const r0 = GC.receipt(code, 0), r2 = GC.receipt(code, 2);
+    ok('gift: receipt is 4 characters from the alphabet', /^[A-Z2-9]{4}$/.test(r0) && [...r0].every(ch => A.includes(ch)));
+    ok('gift: receipt is the same every time', GC.receipt(code, 0) === r0 && GC.receipt(GC.pretty(code).toLowerCase(), 0) === r0);
+    ok('gift: receipt check finds how many hints', GC.checkReceipt(code, r0).ok && GC.checkReceipt(code, r0).hints === 0 && GC.checkReceipt(code, r2.toLowerCase()).hints === 2);
+    ok('gift: 5 or more hints count as 3', GC.receipt(code, 7) === GC.receipt(code, 3));
+    ok('gift: a wrong receipt is refused', !GC.checkReceipt(code, r0.slice(0, 3) + (r0[3] === 'A' ? 'B' : 'A')).ok || GC.checkReceipt(code, r0.slice(0, 3) + (r0[3] === 'A' ? 'B' : 'A')).hints !== 0);
+    ok('gift: another puzzle has another receipt', GC.receipt(pc, 0) !== r0);
+  }
+  // message and link
+  {
+    const msg = 'Bet you can\'t get this one! 🎲 & more';
+    const L = GC.link(code, msg, 'http://127.0.0.1:3474/index.html');
+    const h = GC.parseHash(L.slice(L.indexOf('#')));
+    ok('gift: link carries the code and the message', h && GC.decode(h.code).code === code && h.msg === msg, h);
+    ok('gift: link without a message has no m=', GC.link(code, '   ').indexOf('&m=') < 0);
+    ok('gift: other hashes are ignored', GC.parseHash('#settings') === null && GC.parseHash('') === null);
+    ok('gift: message is cut to 60 characters', Array.from(GC.cleanMsg('x'.repeat(100))).length === 60);
+    ok('gift: message loses control characters and extra spaces', GC.cleanMsg(' hi\n\tthere\u0000  you ') === 'hi there you');
+    ok('gift: a broken %-escape in the link does not crash', (GC.parseHash('#puzzle=' + code + '&m=%E0%A4%A') || {}).msg === '');
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

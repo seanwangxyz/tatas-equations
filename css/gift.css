@@ -1,0 +1,50 @@
+/* ======================= PUZZLE FROM TATA ======================= */
+/* Everything is prefixed gf- so it can't clash. */
+.gf-menu{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:16px}
+.gf-small{font-size:15px;color:var(--mute);margin:6px 0;text-align:center}
+.gf-small.white{color:rgba(255,255,255,.85)}
+.gf-panel{margin-top:12px}
+.gf-h{margin:0 0 10px;font-size:20px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gf-h small{font-size:14px;color:var(--mute);font-weight:800}
+.gf-input{width:100%;box-sizing:border-box;font-size:18px;padding:12px 14px;border-radius:16px;border:3px solid #d5dbea;font-family:inherit;font-weight:800;color:var(--ink);background:#fff;min-height:50px}
+.gf-input:focus{outline:none;border-color:var(--sky)}
+.gf-codein{font-size:26px;letter-spacing:3px;text-transform:uppercase;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace}
+.gf-link{font-size:14px;font-weight:700;color:var(--ink2)}
+.gf-err{margin-top:10px;background:#fff1f3;border:3px solid #ffc9d2;border-radius:16px;padding:10px 14px;font-weight:800;color:#a3243f;font-size:17px;line-height:1.35}
+.gf-ok{background:#e9fbf1;border:3px solid #9fe8c0;border-radius:16px;padding:10px 14px;font-weight:800;color:#0f6b40;font-size:18px;line-height:1.35}
+.gf-note{width:min(980px,96vw);margin:10px auto 0;background:rgba(255,244,200,.95);color:#5c4300;border-radius:16px;padding:8px 14px;font-weight:800;font-size:16px;box-sizing:border-box}
+.gf-mat{margin-top:10px}
+.gf-tap{cursor:pointer}
+.gf-tap:hover{transform:translateY(-3px)}
+.gf-palette{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.gf-prow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gf-pname{width:70px;font-weight:900;text-transform:capitalize;font-size:15px;color:var(--ink2)}
+.gf-pname small{display:block;font-size:12px;color:var(--mute)}
+.gf-table{display:flex;flex-wrap:wrap;gap:6px;min-height:58px;align-items:center;padding:8px;border:3px dashed #d7dce8;border-radius:18px;background:#f6f8fc}
+.gf-goalline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:22px}
+.gf-goalline .expr{padding:4px 8px;min-height:0}
+.gf-frrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.gf-frrow small{color:var(--mute);font-weight:700}
+.gf-result{margin-top:12px;display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.gf-result .row{justify-content:center}
+.gf-codelabel{font-weight:900;margin-top:8px;display:block;font-size:16px}
+.gf-codelabel small{font-weight:700;color:var(--mute)}
+.gf-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:34px;font-weight:900;letter-spacing:3px;text-align:center;background:#fff;border:4px solid var(--purple);border-radius:18px;padding:10px;color:var(--ink);user-select:all;-webkit-user-select:all;word-break:break-all}
+.gf-sample .expr{margin-top:6px}
+.gf-letter{width:min(980px,96vw);box-sizing:border-box;display:flex;gap:12px;align-items:center;background:#fff7e0;border-radius:22px;padding:12px 16px;margin-bottom:10px;box-shadow:0 6px 0 rgba(0,0,0,.12);border:3px solid #ffd977;animation:gfIn .5s ease both}
+.gf-letter-ico{font-size:40px;line-height:1}
+.gf-letter small{font-weight:800;color:var(--mute);font-size:14px}
+.gf-letter-txt{font-size:22px;font-weight:900;color:var(--ink);line-height:1.25;overflow-wrap:anywhere}
+.gf-receipt-box{margin-top:12px;text-align:center;font-weight:800}
+.gf-receipt-box small{color:var(--mute)}
+.gf-rc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:44px;font-weight:900;letter-spacing:8px;color:var(--purple);margin:4px 0}
+.gf-tell{text-align:center;background:#f3ecff;border-radius:18px;padding:10px;margin:10px 0;font-weight:900}
+.gf-tell small{font-weight:700;color:var(--ink2)}
+.gf-rcout{margin-top:12px}
+.gf-made{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:8px 0;border-bottom:2px solid #eef1f7;font-weight:800}
+.gf-made-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;letter-spacing:1px}
+.gf-made .gf-small{margin:0;text-align:left}
+.gf-inline{display:inline-flex;vertical-align:middle}
+@keyframes gfIn{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.gf-letter{animation:none}.gf-tap:hover{transform:none}}
+@media (max-width:520px){.gf-code{font-size:26px;letter-spacing:2px}.gf-codein{font-size:21px;letter-spacing:2px}.gf-pname{width:100%}.gf-rc{font-size:36px}.gf-letter-txt{font-size:19px}}
