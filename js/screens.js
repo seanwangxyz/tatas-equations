@@ -1,9 +1,19 @@
 'use strict';
 // ======================= DAILY PUZZLE =======================
 var D = null;
-function makeDaily(dateStr) {
+// Puzzle 0 of a day is the Daily Puzzle (40 XP and a skill star). After it he can keep going: puzzles 1, 2, 3...
+// each give 10 XP, and every 3rd one a skill star (house rule, so stars still mean skill and not just time).
+function puzState() {
+  var d = today();
+  if (!S.puz || S.puz.date !== d) S.puz = { date: d, cur: S.dailyDone[d] ? 1 : 0, extra: (S.puz && S.puz.extra) || 0 };
+  if (S.dailyDone[d] && S.puz.cur < 1) S.puz.cur = 1;
+  return S.puz;
+}
+function puzDone() { return !!D && (D.n === 0 ? !!S.dailyDone[D.date] : D.n < puzState().cur); }
+function makeDaily(dateStr, n) {
+  n = n || 0;
   var st = stageInfo();
-  var rand = Eq.rng(parseInt(dateStr.replace(/-/g, ''), 10) * 31 + stageIdx() * 7919);
+  var rand = Eq.rng(parseInt(dateStr.replace(/-/g, ''), 10) * 31 + stageIdx() * 7919 + n * 104729);
   for (var tries = 0; tries < 40; tries++) {
     var cubes = Eq.roll(rand).map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false }; });
     cubes.forEach(function (c) { if (!Eq.isDigit(c.s) && st.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
@@ -23,29 +33,30 @@ function makeDaily(dateStr) {
     var req = cubes.filter(function (c) { return c.zone === 'required'; }).map(function (c) { return c.s; });
     var perm = cubes.filter(function (c) { return c.zone === 'permitted'; }).map(function (c) { return c.s; });
     var r = Eq.solve({ goal: gi.value, req: req, opt: perm, mode: 'free', fractions: st.fractions, maxDigits: 5, timeMs: 500 });
-    if (r.found && r.tokens.filter(function (s) { return s !== '(' && s !== ')'; }).length >= 3) return { date: dateStr, cubes: cubes, goalTokens: gt, goal: gi.value, sample: r.tokens, fractions: st.fractions, revealed: false };
+    if (r.found && r.tokens.filter(function (s) { return s !== '(' && s !== ')'; }).length >= 3) return { date: dateStr, n: n, cubes: cubes, goalTokens: gt, goal: gi.value, sample: r.tokens, fractions: st.fractions, revealed: false };
   }
   return null;
 }
+function makePuz(d, n) { var p = puzState(); for (var k = 0; k < 6; k++) { var x = makeDaily(d, n + k); if (x) { if (k && n >= p.cur) p.cur = n + k; return x; } } return null; }
 function openDaily() {
-  var d = today();
-  if (!D || D.date !== d) D = makeDaily(d);
+  var d = today(), p = puzState();
+  if (!D || D.date !== d || D.n !== p.cur) D = makePuz(d, p.cur);
   renderDaily(); go('daily');
 }
 function renderDaily() {
   var el = $('#daily');
   if (!D) { el.innerHTML = '<div class="hdr"><button class="btn small" data-act="camp">' + ico('back') + ' Camp</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div><div class="panel">Hmm, no puzzle today. Try again later!</div>'; return; }
   function z(name) { return D.cubes.filter(function (c) { return c.zone === name; }).map(function (c) { return cubeHTML(c, 'mini'); }).join('') || '<span class="empty">empty</span>'; }
-  var done = S.dailyDone[D.date];
-  el.innerHTML = '<div class="hdr"><button class="btn small" data-act="camp">' + ico('back') + ' Camp</button><h2>' + ico('cal') + ' Daily Puzzle</h2></div>' +
+  var done = puzDone(), extra = D.n > 0;
+  el.innerHTML = '<div class="hdr"><button class="btn small" data-act="camp">' + ico('back') + ' Camp</button><h2>' + ico('cal') + (extra ? ' Puzzle ' + (D.n + 1) + ' today' : ' Daily Puzzle') + '</h2></div>' +
     '<div class="panel" style="background:rgba(255,253,246,.97)"><div class="row">' + pipHTML(done ? 'cheer' : 'happy', 70, '') + '<div class="bubble">' +
-    (done ? 'You solved today\'s puzzle! 🎉 Come back tomorrow for a new one, or try finding another way!' : 'Today\'s puzzle: make the Goal using ALL the Required cubes and any Permitted cubes. Take as long as you like!') + '</div></div></div>' +
+    (done ? 'You solved today\'s puzzle! 🎉 Want another one? Tap Next puzzle. Or try finding another way here!' : (extra ? 'Puzzle ' + (D.n + 1) + ': make the Goal' : 'Today\'s puzzle: make the Goal') + ' using ALL the Required cubes and any Permitted cubes. Take as long as you like!') + '</div></div></div>' +
     '<div class="mat" style="margin-top:10px">' +
     '<div class="zone z-goal"><h3>🎯 GOAL <span class="gval">= ' + Eq.fmt(D.goal) + '</span></h3><div class="cubes">' + D.goalTokens.map(function (t) { return cubeHTML(D.cubes[t.id], 'mini'); }).join('') + '</div></div>' +
     '<div class="zrow"><div class="zone z-required"><h3>✅ REQUIRED <small>must use</small></h3><div class="cubes">' + z('required') + '</div></div>' +
     '<div class="zone z-permitted"><h3>👍 PERMITTED <small>may use</small></h3><div class="cubes">' + z('permitted') + '</div></div>' +
     '<div class="zone z-forbidden"><h3>⛔ FORBIDDEN <small>can\'t use</small></h3><div class="cubes">' + z('forbidden') + '</div></div></div></div>' +
-    '<div class="row" style="margin-top:14px"><button class="btn big green" data-act="dailySolve">' + ico('pencil') + ' Solve it!</button><button class="btn" data-act="dailyReveal">Show me a Solution</button></div>';
+    '<div class="row" style="margin-top:14px"><button class="btn big green" data-act="dailySolve">' + ico('pencil') + ' Solve it!</button><button class="btn" data-act="dailyReveal">Show me a Solution</button>' + (done || D.revealed ? '<button class="btn big" data-act="dailyNext">Next puzzle ▶</button>' : '') + '</div>';
 }
 ACT.dailySolve = function () {
   var pools = [{ label: '✅ Required (use them ALL)', ids: D.cubes.filter(function (c) { return c.zone === 'required'; }).map(function (c) { return c.id; }), req: true },
@@ -58,13 +69,18 @@ ACT.dailySolve = function () {
       xpLog = [];
       var gSave = G; G = null;
       if (chk.ok) {
-        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, !!S.dailyDone[D.date]);
-        var first = !S.dailyDone[D.date];
-        if (first && !D.revealed) { S.dailyDone[D.date] = true; S.stats.daily++; addXP(40, 'Daily Puzzle solved!'); checkBadges({ type: 'daily' }); persist(); }
+        var p = puzState(), was = puzDone();
+        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, D.n > 0 || was);
+        if (!was && !D.revealed) {
+          if (D.n === 0) { S.dailyDone[D.date] = true; S.stats.daily++; addXP(40, 'Daily Puzzle solved!'); checkBadges({ type: 'daily' }); }
+          else { p.extra++; addXP(10, 'Puzzle solved!'); if (p.extra % 3 === 0) { addStar(); xpLog.push('⭐ A skill star for 3 more puzzles!'); } }
+        }
+        if (!was && D.n >= p.cur) p.cur = D.n + 1;
+        persist();
         Snd.chime(); victoryFX(); Snd.crowd();
-        modal('<h2>🎉 You solved it!</h2>' + exprBox(tokens, D.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') + '<div class="row"><button class="btn green" data-act="closeModal">Yay!</button></div>', function () { drainQueue(renderDaily); });
+        modal('<h2>🎉 You solved it!</h2>' + exprBox(tokens, D.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') + '<div class="row"><button class="btn green" data-act="dailyNextM">Next puzzle ▶</button><button class="btn" data-act="closeModal">Stay here</button></div>', function () { drainQueue(function () { if (D && D.goNext) ACT.dailyNext(); else renderDaily(); }); });
       } else {
-        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, !!S.dailyDone[D.date]);
+        if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, D.n > 0 || puzDone());
         Snd.boop();
         modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, D.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul><p style="text-align:center">You can try as many times as you want. No rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>', function () { ACT.dailySolve(); });
       }
@@ -72,6 +88,11 @@ ACT.dailySolve = function () {
     } };
   renderBuilder(); $('#builder').classList.add('on');
 };
+ACT.dailyNext = function () {
+  var p = puzState(); if (D && D.n >= p.cur) p.cur = D.n + 1;   // (after a peek he may move on too)
+  persist(); D = makePuz(today(), p.cur); Snd.click(); renderDaily();
+};
+ACT.dailyNextM = function () { if (D) D.goNext = true; closeModal(); };
 ACT.dailyReveal = function () {
   modal('<h2>👀 Peek at a Solution?</h2><p style="text-align:center">If you peek, today\'s puzzle won\'t give XP. Want to keep trying instead?</p><div class="row"><button class="btn green" data-act="closeModal">Keep trying</button><button class="btn" data-act="dailyRevealYes">Show me</button></div>');
 };

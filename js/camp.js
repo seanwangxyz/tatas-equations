@@ -138,7 +138,7 @@ function renderCamp() {
     '<div class="panel" style="margin-top:12px"><div style="font-weight:800;margin-bottom:10px">' + st.icon + ' Training with: ' + st.name +
     (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
     '<div class="opps">' + cards + (typeof waysTileHTML === 'function' ? waysTileHTML() : '') +
-    '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Daily Puzzle</h3><div class="otitle">One special puzzle each day.</div><div class="otitle">' + (daily ? '✔ Solved today' : 'New today!') + '</div></div>' +
+    '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Puzzles</h3><div class="otitle">A Daily Puzzle, then as many more as you like.</div><div class="otitle">' + (daily ? '✔ Daily solved · keep going!' : 'New today!') + '</div></div>' +
     '</div></div>';
 }
 ACT.camp = function () { CAMP = null; renderCamp(); go('camp'); Snd.setMood('menu'); };
