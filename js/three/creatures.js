@@ -133,10 +133,11 @@ if (T3 && T3.ctx) (function () {
   }
 
   // ---------- placement ----------
+  var squeeze = 1;   // set by the camera fit when the head would not fit on a wide, short screen
   function placeCreature() {
     if (!actor || !ctx.layout) return;
     var D = ctx.layout.D, fr = FRAME[ctx.layoutName] || FRAME.wide;
-    SCALE = clamp((fr.topH - fr.rootY) / (actor.top || 4), fr.min, fr.max) * (actor.fit || 1);
+    SCALE = clamp((fr.topH - fr.rootY) / (actor.top || 4), fr.min, fr.max) * (actor.fit || 1) * squeeze;
     ROOT_Y = fr.rootY + (actor.fitY || 0) * SCALE; FRONT = fr.front;
     base.set(0, ROOT_Y, -D / 2 - FRONT);
     actor.root.position.copy(base); actor.root.scale.setScalar(SCALE); actor.root.updateMatrixWorld(true);
@@ -589,13 +590,14 @@ if (T3 && T3.ctx) (function () {
 
   ctx.hooks.frame.push(update);
   // keep the creature in view when the camera fits the table (it may shuffle sideways along the table edge)
+  if (ctx.hooks.shrink) ctx.hooks.shrink.push(function (s) { squeeze = s; });
   ctx.hooks.extents.push(function (corners, W, D) {
     placeCreature();
     if (actor) {
       var top = actor.top * SCALE + ROOT_Y, z = -D / 2 - FRONT, x = Math.max(3.4, sideLimit() + 2.2);
       corners.push([-x, top, z], [x, top, z]);
       // it stands leaning back a little, so the top of its head is behind the hips: that point sits highest on screen
-      corners.push([0, top + 0.1, z + (actor.headC.z - actor.top * Math.sin(-BASE_LEAN - (actor.lean || 0)) - 0.1) * SCALE]);
+      corners.push([0, top + 0.1, z + (actor.headC.z - actor.top * Math.sin(-BASE_LEAN - (actor.lean || 0)) - 0.1) * SCALE, true]);   // true: this point must be on screen (the creature shrinks if it is not)
     }
   });
 })();

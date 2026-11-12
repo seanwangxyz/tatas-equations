@@ -13,7 +13,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var api = window.T3;
   var renderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); if (!renderer.getContext()) return; } catch (e) { return; }
-  var hooks = { frame: [], extents: [] }; // other modules (creatures) plug in here
+  var hooks = { frame: [], extents: [], shrink: [] }; // other modules (creatures) plug in here
   var ctx = { held: null };              // shared with other 3D modules; filled in at the bottom
   api.supported = true;
 
@@ -425,9 +425,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function fitCamera() {
     var W = layout.W, D = layout.D, tilt = layout.tilt, look = new THREE.Vector3(0, 0, layoutName === 'tall' ? 0.7 : 0.6);
     var table = [[-W / 2 - 0.7, 0.6, -D / 2 - 0.7], [W / 2 + 0.7, 0.6, -D / 2 - 0.7], [-W / 2 - 0.7, 0.6, D / 2 + 0.7], [W / 2 + 0.7, 0.6, D / 2 + 0.7]], v = new THREE.Vector3(), extra = [];
-    hooks.extents.forEach(function (f) { try { f(extra, W, D); } catch (e) {} });
-    extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
-    extraPts = extra;
+    function gather(s) {
+      hooks.shrink.forEach(function (f) { try { f(s); } catch (e) {} });
+      extra = []; hooks.extents.forEach(function (f) { try { f(extra, W, D); } catch (e) {} });
+      extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
+      extraPts = extra;
+    }
+    gather(1);
     camera.updateProjectionMatrix();
     function at(d) { camera.position.set(0, Math.sin(tilt) * d, look.z + Math.cos(tilt) * d); camera.lookAt(look); camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); }
     function inView(c) {
@@ -435,15 +439,20 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       v.applyMatrix4(camera.projectionMatrix); return Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.97;
     }
     function search(pts, lo, hi) { for (var d = lo; d < hi; d += 0.25) { at(d); if (pts.every(inView)) return d; } return hi; }
-    var dT = search(table, 8, 120), d = dT;
-    if (extra.length) {
+    var dT = search(table, 8, 120), d = dT, z00 = look.z;
+    // If the head still does not fit (a wide, short screen), the creature itself gets a little smaller, step by step.
+    for (var s = 1; extra.length && s > 0.5; s -= 0.06) {
+      if (s < 1) gather(s);
+      look.z = z00;
       // Tall things behind the table (a creature's head): rather than only backing away, also try aiming a little
       // toward the far side, which uses the empty band below the near edge. Keep the aim that needs the least distance.
       var all = table.concat(extra), z0 = look.z, bestZ = z0; d = search(all, dT, dT * 1.35);
       for (var k = 1; k <= 10; k++) { look.z = z0 - k * 0.5; var dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; } }
-      look.z = bestZ;
+      look.z = bestZ; at(d);
+      if (extra.every(function (c) { return !c[3] || inView(c); })) break;   // only points marked as a must (the top of the head)
     }
     at(d);
+    api._fit = { d: d, dT: dT, s: s, lookZ: look.z, pts: extra.map(function (c) { return [c[0].toFixed(1), c[1].toFixed(1), c[2].toFixed(1), !!c[3], inView(c)]; }), table: table.every(inView) };
     base.pos.copy(camera.position); base.look.copy(look); applyCam();
   }
   // Where the opponent's head is, for close-ups: T3.creatureFocus() if the creature module offers it, else an
