@@ -83,7 +83,7 @@ function renderBuilder() {
   var exprIn = !B.tokens.length ? '<span style="color:rgba(255,255,255,.7)">tap cubes below…</span>'
     : mid ? Vari.exprHTML(B.tokens, cubes, B.fractions, function (i) { return canCycle(i) ? 'data-act="bCycle"' : 'data-act="bRemove"'; }, canCycle)
     : tokensHTML(B.tokens, cubes).replace(/data-bi=/g, 'data-act="bRemove" data-bi=');
-  $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + (window.Vari ? Vari.builderNote(B.fractions) : '') + goalLine +
+  $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + (window.Vari ? Vari.builderNote(B.fractions) : '') + (window.Bonus ? Bonus.builderNote(B) : '') + goalLine + // (BONUS: what a bonus cube means)
     '<div class="expr' + (mid ? ' vari-expr' : '') + '" id="bExpr" style="margin-top:8px">' + exprIn + '</div>' +
     '<div class="b-live ' + liveCls + '">' + live + '</div>' + checks +
     '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button>' + bang + '<button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button>' + side + '</div>' +
@@ -135,7 +135,7 @@ function addSym(c) {
   if (RU.avg && s === '+') return 'a';
   if (RU.expo && B.kind === 'solution' && Eq.isDigit(s) && RU.eids && RU.eids.indexOf(c.id) >= 0 && !RU.two && !RU.basem) {
     var prev = B.tokens.length ? B.tokens[B.tokens.length - 1] : null, ps = prev === null ? null : (typeof prev === 'string' ? prev : prev.s);
-    if (ps !== null && (Eq.isNumSym(ps) || ps === ')' || ps === '!' || Eq.exOf(ps) >= 0)) return Eq.EX[+s];
+    if (ps !== null && (Eq.isNumSym(ps) || ps === ')' || ps === '!' || Eq.exOf(ps) >= 0 || (Eq.OPDEF[ps] && Eq.OPDEF[ps].kind === 'post'))) return Eq.EX[+s]; // (BONUS: + x², x³, n!)
   }
   return s;
 }
@@ -187,7 +187,7 @@ function recordSolution(chk, ms, tokens, mode, goal, noStar) {
   var ops = [], hasZero = false;
   // (a variation card's symbols count as the cube they use: an average is a +, a turned 3 is a 3)
   tokens.forEach(function (t) { if (typeof t === 'object') { var cs = Eq.cubeOf(t.s) || t.s; if (!Eq.isDigit(cs) && ops.indexOf(cs) < 0) ops.push(cs); if (cs === '0') hasZero = true; } });
-  ops.forEach(function (o) { if (!S.opsUsed[o]) addXP(20, 'First time using ' + show(o) + '!'); S.opsUsed[o] = (S.opsUsed[o] || 0) + 1; });
+  ops.forEach(function (o) { if (!S.opsUsed[o]) addXP(20, 'First time using ' + (Eq.isBonusOp && Eq.isBonusOp(o) ? 'the gold ' + show(o) + ' cube' : show(o)) + '!'); S.opsUsed[o] = (S.opsUsed[o] || 0) + 1; }); // (BONUS: names a gold cube)
   addXP(20 + Math.min(30, 5 * Math.max(0, chk.cubes - 2)), 'Correct Solution (' + chk.cubes + ' cubes)');
   if (G && !G.hintUsed) addXP(10, 'No hint needed');
   if (mode === 'impossible') addXP(25, 'Proved it wasn\'t impossible!');

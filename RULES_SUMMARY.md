@@ -403,3 +403,108 @@ Each new meaning is one internal character, so the solver's text still splits in
 operations a (average), % (percent), g (GCF), l (LCM), f (number of factors), p (smallest prime), . (decimal point),
 ! (factorial, not a cube). `Eq.cubeOf(symbol)` says which cube face each one uses; `Eq.OPDEF` in `js/engine.js` is the
 operator table (see docs/handoff/vari2.md for how to add an operator).
+
+---
+
+## 7. HOUSE RULES: the three bonus dice (NOT part of the official game)
+
+**Everything in this section is a house rule Tata asked for. It is not in the AGLOA rulebook, and nothing here
+changes a shake that has no bonus die.** The kid earns three twenty-sided dice with skill points, for higher
+levels of play. Code: `js/bonus.js` (dice, unlocking, Twist, lessons, Parent corner), the `BONUS` block in
+`js/engine.js` (the maths), `js/three/table.js` (the 3D icosahedra). Tests: block "BONUS DICE" in
+`tests/engine.test.js`. Developer notes: `docs/handoff/bonus.md`.
+
+### Earning them (skill, not time; never random)
+- Nothing starts until the difficulty ladder reaches its **last stage** (Roots: every operation unlocked), or Tata
+  switches everything on. From that moment the game counts **skill points** (correct Solutions + correct
+  Impossible! calls, the same points the variation cards use):
+  **Big-number die after 8 more, Power die after 20, Twist die after 36.** At one card per 4 points that puts
+  the Big-number die around the 6th-7th variation card, the Power die around the 9th-10th and the Twist die
+  around the 13th-14th, so the dice and the cards interleave.
+- Old saves: nothing changes until earned (the count starts when the ladder is first seen at its last stage).
+- A new die is announced once, with confetti and a "How it works" lesson, the first shake it rolls.
+  The first time each Power operation comes up, its own lesson (3 worked examples) pops up once.
+- Parent corner: an on/off switch per die, an on/off switch per Power operation, and **Unlock now** per die.
+- Where they play: normal matches against a creature (Cup matches are normal matches, so they include them) and
+  pass-and-play. **Not** online (the dice are not synced), Team-up, Three at the table, the tutorial, the daily
+  puzzles, puzzle codes or How Many Ways (all unchanged). Training Camp has a "Bonus dice" tile: Make the Goal
+  with a bonus cube in Required, plus every lesson.
+
+### How they enter play
+- Each shake the earned, switched-on dice roll out of the cup with the 24 cubes (real physics in 3D).
+- **Power die and Big-number die become one extra cube each in Resources** (cubes 25 and 26 of the shake).
+  They are cubes in every rule: they can go to Required, Permitted or Forbidden, into the Goal, into a Solution;
+  they count for the last-cube rule (one cube left in Resources may be a bonus cube), for "Required must be used",
+  for Now! ("at most one more cube from Resources"), for the Goal's 1 to 6 cubes and a Solution's 2 or more.
+- A face Tata switched off (or a fraction face while fractions are off) is rolled again, like a locked operation.
+- **The Twist die is read once and set aside** on the rim (3D) and shown as a chip and on the stadium big screen.
+
+### Big-number die (purple): 20 faces
+10, 11, 12, 15, 20, 24, 25, 30, 36, 50, 60, 100, 1000, ½, ¼, ¾, ⅓, ⅔, 1/10, 1½.
+- It is ONE number all by itself, never digits: it can't touch a digit cube in a Goal or a Solution
+  ("1" next to "12" is not 112). Upside-down, Sideways and Powers of Ten turn digit cubes only, never this die.
+- ⚠ Judgment calls: the owner's list is kept except 40 and 75, replaced by **24 (= 4!) and 36 (= 6²)**, which pair
+  with the Power die. With Base 8/9 (Twist) the die keeps its ordinary value (12 is twelve): it shows a number, not
+  digits. Fraction faces need fractions switched on (otherwise they are rolled again; the checker says so kindly).
+
+### Power die (gold): 20 faces, 18 operations
+Each face is a cube face of its own. **Post** = works on the number right before it and binds tightest
+(like the Factorial card's !); **pre** = works on the number (or group) right after it, like √; **between** = two numbers.
+
+| Face | Name | Kind | Exact meaning and caps |
+|---|---|---|---|
+| n! | Factorial | post | whole n only; 0! = 1; **9! is the cap** (the checker's limit). Reuses the Factorial card's maths |
+| x² (2 faces) | Squared | post | any number, fractions and negatives too: (½)² = ¼, (2 − 5)² = 9; up to the checker's limit (1,000,000) |
+| x³ | Cubed | post | any number: (2/3)³ = 8/27; same limit |
+| \|x\| | Distance from 0 | pre | \|2 − 5\| = 3 |
+| mod | Mod (remainder) | between, with × ÷ | the Remainder card's maths: counting numbers only, A ≤ 1000. 7 mod 3 = 1 |
+| % | Percent of | between, with × ÷ | A % B = A × B ÷ 100 (the Percent card's maths, but no two-digit numerals: a 50 needs the Big-number die) |
+| max / min | The bigger / smaller one | between, with × ÷ | any two numbers |
+| avg | Average | between, with + − | the Average card's maths; with fractions off it must come out whole |
+| gcf | Greatest common factor | between, with ^ | the GCF card's maths: whole numbers, not both 0 |
+| lcm | Lowest common multiple | between, with ^ | the LCM card's maths: counting numbers |
+| 2× (2 faces) | Double | pre | 2× 7 = 14 |
+| ½× | Half | pre | ½× 7 = 3½ (refused with fractions off) |
+| −x | Negative | pre | −x 3 = −3. The ONLY way to make a minus sign (the − cube still can't) |
+| 1/x | One over | pre | 1/x 4 = ¼; 1/x 0 is refused (division by zero); fractions off: only 1/x 1 |
+| √x | Square root | pre | the √ cube's rule: a whole number with a whole root (√9 = 3, √8 refused) |
+| Σ | Sum of digits | pre | whole numbers only: Σ 81 = 9 |
+| # | How many factors | pre | the Number of Factors card's maths: counting numbers up to 1000 |
+
+⚠ Judgment calls: x² and x³ accept fractions and negatives (always exact), although ^ keeps the Elementary
+whole-number rule. The levels "with × ÷", "with + −", "with ^" decide the order when there are no parentheses
+(the game reads left to right inside a level and shows the value, as for the order of operations, section 4 #2):
+1 + 3 avg 5 = 4½ because it reads (1 + 3) avg 5, while 1 + (3 avg 5) = 5. A pre op grabs the number right after it
+**including** a post op on it: −x 3² = −(3²) = −9, √9! = √(9!). The gold op counts as one of the "three operation
+signs" of the Three Operations card. With Use It Again the gold operation may be repeated; the Big-number die never.
+x² and double appear on two faces each (18 operations, 20 faces).
+
+### Twist die (teal): 20 faces
+| Faces | What happens this shake |
+|---|---|
+| 8s, 9s | **Base 8** / **Base 9** (variation card) |
+| 0?, −3, 1/3, avg, ↻ | **0 is Wild**, **Upside-down**, **Sideways**, **Average**, **Use It Again** |
+| k6, k10 | **Multiple of 6** / **Multiple of 10** |
+| xⁿ, 10ⁿ, 23, rem, !!, # | **Exponent Colour** (a random colour that has digits in Resources), **Powers of Ten**, **Two-digit Numbers**, **Remainder**, **Factorial**, **Number of Factors** |
+| ×2 (2 faces) | **Golden Goal**: every score this shake counts double, for everybody (2 → 4, 4 → 8, 6 → 12) |
+| +2 (2 faces) | **Bonus +2**: a correct Solution that uses a bonus cube scores 2 extra points |
+| tip | **Free hint**: Pip's Hint this shake doesn't cost the "no hint needed" bonus |
+
+- **Only faces that can change the shake count.** A card face counts only if the kid has earned that card, Tata
+  left it switched on, and the card's own "can it affect the shake" test passes (section 6); +2 needs a bonus cube
+  in play. Any other face is **rolled again** (Pip says so; in 3D the die hops and lands on a face that counts).
+- **Twist and cards:** when the Twist die shows a variation card, **that is this shake's card and nobody picks
+  another** (the engine supports one card's rules at a time). When it shows a scoring twist, the Goal-setter may
+  pick a card as usual; the two never interact.
+- Scoring twists never take points away and apply to every player alike (creatures too).
+- ⚠ Judgment call: Three Operations, Smallest Prime, LCM, GCF, Percent and Decimal Point are not on the Twist die
+  (Three Operations can feel like a punishment when it is forced on a shake; the others are covered by the Power die).
+
+### Creatures and the solver
+- Creatures of **4 stars and up** (Ollie, Mondo, Splosh, Blaze, Hex, Messy) prefer Goals with a bonus cube, keep
+  bonus cubes out of Forbidden and try to work them into their Solutions. Weaker creatures never put a bonus cube in
+  a Goal but play correctly around them (their search sees every cube).
+- The solver searches the bonus cubes exactly like the others (hints, Now!/Impossible!, Pip's after-match tip,
+  "one way that works"). A search that runs out of time never claims anything: Impossible! hints only come from a
+  complete search, and the end-of-shake "I couldn't find one" now adds "(I ran out of searching time, so that does
+  not prove there is none)" when the search was cut short.

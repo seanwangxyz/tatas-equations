@@ -59,6 +59,7 @@ function campSolve(P, mode) {
 function campRand() { return Eq.rng((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0); }
 
 function makeDrill(id) {
+  if (id === 'bonus') return window.Bonus ? Bonus.makeDrill(campState(id).lvl, campRand()) : null; // BONUS dice (house rule): Make the Goal with a bonus cube in Required
   var L = campState(id).lvl, rand = campRand(), P, t, target = rand() < 0.5; // target: the right answer we aim for in yes/no drills
   for (var tries = 0; tries < 60; tries++) {
     if (id === 'make') {
@@ -137,7 +138,7 @@ function renderCamp() {
     coach('Welcome to Training Camp! Pick a drill. Every one makes you better at the real game. Take as long as you like on each puzzle.') +
     '<div class="panel" style="margin-top:12px"><div style="font-weight:800;margin-bottom:10px">' + st.icon + ' Training with: ' + st.name +
     (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
-    '<div class="opps">' + cards + (typeof waysTileHTML === 'function' ? waysTileHTML() : '') +
+    '<div class="opps">' + cards + (typeof waysTileHTML === 'function' ? waysTileHTML() : '') + (window.Bonus ? Bonus.campTileHTML() : '') + // (BONUS tile)
     '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Puzzles</h3><div class="otitle">A Daily Puzzle, then as many more as you like.</div><div class="otitle">' + (daily ? '✔ Daily solved · keep going!' : 'New today!') + '</div></div>' +
     '</div>' + (function () { var ls = window.Vari && Vari.unlocked ? Vari.unlocked().filter(function (c) { return c.lesson; }) : []; return ls.length ? '<h3 class="tierh">🃏 How my cards work</h3><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">' + ls.map(function (c) { return '<button class="btn" data-act="variLesson" data-arg="' + c.id + '">' + c.icon + ' ' + esc(c.name) + '</button>'; }).join('') + '</div>' : ''; })() + '</div>';
 }
@@ -151,7 +152,8 @@ function startDrill(id) {
   renderDrill(); go('camp');
 }
 function renderDrill() {
-  var d = DRILLS.filter(function (x) { return x.id === CAMP.drill; })[0], c = campState(d.id), P = CAMP.P, q = '', btns = '';
+  var d = DRILLS.filter(function (x) { return x.id === CAMP.drill; })[0] || (window.Bonus && Bonus.DRILL), c = campState(d.id), P = CAMP.P, q = '', btns = ''; // (BONUS: its own drill)
+  if (d.id === 'bonus') { q = Bonus.drillPrompt(CAMP); btns = '<button class="btn big green" data-act="campSolve">' + ico('pencil') + ' Build my Solution</button><button class="btn" data-act="campShow">Show me one</button><button class="btn" data-act="bonusLesson" data-arg="' + (CAMP.die === 'power' ? CAMP.face : 'big') + '">How it works</button>'; }
   if (d.id === 'make') { q = 'Make the Goal! Use <b>every Required cube</b> and any Permitted cubes you like.'; btns = '<button class="btn big green" data-act="campSolve">' + ico('pencil') + ' Build my Solution</button><button class="btn" data-act="campShow">Show me one</button>'; }
   if (d.id === 'now') { q = 'It\'s your turn. Would calling <b>Now!</b> work? (Now! means: a Solution using every Required cube, any Permitted cubes, and <b>at most ONE</b> cube from Resources.)'; btns = '<button class="btn big now" data-act="campAnswer" data-arg="1">' + ico('bolt') + ' Yes, call Now!</button><button class="btn big" data-act="campAnswer" data-arg="0">Not yet</button>'; }
   if (d.id === 'imp') { q = 'Be the detective: can the Goal <b>still be made</b>? Every Required cube must be used. Permitted and Resource cubes may all be used.'; btns = '<button class="btn big green" data-act="campAnswer" data-arg="1">' + ico('check') + ' It can be made</button><button class="btn big imp" data-act="campAnswer" data-arg="0">' + ico('ban') + ' Impossible!</button>'; }

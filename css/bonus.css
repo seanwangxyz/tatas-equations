@@ -1,0 +1,46 @@
+/* ===== BONUS dice (HOUSE RULE, js/bonus.js) ===== */
+/* On the flat mat and in the builders a bonus cube is a gold-rimmed tile with a small twenty-sided-die icon:
+   gold for the Power die, purple for the Big-number die. Labels can be up to four characters (1000, 1/10, mod). */
+.cube.c-power{background:linear-gradient(145deg,#ffe066,#f08c00);color:#4a2c00;box-shadow:0 0 0 3px #e8a400 inset,0 4px 0 rgba(0,0,0,.25)}
+.cube.c-big{background:linear-gradient(145deg,#b197fc,#5f3dc4);color:#fff;box-shadow:0 0 0 3px #fcc419 inset,0 4px 0 rgba(0,0,0,.25)}
+.cube.c-power > span,.cube.c-big > span{font-size:.62em;letter-spacing:-.02em;white-space:nowrap}
+.cube.c-power::before,.cube.c-big::before{content:"";position:absolute;right:3px;bottom:3px;width:28%;height:28%;opacity:.9;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='rgba(0,0,0,.25)'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16'/%3E%3Cpath d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E") center/contain no-repeat}
+.cube.tiny.c-power > span,.cube.tiny.c-big > span{font-size:12px}
+
+/* the die icon used in pop-ups, chips, notes and the Parent corner */
+.bonus-die{display:inline-block;width:26px;height:26px;vertical-align:middle;flex:0 0 auto;background:center/contain no-repeat}
+.bonus-die.lg{width:64px;height:64px}
+.bd-power{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%235c3c00' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%23fcc419'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%23ffe066'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
+.bd-big{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%23fcc419' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%237048e8'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%239775fa'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
+.bd-twist{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%23ffffff' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%230c8599'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%2338d9a9'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
+
+/* the Twist chip on the table (under the variation card chip when there is one) */
+.bonus-chip{position:absolute;z-index:6;top:max(64px,calc(var(--sat) + 60px));left:max(10px,var(--sal));display:flex;align-items:center;gap:8px;
+  font:inherit;color:var(--ink);background:var(--paper);border:3px solid #12b886;border-radius:14px;padding:5px 10px 5px 8px;
+  box-shadow:0 4px 0 rgba(0,0,0,.18);cursor:pointer;text-align:left;max-width:min(240px,46vw)}
+.bonus-chip.below{top:max(128px,calc(var(--sat) + 124px))}
+.bonus-chip small{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+.bonus-chip b{display:block;font-size:15px;line-height:1.1}
+.bonus-chip.dealt{animation:variDeal .55s cubic-bezier(.2,1.2,.4,1) both}
+@media (prefers-reduced-motion:reduce){.bonus-chip.dealt{animation:none}}
+#game:not(.three) .bonus-chip{position:static;order:-1;align-self:flex-start;margin:0}
+
+/* pop-ups and lessons */
+.bonus-new{display:flex;align-items:center;gap:14px;justify-content:center;max-width:560px;margin:8px auto;text-align:left}
+.bonus-new p{margin:0;font-size:17px;line-height:1.35}
+.bonus-oplist{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px 0}
+.bonus-twists{columns:2;column-gap:18px;max-width:620px;margin:6px auto;padding-left:18px;font-size:14.5px;line-height:1.35}
+.bonus-twists small{color:var(--mute)}
+@media (max-width:560px){.bonus-twists{columns:1}}
+.vari-note.bonus-note{background:#fff9db;border-color:#fab005}
+.vari-note.bonus-note .btn.small{padding:2px 10px;min-height:0}
+
+/* Parent corner */
+.bonus-house{display:inline-block;font-size:12px;font-weight:800;color:#0b7285;background:#e6fcf5;border:2px solid #63e6be;border-radius:10px;padding:0 6px;vertical-align:middle}
+.bonus-rows{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:6px}
+.bonus-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bonus-row b{min-width:130px}
+.bonus-row small{flex:1 1 160px;color:var(--mute);font-weight:600}
+.bonus-ops{width:100%;margin-top:8px}
+.setrow.bonus-parent{flex-wrap:wrap}

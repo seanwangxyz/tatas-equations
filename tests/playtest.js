@@ -11,10 +11,17 @@
 //   Cards with a setting get a random one each shake (k 6-11, base 8/9, a colour with digits for Exponent).
 //   Every Solution a player writes is mapped to real cubes (Eq.cubeTokens) and re-checked with
 //   Eq.checkSolution under the card; the summary prints how many were wrong (should be 0).
+//   BONUS dice (house rule, js/bonus.js): add 'bonus' (all three dice) or 'bonus:big', 'bonus:power', 'bonus:twist',
+//   'bonus:big+power' … The Big-number / Power dice become cubes 24 and 25 with a random face each shake; the Twist die
+//   switches on one of its variation cards (with its setting) about 3 shakes in 4 (its scoring twists don't change play).
+//   The summary prints how often Goals and Solutions used a bonus cube, by creature, and the same re-check.
+//   e.g. node tests/playtest.js 4 4 bonus     |  node tests/playtest.js 4 4 average bonus:power
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
 const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv.slice(4).includes('notaste');
-const CARD = process.argv.slice(4).find(a => a !== 'notaste') || null;
+const BONUSARG = process.argv.slice(4).find(a => /^bonus/.test(a)) || null; // BONUS
+const BONUS = BONUSARG ? (BONUSARG === 'bonus' ? ['big', 'power', 'twist'] : BONUSARG.replace(/^bonus:/, '').split('+')) : [];
+const CARD = process.argv.slice(4).find(a => a !== 'notaste' && !/^bonus/.test(a)) || null;
 
 // A fake browser, just enough for the scripts to load. Nothing is drawn.
 const store = {};
@@ -66,7 +73,11 @@ function recheck(G, r, mode) {
   const chk = Eq.checkSolution(toks, { goal: G.goal, zone: id => G.cubes[id] ? G.cubes[id].zone : 'forbidden', required: zone(G, 'required').map(c => c.id), mode: mode === 'last' ? 'last' : mode, fractions: G.fractions, label: id => G.cubes[id] ? G.cubes[id].s : '?' });
   if (!chk.ok) { CHECK.bad++; if (CHECK.examples.length < 5) CHECK.examples.push(r.expr + ' vs ' + Eq.fmt(G.goal) + ' (' + chk.reasons.join(' ') + ')'); }
 }
-const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); recheck(G, r, mode); return r; };
+const BUSE = {}; // BONUS: per creature, {goals, goalsBonus, sols, solsBonus}
+const bonusSym = s => Eq.isBonusOp(s) || Eq.bigIdx(s) >= 0;
+function countBonusSol(o, r) { if (!BONUS.length || !r || !r.found || !G_HAS_BONUS) return; const u = BUSE[o.name] || (BUSE[o.name] = { goals: 0, goalsBonus: 0, sols: 0, solsBonus: 0 }); u.sols++; if (r.tokens.some(bonusSym)) u.solsBonus++; }
+let G_HAS_BONUS = false;
+const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); countBonusSol(o, r); recheck(G, r, mode); return r; };
 
 function setGoal(G, o, opp) {
   const free = zone(G, 'resources');
@@ -136,12 +147,18 @@ function playShake(A0, B0, setter, stats) {
   const A = P[0], B = P[1];
   const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })), fractions: stage.fractions };
   G.cubes.forEach(c => { if (!Eq.isDigit(c.s) && stage.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
-  if (CARD) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
-    const pool = CARD === 'anycard' ? Eq.VARIATIONS : CARD === 'midcard' ? AI.MIDDLE : [CARD];
+  // BONUS: the Big-number and Power dice join the roll as cubes 24, 25; the Twist die may pick this shake's card
+  G_HAS_BONUS = false;
+  ['big', 'power'].forEach(d => { if (!BONUS.includes(d)) return; const f = Eq.CUBE_FACES[d].filter(s => d !== 'big' || stage.fractions || Eq.bigOf(s).d === 1); G.cubes.push({ id: G.cubes.length, color: d, s: f[Math.floor(Math.random() * f.length)], zone: 'resources', order: G.cubes.length, locked: false }); G_HAS_BONUS = true; });
+  const TWISTCARDS = [['basem', { base: 8 }], ['basem', { base: 9 }], ['wild0'], ['upside'], ['sideways'], ['average'], ['multiops'], ['multk', { k: 6 }], ['multk', { k: 10 }], ['expo'], ['powbase'], ['twodigit'], ['remainder'], ['factorial'], ['nfactors']];
+  const twist = !CARD && BONUS.includes('twist') && Math.random() < 0.75 ? TWISTCARDS[Math.floor(Math.random() * TWISTCARDS.length)] : null;
+  if (twist) stats.twists = (stats.twists || 0) + 1;
+  if (CARD || twist) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
+    const pool = twist ? [twist[0]] : CARD === 'anycard' ? Eq.VARIATIONS : CARD === 'midcard' ? AI.MIDDLE : [CARD];
     const card = pool[Math.floor(Math.random() * pool.length)], pickOne = a => a[Math.floor(Math.random() * a.length)];
-    let set = null;
-    if (card === 'multk') set = { k: pickOne([6, 7, 8, 9, 10, 11]) };
-    if (card === 'basem') set = { base: pickOne([8, 9]) };
+    let set = twist && twist[1] ? twist[1] : null;
+    if (card === 'multk' && !set) set = { k: pickOne([6, 7, 8, 9, 10, 11]) };
+    if (card === 'basem' && !set) set = { base: pickOne([8, 9]) };
     if (card === 'expo') { // a colour that has digits in Resources; then the mode is live, like G.fractions in the game
       const cols = Eq.COLORS.filter(col => G.cubes.some(c => c.color === col && Eq.isDigit(c.s) && c.zone === 'resources'));
       const ecol = pickOne(cols); set = { ecol, eids: G.cubes.filter(c => c.color === ecol && Eq.isDigit(c.s)).map(c => c.id) };
@@ -152,7 +169,8 @@ function playShake(A0, B0, setter, stats) {
     stats.cards[card] = (stats.cards[card] || 0) + 1;
   }
   if (!setGoal(G, P[setter], P[1 - setter])) { stats.noGoal++; return [0, 0]; }
-  if (CARD) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
+  if (G_HAS_BONUS) { const u = BUSE[P[setter].name] || (BUSE[P[setter].name] = { goals: 0, goalsBonus: 0, sols: 0, solsBonus: 0 }); u.goals++; if (G.goalSyms.some(bonusSym)) u.goalsBonus++; }
+  if (CARD || twist) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
   let last = setter, turn = 1 - setter, order = 100, moves = 0;
   const pts = [0, 0], end = (how, who) => { stats.ends[how] = (stats.ends[how] || 0) + 1; stats.moves += moves; stats.shakes++; if (who !== undefined) stats.by[who][how] = (stats.by[who][how] || 0) + 1; return pts; };
   for (;;) {
@@ -160,7 +178,7 @@ function playShake(A0, B0, setter, stats) {
     if (last !== turn) {
       const nowOk = s.res.length >= 2 && s.req.length + s.perm.length > 0;
       const d = AI.decideChallenge(o, s, G.goal, G.fractions, nowOk, 1, false);
-      if (d && d.kind === 'now') { countSol(o, d.plan); recheck(G, d.plan, 'now'); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
+      if (d && d.kind === 'now') { countSol(o, d.plan); countBonusSol(o, d.plan); recheck(G, d.plan, 'now'); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
       if (d && d.kind === 'impossible') {
         const mover = P[last], w = write(G, mover, 'impossible');
         const really = !truth(G, 'impossible').found;
@@ -207,9 +225,11 @@ function pairing(A, B) {
   return a - b;
 }
 
-console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing${NOTASTE ? ', math tastes OFF' : ''}${CARD ? ', variation card: ' + CARD : ''}`);
+console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing${NOTASTE ? ', math tastes OFF' : ''}${CARD ? ', variation card: ' + CARD : ''}${BONUS.length ? ', BONUS dice: ' + BONUS.join('+') : ''}`);
+if (BONUS.some(d => ['big', 'power', 'twist'].indexOf(d) < 0)) { console.log('Unknown bonus die in ' + BONUSARG + '. Use bonus, bonus:big, bonus:power, bonus:twist (join with +).'); process.exit(1); }
 if (CARD && CARD !== 'anycard' && CARD !== 'midcard' && Eq.VARIATIONS.indexOf(CARD) < 0) { console.log('Unknown card ' + CARD + '. Cards: ' + Eq.VARIATIONS.join(', ') + ', anycard, midcard'); process.exit(1); }
-process.on('exit', () => { if (CARD) console.log(`Variation check (${CARD}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the card` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); });
+process.on('exit', () => { if (BONUS.length) { console.log(`Bonus dice check (${BONUS.join('+')}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); console.log('Bonus cube use (Goals with a bonus cube / Solutions with a bonus cube):'); OPPONENTS.concat([BEGINNER, PRACTICED, TRICK]).forEach(o => { const u = BUSE[o.name]; if (u) console.log(`  ${(o.name + (o.stars ? ' ' + o.stars + '*' : '') + ':').padEnd(28)} Goals ${u.goalsBonus}/${u.goals}   Solutions ${u.solsBonus}/${u.sols}`); }); }
+  if (CARD) console.log(`Variation check (${CARD}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the card` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); });
 for (let i = 0; i < OPPONENTS.length - 1; i++) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
 OPPONENTS.forEach(o => pairing(BEGINNER, o));
 [0, 1, 2, 4].forEach(i => pairing(PRACTICED, OPPONENTS[i]));

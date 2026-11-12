@@ -22,12 +22,17 @@
 //   likes.sol   = sets of symbols it tries to work into its Solutions, in order (e.g. [['*','+'], ['*']])
 //   likes.mix   = true: tries Solutions that mix two different operations (Zog)
 var AI = (function () {
-  var VERSION = 5; // bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
+  var VERSION = 6; // bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
 
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function assign(a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
   function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
   function has(list, s) { return !!list && list.indexOf(s) >= 0; }
+  // BONUS dice (house rule, js/bonus.js): a bonus cube's symbol (the Power die's operation or the Big-number die's number).
+  // Creatures of 4 stars and up like to use them (in Goals, moves and Solutions); weaker ones never put one in a Goal
+  // but still play correctly around them (their search sees every cube on the mat).
+  function isBonusSym(s) { return Eq.isBonusOp(s) || Eq.bigIdx(s) >= 0; }
+  function bonusFan(o) { return (o.stars || 0) >= 4; }
 
   // Only the fields the decisions read (a creature's talk lines stay on the page).
   var FIELDS = ['name', 'maxDigits', 'timeMs', 'seeNow', 'seeImp', 'smart', 'shortView', 'callsImpossible', 'keepGoal', 'goalCubes', 'goalMax', 'likes', 'stars', 'fire'];
@@ -90,8 +95,9 @@ var AI = (function () {
   function padded(r) { return PADDING.test(r.expr || r.tokens.join('')); }
   function usesAll(tokens, want) { var t = tokens.slice(); return want.every(function (s) { var k = t.indexOf(s); if (k < 0) return false; t.splice(k, 1); return true; }); }
   function tasteSets(o, p) {
-    var L = o.likes; if (!L) return [];
+    var L = o.likes || {};
     var sets = (L.sol || []).slice();
+    if (bonusFan(o)) (p.req || []).concat(p.opt || [], p.res || []).filter(isBonusSym).forEach(function (s) { if (!sets.some(function (x) { return x.length === 1 && x[0] === s; })) sets.unshift([s]); }); // BONUS
     if (L.mix) {
       var pool = (p.req || []).concat(p.opt || [], p.res || []), ops = shuffle(['+', '-', '*', '/', '^', 'r'].filter(function (s) { return has(pool, s); }));
       for (var i = 0; i + 1 < ops.length && sets.length < 3; i += 2) sets.push([ops[i], ops[i + 1]]);
@@ -101,7 +107,7 @@ var AI = (function () {
   // r0 is a Solution the creature already found with search p. Try to find one in its taste instead
   // (a little extra thinking, capped); if that fails it keeps r0. So a taste never loses a Solution.
   function tasteSolve(o, p, r0) {
-    if (!r0 || !r0.found || !o.likes) return r0;
+    if (!r0 || !r0.found || (!o.likes && !bonusFan(o))) return r0; // (BONUS: 4-star creatures try to use a bonus cube even with no taste)
     var sets = tasteSets(o, p), t0 = now();
     for (var i = 0; i < sets.length; i++) {
       if (usesAll(r0.tokens, sets[i])) return mark(o, p, assign(r0, { liked: sets[i].join('') }));
@@ -169,6 +175,7 @@ var AI = (function () {
     res = res.filter(function (c) { return !c.locked; });
     if (!res.length) return null;
     var likes = (o.likes && o.likes.syms) || [];
+    if (bonusFan(o)) likes = likes.concat(res.map(function (c) { return c.s; }).filter(isBonusSym)); // BONUS: keeps a bonus cube in play
     var base = { goal: goal, fractions: fractions, maxDigits: o.maxDigits, timeMs: 90 };
     function possible(after) { return Eq.solve(assign(base, { req: after.req, opt: after.perm, res: after.res, mode: 'impossible' })).found; }
     function out(cd) { return cd && { id: cd.id, zone: cd.zone, liked: cd.zone !== 'forbidden' && has(likes, cd.s) }; }
@@ -246,6 +253,7 @@ var AI = (function () {
     var freeZ = free.map(function (c) { return { id: c.id, s: c.s, zone: 'resources' }; });
     var ideas = Eq.goalIdeas(free.map(tag), { fractions: fractions }).filter(function (g) {
       if (keepN && g.tokens.filter(function (s) { return s === keep; }).length >= keepN) return false;
+      if (!bonusFan(o) && g.tokens.some(isBonusSym)) return false; // BONUS: weaker creatures leave the bonus cubes out of their Goals
       return g.value.d === 1 && g.value.n >= 1 && g.value.n <= Math.min(o.goalMax, maxGoal) && g.tokens.length <= o.goalCubes;
     });
     // Longer Goals first (with some randomness). A taste counts about as much as one more cube; Zog loves length.
@@ -256,6 +264,7 @@ var AI = (function () {
       ideas.forEach(function (g) { g.key = lenW * g.tokens.length + (goalLooksLiked(o, g) ? 1 : 0) + (Math.random() - 0.5) * 2.2; });
       ideas.sort(function (a, b) { return b.key - a.key; });
     }
+    if (bonusFan(o) && Math.random() < 0.7) { var bi = ideas.filter(function (g) { return g.tokens.some(isBonusSym); }); if (bi.length) ideas = bi.concat(ideas.filter(function (g) { return bi.indexOf(g) < 0; })); } // BONUS: show the bonus cube off
     var t0 = now(), pick = null, liked = false, seen = 0;
     for (var i = 0; i < ideas.length && i < 30 && now() - t0 < 1000; i++) {
       var g = ideas[i], gt = Eq.cubeTokens(g.tokens, freeZ, fractions), usedG = {};
