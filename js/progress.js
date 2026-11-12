@@ -117,7 +117,7 @@ function drainQueue(done) {
 }
 function showUnlock(si, done) {
   var st = STAGES[si], lessons = UNLOCK_LESSONS[st.id] || [], k = 0, timer = null;
-  Snd.fanfare(); FX.confetti(180);
+  Snd.fanfare(); FX.confetti(180); if (window.Fireworks) Fireworks.show();
   function slide() {
     var L = lessons[k];
     var ev = Eq.evaluate(L.e.split(''), { fractions: true });

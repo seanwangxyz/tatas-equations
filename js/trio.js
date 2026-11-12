@@ -50,6 +50,7 @@ var Trio = (function () {
       S.trios = S.trios || {};
       var k = key(G.cfg.a, G.cfg.b), first = !S.trios[k], isSet = list().some(function (p) { return key(p[0], p[1]) === k; });
       S.trios[k] = true;
+      G.trioCrown = first && isSet;   // FIREWORKS: endMatch fires them for a new crown
       addXP(first ? 80 : 25, first ? (isSet ? '👑 Crown won: beat ' : 'Beat ') + OPPONENTS[G.cfg.a].name + ' and ' + OPPONENTS[G.cfg.b].name + ' together!' : 'Won against two creatures');
     }
     persist();
