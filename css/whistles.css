@@ -1,0 +1,48 @@
+/* ======================= Bells and whistles: commentary box, replay (skip layer + flat replay) ======================= */
+/* Everything here plays once and stops: no infinite animations. prefers-reduced-motion turns the movement off. */
+
+/* ----- Commentary box: a small caption under the scores ----- */
+.wh-comm{position:fixed;left:50%;top:calc(var(--sat, 0px) + 66px);z-index:75;pointer-events:none;
+  display:flex;align-items:center;gap:8px;max-width:min(560px,92vw);padding:6px 14px 6px 8px;border-radius:999px;
+  background:rgba(8,18,46,.86);color:#fff;border:2px solid rgba(255,212,59,.85);box-shadow:0 4px 14px rgba(0,0,0,.35);
+  font-family:var(--font, "Nunito", sans-serif);font-weight:800;font-size:15px;line-height:1.25;
+  opacity:0;transform:translate(-50%,-10px);transition:opacity .3s ease,transform .3s ease}
+.wh-comm.on{opacity:1;transform:translate(-50%,0)}
+.wh-comm-mic{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#ffd43b;color:#14254f}
+.wh-comm-tag{flex:0 0 auto;font-size:11px;letter-spacing:1.5px;color:#ff6b6b;background:rgba(255,255,255,.1);border-radius:6px;padding:1px 6px}
+.wh-comm-txt{min-width:0}
+/* while a pop-up is open the box moves to the bottom edge, so it never covers the pop-up's title */
+#modal.on ~ .wh-comm{top:auto;bottom:calc(env(safe-area-inset-bottom, 0px) + 10px)}
+@media (max-width:520px){.wh-comm{font-size:13px;top:calc(var(--sat, 0px) + 58px)}}
+
+/* ----- 3D replay: the tap-to-skip layer ----- */
+.wh-skip{position:fixed;inset:0;z-index:52;background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wh-skip-pill{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 18%);transform:translateX(-50%);
+  padding:6px 14px;border-radius:999px;background:rgba(8,18,46,.7);color:#fff;font-weight:800;font-size:14px;
+  border:2px solid rgba(255,255,255,.5);animation:whPill .4s .5s ease both;pointer-events:none}
+@keyframes whPill{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* ----- Flat replay, in the result pop-up ----- */
+.wh-replay{position:relative;margin:4px auto 10px;padding:22px 10px 10px;border-radius:18px;text-align:center;overflow:hidden;cursor:pointer;
+  background:linear-gradient(180deg,#0b1a45,#14306e);border:3px solid #ffd43b;box-shadow:inset 0 0 0 2px rgba(255,255,255,.08)}
+.wh-rp-tag{position:absolute;left:10px;top:4px;font-size:11px;font-weight:900;letter-spacing:1.5px;color:#ffd43b}
+.wh-replay .wh-rp-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;background:none;margin:0;padding:4px 0}
+.wh-replay .paren{color:#fff}
+.wh-rp-c{animation:whFly .5s cubic-bezier(.2,1.35,.45,1) both;animation-delay:calc(var(--i) * 150ms + 250ms)}
+@keyframes whFly{
+  0%{opacity:0;transform:translateY(70px) rotate(-160deg) scale(.4)}
+  60%{opacity:1}
+  100%{opacity:1;transform:none}}
+.wh-rp-eq{margin-top:6px;font-family:var(--display, "Lilita One", sans-serif);font-size:30px;color:#fff;letter-spacing:1px;
+  animation:whFlash .7s ease both;animation-delay:calc(var(--n) * 150ms + 650ms)}
+.wh-rp-eq b{color:#ffd43b;text-shadow:0 0 14px rgba(255,176,0,.8)}
+@keyframes whFlash{
+  0%{opacity:0;transform:scale(.6)}
+  45%{opacity:1;transform:scale(1.22)}
+  100%{opacity:1;transform:scale(1)}}
+/* a tap (or reduced motion) shows the end straight away */
+.wh-replay.skip .wh-rp-c,.wh-replay.skip .wh-rp-eq,.wh-replay.still .wh-rp-c,.wh-replay.still .wh-rp-eq{animation:none}
+@media (prefers-reduced-motion: reduce){
+  .wh-rp-c,.wh-rp-eq,.wh-skip-pill{animation:none}
+  .wh-comm{transition:opacity .2s ease;transform:translate(-50%,0)}
+}
