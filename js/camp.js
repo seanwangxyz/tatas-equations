@@ -137,7 +137,7 @@ function renderCamp() {
     coach('Welcome to Training Camp! Pick a drill. Every one makes you better at the real game. Take as long as you like on each puzzle.') +
     '<div class="panel" style="margin-top:12px"><div style="font-weight:800;margin-bottom:10px">' + st.icon + ' Training with: ' + st.name +
     (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ⭐ ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' skill stars to unlock the next operation') + '</div>' +
-    '<div class="opps">' + cards +
+    '<div class="opps">' + cards + (typeof waysTileHTML === 'function' ? waysTileHTML() : '') +
     '<div class="opp mode" data-act="daily"><span class="avatar lg" style="background:#ffd6d6;color:#1d2340;font-size:44px">' + ico('cal') + '</span><h3>Daily Puzzle</h3><div class="otitle">One special puzzle each day.</div><div class="otitle">' + (daily ? '✔ Solved today' : 'New today!') + '</div></div>' +
     '</div></div>';
 }

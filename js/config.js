@@ -288,7 +288,7 @@ function applyOppNames() { OPPONENTS.forEach(function (o, i) { var n = (S.oppNam
 var PIP = { id: 'pip', kind: 'pip', name: 'Pip', title: 'the Cube', emoji: '🟨', color: '#ffe066', stars: 0, maxDigits: 5, timeMs: 400, think: ['My turn!'] };
 
 var SKINS = [{ id: 'classic', name: 'Classic', lvl: 1 }, { id: 'candy', name: 'Candy', lvl: 3 }, { id: 'lava', name: 'Lava', lvl: 5 }, { id: 'galaxy', name: 'Galaxy', lvl: 7 }, { id: 'gold', name: 'Gold', lvl: 10 }];
-var MATS = [{ id: 'felt', name: 'Classic Felt', lvl: 1, sw: 'linear-gradient(#3fb27f,#1d6a46)' }, { id: 'stadium', name: 'Stadium', lvl: 1, sw: 'linear-gradient(#37b24d,#1b5e20)' }, { id: 'space', name: 'Outer Space', lvl: 2, sw: 'linear-gradient(#3a2f8b,#0b0d24)' }, { id: 'jungle', name: 'Jungle', lvl: 4, sw: 'linear-gradient(#3a8f3c,#174d1c)' }, { id: 'ocean', name: 'Underwater', lvl: 6, sw: 'linear-gradient(#36c2f0,#0b4f8a)' }];
+var MATS = [{ id: 'felt', name: 'Classic Felt', lvl: 1, sw: 'linear-gradient(#3fb27f,#1d6a46)' }, { id: 'stadium', name: 'Stadium', lvl: 1, sw: 'linear-gradient(#37b24d,#1b5e20)' }, { id: 'space', name: 'Outer Space', lvl: 2, sw: 'linear-gradient(#3a2f8b,#0b0d24)' }, { id: 'jungle', name: 'Jungle', lvl: 4, sw: 'linear-gradient(#3a8f3c,#174d1c)' }, { id: 'ocean', name: 'Underwater', lvl: 6, sw: 'linear-gradient(#36c2f0,#0b4f8a)' }, { id: 'night', name: 'Night Match', lvl: 3, sw: 'linear-gradient(#1f3a6b,#050a1e)' }, { id: 'beach', name: 'Beach Soccer', lvl: 5, sw: 'linear-gradient(#5fd6d0,#ecd3a0)' }, { id: 'volcano', name: 'Volcano Crater', lvl: 7, sw: 'linear-gradient(#ff8a1f,#4f3a9a)' }];
 var VICTORIES = [{ id: 'confetti', name: 'Confetti', lvl: 1, icon: '🎊' }, { id: 'fireworks', name: 'Fireworks', lvl: 4, icon: '🎆' }, { id: 'stars', name: 'Star Shower', lvl: 8, icon: '🌟' }];
 
 // ----- Helpers -----
@@ -309,7 +309,8 @@ function defaults() {
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
     ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: OPPONENTS.map(function () { return false; }),
     cos: { skin: 'classic', mat: 'stadium', victory: 'confetti' },
-    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false },
+    set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false, avatar: true },
+    cups: { run: null, won: {}, list: [] }, ways: { lvl: 1, row: 0, miss: 0, done: 0, total: 0, best: {} },
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: OPPONENTS.map(function () { return ''; })
   };
 }

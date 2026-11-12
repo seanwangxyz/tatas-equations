@@ -87,12 +87,14 @@ function renderSetup() {
     return '<div class="opp' + (open ? '' : ' lock') + '" data-act="' + (open ? 'playOpp' : 'lockedOpp') + '" data-arg="' + i + '">' + (S.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') +
       '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + oppStars(o) + '</div>' +
       (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
+      (o.taste ? '<div class="otitle" style="margin-top:4px;font-size:13px;line-height:1.25">🎲 Likes: ' + esc(o.taste) + '</div>' : '') +
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
   var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE).join('');
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
     '<div class="panel"><h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
+    (window.Cup ? Cup.setupHTML() : '') +
     '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
@@ -134,6 +136,7 @@ function renderTrophies() {
       return '<div class="bdg' + (e ? '' : ' off') + '">' + medalHTML(b, !!e) + '<b>' + (e ? esc(b.name) : '???') + '</b><small>' + (e ? 'Earned ' + e : 'How to earn: ' + esc(b.hint)) + '</small></div>';
     }).join('') + '</div>';
   });
+  if (window.Cup && Cup.trophyHTML) html += Cup.trophyHTML();
   if (typeof Cards !== 'undefined' && Cards.albumHTML) html += Cards.albumHTML(); // Soccer Card Album (js/cards.js)
   html += '<h3 class="tierh">' + ico('cube') + ' Cube Skins</h3><div class="cos">' + SKINS.map(function (s) { var open = L >= s.lvl; return '<div class="it' + (S.cos.skin === s.id ? ' on' : '') + (open ? '' : ' lock') + '" data-act="' + (open ? 'pickSkin' : 'lockedCos') + '" data-arg="' + s.id + '" data-lvl="' + s.lvl + '"><div class="skin-' + s.id + ' row" style="gap:4px;margin-bottom:6px"><span class="cube tiny c-red"><span>7</span></span><span class="cube tiny c-blue"><span>+</span></span><span class="cube tiny c-green"><span>4</span></span></div>' + s.name + (open ? '' : lockNote(s)) + '</div>'; }).join('') + '</div>';
   html += '<h3 class="tierh">' + ico('dice') + ' Mat Themes</h3><div class="cos">' + MATS.map(function (s) { var open = L >= s.lvl; return '<div class="it' + (S.cos.mat === s.id ? ' on' : '') + (open ? '' : ' lock') + '" data-act="' + (open ? 'pickMat' : 'lockedCos') + '" data-arg="' + s.id + '" data-lvl="' + s.lvl + '"><div class="swatch" style="background:' + s.sw + '"></div>' + s.name + (open ? '' : lockNote(s)) + '</div>'; }).join('') + '</div>';
@@ -182,9 +185,10 @@ function renderSettings() {
     '<div class="row" style="justify-content:flex-start;margin:8px 0 4px"><button class="btn small" data-act="saveOppNames">Save names</button></div></div>' +
     '<div class="group"><h3>' + ico('dice') + ' The game</h3>' +
     '<div class="setrow"><label>Shakes per match</label><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes2" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div>' +
-    [['gloat', 'Creatures gloat when they win', true], ['trash', 'Creatures trash-talk (playful teasing)', true], ['bluff', 'Creatures bluff (say things that may not be true)', false], ['babble', 'Creature voices (cute babble when they talk)', true]].map(function (x) { var on = x[2] ? S.set[x[0]] !== false : S.set[x[0]] === true; return '<div class="setrow"><label>' + x[1] + '</label><button class="btn small ' + (on ? 'green' : '') + '" data-act="toggleSet" data-arg="' + x[0] + '" data-def="' + (x[2] ? 1 : 0) + '">' + (on ? '✔ On' : 'Off') + '</button></div>'; }).join('') +
+    [['gloat', 'Creatures gloat when they win', true], ['trash', 'Creatures trash-talk (playful teasing)', true], ['bluff', 'Creatures bluff (say things that may not be true)', false], ['babble', 'Creature voices (cute babble when they talk)', true], ['avatar', 'Show me at the table (3D)', true], ['shots', 'Camera close-ups (challenges, wins, the Goal)', true]].map(function (x) { var on = x[2] ? S.set[x[0]] !== false : S.set[x[0]] === true; return '<div class="setrow"><label>' + x[1] + '</label><button class="btn small ' + (on ? 'green' : '') + '" data-act="toggleSet" data-arg="' + x[0] + '" data-def="' + (x[2] ? 1 : 0) + '">' + (on ? '✔ On' : 'Off') + '</button></div>'; }).join('') +
     '<div class="setrow"><label>Read lines aloud</label><button class="btn small ' + (S.set.voice === true ? 'green' : '') + '" data-act="toggleVoice">' + (S.set.voice === true ? '✔ Voice on' : 'Voice off') + '</button></div>' +
     '<div class="setrow"><label>3D table and dice</label>' + (T3.supported ? '<button class="btn small ' + (S.set.three !== false ? 'green' : '') + '" data-act="toggle3d">' + (S.set.three !== false ? '✔ 3D on' : '3D off (flat mat)') + '</button>' : '<span>Not available on this device (or no internet to load it), so the flat mat is used.</span>') + '</div>' +
+    (T3.supported ? '<div class="setrow"><label>3D picture quality<br><small style="font-weight:600">Auto picks what this device can run smoothly.</small></label><div class="seg">' + [['auto', 'Auto'], ['low', 'Fast'], ['high', 'Pretty']].map(function (q) { return '<button class="' + ((S.set.quality || 'auto') === q[0] ? 'on' : '') + '" data-act="setQuality3d" data-arg="' + q[0] + '">' + q[1] + '</button>'; }).join('') + '</div></div>' : '') +
     '<div class="setrow"><label>Watch the intro again</label><button class="btn small" data-act="replayIntro">Play intro</button></div></div>' +
     '<div class="group"><h3>' + ico('disk') + ' Move progress to another device</h3>' +
     '<p>Copy this code, then paste it into Settings on the other device and tap <b>Load</b>.</p>' +
@@ -203,6 +207,7 @@ function renderSettings() {
 ACT.pickPack = function (el) { if (el.dataset.ok !== '1') { Snd.boop(); modal('<h2>Not installed yet</h2><p style="text-align:center">The monster models need to be downloaded and added to the game first. The classic creatures are used until then.</p><div class="row"><button class="btn" data-act="closeModal">OK</button></div>'); return; } S.cos.pack = el.dataset.arg; persist(); Snd.pop(); renderSettings(); };
 ACT.toggleSet = function (el) { var k = el.dataset.arg, on = el.dataset.def === '1' ? S.set[k] !== false : S.set[k] === true; S.set[k] = !on; persist(); Snd.click(); renderSettings(); };
 ACT.toggleVoice = function () { S.set.voice = S.set.voice !== true; persist(); if (S.set.voice) Snd.speak('Hi! I will read the lines out loud.', 'pip'); else if (Snd.stopSpeak) Snd.stopSpeak(); renderSettings(); };
+ACT.setQuality3d = function (el) { S.set.quality = el.dataset.arg; persist(); if (T3.setQuality) T3.setQuality(S.set.quality); Snd.click(); renderSettings(); };
 ACT.toggle3d = function () { S.set.three = S.set.three === false; persist(); renderSettings(); };
 ACT.toggleMute = function () { S.set.mute = !S.set.mute; persist(); Snd.apply(); if (!S.set.mute) Snd.musicOn(); renderSettings(); };
 ACT.saveJersey = function () { var v = ($('#jerseyInput').value || '').replace(/[^0-9]/g, '').slice(0, 2); if (v) { S.jersey = v; persist(); Snd.chime(); } renderSettings(); };

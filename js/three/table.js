@@ -323,8 +323,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var darkWood = new THREE.MeshStandardMaterial({ map: woodTexture(T.rim, 7, aniso), color: T.apron || 0x9a8a80, roughness: 0.7 });
     var apron = new THREE.Mesh(new THREE.BoxGeometry(2 * ow - 0.4, 0.9, 2 * od - 0.4), darkWood); apron.position.y = -0.55; apron.castShadow = true; apron.userData.occ = true; tableGroup.add(apron);
     if (envFx) { envFx.dispose(); envFx = null; } if (fx3) fx3.reset(); slow = null;
-    var env = name === 'stadium' ? buildStadium(W, D, aniso, layoutName, function () { return qual; }) : buildEnvironment(name, W, D, aniso); tableGroup.add(env.group);
-    if (name === 'stadium') { envFx = env; env.setBoard(boardText); }
+    var env = name === 'stadium' ? buildStadium(W, D, aniso, layoutName, function () { return qual; }) : buildEnvironment(name, W, D, aniso, layoutName, function () { return qual; }); tableGroup.add(env.group);
+    if (env.setBoard) { envFx = env; env.setBoard(boardText); }
     if (env.legs) {
       var lh = -0.9 - FLOOR_Y;
       [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {

@@ -22,6 +22,8 @@ function loseMood(o) {
   return r < 0.6 ? 'cry' : r < 0.9 ? 'sad' : 'tantrum';
 }
 function talkLine(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
+function playerMood(m, opts) { if (T3.playerMood) T3.playerMood(m, opts); }
+function playerShow() { if (T3.playerShow) T3.playerShow(S.set.avatar !== false); }
 function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'dance' && Snd.danceMusic) Snd.danceMusic(3200); }
 function setCreature(k, pack) { if (T3.setCreature) T3.setCreature(k, pack || 'classic'); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
@@ -42,8 +44,8 @@ function startMatch(mode, oppIdx, cfg) {
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   go('game'); Snd.setMood('play');
   var ai = firstAI();
-  setCreature(ai ? ai.kind : null, ai && ai.pack);
-  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(S.cos.mat === 'stadium' ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+  setCreature(ai ? ai.kind : null, ai && ai.pack); playerShow();
+  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 function newShake(fixedCubes) {
@@ -76,6 +78,7 @@ function newShake(fixedCubes) {
   }
 }
 function cue(name) { if (T3.cue) T3.cue(name); }
+function shot(name, opts) { return !!(T3.active() && T3.shot && T3.shot(name, opts)); }
 function fx3(name, opts) { if (T3.fx) T3.fx(name, opts); }
 function board(text) { if (T3.setBoard) T3.setBoard(text); }
 // Read a line aloud (only when 'Read lines aloud' is on in Settings).
@@ -269,7 +272,7 @@ function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
-  Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val));
+  Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal');
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
@@ -326,8 +329,9 @@ function challenge(kind, who) {
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', G.players[who].name + ' challenges!');
   if (isAI(who)) creatureMood('challenge');
+  else if (who === 0) playerMood('now', { kind: kind });
   else if (isAI(mover)) { creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
-  Snd.slam(); Snd.setMood('challenge'); cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
+  Snd.slam(); Snd.setMood('challenge'); if (!((isAI(who) || isAI(mover)) && shot('challenge'))) cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(G.players[who].name) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(G.players[mover].name) + ' must try to write a Solution.', 'cheer');
   renderGame();
@@ -517,7 +521,7 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); } else { Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
   var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
@@ -546,9 +550,10 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); cue('win'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerMood('cheer'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
     }
-    if (!won && !tie) { creatureMood('dance'); cue('lose'); }
+    if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
+    if (tie) playerMood('clap');
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
     var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
@@ -572,7 +577,8 @@ function endMatch() {
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
   }
   if (window.Social && Social.matchCard) { try { html += Social.matchCard({}); } catch (e) {} }
-  html += '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
+  var cupRow = (G.mode === 'ai' && window.Cup && Cup.active()) ? Cup.onMatchEnd({ won: won, tie: tie, you: a, them: b, oppIdx: G.oppIdx }) : '';
+  html += cupRow || '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
   modal(html, null);
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };

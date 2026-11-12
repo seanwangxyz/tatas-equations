@@ -2,6 +2,7 @@
 // ======================= BUILDER (tap-to-build expressions) =======================
 var B = null;
 function openGoalBuilder(pi, onDone, noCancel) {
+  if (pi === 0 && typeof playerMood === 'function') playerMood('think');
   if (Snd.getMood && Snd.getMood() === 'play') Snd.setMood('think'); // calmer music while he works it out
   var pool = zoneCubes('resources').filter(function (c) { return !c.locked; }).map(function (c) { return c.id; });
   B = { kind: 'goal', pi: pi, tokens: [], pools: [{ label: '🎲 Resources', ids: pool }], cubes: G.cubes, onDone: onDone, noCancel: noCancel, fractions: G.fractions,
@@ -9,6 +10,7 @@ function openGoalBuilder(pi, onDone, noCancel) {
   renderBuilder(); $('#builder').classList.add('on');
 }
 function openSolutionBuilder(pi, mode, cb) {
+  if (pi === 0 && typeof playerMood === 'function') playerMood('think');
   if (Snd.getMood && Snd.getMood() !== 'off') Snd.setMood('think');
   var pools = [{ label: '✅ Required (use them ALL)', ids: zoneCubes('required').map(function (c) { return c.id; }), req: true },
     { label: '👍 Permitted (use any)', ids: zoneCubes('permitted').map(function (c) { return c.id; }) }];
@@ -46,7 +48,8 @@ function renderBuilder() {
     var chk = Eq.checkSolution(B.tokens, solCtx(B.mode, B.goal, cubes, B.fractions)), R = chk.reasons.join(' ');
     var reqIds = cubes.filter(function (c) { return c.zone === 'required'; }).map(function (c) { return c.id; });
     var reqUsed = reqIds.filter(function (id) { return used[id]; }).length;
-    var items = [[(chk.cubes || 0) >= 2, 'At least 2 cubes'], [reqUsed === reqIds.length, 'All Required used (' + reqUsed + '/' + reqIds.length + ')']];
+    var items = [[(chk.cubes || 0) >= 2, 'At least 2 cubes']];
+    if (reqIds.length) items.push([reqUsed === reqIds.length, 'All Required used (' + reqUsed + '/' + reqIds.length + ')']);
     if (B.mode === 'now') items.push([(chk.resUsed || 0) <= 1, 'At most 1 Resource (' + (chk.resUsed || 0) + ')']);
     items.push([!/two-digit/.test(R), 'One-digit numbers only']);
     items.push([chk.value && Eq.eqF(chk.value, B.goal), 'Equals the Goal']);
@@ -79,8 +82,8 @@ ACT.bRemove = function (el) { var i = +el.dataset.bi; B.tokens.splice(i, 1); Snd
 ACT.bParen = function (el) { B.tokens.push(el.dataset.arg); Snd.click(); renderBuilder(); };
 ACT.bBack = function () { B.tokens.pop(); Snd.click(); renderBuilder(); };
 ACT.bClear = function () { B.tokens = []; renderBuilder(); };
-ACT.bCancel = function () { $('#builder').classList.remove('on'); B = null; };
-ACT.bGiveUp = function () { var b = B; $('#builder').classList.remove('on'); B = null; b.onDone(null, true); };
+ACT.bCancel = function () { if (typeof playerMood === 'function') playerMood(null); $('#builder').classList.remove('on'); B = null; };
+ACT.bGiveUp = function () { if (typeof playerMood === 'function') playerMood(null); var b = B; $('#builder').classList.remove('on'); B = null; b.onDone(null, true); };
 ACT.bSubmit = function () {
   var b = B;
   if (b.kind === 'goal') {
