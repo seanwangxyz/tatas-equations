@@ -7,13 +7,14 @@ import { createFx3d } from './fx3d.js';
 import { createQuality, LEVELS } from './quality.js';
 import { createShots } from './shots.js';
 import { createPostFx } from './postfx.js';
+import { createOrbit, createOrbitUI, photoCanvas, savePhoto } from './orbit.js';
 import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture, gradientBg, rectShadowTexture, feltBumpTile, paintFelt, woodTexture, buildEnvironment } from './environment.js';
 
 (function () {
   var api = window.T3;
   var renderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); if (!renderer.getContext()) return; } catch (e) { return; }
-  var hooks = { frame: [], extents: [] }; // other modules (creatures) plug in here
+  var hooks = { frame: [], extents: [], shrink: [] }; // other modules (creatures) plug in here
   var ctx = { held: null };              // shared with other 3D modules; filled in at the bottom
   api.supported = true;
 
@@ -21,7 +22,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var host = null, layout = null, layoutName = '', felt = null, zonePlanes = {}, rimGroup = null, meshes = [], anims = [], dirty = true;
   var world = null, pour = null, parenSprites = [], dragS = null, lastHit = 0, lastSpark = 0, lastFrame = 0, pulseId = null;
   var envFx = null, boardText = '', lightK = 1, baseL = null, sparks = [], sparkPool = [], slow = null, shake = null, shx = 0, shy = 0, fx3 = null;
-  var tableGroup = null, blobs = [], squashes = [], puffs = [], puffPool = [], zoneGlow = {}, shots = null;
+  var tableGroup = null, blobs = [], squashes = [], puffs = [], puffPool = [], zoneGlow = {}, shots = null, orbit = null, orbitUI = null;
   var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -367,6 +368,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       camLook.copy(base.look); camLook.x += camOff.panX; camLook.z += camOff.panZ;
       camera.position.copy(base.look).add(camTmp); camera.position.x += camOff.panX; camera.position.z += camOff.panZ;
     }
+    if (orbit) orbit.apply(camera.position, camLook); // the player looking around (js/three/orbit.js); a no-op at the seat
     var sw = 1;
     if (shots && shots.active()) { shots.apply(camera.position, camLook); sw = 1 - 0.85 * shots.weight(); } // a shake is much smaller during a close-up
     camera.lookAt(camLook);
@@ -413,8 +415,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   };
   api.cue = function (name) {
     if (document.hidden || !layout) return;
-    if (name === 'reset') { cueG = null; dirty = true; startLoop(); return; }
+    if (name === 'reset') { cueG = null; if (orbit) orbit.reset(); dirty = true; startLoop(); return; }
     var c = CUES[name]; if (!c || pour || (shots && shots.active())) return; // a close-up is already framing the moment
+    if (orbitBusy()) return; // the player is looking around: their view is left alone (no cue on top of it)
     cueG = { t0: performance.now(), dur: c.dur, fn: c.fn }; dirty = true; startLoop();
   };
   // Fit: the closest distance (along the fixed tilt) at which the table, and then whatever other modules ask
@@ -425,9 +428,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function fitCamera() {
     var W = layout.W, D = layout.D, tilt = layout.tilt, look = new THREE.Vector3(0, 0, layoutName === 'tall' ? 0.7 : 0.6);
     var table = [[-W / 2 - 0.7, 0.6, -D / 2 - 0.7], [W / 2 + 0.7, 0.6, -D / 2 - 0.7], [-W / 2 - 0.7, 0.6, D / 2 + 0.7], [W / 2 + 0.7, 0.6, D / 2 + 0.7]], v = new THREE.Vector3(), extra = [];
-    hooks.extents.forEach(function (f) { try { f(extra, W, D); } catch (e) {} });
-    extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
-    extraPts = extra;
+    function gather(s) {
+      hooks.shrink.forEach(function (f) { try { f(s); } catch (e) {} });
+      extra = []; hooks.extents.forEach(function (f) { try { f(extra, W, D); } catch (e) {} });
+      extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
+      extraPts = extra;
+    }
+    gather(1);
     camera.updateProjectionMatrix();
     function at(d) { camera.position.set(0, Math.sin(tilt) * d, look.z + Math.cos(tilt) * d); camera.lookAt(look); camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); }
     function inView(c) {
@@ -435,15 +442,20 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       v.applyMatrix4(camera.projectionMatrix); return Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.97;
     }
     function search(pts, lo, hi) { for (var d = lo; d < hi; d += 0.25) { at(d); if (pts.every(inView)) return d; } return hi; }
-    var dT = search(table, 8, 120), d = dT;
-    if (extra.length) {
+    var dT = search(table, 8, 120), d = dT, z00 = look.z;
+    // If the head still does not fit (a wide, short screen), the creature itself gets a little smaller, step by step.
+    for (var s = 1; extra.length && s > 0.5; s -= 0.06) {
+      if (s < 1) gather(s);
+      look.z = z00;
       // Tall things behind the table (a creature's head): rather than only backing away, also try aiming a little
       // toward the far side, which uses the empty band below the near edge. Keep the aim that needs the least distance.
       var all = table.concat(extra), z0 = look.z, bestZ = z0; d = search(all, dT, dT * 1.35);
       for (var k = 1; k <= 10; k++) { look.z = z0 - k * 0.5; var dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; } }
-      look.z = bestZ;
+      look.z = bestZ; at(d);
+      if (extra.every(function (c) { return !c[3] || inView(c); })) break;   // only points marked as a must (the top of the head)
     }
     at(d);
+    api._fit = { d: d, dT: dT, s: s, lookZ: look.z, pts: extra.map(function (c) { return [c[0].toFixed(1), c[1].toFixed(1), c[2].toFixed(1), !!c[3], inView(c)]; }), table: table.every(inView) };
     base.pos.copy(camera.position); base.look.copy(look); applyCam();
   }
   // Where the opponent's head is, for close-ups: T3.creatureFocus() if the creature module offers it, else an
@@ -472,7 +484,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var ro = window.ResizeObserver ? new ResizeObserver(function () { chooseLayout(); if (api.lastG) api.sync(api.lastG, true); }) : null;
   api.attach = function (el) {
     if (host === el && renderer.domElement.parentNode === el) return;
-    host = el; el.innerHTML = ''; el.appendChild(renderer.domElement);
+    host = el; el.innerHTML = ''; el.appendChild(renderer.domElement); orbitUI.mount(el);
     renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
     if (ro) { ro.disconnect(); ro.observe(el); } else window.addEventListener('resize', chooseLayout);
     ensureCubes(); chooseLayout(); startLoop();
@@ -649,7 +661,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5) };
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0);
     Snd.cupRattle();
-    camSnap(); pour.cupPos = cup.position;
+    camSnap(); if (orbit) orbit.reset(); pour.cupPos = cup.position; // a new shake: back to the seat (a half-second ease)
     if (document.hidden) { pour.fast = true; finishPourFast(); return; }
     startLoop();
   };
@@ -720,6 +732,17 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
 
   // ----- Animation loop -----
   var looping = false, wd = null;
+  function renderNow() {
+    // soft contact shadow under every visible cube (follows drags and lifts too)
+    for (var i = 0; i < meshes.length; i++) {
+      var m = meshes[i], bl = blobs[i]; if (!bl) continue;
+      if (!m.visible) { bl.visible = false; continue; }
+      var sc0 = m.scale.x, h = Math.max(0, m.position.y - 0.5 * sc0), size = sc0 * (1.7 + h * 0.45);
+      bl.visible = true; bl.position.set(m.position.x, 0.012, m.position.z); bl.scale.set(size, size, 1); bl.material.opacity = 0.34 / (1 + h * 0.9);
+    }
+    if (post && post.on) post.render(); else renderer.render(scene, camera);
+    dirty = false;
+  }
   function startLoop() {
     if (looping) return; looping = true; lastFrame = performance.now();
     requestAnimationFrame(frame);
@@ -762,7 +785,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       dirty = true;
     }
     stepCam(now, dt);
+    if (orbit && orbit.step(now)) { applyCam(); dirty = true; }
     if (shots && shots.step(now)) { applyCam(); dirty = true; }
+    if (orbitUI) orbitUI.update(orbit.away(), !!layout && current === 'game');
     if (shake) {
       var sk = (now - shake.t0) / shake.dur;
       if (sk >= 1) { shake = null; shx = shy = 0; } else { var se = Math.exp(-sk * 3.5) * shake.amp; shx = Math.sin(sk * 38) * se; shy = Math.cos(sk * 47) * se * 0.6; }
@@ -780,17 +805,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     });
     hooks.frame.forEach(function (f) { f(now); });
     var rendered = false;
-    if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') {
-      // soft contact shadow under every visible cube (follows drags and lifts too)
-      for (var i = 0; i < meshes.length; i++) {
-        var m = meshes[i], bl = blobs[i]; if (!bl) continue;
-        if (!m.visible) { bl.visible = false; continue; }
-        var sc0 = m.scale.x, h = Math.max(0, m.position.y - 0.5 * sc0), size = sc0 * (1.7 + h * 0.45);
-        bl.visible = true; bl.position.set(m.position.x, 0.012, m.position.z); bl.scale.set(size, size, 1); bl.material.opacity = 0.34 / (1 + h * 0.9);
-      }
-      if (post && post.on) post.render(); else renderer.render(scene, camera);
-      dirty = false; rendered = true;
-    }
+    if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') { renderNow(); rendered = true; }
     if (Q) Q.sample(now, rendered, fromWatchdog);
     if (current !== 'game' && !pour) { looping = false; return; }
     if (!fromWatchdog) requestAnimationFrame(frame);
@@ -806,17 +821,58 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function zoneAt(ev) { var h = pick(ev, Object.keys(zonePlanes).map(function (k) { return zonePlanes[k]; })); return h ? h.object.userData.zone : null; }
   var dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.6), hitP = new THREE.Vector3();
+  // Pointers. One finger / the mouse on a cube: tap or drag it, exactly as before. The mouse (or a pen) dragged on
+  // anything that is not a cube swings the view around the table (js/three/orbit.js); a press without moving is
+  // still a tap on a zone. On touch screens one finger never moves the view: two fingers do (drag to swing, pinch
+  // to zoom), and a second finger landing during a cube drag puts that cube back. The mouse wheel zooms.
+  var ptrs = {}, nPtr = 0, pinch = null, multi = false;
+  function canvasSize() { var r = renderer.domElement.getBoundingClientRect(); return { w: r.width || 1, h: r.height || 1 }; }
+  function twoTouches() { var out = []; Object.keys(ptrs).forEach(function (k) { if (ptrs[k].touch && out.length < 2) out.push(ptrs[k]); }); return out.length === 2 ? out : null; }
+  function pinchInfo(t) { return { cx: (t[0].x + t[1].x) / 2, cy: (t[0].y + t[1].y) / 2, d: Math.max(20, Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y)) }; }
+  function cancelCubeDrag() { var d = dragS; dragS = null; if (d && d.on && api.handlers.drop) api.handlers.drop(d.id, null); }
+  function dropPtr(ev) {
+    if (!ptrs[ev.pointerId]) return false;
+    delete ptrs[ev.pointerId]; nPtr = Math.max(0, nPtr - 1);
+    if (pinch && !twoTouches()) { pinch = null; if (orbit) orbit.end(); }
+    var wasMulti = multi; if (!nPtr) multi = false;
+    return wasMulti;
+  }
   renderer.domElement.addEventListener('pointerdown', function (ev) {
+    var touch = ev.pointerType === 'touch';
+    if (!ptrs[ev.pointerId]) nPtr++;
+    ptrs[ev.pointerId] = { x: ev.clientX, y: ev.clientY, touch: touch };
+    if (touch && nPtr >= 2) {
+      // a second finger: this is a look-around gesture, never a tap or a cube drag
+      multi = true; cancelCubeDrag();
+      var t = twoTouches();
+      if (t && !pinch && !pour && !(shots && shots.active()) && orbit && orbit.begin()) { pinch = pinchInfo(t); cueG = null; endShake(); }
+      dirty = true; startLoop(); return;
+    }
+    if (multi) return; // a finger left over from a two-finger gesture
     if (pour) return;
     // a tap during a close-up only skips it (the camera eases home quickly); it doesn't pick a cube seen from the close-up
     if (shots && shots.active()) { shots.skip(); dragS = null; dirty = true; startLoop(); return; }
     cueG = null; endShake(); // a touch ends any camera cue; picking always uses the camera as drawn, so taps stay accurate while it eases home
     var h = pick(ev, meshes.filter(function (m) { return m.visible; }));
-    dragS = { x: ev.clientX, y: ev.clientY, id: h ? h.object.userData.id : null, on: false };
+    dragS = { x: ev.clientX, y: ev.clientY, lx: ev.clientX, ly: ev.clientY, id: h ? h.object.userData.id : null, on: false };
     if (dragS.id != null && api.handlers.canDrag && api.handlers.canDrag(dragS.id)) { dragS.can = true; renderer.domElement.setPointerCapture(ev.pointerId); }
+    else if (dragS.id == null && !touch && ev.button === 0 && orbitOk()) { dragS.look = true; try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {} }
   });
   renderer.domElement.addEventListener('pointermove', function (ev) {
-    if (!dragS || !dragS.can) return;
+    var p = ptrs[ev.pointerId]; if (p) { p.x = ev.clientX; p.y = ev.clientY; }
+    if (pinch) {
+      var t = twoTouches(); if (!t) return;
+      var q = pinchInfo(t), sz = canvasSize();
+      orbit.rotate((q.cx - pinch.cx) / sz.w, (q.cy - pinch.cy) / sz.h); orbit.zoomBy(pinch.d / q.d);
+      pinch = q; return;
+    }
+    if (multi || !dragS) return;
+    if (dragS.look) {
+      if (!dragS.orb && Math.hypot(ev.clientX - dragS.x, ev.clientY - dragS.y) > 6) { if (!orbit.begin()) { dragS.look = false; return; } dragS.orb = true; dragS.lx = dragS.x; dragS.ly = dragS.y; }
+      if (dragS.orb) { var s2 = canvasSize(); orbit.rotate((ev.clientX - dragS.lx) / s2.w, (ev.clientY - dragS.ly) / s2.h); dragS.lx = ev.clientX; dragS.ly = ev.clientY; }
+      return;
+    }
+    if (!dragS.can) return;
     if (!dragS.on && Math.hypot(ev.clientX - dragS.x, ev.clientY - dragS.y) > 8) { dragS.on = true; Snd.pickup(); if (api.handlers.dragStart) api.handlers.dragStart(dragS.id); }
     if (dragS.on) {
       pick(ev, []); if (ray.ray.intersectPlane(dragPlane, hitP)) { var m = meshes[dragS.id]; anims = anims.filter(function (a) { return a.m !== m; }); m.position.copy(hitP); m.userData.tpos = null; }
@@ -826,12 +882,28 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     }
   });
   renderer.domElement.addEventListener('pointerup', function (ev) {
+    if (dropPtr(ev)) { dragS = null; return; } // the end of a two-finger gesture: no tap
     var d = dragS; dragS = null; if (!d) return;
+    if (d.orb) { orbit.end(); return; }
     if (d.on) { var z = zoneAt(ev); if (api.handlers.drop) api.handlers.drop(d.id, z); return; }
     if (d.id != null) { if (api.handlers.cubeTap) api.handlers.cubeTap(d.id); return; }
     var zz = zoneAt(ev); if (zz && api.handlers.zoneTap) api.handlers.zoneTap(zz);
   });
-  renderer.domElement.addEventListener('pointercancel', function () { if (dragS && dragS.on && api.handlers.drop) api.handlers.drop(dragS.id, null); dragS = null; });
+  renderer.domElement.addEventListener('pointercancel', function (ev) {
+    dropPtr(ev);
+    if (dragS && dragS.orb) orbit.end();
+    cancelCubeDrag();
+  });
+  renderer.domElement.addEventListener('wheel', function (ev) {
+    if (!layout || current !== 'game') return;
+    ev.preventDefault(); // never scroll or zoom the page from over the picture
+    if (pour || dragS || pinch || (shots && shots.active()) || !orbitOk()) return;
+    var dy = ev.deltaY * (ev.deltaMode === 1 ? 33 : ev.deltaMode === 2 ? 400 : 1);
+    dy = Math.max(-120, Math.min(120, dy)); // one notch, however the device reports it
+    orbit.zoomBy(Math.exp(dy * (ev.ctrlKey ? 0.006 : 0.0016))); // ctrlKey: a trackpad pinch
+  }, { passive: false });
+  // iPad Safari's own pinch gesture events: keep them from zooming the page
+  ['gesturestart', 'gesturechange'].forEach(function (n) { renderer.domElement.addEventListener(n, function (e) { e.preventDefault(); }); });
 
   // Screen position of a cube (for effects like bursts)
   api.screenPos = function (id) {
@@ -865,6 +937,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.shot = function (name, opts) {
     try {
       if (!shots || (typeof S !== 'undefined' && S.set && S.set.shots === false)) return false;
+      if (orbitBusy()) return false; // the player is looking around: no close-up yanks the view away
       var ok = shots.start(name, opts);
       if (ok) { cueG = null; dirty = true; startLoop(); }
       return ok;
@@ -877,7 +950,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.setQuality = function (q) { if (!Q) return; if (q === 'auto') Q.forget(); Q.set(q); dirty = true; startLoop(); };
   // What other 3D modules may use
   Object.assign(ctx, {
-    scene: scene, camera: camera, renderer: renderer, meshes: meshes, hooks: hooks,
+    scene: scene, camera: camera, renderer: renderer, meshes: meshes, hooks: hooks, camBase: base, // camBase: the fitted seat view {pos, look}, without orbit or cue offsets
     dirty: function () { dirty = true; }, startLoop: startLoop,
     refit: function () { if (layout) { fitCamera(); if (post) post.tag(); dirty = true; } },
     dropAnims: function (m) { anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m); }
@@ -899,8 +972,43 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     creature: creatureInfo,
     board: boardInfo,
     goalZone: function () { if (!layout) return null; var r = layout.z.goal; return { center: new THREE.Vector3(r[0] + r[2] / 2, 0.5, r[1] + r[3] / 2), w: r[2], d: r[3] }; },
-    blocked: function () { return !layout || !host || !!pour || !!dragS || document.hidden || current !== 'game'; }
+    blocked: function () { return !layout || !host || !!pour || !!dragS || !!pinch || orbitBusy() || document.hidden || current !== 'game'; }
   });
+  // ----- Looking around (orbit) and photos -----
+  var orbitOn = true;
+  function orbitOk() { return !!orbit && orbitOn && !(typeof S !== 'undefined' && S.set && S.set.orbit === false) && !!layout && !!host && current === 'game' && !pour; }
+  function orbitBusy() { return !!orbit && (orbit.away() || orbit.dragging()); }
+  orbit = createOrbit({ allowed: orbitOk, changed: function () { applyCam(); dirty = true; startLoop(); } });
+  orbitUI = createOrbitUI({
+    seat: function () { Snd.click(); orbit.reset(0.5); },
+    photo: function () { api.photo(); }
+  });
+  // T3.orbit.active(): the view is away from the seat (or being moved). reset(): ease back (about 0.5 s).
+  // enabled(bool): allow / forbid looking around (forbidding also eases back); enabled() reads it.
+  // S.set.orbit === false switches it off from Settings.
+  api.orbit = {
+    active: function () { return orbitBusy(); },
+    reset: function () { orbit.reset(0.5); dirty = true; startLoop(); },
+    enabled: function (on) {
+      if (arguments.length) { orbitOn = !!on; if (!orbitOn) { pinch = null; if (dragS && dragS.orb) dragS = null; orbit.reset(0.5); startLoop(); } }
+      return orbitOn && !(typeof S !== 'undefined' && S.set && S.set.orbit === false);
+    }
+  };
+  // T3.photo(): saves the 3D picture as it is right now (glow included) with a "Tata's Equations" strip at the bottom.
+  // Renders one frame and copies the canvas in the same tick (the WebGL drawing buffer is not kept between frames).
+  // Returns 'download' | 'share' | 'view' (iPad fallback pop-over) | '' when there is no 3D picture.
+  api.photo = function () {
+    try {
+      if (!layout || !host || !document.body.contains(renderer.domElement)) return '';
+      applyCam(); renderNow();
+      var cv = photoCanvas(renderer.domElement); if (!cv) return '';
+      dirty = true; startLoop();
+      var how = savePhoto(cv);
+      orbitUI.flash();
+      try { Snd.click(); setTimeout(function () { Snd.click(); }, 85); } catch (e) {} // a soft "ka-chik"
+      return how;
+    } catch (e) { return ''; }
+  };
   Q = createQuality(applyQuality);
   api.ctx = ctx;
 })();
