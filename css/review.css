@@ -1,0 +1,28 @@
+/* "One thing Pip spotted" (js/review.js): the optional tip on the match-end screen. Classes start with ps-. */
+.ps-slot{margin-top:10px;text-align:center}
+.ps-slot:empty{display:none}
+.ps-btn{animation:fadeOnly .3s ease both}
+.ps-card{margin:4px auto 0;max-width:520px;text-align:left;background:#fff8db;border:3px solid #ffe066;border-radius:22px;padding:12px 12px 10px;box-shadow:0 4px 0 rgba(0,0,0,.08);animation:popin .3s cubic-bezier(.2,1.3,.4,1) both}
+.ps-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.ps-head h3{margin:0;font-size:19px;line-height:1.2}
+.ps-pic{display:flex;flex-direction:column;gap:5px;background:var(--pitch-d,#0f4d33);border-radius:16px;padding:7px;color:#fff}
+.ps-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.ps-zone{background:rgba(255,255,255,.1);border-radius:11px;padding:4px 6px;min-width:0}
+.ps-zone b{display:block;font-size:12px;letter-spacing:.02em;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-cubes{display:flex;flex-wrap:wrap;gap:3px;align-items:center;min-height:30px;margin-top:3px}
+.ps-cubes .cube.tiny{width:26px;height:26px;font-size:15px;border-radius:6px}
+.ps-cubes .paren{height:26px;width:12px;font-size:20px}
+.ps-goal{background:rgba(255,224,102,.22)}
+.ps-req{background:rgba(81,207,102,.22)}
+.ps-perm{background:rgba(77,171,247,.22)}
+.ps-forb{background:rgba(255,107,107,.22)}
+.ps-sol{background:rgba(255,255,255,.94);border-radius:11px;padding:3px 6px;color:#16203c}
+.ps-sol .ps-cubes{justify-content:center}
+.ps-sol .paren{color:#16203c}
+.ps-eq{font-weight:900;font-size:18px;margin-left:4px}
+.ps-empty{font-size:12px;opacity:.6}
+.cube.ps-hl{box-shadow:0 0 0 3px #ffe066,0 0 12px 3px rgba(255,240,150,.9);transform:translateY(-2px)}
+.ps-words p{margin:8px 2px 0;font-size:17px;line-height:1.35;font-weight:800}
+.ps-card .row{margin-top:8px}
+@media (max-width:420px){ .ps-row{grid-template-columns:1fr} .ps-words p{font-size:16px} }
+@media (prefers-reduced-motion:reduce){ .ps-btn,.ps-card{animation:none} }

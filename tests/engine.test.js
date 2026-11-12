@@ -628,6 +628,123 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
     ok('gift: a broken %-escape in the link does not crash', (GC.parseHash('#puzzle=' + code + '&m=%E0%A4%A') || {}).msg === '');
   }
 }
+// ================= REVIEW ("One thing Pip spotted", js/review.js) — added by the review helper =================
+// Hand-built match notes, one per tip kind, plus "nothing provable -> no tip". Loads js/review.js with this Eq.
+{
+  const RV = new Function('Eq', fs.readFileSync(path.join(root, 'js', 'review.js'), 'utf8') + '\nreturn { Review: Review, Recorder: Recorder };')(Eq);
+  const Review = RV.Review;
+  // cubes from zone lists: mk({ goal: ['7'], required: ['3'], resources: ['4', '8'] }) -> recorded cube copies
+  function mk(z) {
+    const out = []; let id = 0, o = 0;
+    ['goal', 'required', 'permitted', 'forbidden', 'resources'].forEach(k => (z[k] || []).forEach(s => out.push({ i: id++, s, c: 'red', z: k, o: o++, l: 0 })));
+    return out;
+  }
+  const idOf = (cubes, s, zone) => cubes.find(c => c.s === s && c.z === (zone || 'resources')).i;
+  const goalNote = (by, v, gsyms, cubes) => ({ k: 'goal', by, goal: F(v), fr: false, cubes, gt: gsyms.map(s => ({ s, c: 'red' })), shake: 1 });
+  const move = (by, cubes, s, zone, v) => ({ k: 'move', by, goal: F(v), fr: false, cubes, i: idOf(cubes, s), s, zone });
+  const BANNED = /mistake|wrong|should have|missed|\bmiss\b|bad move|oops/i;
+  const allTips = [];
+  function run(name, notes, opts) { const t = Review.analyse({ opp: 'Rusty', notes }, opts || { budgetMs: 3000 }); if (t) allTips.push(t); return t; }
+
+  // (a) Now!: Rusty puts the 3 in Required, so 3 + 4 = 7 with one more cube; the kid just moves an 8.
+  {
+    const c0 = mk({ goal: ['7'], resources: ['3', '+', '4', '8', '8'] });
+    const c1 = mk({ goal: ['7'], required: ['+'], resources: ['3', '4', '8', '8'] });
+    const c2 = mk({ goal: ['7'], required: ['+', '3'], resources: ['4', '8', '8'] });
+    const t = run('now', [goalNote(1, 7, ['7'], c0), move(0, c0, '+', 'required', 7), move(1, c1, '3', 'required', 7), move(0, c2, '8', 'forbidden', 7)]);
+    ok('review (a) Now!: a Now! tip', t && t.kind === 'now', t && t.kind);
+    ok('review (a) Now!: the Solution is real and = 7', t && Eq.evaluate(t.raw.sol, {}).ok && Eq.fmt(Eq.evaluate(t.raw.sol, {}).value) === '7');
+    ok('review (a) Now!: names the extra cube (the 4) and the 3 Rusty moved', t && /one more cube, the 4/.test(t.lines.join(' ')) && /Rusty put the 3 in Required/.test(t.lines[0]), t && t.lines);
+    ok('review (a) Now!: the picture marks the 3 that just moved', t && t.pic.required.some(x => x.s === '3' && x.hl));
+  }
+  // (a) Now! whose extra cube is a second copy of a digit already in Required (2 + 2 = 4: the extra cube is the 2).
+  {
+    const c0 = mk({ goal: ['4'], required: ['2'], resources: ['+', '2', '9', '8'] });
+    const c1 = mk({ goal: ['4'], required: ['2', '+'], resources: ['2', '9', '8'] });
+    const t = run('now2', [goalNote(1, 4, ['4'], c0), move(1, c0, '+', 'required', 4), move(0, c1, '9', 'forbidden', 4)]);
+    ok('review (a) Now!: a repeated digit counts as the one extra cube', t && t.kind === 'now' && /one more cube, the 2\./.test(t.lines.join(' ')), t && t.lines);
+  }
+  // (a) Impossible!: Rusty puts × in Required with 2; only 2, 8 left: 9 can never be made.
+  {
+    const c0 = mk({ goal: ['9'], required: ['2'], resources: ['*', '2', '8'] });
+    const c1 = mk({ goal: ['9'], required: ['2', '*'], resources: ['2', '8'] });
+    const t = run('imp', [goalNote(1, 9, ['9'], c0), move(1, c0, '*', 'required', 9), move(0, c1, '8', 'permitted', 9)]);
+    ok('review (a) Impossible!: an Impossible! tip', t && t.kind === 'imp', t && t.kind);
+    ok('review (a) Impossible!: says Pip checked every way', t && /Pip checked every way/.test(t.lines.join(' ')));
+  }
+  // (b) Safe move: the kid puts the 3 in Required (3 + 4 = 7 is now a Now! for Rusty); the 9 in Forbidden was safe.
+  {
+    const c0 = mk({ goal: ['7'], resources: ['+', '3', '4', '9', '9'] });
+    const c1 = mk({ goal: ['7'], required: ['+'], resources: ['3', '4', '9', '9'] });
+    const c2 = mk({ goal: ['7'], required: ['+', '3'], resources: ['4', '9', '9'] });
+    const t = run('safe', [goalNote(0, 7, ['7'], c0), move(1, c0, '+', 'required', 7), move(0, c1, '3', 'required', 7),
+      { k: 'challenge', by: 1, kind: 'now', goal: F(7), fr: false, cubes: c2 }, { k: 'solution', by: 1, mode: 'now', ok: true, goal: F(7), fr: false, cubes: c2, toks: [{ s: '3' }, { s: '+' }, { s: '4' }] }]);
+    ok('review (b) safe move: a safe-move tip', t && t.kind === 'safe', t && t.kind);
+    const alt = t && t.raw.alt;
+    // the safe move it names really is safe: the Goal stays possible and no Now! exists after it
+    let safe = false;
+    if (alt) {
+      const id = c1.find(c => c.s === alt.s && c.z === 'resources').i;
+      const after = Review.stOf(c1.map(c => c.i === id ? Object.assign({}, c, { z: alt.zone, o: 99 }) : c));
+      const p = Eq.solve({ goal: F(7), req: after.req, opt: after.perm, res: after.res, mode: 'impossible', timeMs: 500 });
+      const nw = Eq.solve({ goal: F(7), req: after.req, opt: after.perm, res: after.res, mode: 'now', timeMs: 500 });
+      safe = p.found && !nw.found && nw.complete;
+    }
+    ok('review (b) safe move: the named move is proven safe', safe, alt);
+    ok('review (b) safe move: shows Rusty\'s Now! Solution', t && /Now! chance: (3 \+ 4|4 \+ 3) = 7/.test(t.lines.join(' ')), t && t.lines);
+  }
+  // (c) Solution: Rusty calls Impossible! on the kid's move; the kid's Solution 5 + 1 is not 10, but 5 × 2 works.
+  {
+    const c0 = mk({ goal: ['1', '0'], resources: ['5', '*', '2', '1'] });
+    const c1 = mk({ goal: ['1', '0'], required: ['5'], resources: ['*', '2', '1'] });
+    const t = run('solution', [goalNote(1, 10, ['1', '0'], c0), move(0, c0, '5', 'required', 10),
+      { k: 'challenge', by: 1, kind: 'impossible', goal: F(10), fr: false, cubes: c1 },
+      { k: 'solution', by: 0, mode: 'impossible', ok: false, goal: F(10), fr: false, cubes: c1, toks: [{ s: '5' }, { s: '+' }, { s: '1' }] }]);
+    ok('review (c) Solution: a Solution tip', t && t.kind === 'solution' && t.variant === 'found', t && [t.kind, t.variant]);
+    ok('review (c) Solution: shows 5 × 2 (or 2 × 5)', t && /(5 × 2|2 × 5)/.test(t.lines.join(' ')), t && t.lines);
+  }
+  // (c) Goal: the kid sets 50 with only 1, 2, 3, + left (no Solution); Pip shows a Goal that works.
+  {
+    const c0 = mk({ goal: ['5', '0'], resources: ['1', '2', '+', '3'] });
+    const t = run('goal', [goalNote(0, 50, ['5', '0'], c0)]);
+    ok('review (c) Goal: a Goal tip with a Goal that works', t && t.kind === 'goal' && t.raw.sol && Eq.eqF(Eq.evaluate(t.raw.sol, {}).value, t.raw.altVal), t && t.kind);
+  }
+  // Nothing provable: early in a shake (lots of cubes, nothing to call) -> no tip at all.
+  {
+    const c0 = mk({ goal: ['1', '2'], resources: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-', '*', '/', '+', '0', '3'] });
+    const c1 = mk({ goal: ['1', '2'], forbidden: ['9'], resources: ['1', '2', '3', '4', '5', '6', '7', '8', '+', '-', '*', '/', '+', '0', '3'] });
+    const t = run('none', [goalNote(1, 12, ['1', '2'], c0), move(0, c0, '9', 'forbidden', 12), move(1, c1, '8', 'forbidden', 12)]);
+    ok('review: nothing provable -> no tip', t === null, t && t.kind);
+    ok('review: an empty log -> no tip', Review.analyse({ opp: 'Rusty', notes: [] }) === null);
+  }
+  // Nice moment: the kid called Now! and wrote 3 + 4 -> a "nice move" highlight, not a tip.
+  {
+    const c0 = mk({ goal: ['7'], resources: ['3', '+', '4', '8', '8'] });
+    const c1 = mk({ goal: ['7'], required: ['+'], resources: ['3', '4', '8', '8'] });
+    const c2 = mk({ goal: ['7'], required: ['+', '3'], resources: ['4', '8', '8'] });
+    const t = run('nice', [goalNote(1, 7, ['7'], c0), move(0, c0, '+', 'required', 7), move(1, c1, '3', 'required', 7),
+      { k: 'challenge', by: 0, kind: 'now', goal: F(7), fr: false, cubes: c2 }, { k: 'solution', by: 0, mode: 'now', ok: true, goal: F(7), fr: false, cubes: c2, toks: [{ s: '3', c: 'red' }, { s: '+', c: 'red' }, { s: '4', c: 'red' }] }]);
+    ok('review: a winning Now! call -> the nice-moment highlight', t && t.kind === 'nice' && t.variant === 'now', t && [t.kind, t.variant]);
+  }
+  // Picking: the same kind is not given three matches in a row when another kind was found.
+  {
+    const cands = { now: { kind: 'now' }, safe: { kind: 'safe' } };
+    ok('review choose: Now! comes first', Review.choose(cands, []).kind === 'now');
+    ok('review choose: after two Now! tips in a row, the other kind', Review.choose(cands, ['now', 'now']).kind === 'safe');
+    ok('review choose: only one kind found -> still that kind', Review.choose({ now: { kind: 'now' } }, ['now', 'now']).kind === 'now');
+    ok('review choose: nothing -> null', Review.choose({}, []) === null);
+  }
+  // Time cap: a tiny budget gives up quickly and never throws.
+  {
+    const cubes = mk({ goal: ['7'], resources: ['3', '+', '4', '8', '8'] });
+    const t0 = Date.now(); Review.analyse({ opp: 'Rusty', notes: [goalNote(1, 7, ['7'], cubes), move(0, cubes, '8', 'forbidden', 7)] }, { budgetMs: 1 });
+    ok('review: a 1 ms budget returns fast', Date.now() - t0 < 400);
+  }
+  // Tone: no tip text uses the words the owner does not want.
+  ok('review tone: no banned words in ' + allTips.length + ' tips', allTips.length >= 6 && allTips.every(t => !BANNED.test(t.lines.join(' '))), allTips.map(t => t.lines.join(' ')).filter(s => BANNED.test(s)));
+  ok('review tone: every tip is 2-3 sentences of plain text', allTips.every(t => t.lines.length >= 2 && t.lines.length <= 3 && t.lines.every(l => !/[<>]/.test(l))));
+}
+// ================= END REVIEW =================
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
