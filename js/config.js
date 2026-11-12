@@ -312,7 +312,7 @@ function defaults() {
     ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: OPPONENTS.map(function () { return false; }),
     cos: { skin: 'classic', mat: 'stadium', victory: 'confetti' },
     set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false, titleFx: true, variOff: {}, avatar: true, variations: true },
-    cups: { run: null, won: {}, list: [] }, ways: { lvl: 1, row: 0, miss: 0, done: 0, total: 0, best: {} }, gift: { made: [], solved: {} }, tips: { seen: 0, kinds: {}, last: [] }, trios: {}, vari: { base: null, seen: 0 }, team: { mate: 'Tata', mjersey: '17', boss: null }, teamWins: {},
+    cups: { run: null, won: {}, list: [] }, ways: { lvl: 1, row: 0, miss: 0, done: 0, total: 0, best: {} }, gift: { made: [], solved: {} }, tips: { seen: 0, kinds: {}, last: [] }, trios: {}, vari: { base: null, seen: 0 }, bonus: { base: null, seen: {}, force: {}, off: {}, opOff: {}, opsSeen: {} }, team: { mate: 'Tata', mjersey: '17', boss: null }, teamWins: {},
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: OPPONENTS.map(function () { return ''; }),
     kit: { shirt: '#c9342c', pattern: 'waves', trim: '#2f8f7c', shorts: '#1f6b5a', hair: '#3b2314', hairStyle: 'swept', celebrate: 'jump' },
     kits: { away: {}, third: {} }, kitUse: 'home'

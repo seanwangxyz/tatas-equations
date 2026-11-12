@@ -129,10 +129,12 @@ function startMatch(mode, oppIdx, cfg) {
 function rerollOps(done) {
   var g0 = G, c0 = G.cubes, rounds = 0;
   function okSym(s) { return Eq.isDigit(s) || G.ops.indexOf(s) >= 0; }
-  function bad() { return G.cubes.filter(function (c) { return !okSym(c.s); }); }
+  function okC(c) { return (window.Bonus && Bonus.isCube(c)) ? Bonus.okFace(c.color, c.s) : okSym(c.s); } // BONUS: a bonus die's face Tata switched off is rolled again too
+  function bad() { return G.cubes.filter(function (c) { return !okC(c); }); }
   var b = bad(); if (!b.length) { done(); return; }
   var names = { '^': 'powers', 'r': 'roots', '*': 'times', '/': 'dividing' }, miss = [];
-  ['*', '/', '^', 'r'].forEach(function (s) { if (b.some(function (c) { return c.s === s; })) miss.push(names[s]); });
+  ['*', '/', '^', 'r'].forEach(function (s) { if (b.some(function (c) { return c.s === s && !(window.Bonus && Bonus.isCube(c)); })) miss.push(names[s]); });
+  if (window.Bonus && b.some(Bonus.isCube)) miss.push('that bonus-die face'); // BONUS
   var list = miss.length > 1 ? miss.slice(0, -1).join(', ') + ' or ' + miss[miss.length - 1] : miss[0];
   say('pip', 'We aren\'t playing with <b>' + list + '</b> yet, so let me roll ' + (b.length > 1 ? 'these ' + b.length + ' cubes' : 'this cube') + ' again to get something we can use!', 'think');
   renderGame();
@@ -141,7 +143,7 @@ function rerollOps(done) {
     var now = bad();
     if (!now.length) { say('pip', 'There! Now every cube is one we can use.', 'happy'); renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) done(); }, 500); return; }
     rounds++;
-    var roll = now.map(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(okSym); c.s = f[Math.floor(Math.random() * f.length)]; return { id: c.id, s: c.s }; });
+    var roll = now.map(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(function (s) { return okC({ color: c.color, s: s }); }); c.s = f[Math.floor(Math.random() * f.length)]; return { id: c.id, s: c.s }; }); // (BONUS: okC)
     var next = function () { if (!G || G !== g0 || G.cubes !== c0) return; renderGame(); setTimeout(step, 350); };
     if (T3.active() && T3.reroll) T3.reroll(roll, next);   // they hop up, tumble and land showing the new face (about 1 s, with the clatter)
     else { Snd.clatter(); renderGame(); setTimeout(step, 700); }   // flat table: as before
@@ -152,6 +154,7 @@ function newShake(fixedCubes) {
   var st = stageInfo();
   G.ops = st.ops.slice(); G.fractions = st.fractions;
   G.cubes = (fixedCubes || Eq.roll()).map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false }; });
+  if (window.Bonus) Bonus.onShake(G, !!fixedCubes); // BONUS (house rule): the earned bonus dice join the roll (js/bonus.js)
   function lockOps() { G.cubes.forEach(function (c) { if (!Eq.isDigit(c.s) && G.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; c.order = ++orderCounter; } }); }
   G.goalTokens = []; G.goal = null; G.lastMover = null; G.selected = null; G.hintUsed = false; G.turn = G.setter;
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
@@ -205,6 +208,7 @@ function speechHTML() {
 }
 
 function startGoalPhase() {
+  if (window.Bonus && Bonus.beforeGoal(startGoalPhase)) return; // BONUS: a newly earned die is celebrated, the Twist die is read (it may pick this shake's card)
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
   if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); setTimeout(aiSetGoal, 1100); }
@@ -216,7 +220,7 @@ function startGoalPhase() {
 
 // ----- Rendering -----
 function cubeHTML(c, cls, style) {
-  return '<div class="cube c-' + c.color + (c.locked ? ' locked' : '') + (cls ? ' ' + cls : '') + '" data-id="' + c.id + '"' + (style ? ' style="' + style + '"' : '') + '><span>' + show(c.s) + '</span></div>';
+  return '<div class="cube c-' + c.color + (c.locked ? ' locked' : '') + (cls ? ' ' + cls : '') + '" data-id="' + c.id + '"' + (style ? ' style="' + style + '"' : '') + '><span>' + (window.Bonus && Bonus.isCube(c) ? Bonus.tile(c) : show(c.s)) + '</span></div>'; // (BONUS: a bonus tile shows its die face)
 }
 function zoneHTML(z, title, sub) {
   var cs = zoneCubes(z), tgt = (G.selected != null && G.phase === 'move' && canMoveTo(z)) ? ' target' : '';
@@ -425,7 +429,7 @@ ACT.callImp = function (el) {
 };
 ACT.hint = function () {
   if (!humanTurn()) return;
-  G.hintUsed = true;
+  G.hintUsed = !(window.Bonus && Bonus.freeHint()); // BONUS: the Twist die's Free hint
   var st = snapshot(), strong = { fractions: G.fractions, maxDigits: 5, timeMs: 500 };
   if (!nowCheck()) {
     var r = Eq.solve(Object.assign({ goal: G.goal, req: st.req, opt: st.perm, res: st.res, mode: 'now' }, strong));
@@ -619,6 +623,7 @@ function sampleSolution() {
   var st = snapshot();
   var r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: st.res, mode: 'impossible', fractions: G.fractions, maxDigits: 6, timeMs: 900 });
   G.sampleWild = r.found ? r.wild : null;
+  G.sampleComplete = r.complete !== false; // BONUS: a search that ran out of time proves nothing (bigger searches with bonus cubes)
   return r.found ? r.tokens : null;
 }
 function solHTML(i, s) {
@@ -631,6 +636,7 @@ function solHTML(i, s) {
 }
 function endShake(r) {
   G.phase = 'over'; G.busy = false; G.carrying = false;
+  if (window.Bonus) Bonus.adjust(r); // BONUS: Twist die scoring (Golden Goal doubles, Bonus +2); never takes points away
   Snd.setMood('play');
   idxs().forEach(function (i) { var v = r.pts[i] || 0; G.players[i].score += v; G.players[i].list.push(v); });
   var best = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
@@ -668,7 +674,7 @@ function endShake(r) {
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
     (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p style="text-align:center;font-weight:800">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' :
-      (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.</div>' : '')) +
+      (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.' + (G.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '')) + // (BONUS: not proved)
     idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
     '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div>';

@@ -89,6 +89,32 @@ var Eq = (function () {
     'p': { kind: 'pre', cube: '*', card: 'sprime' },           // Smallest Prime: × in front of a number
     '!': { kind: 'post', cube: '!', card: 'fact' }             // Factorial (written in; two for the whole Equation)
   };
+  // ---- BONUS (HOUSE RULE, not in the official game): two twenty-sided bonus dice that become cubes ----
+  // (RULES_SUMMARY.md section 7, docs/handoff/bonus.md). Each face is ONE internal character, like the Middle cards.
+  // POWER DIE (gold): a new operation; the symbol is also the die's face (cube: itself), so it only exists when rolled.
+  //   post (works on the number right before it, binds tightest): F n!   Q x²   C x³
+  //   pre  (works on the number right after it):  A |x|  D double  B half  U negative  O 1/x  R √x  S sum of digits  N how many factors
+  //   bin  (between two numbers): M mod (remainder)  E percent of  X the bigger  I the smaller  Y average  G gcf  L lcm
+  // BIG-NUMBER DIE (purple): one number all by itself (never glued to a digit). Symbols BIG[k] = value BIGV[k].
+  var BIG = 'αβγδεζηθικλμνξοπρστυ';
+  var BIGV = [[10, 1], [11, 1], [12, 1], [15, 1], [20, 1], [24, 1], [25, 1], [30, 1], [36, 1], [50, 1], [60, 1], [100, 1], [1000, 1],
+    [1, 2], [1, 4], [3, 4], [1, 3], [2, 3], [1, 10], [3, 2]].map(function (x) { return { n: x[0], d: x[1] }; });
+  var BIGSHOW = ['10', '11', '12', '15', '20', '24', '25', '30', '36', '50', '60', '100', '1000', '½', '¼', '¾', '⅓', '⅔', '1/10', '1½'];
+  var POWER_FACES = ['F', 'Q', 'C', 'A', 'M', 'E', 'X', 'I', 'Y', 'G', 'L', 'D', 'B', 'U', 'O', 'R', 'S', 'N', 'Q', 'D']; // x² and double twice
+  var BIG_FACES = BIG.split('');
+  function bigIdx(s) { return typeof s === 'string' && s.length === 1 ? BIG.indexOf(s) : -1; }
+  function bigOf(s) { var k = bigIdx(s); return k >= 0 ? BIGV[k] : null; }
+  [['F', 'post'], ['Q', 'post'], ['C', 'post'], ['A', 'pre'], ['D', 'pre'], ['B', 'pre'], ['U', 'pre'], ['O', 'pre'], ['R', 'pre'], ['S', 'pre'], ['N', 'pre'],
+    ['M', 'bin', 2], ['E', 'bin', 2, true], ['X', 'bin', 2, true], ['I', 'bin', 2, true], ['Y', 'bin', 1, true], ['G', 'bin', 3, true], ['L', 'bin', 3, true]].forEach(function (b) {
+    OPDEF[b[0]] = { kind: b[1], cube: b[0], card: null, bonus: true };
+    if (b[1] === 'bin') { OPDEF[b[0]].lvl = b[2]; if (b[3]) OPDEF[b[0]].comm = true; }
+  });
+  Object.assign(SHOW, { F: 'n!', Q: 'x²', C: 'x³', A: '|x|', D: '2×', B: '½×', U: '−x', O: '1/x', R: '√x', S: 'Σ', N: '#', M: 'mod', E: '%', X: 'max', I: 'min', Y: 'avg', G: 'gcf', L: 'lcm' }); // the die's face label, everywhere
+  BIG_FACES.forEach(function (s, k) { SHOW[s] = BIGSHOW[k]; });
+  CUBE_FACES.power = POWER_FACES; CUBE_FACES.big = BIG_FACES; // (not in COLORS: Eq.roll() still rolls exactly the 24 official cubes)
+  function isBonusOp(s) { return !!(OPDEF[s] && OPDEF[s].bonus); }
+  function digitSum(n) { var t = 0; n = Math.abs(n); while (n > 0) { t += n % 10; n = Math.floor(n / 10); } return t; }
+  // ---- end BONUS block ----
   // Every cube face an operation spends (the solver counts these), plus '!' (two written-in signs).
   var CUBE_TYPES = []; OPS.concat(Object.keys(OPDEF).map(function (o) { return OPDEF[o].cube; })).forEach(function (c) { if (CUBE_TYPES.indexOf(c) < 0) CUBE_TYPES.push(c); });
   SHOW.a = 'avg'; SHOW['%'] = '%'; SHOW.g = 'gcf'; SHOW.l = 'lcm'; SHOW.f = '#'; SHOW.p = 'P'; SHOW['!'] = '!'; SHOW['.'] = '.';
@@ -99,6 +125,7 @@ var Eq = (function () {
     k = swOf(s); if (k >= 0) return String(k);
     k = exOf(s); if (k >= 0) return String(k);
     if (pobOf(s) !== null) return '1';
+    if (bigIdx(s) >= 0) return s; // BONUS: the big-number die is its own face
     if (s === '.') return '^';
     if (OPDEF[s]) return OPDEF[s].cube === '!' ? null : OPDEF[s].cube;
     return null;
@@ -113,7 +140,7 @@ var Eq = (function () {
   // The symbol for digit d in orientation o ('' upright, 'u' upside-down, 's' sideways).
   function withOrient(d, o) { d = +d; return o === 'u' ? UD[d] : o === 's' ? SW[d] : String(d); }
   // Does this symbol stand for a number by itself (a leaf)?
-  function isNumSym(s) { return isDigit(s) || udOf(s) >= 0 || swOf(s) >= 0 || pobOf(s) !== null; }
+  function isNumSym(s) { return isDigit(s) || udOf(s) >= 0 || swOf(s) >= 0 || pobOf(s) !== null || bigIdx(s) >= 0; } // (BONUS: + the big-number die)
 
   // ---- small number helpers ----
   function isPrime(n) { if (n < 2) return false; for (var k = 2; k * k <= n; k++) if (n % k === 0) return false; return true; }
@@ -165,6 +192,16 @@ var Eq = (function () {
         if (a.d !== 1 || b.d !== 1 || a.n < 0 || b.n < 0) return 'gcfwhole';
         if (a.n === 0 && b.n === 0) return 'gcfzero';
         return { n: gcd(a.n, b.n), d: 1 };
+      // ---- BONUS: Power die operations between two numbers (house rule) ----
+      case 'M': // mod: the remainder, exactly the Remainder card's maths (counting numbers, A ≤ 1000)
+        r = opCore('m', a, b, fr);
+        return r === 'remwhole' ? 'bmodwhole' : r === 'rembig' ? 'bmodbig' : r;
+      case 'E': return opCore('%', a, b, fr);   // A percent of B
+      case 'X': return (a.n * b.d >= b.n * a.d) ? a : b; // the bigger of the two
+      case 'I': return (a.n * b.d <= b.n * a.d) ? a : b; // the smaller of the two
+      case 'Y': return opCore('a', a, b, fr);   // the average
+      case 'G': return opCore('g', a, b, fr);   // greatest common factor
+      case 'L': return opCore('l', a, b, fr);   // lowest common multiple
     }
     return 'syntax';
   }
@@ -183,6 +220,18 @@ var Eq = (function () {
         if (a.n > 9) return 'factbig';
         var x = 1; for (var i = 2; i <= a.n; i++) x *= i;
         return { n: x, d: 1 };
+      // ---- BONUS: Power die operations on one number (house rule). Exact only: anything not rational is refused. ----
+      case 'F': return unCore('!', a, fr);                         // n! (whole n, 9! at most)
+      case 'Q': if (Math.abs(a.n) > 1000 || a.d > 1000) return 'big'; return frac(a.n * a.n, a.d * a.d);           // x² (any number)
+      case 'C': if (Math.abs(a.n) > 100 || a.d > 100) return 'big'; return frac(a.n * a.n * a.n, a.d * a.d * a.d);  // x³ (any number)
+      case 'A': return { n: Math.abs(a.n), d: a.d };              // |x|
+      case 'D': return frac(2 * a.n, a.d);                         // double
+      case 'B': var h = frac(a.n, 2 * a.d); return (typeof h !== 'string' && !fr && h.d !== 1) ? 'frac2' : h; // half
+      case 'U': return { n: a.n === 0 ? 0 : -a.n, d: a.d };        // negative
+      case 'O': if (a.n === 0) return 'divzero'; var rc = frac(a.d, a.n); return (typeof rc !== 'string' && !fr && rc.d !== 1) ? 'frac2' : rc; // 1/x
+      case 'R': return opCore('r', TWO, a, fr);                    // √x (whole numbers with a whole root, like the √ cube)
+      case 'S': if (a.d !== 1 || a.n < 0) return 'bsumwhole'; return { n: digitSum(a.n), d: 1 }; // sum of the digits
+      case 'N': var nf = unCore('f', a, fr); return nf === 'nfacwhole' ? 'bnfacwhole' : nf === 'nfacbig' ? 'bnfacbig' : nf; // how many factors
     }
     return 'syntax';
   }
@@ -272,7 +321,7 @@ var Eq = (function () {
       var s = sym(t), out = s;
       if (s === '+' && RU.avg) out = 'a';
       else if (s === '*' && (RU.nfac || RU.sprime)) {
-        var operandBefore = prev !== null && (isNumSym(prev) || prev === ')' || prev === '!' || exOf(prev) >= 0);
+        var operandBefore = prev !== null && (isNumSym(prev) || prev === ')' || prev === '!' || exOf(prev) >= 0 || (OPDEF[prev] && OPDEF[prev].kind === 'post')); // (BONUS: + x², x³, n!)
         if (!operandBefore) out = RU.nfac ? 'f' : 'p';
       }
       prev = s;
@@ -324,7 +373,16 @@ var Eq = (function () {
     decalone: "A decimal point needs at least one digit next to it.",
     pctdigits: "In a Solution, only the numbers right next to % may have two digits.",
     multkgoal: "With Multiple of k, the Goal must be between −1000 and 1000.",
-    expcolor: "Only a cube of the Exponent colour can be an exponent all by itself."
+    expcolor: "Only a cube of the Exponent colour can be an exponent all by itself.",
+    // BONUS dice (house rule)
+    bignext: "The big-number die is one number all by itself, so it can't join other number cubes. Put an operation between them.",
+    bigfrac: "That big-number die shows a fraction, and fractions are switched off in Settings.",
+    bpost: "That gold cube works on the number right BEFORE it, like 4! or 5². Put a number first, then the gold cube.",
+    bmodwhole: "For mod (the remainder), both numbers must be counting numbers: 1, 2, 3, …",
+    bmodbig: "For mod (the remainder), the first number must be 1000 or less.",
+    bsumwhole: "Sum of digits only works on whole numbers: 0, 1, 2, 3, …",
+    bnfacwhole: "How many factors only works on counting numbers: 1, 2, 3, …",
+    bnfacbig: "How many factors only works on numbers up to 1000."
   };
   function err(code, msg) { return { ok: false, code: code, msg: msg || MSG[code] || code }; }
   function baseMsg(b) { return 'In base ' + b + ' the digits are 0 to ' + (b - 1) + ', so ' + (b === 8 ? '8 and 9 don\'t' : b === 9 ? '9 doesn\'t' : 'bigger digits don\'t') + ' exist.'; }
@@ -384,6 +442,10 @@ var Eq = (function () {
       var card = symCard(s);
       if (card === 'rem' && !RU.rem) return err('syntax'); // (as before the Middle cards: m is not a symbol without Remainder)
       if (card && !RU[card]) return err('nocard', 'That needs the ' + CARDNAME[card] + ' card, and it isn\'t in play this shake.');
+      if (bigIdx(s) >= 0) { // BONUS: the big-number die, one number all by itself (its value never changes with a card)
+        var bgv = bigOf(s); if (bgv.d !== 1 && !fr) return err('bigfrac');
+        toks.push({ k: 'n', v: bgv, len: 1, big: true }); i++; continue;
+      }
       if (isNumSym(s)) { // a turned digit cube or a power of ten: a number all by itself
         var o = orient(s), nvx;
         if (o && o.o === 'u') { if (o.d >= B) return err('basedigit', baseMsg(B)); nvx = { n: -o.d, d: 1 }; }
@@ -405,7 +467,7 @@ var Eq = (function () {
     for (var ti = 0; ti < toks.length; ti++) {
       var tk = toks[ti];
       // two numbers touching: a turned cube can't be glued to another number (PDF manual B45, B48, E30, E34)
-      if (tk.k === 'n' && toks[ti + 1] && toks[ti + 1].k === 'n') return err((tk.turned || toks[ti + 1].turned) ? 'flipnext' : 'missingop');
+      if (tk.k === 'n' && toks[ti + 1] && toks[ti + 1].k === 'n') return err((tk.big || toks[ti + 1].big) ? 'bignext' : (tk.turned || toks[ti + 1].turned) ? 'flipnext' : 'missingop'); // (BONUS: bignext)
       // Percent: a two-digit numeral in a Solution is only allowed right next to % (XIII-A-14)
       if (tk.k === 'n' && !tk.dec && tk.len === 2 && maxD < 2) {
         var nextTo = (toks[ti - 1] && toks[ti - 1].k === '%') || (toks[ti + 1] && toks[ti + 1].k === '%');
@@ -440,12 +502,13 @@ var Eq = (function () {
     // an item, then any postfix ops (! and exponent cubes) that follow it
     function atom() {
       var v = primary();
-      while (peek() === '!' || peek() === 'e') {
+      while (peek() === '!' || peek() === 'e' || isBonusPost(peek())) { // (BONUS: + the Power die's x², x³, n!)
         var t = toks[p++];
-        v = t.k === '!' ? chk(unCore('!', v, fr)) : chk(opCore('^', v, { n: t.d, d: 1 }, fr));
+        v = t.k === 'e' ? chk(opCore('^', v, { n: t.d, d: 1 }, fr)) : chk(unCore(t.k, v, fr));
       }
       return v;
     }
+    function isBonusPost(k) { return !!(OPDEF[k] && OPDEF[k].bonus && OPDEF[k].kind === 'post'); }
     function primary() {
       var k = peek();
       if (k === 'n') return toks[p++].v;
@@ -458,6 +521,8 @@ var Eq = (function () {
         p++; return v;
       }
       if (k === 'r') { p++; var x = atom(); return chk(opCore('r', TWO, x, fr)); }
+      if (OPDEF[k] && OPDEF[k].bonus && OPDEF[k].kind === 'pre') { p++; var bx = atom(); return chk(unCore(k, bx, fr)); } // BONUS: a Power die op in front of a number
+      if (isBonusPost(k)) fail('bpost');
       // a × with no number before it: Number of Factors / Smallest Prime (its place decides)
       if (k === 'f' || k === 'p' || (k === '*' && (RU.nfac || RU.sprime))) {
         p++; var y = atom(); return chk(unCore(k === '*' ? (RU.nfac ? 'f' : 'p') : k, y, fr));
@@ -533,7 +598,7 @@ var Eq = (function () {
     tokens.forEach(function (t) {
       if (typeof t !== 'object' || t.id == null) return;
       var id = t.id;
-      if (seen[id] && RU.multi && !isDigit(t.s)) return; // Multiple Operations: an operation cube may be used again
+      if (seen[id] && RU.multi && !isNumSym(t.s)) return; // Multiple Operations: an operation cube may be used again (BONUS: isNumSym, so the big-number die is never 'used again')
       if (seen[id]) reasons.push('The same cube was used twice.');
       seen[id] = true;
       var z = ctx.zone(id);
@@ -694,7 +759,7 @@ var Eq = (function () {
 
   function core(base, opt, must) {
     var RU = base.RU, multi = RU.multi, fr = base.fractions;
-    var leafSym = function (s) { return isDigit(s) || exOf(s) >= 0; };
+    var leafSym = function (s) { return isDigit(s) || exOf(s) >= 0 || bigIdx(s) >= 0; }; // (BONUS: + the big-number die)
     var B = RU.basem ? RU.base : 10;
     var req = base.req;
     if (RU.basem) { // digits the base doesn't have can never be used (PDF manual C42, C43, E62)
@@ -754,7 +819,7 @@ var Eq = (function () {
       (RU.any ? '|' + RU.sig + 'w' + base.wild : '');
     var tick = 0;
     var W = base.wild;
-    var preP = (RU.fact || RU.expo) ? 3.9 : 4; // a prefix op followed by a postfix op needs parentheses: (√9)!
+    var preP = (RU.fact || RU.expo || unOps.some(function (o) { return OPDEF[o].kind === 'post'; })) ? 3.9 : 4; // a prefix op followed by a postfix op needs parentheses: (√9)! (BONUS: also the Power die's post ops)
     function leafV(ch) { return (ch === '0' && W !== null && W !== undefined) ? W : +ch; }
     // value key: the value, plus (Three-operation) how many operation signs, capped at 3
     function vkey(v, o) { return three ? v.n + '/' + v.d + '#' + Math.min(3, o) : v.n + '/' + v.d; }
@@ -767,6 +832,7 @@ var Eq = (function () {
     // the numbers one cube can be
     function leaves(m, ch) {
       if (exOf(ch) >= 0) { put(m, 0, { v: { n: exOf(ch), d: 1 }, s: String(exOf(ch)), p: 4, o: 0 }); return; } // an exponent-colour digit used plainly
+      if (bigIdx(ch) >= 0) { var bv = bigOf(ch); if (bv.d === 1 || fr) put(m, 0, { v: bv, s: ch, p: 4, o: 0 }); return; } // BONUS: the big-number die
       var d = leafV(ch);
       if (d >= B) return;
       put(m, 0, { v: { n: d, d: 1 }, s: ch, p: 4, o: 0 });
@@ -923,9 +989,9 @@ var Eq = (function () {
   function goalIdeas(syms, opts) {
     opts = opts || {};
     var RU = rulesOf(opts.fractions);
-    var leafs = syms.filter(function (s) { return isDigit(s) || exOf(s) >= 0; });
+    var leafs = syms.filter(function (s) { return isDigit(s) || exOf(s) >= 0 || bigIdx(s) >= 0; }); // (BONUS: + the big-number die)
     var digits = leafs.map(function (s) { return exOf(s) >= 0 ? String(exOf(s)) : s; });
-    var ops = uniq(syms.filter(function (s) { return !isDigit(s) && exOf(s) < 0 && s !== 'r'; }));
+    var ops = uniq(syms.filter(function (s) { return !isDigit(s) && exOf(s) < 0 && s !== 'r' && bigIdx(s) < 0 && !(isBonusOp(s) && OPDEF[s].kind !== 'bin'); })); // (BONUS: one-number Power ops below)
     if (RU.avg) ops = ops.map(function (o) { return o === '+' ? 'a' : o; });
     var have = countMap(syms.map(function (s) { return exOf(s) >= 0 ? String(exOf(s)) : s; }));
     var haveEx = countMap(syms.filter(function (s) { return exOf(s) >= 0; }));
@@ -949,8 +1015,19 @@ var Eq = (function () {
     uniq(digits).forEach(function (a) { add([a]); });
     digits.forEach(function (a) { digits.forEach(function (b) { if (a !== '0') add([a, b]); }); });
     digits.forEach(function (a) { ops.forEach(function (o) { digits.forEach(function (b) { add([a, o, b]); }); }); });
+    // BONUS: Goals with the Power die's one-number operation (n!, x², √x, double, …)
+    uniq(syms.filter(function (s) { return isBonusOp(s) && OPDEF[s].kind !== 'bin'; })).forEach(function (o) {
+      var post = OPDEF[o].kind === 'post', D2 = uniq(digits), bins = ops.filter(function (x) { return OPDEF[x] && OPDEF[x].kind === 'bin'; });
+      D2.forEach(function (a) {
+        add(post ? [a, o] : [o, a]);
+        D2.forEach(function (b) {
+          add(post ? [a, b, o] : [o, a, b]);
+          bins.forEach(function (bn) { if (post) { add([a, o, bn, b]); add([a, bn, b, o]); } else { add([o, a, bn, b]); add([a, bn, o, b]); } });
+        });
+      });
+    });
     if (!RU.any) return out;
-    var D = uniq(digits);
+    var D = uniq(digits).filter(isDigit); // (BONUS: card ideas turn digit cubes only, never the big-number die)
     var binOnly = ops.filter(function (o) { return OPDEF[o] && OPDEF[o].kind === 'bin' && o !== 'f' && o !== 'p'; });
     D.forEach(function (a) {
       D.forEach(function (b) {
@@ -1027,7 +1104,7 @@ var Eq = (function () {
       var cs = cubeOf(s);
       if (cs === null) { out[i] = s; return; } // '!' is written in, not a cube
       var c = null;
-      if (RU.multi && !isDigit(s)) {
+      if (RU.multi && !isNumSym(s)) { // (BONUS: isNumSym: the big-number die is a number, never re-used)
         c = pick(function (x) { return x.s === cs && x.zone === 'required'; });
         if (!c && again[cs] !== undefined) { out[i] = { s: s, id: again[cs] }; return; }
       }
@@ -1077,7 +1154,9 @@ var Eq = (function () {
     // Middle tier
     OPDEF: OPDEF, UD: UD, SW: SW, EX: EX, POB: POB, POBK: POBK, cubeOf: cubeOf, orient: orient, withOrient: withOrient, isNumSym: isNumSym,
     exOf: exOf, pobOf: pobOf, resolve: resolve, multOk: multOk, tagExp: tagExp, bangsIn: bangsIn, isPrime: isPrime, numFactors: numFactors,
-    cubeTokens: cubeTokens, expCounts: expCounts
+    cubeTokens: cubeTokens, expCounts: expCounts,
+    // BONUS dice (house rule)
+    BIG: BIG, BIG_FACES: BIG_FACES, POWER_FACES: POWER_FACES, bigOf: bigOf, bigIdx: bigIdx, isBonusOp: isBonusOp, digitSum: digitSum
   };
 })();
 

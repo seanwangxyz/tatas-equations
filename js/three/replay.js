@@ -24,7 +24,7 @@ import * as THREE from 'three';
 
 function install(T3, ctx) {
   var RX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  var COL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'], none: ['#e9ecef', '#adb5bd'] };
+  var COL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'], none: ['#e9ecef', '#adb5bd'], power: ['#ffe066', '#e8590c'], big: ['#b197fc', '#5f3dc4'] }; // (BONUS dice stand-ins)
   var SHOW = function (s) { return (window.Eq && Eq.SHOW && Eq.SHOW[s]) || s; };
   var run = null;
 

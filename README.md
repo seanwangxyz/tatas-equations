@@ -30,7 +30,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 # The "Kid who knows the trick" shows those blind spots can be learned.
 ```
 
-320 checks: the evaluator, the Solution validator, the solver, and the official 2- and
+822 checks (217 of them for the house-rule bonus dice): the evaluator, the Solution validator, the solver, and the official 2- and
 3-player challenge scoring.
 
 ## Where things live
@@ -48,6 +48,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 | `js/game.js` | Game flow (turns, challenges, last cube, scoring screens) and the computer player |
 | `js/ai.js`, `js/ai-worker.js` | The computer player's decisions and math tastes; it thinks in a background worker so the picture never freezes |
 | `js/variations.js` | Variation cards: an extra official rule for one shake (pick, unlock, reminder) |
+| `js/bonus.js` | HOUSE RULE bonus dice (Big-number, Power, Twist), earned with skill points: RULES_SUMMARY.md section 7, docs/handoff/bonus.md |
 | `js/team.js` | Team-up vs the boss: two people share one side against a creature (house rules) |
 | `js/cup.js` | Cup tournaments: quarter-final, semi-final, final, trophy lift |
 | `js/ways.js` | How Many Ways?: one Goal, find many different Solutions |

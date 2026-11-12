@@ -47,7 +47,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var res = level >= 2 ? 512 : 256;
     if (res !== texRes || (meshes.length && meshes[0].userData.matLevel !== (level > 0))) {
       texRes = res;
-      if (meshes.length) { Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); }); texCache = {}; meshes.forEach(buildMats); if (api.lastG && !pour) api.sync(api.lastG); }
+      if (meshes.length) { Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); }); texCache = {}; meshes.forEach(buildMats); if (twistMesh) buildMats(twistMesh); if (api.lastG && !pour) api.sync(api.lastG); } // (BONUS: + the Twist die)
     }
     dirty = true;
   }
@@ -217,13 +217,82 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return new THREE.Quaternion().setFromRotationMatrix(T.multiply(L.transpose()));
   });
   var NORMALS = FACES.map(function (f) { return new THREE.Vector3().fromArray(f[0]); });
+  // ---- BONUS dice (house rule, js/bonus.js): twenty-sided dice (icosahedra) for the Big-number, Power and Twist dice ----
+  // Meshes 24 and 25 are the bonus CUBES (their role, 'big' or 'power', follows G.cubes[id].color each shake); the Twist
+  // die is a separate mesh (not a cube: it is read once and set aside on the rim). Each face k shows face k of
+  // Eq.CUBE_FACES[color] (the Twist die: Bonus.TWIST[k]). Resting on a face, the centre is D20IN above the felt
+  // (a little bigger than a cube, 0.5). At rest a die is still (no idle animation).
+  var D20IN = 0.575, D20R = D20IN / 0.7946544722917661;
+  var d20Geo = (function () {
+    var g = new THREE.IcosahedronGeometry(D20R, 0), p = g.attributes.position, uv = g.attributes.uv, N = [], UPV = [], RTV = [];
+    for (var f = 0; f < 20; f++) {
+      var a = new THREE.Vector3().fromBufferAttribute(p, 3 * f), b = new THREE.Vector3().fromBufferAttribute(p, 3 * f + 1), c = new THREE.Vector3().fromBufferAttribute(p, 3 * f + 2);
+      var cx = f % 5, cy = Math.floor(f / 5);   // cell f of a 5 x 4 atlas: a = apex (top middle), b = bottom left, c = bottom right
+      uv.setXY(3 * f, (cx + 0.5) / 5, 1 - (cy + 0.08) / 4); uv.setXY(3 * f + 1, (cx + 0.06) / 5, 1 - (cy + 0.84) / 4); uv.setXY(3 * f + 2, (cx + 0.94) / 5, 1 - (cy + 0.84) / 4);
+      var cen = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+      N.push(cen.clone().normalize()); UPV.push(a.clone().sub(cen).normalize()); RTV.push(c.clone().sub(b).normalize());
+    }
+    uv.needsUpdate = true;
+    g.userData = { N: N, UPV: UPV, RTV: RTV };
+    return g;
+  })();
+  // rotation that puts face k on top, its label upright from the player's side (the same construction as FACEQ)
+  var D20Q = d20Geo.userData.N.map(function (n, k) {
+    var L = new THREE.Matrix4().makeBasis(d20Geo.userData.RTV[k], n, d20Geo.userData.UPV[k]);
+    var T = new THREE.Matrix4().makeBasis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1));
+    return new THREE.Quaternion().setFromRotationMatrix(T.multiply(L.transpose()));
+  });
+  var D20COL = { power: ['#ffe066', '#e8590c', '#5c3c00'], big: ['#b197fc', '#5f3dc4', '#ffffff'], twist: ['#63e6be', '#0b7285', '#ffffff'] };
+  function d20Label(color, k) { try { return window.Bonus ? Bonus.faceLabel(color, k) : String(k + 1); } catch (e) { return String(k + 1); } }
+  function d20Tex(color) {
+    var res = Math.min(256, texRes || 256), key = 'd20' + color + res;
+    if (texCache[key]) return texCache[key];
+    var cv = document.createElement('canvas'); cv.width = 5 * res; cv.height = 4 * res; var g = cv.getContext('2d'), C = D20COL[color] || D20COL.power;
+    for (var k = 0; k < 20; k++) {
+      g.save(); g.translate((k % 5) * res, Math.floor(k / 5) * res); g.scale(res / 128, res / 128);
+      var lg = g.createLinearGradient(0, 0, 128, 128); lg.addColorStop(0, C[0]); lg.addColorStop(1, C[1]); g.fillStyle = lg; g.fillRect(0, 0, 128, 128);
+      // a light rim just inside the face's edges (reads as a bevel), then the label at the triangle's centre
+      g.beginPath(); g.moveTo(64, 16); g.lineTo(13, 103); g.lineTo(115, 103); g.closePath(); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.stroke();
+      var label = d20Label(color, k), size = label.length >= 4 ? 28 : label.length === 3 ? 36 : 46;
+      g.font = '900 ' + size + 'px "Trebuchet MS", "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+      g.strokeStyle = C[2] === '#ffffff' ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.6)'; g.lineWidth = 4; g.strokeText(label, 64, 79);
+      g.fillStyle = C[2]; g.fillText(label, 64, 79);
+      g.restore();
+    }
+    var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texCache[key] = t; return t;
+  }
+  var d20Pts = null;
+  function d20Shape(scale) {
+    if (!d20Pts) { // the 12 corners and 20 faces (same winding as the mesh: counter-clockwise from outside)
+      var p = d20Geo.attributes.position, vs = [], fs = [];
+      for (var f = 0; f < 20; f++) {
+        var tri = [];
+        for (var j = 0; j < 3; j++) {
+          var v = new THREE.Vector3().fromBufferAttribute(p, 3 * f + j), at = -1;
+          for (var q = 0; q < vs.length; q++) if (vs[q].distanceTo(v) < 1e-4) { at = q; break; }
+          if (at < 0) { at = vs.length; vs.push(v); }
+          tri.push(at);
+        }
+        fs.push(tri);
+      }
+      d20Pts = { vs: vs, fs: fs };
+    }
+    return new CANNON.ConvexPolyhedron({ vertices: d20Pts.vs.map(function (v) { return new CANNON.Vec3(v.x * scale, v.y * scale, v.z * scale); }), faces: d20Pts.fs.map(function (f) { return f.slice(); }) });
+  }
+  function isD20(m) { return !!(m && m.userData && m.userData.d20); }
+  function restY(m) { return isD20(m) ? D20IN : 0.5; }
+  function restQ(m, k) { return isD20(m) ? D20Q[k] || D20Q[0] : FACEQ[k]; }
+  function facesOf(m) { return Eq.CUBE_FACES[m.userData.color] || []; }
+  var twistMesh = null, twistOn = false, twistNext = false, twistFaceK = null; // twistNext: roll it with the NEXT pour only (a pour nobody asked about, like online play's, never has it)
+  // ---- end BONUS block ----
 
   function skin() { return S.cos.skin || 'classic'; }
   function buildMats(m) {
     var color = m.userData.color, sk = skin();
     var gold = sk === 'gold', glossy = sk === 'candy' || sk === 'galaxy', rich = qual > 0; // the low tier skips the clear coat (a cheaper shader)
     var old = m.material && m.material.isMaterial ? m.material : null;
-    var mt = new THREE.MeshPhysicalMaterial({ map: atlasTex(color, sk), roughness: gold ? 0.28 : glossy ? 0.25 : rich ? 0.36 : 0.3, metalness: gold ? 0.55 : 0.0,
+    var mt = new THREE.MeshPhysicalMaterial({ map: m.userData.d20 ? d20Tex(color) : atlasTex(color, sk), // (BONUS: a twenty-sided die has its own atlas) roughness: gold ? 0.28 : glossy ? 0.25 : rich ? 0.36 : 0.3, metalness: gold ? 0.55 : 0.0,
       clearcoat: rich ? (gold ? 0.2 : glossy ? 1 : 0.7) : 0, clearcoatRoughness: glossy ? 0.12 : 0.16, envMapIntensity: gold ? 1.4 : 1.1 });
     if (old) { mt.color.copy(old.color); mt.emissive.copy(old.emissive); old.dispose(); } // keep locked / selected tints
     m.material = mt;
@@ -246,7 +315,21 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         scene.add(m); meshes.push(m); id++;
       }
     });
+    // BONUS: meshes 24 and 25 (the bonus cubes) and the Twist die
+    ['big', 'power', 'twist'].forEach(function (color, k) {
+      var m = new THREE.Mesh(d20Geo, null);
+      m.userData = { id: k < 2 ? 24 + k : 'twist', color: color, d20: true, jit: (Math.random() - 0.5) * 0.12 };
+      buildMats(m); m.castShadow = true; m.receiveShadow = true; m.visible = false;
+      var lk = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false })); lk.visible = false; m.add(lk); m.userData.lock = lk;
+      scene.add(m);
+      if (k < 2) {
+        var bl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0, fog: false })); bl.rotation.x = -Math.PI / 2; bl.visible = false; bl.renderOrder = 1; scene.add(bl); blobs.push(bl);
+        meshes.push(m);
+      } else twistMesh = m;
+    });
   }
+  // BONUS: a d20 mesh takes the role (Big-number or Power) of the bonus cube with its id this shake
+  function d20Role(m, color) { if (isD20(m) && color && m.userData.color !== color && D20COL[color]) { m.userData.color = color; buildMats(m); } }
 
   // ----- Table -----
   function disposeTree(o) {
@@ -575,7 +658,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.retheme = function () {
     Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); });
     texCache = {};
-    meshes.forEach(buildMats);
+    meshes.forEach(buildMats); if (twistMesh) buildMats(twistMesh); // (BONUS: + the Twist die)
     if (layout) buildTable();
     dirty = true;
   };
@@ -591,8 +674,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return out;
   }
   function slotQuat(c, m) {
-    var k = Eq.CUBE_FACES[c.color].indexOf(c.s); if (k < 0) k = 2;
-    return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), m.userData.jit).multiply(FACEQ[k]);
+    var k = (Eq.CUBE_FACES[c.color] || []).indexOf(c.s); if (k < 0) k = isD20(m) ? 0 : 2; // (BONUS: a d20 rests on face k too)
+    return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), m.userData.jit).multiply(restQ(m, k));
   }
   function tweenTo(m, pos, q, scale, opts) {
     anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m);
@@ -687,13 +770,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     pulseId = G.highlight != null ? G.highlight : null;
     G.cubes.forEach(function (c) {
       var m = meshes[c.id], t = targets[c.id]; if (!m) return;
+      d20Role(m, c.color); // (BONUS)
       if (!t) { m.visible = false; return; }
       m.visible = true;
       if (dragS && dragS.id === c.id && dragS.on) return;
       if (ctx.held === c.id) return;
       if (tumble && tumble.ids[c.id] !== undefined) return; // rolling again (T3.reroll): it lands first
       var lift = (G.selected === c.id) ? 0.8 : 0;
-      var pos = new THREE.Vector3(t.x, 0.5 * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData;
+      var pos = new THREE.Vector3(t.x, restY(m) * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData; // (BONUS: restY)
       m.userData.lock.visible = !!c.locked;
       tint(m, c.locked ? 0x9a9a9a : 0xffffff, G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000);
       var same = u.tpos && u.tpos.distanceTo(pos) < 0.01 && Math.abs(u.tscale - t.scale) < 0.01 && u.tq && u.tq.angleTo(q) < 0.01;
@@ -750,10 +834,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (builtTier >= 0 && tierOf(qual) !== builtTier && !document.hidden) buildTable(); // the level changed (dropped): a venue and crowd built for it
     ensureCubes(); if (!world) buildWorld();
     meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
+    cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake
+    if (twistMesh) { twistMesh.visible = false; twistMesh.userData.tpos = null; } twistFaceK = null; twistOn = twistNext; twistNext = false;
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; });
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, 0, true); });
     var W = layout.W, D = layout.D, side = layoutName === 'tall';
-    pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(meshes.map(function (m, i) { return i; })), done: done, settledAt: 0, sim: 0,
+    var ids = cubes.map(function (c) { return c.id; }).filter(function (i) { return !!meshes[i]; }); // (BONUS: the cubes in play, not every mesh)
+    pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(ids), n: ids.length, tw: null, done: done, settledAt: 0, sim: 0,
       from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5) };
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0);
     Snd.cupRattle();
@@ -762,8 +849,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     startLoop();
   };
   function spawnDie(i) {
-    var m = meshes[i], mouth = new THREE.Vector3(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
-    var b = new CANNON.Body({ mass: 1, material: world.diceMat }); b.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)));
+    var m = i === 'twist' ? twistMesh : meshes[i], mouth = new THREE.Vector3(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
+    var b = new CANNON.Body({ mass: 1, material: world.diceMat }); b.addShape(isD20(m) ? d20Shape(1) : new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))); // (BONUS: an icosahedron)
     b.position.set(mouth.x + (Math.random() - 0.5) * 0.9, Math.max(1.2, mouth.y + (Math.random() - 0.5) * 0.6), mouth.z + (Math.random() - 0.5) * 1.2);
     // never outside the rim (the walls only keep in what starts inside)
     b.position.x = Math.max(-layout.W / 2 + 1, Math.min(layout.W / 2 - 1, b.position.x)); b.position.z = Math.max(-layout.D / 2 + 1, Math.min(layout.D / 2 - 1, b.position.z));
@@ -779,19 +866,23 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (v > 4 && b.position.y < 1.2 && !document.hidden) spawnPuff(b.position.x, b.position.z, 0.8, Math.min(1, v / 12));
       if (v > 6.5 && e.body && e.body.material === world.diceMat && n - lastSpark > 45) { lastSpark = n; var c = e.contact; spawnSparks(c.bi.position.x + c.ri.x, c.bi.position.y + c.ri.y, c.bi.position.z + c.ri.z, Math.min(1, v / 12)); }
     });
-    world.addBody(b); pour.bodies[i] = b; m.visible = true; m.scale.setScalar(1);
+    world.addBody(b); if (i === 'twist') pour.tw = b; else pour.bodies[i] = b; m.visible = true; m.scale.setScalar(1);
   }
+  // BONUS: every body in the pour, the Twist die's too
+  function pourBodies() { var all = pour.bodies.filter(function (b) { return !!b; }); if (pour.tw) all.push(pour.tw); return all; }
+  function meshOfBody(b) { if (pour.tw === b) return twistMesh; var i = pour.bodies.indexOf(b); return meshes[i]; }
   function syncBodies() {
     var ip = !!slow;
     pour.bodies.forEach(function (b, i) {
       if (!b) return; var p = ip ? b.interpolatedPosition : b.position, q = ip ? b.interpolatedQuaternion : b.quaternion;
       meshes[i].position.set(p.x, p.y, p.z); meshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
+    if (pour.tw && twistMesh) { var tb = pour.tw, tp = ip ? tb.interpolatedPosition : tb.position, tq = ip ? tb.interpolatedQuaternion : tb.quaternion; twistMesh.position.set(tp.x, tp.y, tp.z); twistMesh.quaternion.set(tq.x, tq.y, tq.z, tq.w); } // (BONUS)
   }
   // the face of a cube that points most nearly up (index into FACES / Eq.CUBE_FACES[color]) and how well (1 = flat)
-  function upFace(q) {
-    var best = 0, by = -9;
-    for (var k = 0; k < 6; k++) { var y = upTmp.copy(NORMALS[k]).applyQuaternion(q).y; if (y > by) { by = y; best = k; } }
+  function upFace(q, m) {
+    var best = 0, by = -9, NS = isD20(m) ? d20Geo.userData.N : NORMALS; // (BONUS: a d20 has 20 faces)
+    for (var k = 0; k < NS.length; k++) { var y = upTmp.copy(NS[k]).applyQuaternion(q).y; if (y > by) { by = y; best = k; } }
     return { k: best, up: by };
   }
   var upTmp = new THREE.Vector3(), yawQ = new THREE.Quaternion(), YAXIS = new THREE.Vector3(0, 1, 0);
@@ -801,15 +892,15 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function settleInside(m, q, k) {
     var W = layout.W, D = layout.D, s = m.scale.x, p = m.position, inX = Math.abs(p.x) <= W / 2 - 0.45 * s, inZ = Math.abs(p.z) <= D / 2 - 0.45 * s;
     if (inX && inZ && p.y > 0.2 * s && p.y < 3) return false;
-    p.set(clampIn(p.x, W), 0.5 * s, clampIn(p.z, D));
-    yawQ.setFromAxisAngle(YAXIS, Math.random() * 6.283); m.quaternion.copy(yawQ).multiply(FACEQ[k]);
+    p.set(clampIn(p.x, W), restY(m) * s, clampIn(p.z, D));
+    yawQ.setFromAxisAngle(YAXIS, Math.random() * 6.283); m.quaternion.copy(yawQ).multiply(restQ(m, k)); // (BONUS: restY / restQ)
     return true;
   }
   function finishPour() {
     var fixed = 0, raw = [];
     var results = pour.bodies.map(function (b, i) {
-      var q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), best = upFace(q).k;
-      raw.push([+b.position.x.toFixed(2), +b.position.y.toFixed(2), +b.position.z.toFixed(2), +upFace(q).up.toFixed(3)]);
+      var q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), best = upFace(q, meshes[i]).k;
+      raw.push([+b.position.x.toFixed(2), +b.position.y.toFixed(2), +b.position.z.toFixed(2), +upFace(q, meshes[i]).up.toFixed(3)]);
       world.removeBody(b);
       meshes[i].position.set(b.position.x, b.position.y, b.position.z); meshes[i].quaternion.copy(q);
       if (settleInside(meshes[i], q, best)) fixed++;
@@ -817,13 +908,28 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       return Eq.CUBE_FACES[meshes[i].userData.color][best];
     });
     api._lastPour = { fixed: fixed, raw: raw, W: layout.W, D: layout.D, at: meshes.map(function (m) { return [+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)]; }) }; // checks / debugging
+    if (pour.tw && twistMesh) { // BONUS: the Twist die is read where it landed, then hops onto the rim and stays there (still)
+      var tb = pour.tw, tq = new THREE.Quaternion(tb.quaternion.x, tb.quaternion.y, tb.quaternion.z, tb.quaternion.w);
+      twistFaceK = upFace(tq, twistMesh).k; world.removeBody(tb);
+      twistMesh.position.set(tb.position.x, tb.position.y, tb.position.z); twistMesh.quaternion.copy(tq);
+      settleInside(twistMesh, tq, twistFaceK);
+      twistToRim(twistFaceK, null);
+    }
     cup.visible = false; slow = null;
     var done = pour.done; pour = null; dirty = true;
     done(results);
   }
+  // BONUS: where the Twist die rests: on the right-hand rim, near the far end, a little smaller than in play
+  function twistRim() { return layout ? { x: layout.W / 2 + 0.3, y: 0.65 + D20IN * 0.6, z: -layout.D / 2 + 1.3, s: 0.6 } : null; }
+  function twistToRim(k, cb) {
+    var r = twistRim(); if (!r || !twistMesh) { if (cb) cb(); return; }
+    var q = new THREE.Quaternion().setFromAxisAngle(YAXIS, -0.35).multiply(restQ(twistMesh, k));
+    tweenTo(twistMesh, new THREE.Vector3(r.x, r.y, r.z), q, r.s, { dur: 900, arc: 1.6, quiet: true });
+    setTimeout(function () { try { if (Snd.thunk) Snd.thunk(); } catch (e) {} if (cb) cb(); }, 920);
+  }
   function finishPourFast() {
     cup.updateMatrixWorld(); cup.position.copy(pour.at); cup.rotation.z = 2.0; cup.updateMatrixWorld();
-    pour.order.forEach(spawnDie);
+    pour.order.forEach(spawnDie); if (twistOn && twistMesh) spawnDie('twist'); // (BONUS)
     for (var k = 0; k < 600; k++) world.step(1 / 60);
     syncBodies(); finishPour();
   }
@@ -837,19 +943,19 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (t > 1.45) cup.position.lerpVectors(pour.at, pour.from, e((t - 1.45) / 0.6));
     if (t > 2.1) cup.visible = false;
     cup.updateMatrixWorld();
-    if (t > 0.72) { var want = Math.min(24, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); }
+    if (t > 0.72) { var want = Math.min(pour.n, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); if (pour.spawned === pour.n && twistOn && twistMesh && !pour.tw) spawnDie('twist'); } // (BONUS: pour.n cubes, then the Twist die)
     if (pour.spawned) {
       var ts = slowScale(now); world.step(1 / 60, dt * ts, 5); pour.sim += dt * ts; syncBodies();
-      if (!pour.slowDone && pour.spawned === 24 && !pour.settledAt && !document.hidden && qual >= 1) {
-        var moving = pour.bodies.filter(function (b) { return b.sleepState !== CANNON.Body.SLEEPING && b.velocity.length() > 0.3; });
+      if (!pour.slowDone && pour.spawned === pour.n && !pour.settledAt && !document.hidden && qual >= 1) {
+        var moving = pourBodies().filter(function (b) { return b.sleepState !== CANNON.Body.SLEEPING && b.velocity.length() > 0.3; });
         if (moving.length === 1) { var sp1 = moving[0].velocity.length(); if (sp1 < 5) { pour.slowDone = true; if (sp1 > 0.6) { slow = { t0: now, dur: 430 }; } } }
       }
     }
-    if (pour.spawned === 24 && !pour.settledAt) {
-      var asleep = pour.bodies.every(function (b) { return b.sleepState === CANNON.Body.SLEEPING || b.velocity.length() < 0.08; }), nud = pour.nudges || 0;
+    if (pour.spawned === pour.n && !pour.settledAt) {
+      var asleep = pourBodies().every(function (b) { return b.sleepState === CANNON.Body.SLEEPING || b.velocity.length() < 0.08; }), nud = pour.nudges || 0;
       if (asleep || pour.sim > (pour.cap || 5.5) || t > 9 + 1.1 * nud) {
         // a cube left leaning on another one, or lying on top of one, gets a small nudge so it tips over flat (twice at most)
-        var lean = nud < 2 ? pour.bodies.filter(function (b) { return b.position.y > 0.8 || upFace(tq1.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w)).up < 0.96; }) : [];
+        var lean = nud < 2 ? pourBodies().filter(function (b) { return b.position.y > 0.8 || upFace(tq1.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), meshOfBody(b)).up < 0.96; }) : [];
         if (lean.length) {
           lean.forEach(function (b) {
             var a = Math.random() * 6.283; b.wakeUp();
@@ -873,6 +979,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.reroll = function (list, done) {
     var once = false, fin = function () { if (once) return; once = true; if (typeof done === 'function') done(); };
     list = (list || []).filter(function (e) { return e && meshes[e.id] && meshes[e.id].visible; });
+    // BONUS: a twenty-sided die hops straight up and lands on its new face (the cube tumble below relabels cube symmetries)
+    var dl = list.filter(function (e) { return isD20(meshes[e.id]); }); list = list.filter(function (e) { return !isD20(meshes[e.id]); });
+    if (dl.length && layout && host && !document.hidden) {
+      dl.forEach(function (e) { var m = meshes[e.id], k = facesOf(m).indexOf(e.s); if (k < 0) k = 0; m.userData.tpos = null; tweenTo(m, new THREE.Vector3(m.position.x, restY(m) * m.scale.x, m.position.z), new THREE.Quaternion().setFromAxisAngle(YAXIS, m.userData.jit + 2.4).multiply(restQ(m, k)), m.scale.x, { dur: 760, arc: 2.4, land: true }); });
+      try { if (!list.length && Snd.clatter) Snd.clatter(); } catch (e) {}
+      if (!list.length) { setTimeout(fin, 800); dirty = true; startLoop(); return true; }
+    }
     if (!list.length || !layout || !host || document.hidden || current !== 'game' || pour || !document.body.contains(renderer.domElement)) { fin(); return false; }
     if (tumble) endTumble();
     try { tumble = simTumble(list); } catch (e) { tumble = null; }
@@ -896,7 +1009,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     // the other cubes: solid, never moving (their slots are not disturbed)
     meshes.forEach(function (m, i) {
       if (!m.visible || ids[i] !== undefined || ctx.held === i || (dragS && dragS.on && dragS.id === i)) return;
-      var hs = 0.5 * m.scale.x, b = new CANNON.Body({ mass: 0, material: dm }); b.addShape(new CANNON.Box(new CANNON.Vec3(hs, hs, hs)));
+      var hs = restY(m) * m.scale.x, b = new CANNON.Body({ mass: 0, material: dm }); b.addShape(new CANNON.Box(new CANNON.Vec3(hs, hs, hs))); // (BONUS: a d20 is a solid box of its size here)
       b.position.set(m.position.x, m.position.y, m.position.z); b.quaternion.set(m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w); w.addBody(b);
     });
     var T = { cubes: [], frames: 0, clock: 0, hits: [], hi: 0 };
@@ -1242,6 +1355,17 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
   };
   api.isPouring = function () { return !!pour; };
+  // ---- BONUS: the Twist die (js/bonus.js). twistDie(on): roll it with the next pour (off: hidden). twistFace(): the face it
+  // landed on (0-19, or null). twistShow(k, done): it hops and lands on face k (a re-roll), then done(). ----
+  api.twistDie = function (on) { twistNext = !!on; if (!on && twistMesh) { twistOn = false; twistMesh.visible = false; twistFaceK = null; dirty = true; } };
+  api.twistFace = function () { return twistOn && twistMesh && twistMesh.visible ? twistFaceK : null; };
+  api.twistShow = function (k, done) {
+    var fin = function () { if (done) done(); };
+    if (!twistMesh || !twistMesh.visible || !layout || document.hidden) { twistFaceK = k; fin(); return; }
+    twistFaceK = k; var r = twistRim(); try { if (Snd.clatter) Snd.clatter(); } catch (e) {}
+    tweenTo(twistMesh, new THREE.Vector3(r.x, r.y, r.z), new THREE.Quaternion().setFromAxisAngle(YAXIS, -0.35 + 2.5).multiply(restQ(twistMesh, k)), r.s, { dur: 800, arc: 2.2, quiet: true });
+    dirty = true; startLoop(); setTimeout(function () { try { if (Snd.thunk) Snd.thunk(); } catch (e) {} fin(); }, 820);
+  };
   // Text for the stadium scoreboard (e.g. 'GOAL 24'); a no-op in the other themes. Remembered across theme changes.
   api.setBoard = function (text) {
     boardText = text == null ? '' : String(text);

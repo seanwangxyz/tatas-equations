@@ -143,7 +143,7 @@ var Vari = (function () {
   function expoColors() { var f = freeCubes(); return COLS.filter(function (col) { return f.some(function (c) { return c.color === col && Eq.isDigit(c.s); }); }); }
   function hasEffect(id) {
     var f = freeCubes(), syms = f.map(function (c) { return c.s; });
-    var digits = syms.filter(Eq.isDigit).length, ops = syms.filter(function (s) { return !Eq.isDigit(s); }).length;
+    var digits = syms.filter(Eq.isDigit).length, ops = syms.filter(function (s) { return !Eq.isNumSym(s); }).length; // (BONUS: the big-number die is a number, not an operation)
     var has = function (s) { return syms.indexOf(s) >= 0; }, fr = Eq.fracOn(G.fractions);
     switch (id) {
       case 'twodigit': return digits >= 3;                        // the Goal can take some, two must be left to glue
@@ -376,7 +376,7 @@ var Vari = (function () {
   // A turned cube is drawn turned (upside-down / on its side) with a small label underneath ("−3", "1/3");
   // a cube with a second meaning shows its face plus a label (avg, lcm, gcf, %, point, # factors, next prime,
   // 10, 100 …); an exponent is drawn small and raised. cubes = G.cubes (for colours) or null.
-  var CAP = { a: 'average', l: 'lcm', g: 'gcf', '%': 'percent of', '.': 'point', f: '# factors', p: 'next prime' };
+  var CAP = { a: 'average', l: 'lcm', g: 'gcf', '%': 'percent of', '.': 'point', f: '# factors', p: 'next prime', m: 'remainder' }; // (m added with the BONUS dice: a sideways ÷ in an end-of-shake Solution showed as a plain ÷)
   function capOf(s, RU, tokens, i) {
     var o = Eq.orient(s);
     if (o && o.o === 'u') return o.d ? '−' + o.d : '0';

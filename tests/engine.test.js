@@ -1156,5 +1156,192 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
 }
 // ================= END SEASON TABLE =================
 
+// ================= BONUS DICE (HOUSE RULE, RULES_SUMMARY.md section 7) =================
+{
+  const B = s => Eq.BIG[Eq.BIG_FACES.indexOf(s)] ? s : s; // (symbols are used directly below)
+  const BIGS = {}; Eq.BIG_FACES.forEach(s => { BIGS[Eq.SHOW[s]] = s; }); // '12' -> its symbol
+  const b12 = BIGS['12'], b100 = BIGS['100'], b1000 = BIGS['1000'], bHalf = BIGS['½'], b50 = BIGS['50'], b25 = BIGS['25'], b10 = BIGS['10'], bThird = BIGS['⅓'], bTenth = BIGS['1/10'], b1h = BIGS['1½'];
+  const FR = { fractions: true };
+  // --- the dice themselves ---
+  ok('bonus: the Power die has 20 faces, all operations the engine knows', Eq.POWER_FACES.length === 20 && Eq.POWER_FACES.every(s => Eq.OPDEF[s] && Eq.OPDEF[s].bonus && Eq.OPDEF[s].cube === s));
+  ok('bonus: the Power die has 18 different operations (x² and double twice)', new Set(Eq.POWER_FACES).size === 18 && Eq.POWER_FACES.filter(s => s === 'Q').length === 2 && Eq.POWER_FACES.filter(s => s === 'D').length === 2);
+  ok('bonus: the Big-number die has 20 different numbers', Eq.BIG_FACES.length === 20 && new Set(Eq.BIG_FACES.map(s => Eq.fmt(Eq.bigOf(s)))).size === 20);
+  ok('bonus: big faces are 10 11 12 15 20 24 25 30 36 50 60 100 1000 ½ ¼ ¾ ⅓ ⅔ 1/10 1½', Eq.BIG_FACES.map(s => Eq.SHOW[s]).join(' ') === '10 11 12 15 20 24 25 30 36 50 60 100 1000 ½ ¼ ¾ ⅓ ⅔ 1/10 1½');
+  ok('bonus: every bonus symbol is one character (the solver splits its text with split)', Eq.POWER_FACES.concat(Eq.BIG_FACES).every(s => s.length === 1 && s.split('').length === 1));
+  ok('bonus: no bonus symbol clashes with an older symbol', Eq.POWER_FACES.concat(Eq.BIG_FACES).every(s => !'0123456789+-*/^r()m.a%glfp!'.includes(s) && Eq.UD.indexOf(s) < 0 && Eq.SW.indexOf(s) < 0 && Eq.EX.indexOf(s) < 0 && Eq.POB[s] === undefined));
+  ok('bonus: the official roll is unchanged (24 cubes, 4 colours)', Eq.roll().length === 24 && Eq.COLORS.join() === 'red,blue,green,black' && Eq.OPS.join('') === '+-*/^r');
+  ok('bonus: a bonus cube uses its own face', Eq.cubeOf('F') === 'F' && Eq.cubeOf(b12) === b12 && Eq.CUBE_FACES.power === Eq.POWER_FACES && Eq.CUBE_FACES.big === Eq.BIG_FACES);
+  ok('bonus: the big-number die is a number, the Power die is not', Eq.isNumSym(b12) && !Eq.isNumSym('F') && Eq.isBonusOp('M') && !Eq.isBonusOp('+'));
+  // --- every operation: hand-checked positive and negative cases ---
+  const hand = [
+    // factorial (post)
+    ['4F', '24'], ['0F', '1'], ['3F+1', '7'], ['(1+2)F', '6'], ['9F', '362880'], ['(5+5)F', 'ERR:factbig'], ['(1/2)F', 'ERR:factwhole'], ['(2-3)F', 'ERR:factwhole'],
+    // squared / cubed (post): any number, exact
+    ['5Q', '25'], ['(1+2)Q', '9'], ['(1/2)Q', '1/4'], ['(2-5)Q', '9'], ['1+3Q', '10'], ['2C', '8'], ['3C', '27'], ['(4-5)C', '−1'], ['(2/3)C', '8/27'], [b1000 + 'Q', '1000000'], ['(' + b1000 + '+1)Q', 'ERR:big'], [b1000 + 'C', 'ERR:big'],
+    // absolute value (pre)
+    ['A(2-5)', '3'], ['A7', '7'], ['A(1-9)+2', '10'], ['A(1/2-3)', '2 1/2'], ['A0', '0'],
+    // mod (bin, with × ÷)
+    ['7M3', '1'], ['9M5', '4'], ['6M3', '0'], ['2M7', '2'], ['1+7M3', '2'], [b1000 + 'M7', '6'], ['0M3', 'ERR:bmodwhole'], ['7M0', 'ERR:bmodwhole'], ['(1/2)M3', 'ERR:bmodwhole'], ['(' + b1000 + '+1)M7', 'ERR:bmodbig'],
+    // percent (bin)
+    [b50 + 'E8', '4'], [b25 + 'E' + b100, '25'], ['5E4', '1/5'], [b10 + 'E' + b10, '1'],
+    // max / min (bin)
+    ['3X8', '8'], ['8X3', '8'], ['5X5', '5'], ['(2*4)X7', '8'], ['(1-4)X(0-9)', '−3'], ['3I8', '3'], ['9I(2+4)', '6'], ['(1-4)I2', '−3'], [bHalf + 'I' + bThird, '1/3'],
+    // average (bin, with + −)
+    ['3Y9', '6'], ['4Y5', '4 1/2'], ['(2*5)Y2', '6'], ['1+3Y5', '4 1/2'], ['1+(3Y5)', '5'],
+    // gcf / lcm (bin, with ^)
+    ['8G6', '2'], ['9G6', '3'], [b12 + 'G8', '4'], ['5G0', '5'], ['0G0', 'ERR:gcfzero'], ['(1/2)G4', 'ERR:gcfwhole'], ['4L6', '12'], ['2L3', '6'], ['5L(2*5)', '10'], ['0L3', 'ERR:lcmwhole'],
+    // double / half / negative / reciprocal (pre)
+    ['D7', '14'], ['D(2+3)', '10'], ['D4-1', '7'], ['D(1/3)', '2/3'], ['B8', '4'], ['B7', '3 1/2'], ['B(3+3)', '3'], ['U3', '−3'], ['9+U4', '5'], ['5-U2', '7'], ['U0', '0'],
+    ['O4', '1/4'], ['O(1/3)', '3'], ['8*O2', '4'], ['O0', 'ERR:divzero'], ['O(2-2)', 'ERR:divzero'],
+    // square root (pre): whole numbers with a whole root, like the √ cube
+    ['R9', '3'], ['R(9+7)', '4'], ['R4+5', '7'], ['R8', 'ERR:rootnotwhole'], ['R(2-6)', 'ERR:rootwhole'], ['R(1/4)', 'ERR:rootwhole'],
+    // sum of digits (pre)
+    ['S(9*9)', '9'], ['S(6*7)', '6'], ['S' + b100, '1'], ['S' + b1000, '1'], ['S0', '0'], ['S(2-5)', 'ERR:bsumwhole'], ['S(1/2)', 'ERR:bsumwhole'],
+    // how many factors (pre)
+    ['N6', '4'], ['N(3*4)', '6'], ['N7', '2'], ['N1', '1'], ['N' + b1000, '16'], ['N0', 'ERR:bnfacwhole'], ['N(' + b1000 + '+1)', 'ERR:bnfacbig'],
+    // big-number die: a number all by itself
+    [b12 + '/4', '3'], [bHalf + '+3', '3 1/2'], [b100 + '-1', '99'], [b1h + '*2', '3'], [bTenth + '*' + b10, '1'], ['1' + b12, 'ERR:bignext'], [b12 + '3', 'ERR:bignext'],
+    // grammar: where a Power op may go
+    ['F3', 'ERR:bpost'], ['3+F', 'ERR:bpost'], ['3A4', 'ERR:missingop'], ['3R', 'ERR:missingop'], ['(R9)F', '6'], ['R9F', 'ERR:rootnotwhole'], ['R(4F)', 'ERR:rootnotwhole'], ['U3Q', '−9'], ['(U3)Q', '9']
+  ];
+  hand.forEach(([e, want]) => ok(`bonus evaluate ${e.split('').map(s => Eq.SHOW[s] || s).join('')} = ${want}`, val(e, FR) === want, val(e, FR)));
+  // fractions switched off: halves, reciprocals and fraction faces are refused kindly; whole answers still work
+  ok('bonus, fractions off: half of 7 is refused, half of 8 is fine', val('B7', {}) === 'ERR:frac2' && val('B8', {}) === '4');
+  ok('bonus, fractions off: 1/x of 4 is refused, 1/x of 1 is fine', val('O4', {}) === 'ERR:frac2' && val('O1', {}) === '1');
+  ok('bonus, fractions off: a fraction face is refused, a whole face is fine', val(bHalf + '+1', {}) === 'ERR:bigfrac' && val(b12 + '+1', {}) === '13');
+  ok('bonus, fractions off: avg and % that make fractions are refused', val('4Y5', {}) === 'ERR:frac2' && val('5E4', {}) === 'ERR:frac2' && val('3Y5', {}) === '4');
+  // every bonus error has a kind, specific message
+  ['bignext', 'bigfrac', 'bpost', 'bmodwhole', 'bmodbig', 'bsumwhole', 'bnfacwhole', 'bnfacbig'].forEach(c => ok('bonus message ' + c, typeof Eq.MSG[c] === 'string' && Eq.MSG[c].length > 20 && !/wrong|bad|stupid/i.test(Eq.MSG[c])));
+  ok('bonus: mod / # messages do not mention the variation cards', !/sideways/.test(Eq.evaluate(t('0M3'), FR).msg) && !/in front of a number/.test(Eq.evaluate(t('N0'), FR).msg));
+  // --- the Goal ---
+  ok('bonus Goal: the big-number die alone is a Goal', Eq.checkGoal([b12], true).ok && Eq.fmt(Eq.checkGoal([b12], true).value) === '12');
+  ok('bonus Goal: a digit can\'t join the big-number die', !Eq.checkGoal(['1', b12], true).ok && /all by itself/.test(Eq.checkGoal(['1', b12], true).reasons[0]));
+  ok('bonus Goal: √16 with the Power die (two digits join in a Goal)', Eq.fmt(Eq.checkGoal(['R', '1', '6'], true).value) === '4');
+  ok('bonus Goal: 12² is a Goal (two digits, then x²)', Eq.fmt(Eq.checkGoal(['1', '2', 'Q'], true).value) === '144');
+  ok('bonus Goal: a Power op counts as one of the six cubes', Eq.cubeCount(['1', '+', '2', '+', '3', 'F']) === 6 && !Eq.checkGoal(['1', '+', '2', '+', '3', '+', 'F'], true).ok);
+  // --- the Solution: cube counting, Required, Forbidden, Now! ---
+  const cubesA = [{ id: 0, s: '4' }, { id: 1, s: '+' }, { id: 2, s: '2' }, { id: 24, s: 'F' }, { id: 25, s: b12 }];
+  const zoneA = { 0: 'permitted', 1: 'permitted', 2: 'permitted', 24: 'required', 25: 'resources' };
+  const ctxA = (goal, mode, extra) => Object.assign({ goal: F(goal), zone: id => zoneA[id], required: [24], mode: mode || 'impossible', fractions: true }, extra || {});
+  const tk = list => list.map(x => typeof x === 'string' ? x : x);
+  ok('bonus Solution: 4! = 24 is two cubes and uses the Required gold cube', Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }], ctxA(24)).ok);
+  ok('bonus Solution: leaving out the Required gold cube is wrong, with the reason', (() => { const c = Eq.checkSolution([{ s: '4', id: 0 }, { s: '+', id: 1 }, { s: '2', id: 2 }], ctxA(6)); return !c.ok && c.reasons.some(r => /Required/.test(r)); })());
+  ok('bonus Solution: the big-number die counts as the ONE Resource cube after Now!', Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }, { s: '+', id: 1 }, { s: b12, id: 25 }], ctxA(36, 'now')).ok);
+  ok('bonus Solution: a wrong value gives the value and the Goal', (() => { const c = Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }], ctxA(25)); return !c.ok && /equals 24, but the Goal is 25/.test(c.reasons.join(' ')); })());
+  ok('bonus Solution: the gold cube can\'t be used twice', !Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }, { s: 'F', id: 24 }], ctxA(24)).ok);
+  ok('bonus Solution: with Use It Again the gold operation may repeat, the big number may not', (() => {
+    const m = Eq.mathMode(true, ['multiops']);
+    const a = Eq.checkSolution([{ s: '(', id: null }, { s: '2', id: 2 }, { s: 'F', id: 24 }, { s: ')', id: null }, { s: 'F', id: 24 }].map(x => x.id === null ? x.s : x), Object.assign(ctxA(2), { fractions: m }));
+    const b = Eq.checkSolution([{ s: b12, id: 25 }, { s: '+', id: 1 }, { s: b12, id: 25 }, { s: 'F', id: 24 }], Object.assign(ctxA(25, 'impossible'), { fractions: m }));
+    return a.ok && !b.ok && b.reasons.some(r => /twice/.test(r));
+  })());
+  ok('bonus Solution: a Power op counts as an operation sign (Three Operations card)', Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }], ctxA(24)).ops === 1);
+  // --- solver: hand cases ---
+  const S1 = (goal, req, opt, res, mode, fr, md) => Eq.solve({ goal: F(goal[0], goal[1] || 1), req: t(req), opt: t(opt), res: t(res || ''), mode: mode || 'free', fractions: fr === undefined ? true : fr, maxDigits: md || 5, timeMs: 3000 });
+  ok('bonus solver: 4! = 24', S1([24], 'F', '4').found);
+  ok('bonus solver: (√9)! = 6 with the parentheses printed', S1([6], 'R', '9F').found && S1([6], 'R', '9F').expr === '(R9)F');
+  ok('bonus solver: 12 ÷ 4 = 3 with the big-number die in Required', S1([3], b12, '4/+').found);
+  ok('bonus solver: 1000 can\'t become 22 from 2, 1, + and ×', !S1([22], b1000, '21+*').found && S1([22], b1000, '21+*').complete);
+  ok('bonus solver: 7 mod 3 = 1', S1([1], 'M', '73').found);
+  ok('bonus solver: the gold cube alone is not a Solution (one cube)', !S1([3], 'R', '').found);
+  ok('bonus solver: the big-number die alone is not a Solution (one cube)', !S1([12], b12, '').found);
+  ok('bonus solver: Now! with the gold cube as the one Resource cube', S1([24], '', '4', 'F7', 'now').found && !S1([25], '', '4', 'F1+', 'now').found);
+  ok('bonus solver: fractions off, ½ is never used', !S1([1], '', bHalf + '*2', '', 'free', false).found && S1([1], '', bHalf + '*2', '', 'free', true).found);
+  ok('bonus solver: max picks the bigger', S1([9], 'X', '29').found && !S1([2], 'X', '29').found);
+  // --- round trips: every solver answer maps to real cubes and re-checks clean ---
+  const ROUND = [
+    [24, 'F', '4+1'], [6, 'R', '9F2'], [25, 'Q', '5+1'], [8, 'C', '2+3'], [3, 'A', '25-'], [1, 'M', '73'], [4, 'E', b50 + '8'], [8, 'X', '38'], [3, 'I', '38'], [6, 'Y', '39'],
+    [2, 'G', '86'], [12, 'L', '46'], [14, 'D', '7+'], [4, 'B', '8+'], [5, 'U', '49+'], [4, 'O', '82*'], [4, 'R', '97+'], [9, 'S', '99*'], [6, 'N', '34*'], [3, b12, '4/'], [99, b100, '1-'], [36, b12 + 'F', '4+']
+  ];
+  ROUND.forEach(([g, req, opt]) => {
+    const r = S1([g], req, opt);
+    let good = false, why = '';
+    if (r.found) {
+      const cubes = []; let id = 0;
+      t(req).forEach(s => cubes.push({ id: id++, s, zone: 'required' })); t(opt).forEach(s => cubes.push({ id: id++, s, zone: 'permitted' }));
+      const toks = Eq.cubeTokens(r.tokens, cubes, true);
+      const c = Eq.checkSolution(toks, { goal: F(g), zone: i => (cubes[i] || {}).zone || 'forbidden', required: cubes.filter(c => c.zone === 'required').map(c => c.id), mode: 'free', fractions: true });
+      good = c.ok; why = r.expr + ' ' + c.reasons.join(' ');
+    }
+    ok(`bonus round trip: Goal ${g} from ${t(req + opt).map(s => Eq.SHOW[s] || s).join(' ')}`, good, why);
+  });
+  // --- brute force: the solver agrees with an independent enumerator on small cube sets ---
+  // brute: every expression tree from the cubes (each used at most once; a gold op used at most once, anywhere it fits).
+  function bruteBonus(req, opt) {
+    const cubes = t(req).map(s => ({ s, req: true })).concat(t(opt).map(s => ({ s, req: false }))), n = cubes.length;
+    const isLeaf = s => Eq.isDigit(s) || Eq.bigIdx(s) >= 0;
+    const vals = new Map(); // mask -> Map(key -> value)
+    const key = v => v.n + '/' + v.d;
+    const leafOf = c => Eq.isDigit(c.s) ? { n: +c.s, d: 1 } : Eq.bigOf(c.s);
+    const masks = []; for (let m = 1; m < (1 << n); m++) masks.push(m);
+    masks.sort((a, b) => popc(a) - popc(b));
+    function popc(m) { let k = 0; while (m) { k += m & 1; m >>= 1; } return k; }
+    function add(m, v) { if (!vals.has(m)) vals.set(m, new Map()); vals.get(m).set(key(v), v); }
+    masks.forEach(m => {
+      const idx = []; for (let i = 0; i < n; i++) if (m & (1 << i)) idx.push(i);
+      if (idx.length === 1 && isLeaf(cubes[idx[0]].s)) add(m, leafOf(cubes[idx[0]]));
+      // a one-number gold op on top of the rest
+      idx.forEach(u => {
+        const d = Eq.OPDEF[cubes[u].s]; if (!d || d.kind === 'bin') return;
+        const rest = m & ~(1 << u); if (!vals.has(rest)) return;
+        vals.get(rest).forEach(v => { const r = Eq.unCore(cubes[u].s, v, true); if (typeof r !== 'string') add(m, r); });
+      });
+      // a binary op joining two parts
+      idx.forEach(o => {
+        const d = Eq.OPDEF[cubes[o].s]; if (!d || d.kind !== 'bin') return;
+        const rest = m & ~(1 << o);
+        for (let a = (rest - 1) & rest; a > 0; a = (a - 1) & rest) {
+          const b = rest & ~a; if (!b || !vals.has(a) || !vals.has(b)) continue;
+          vals.get(a).forEach(va => vals.get(b).forEach(vb => { const r = Eq.opCore(cubes[o].s, va, vb, true); if (typeof r !== 'string') add(m, r); }));
+        }
+      });
+    });
+    const reqMask = cubes.reduce((acc, c, i) => c.req ? acc | (1 << i) : acc, 0), out = new Map();
+    vals.forEach((mv, m) => { if ((m & reqMask) === reqMask && popc(m) >= 2) mv.forEach((v, k) => out.set(k, v)); });
+    return out;
+  }
+  const BRUTE = [['F', '3+2'], ['Q', '2-3'], ['C', '1+2'], ['A', '1-4'], ['M', '73+'], ['E', b50 + '4'], ['X', '38-'], ['I', '1-2'], ['Y', '35+'], ['G', '86'], ['L', '46-'],
+    ['D', '3+1'], ['B', '7-'], ['U', '4+2'], ['O', '23+'], ['R', '9+7'], ['S', '9*8'], ['N', '6+4'], [b12, '2/F'], [bHalf, '3+'], [b1000, 'M7'], ['', 'Q3+' + bThird]];
+  BRUTE.forEach(([req, opt]) => {
+    const reach = bruteBonus(req, opt);
+    const goals = new Set([...reach.keys()]);
+    for (let g = -6; g <= 30; g++) goals.add(g + '/1');
+    let agree = true, bad = '';
+    goals.forEach(k => {
+      const [nn, dd] = k.split('/').map(Number);
+      const r = Eq.solve({ goal: F(nn, dd), req: t(req), opt: t(opt), mode: 'free', fractions: true, maxDigits: 6, timeMs: 3000 });
+      if (!r.complete && !r.found) { agree = false; bad = 'timeout ' + k; }
+      if (r.found !== reach.has(k)) { agree = false; bad = k + ' solver ' + r.found + ' brute ' + reach.has(k); }
+    });
+    ok(`bonus brute force agrees: Required ${t(req).map(s => Eq.SHOW[s] || s).join(' ') || '-'}, Permitted ${t(opt).map(s => Eq.SHOW[s] || s).join(' ')} (${goals.size} Goals)`, agree, bad);
+  });
+  // --- creatures' Goal ideas use the bonus cubes ---
+  const ideas = Eq.goalIdeas(['4', 'F', '2', '+', b12], { fractions: true }).map(g => g.tokens.join(''));
+  ok('bonus goalIdeas: n! Goals (4!, 4! + 2)', ideas.includes('4F') && ideas.includes('4F+2'));
+  ok('bonus goalIdeas: the big-number die alone and with +', ideas.includes(b12) && ideas.includes(b12 + '+4'));
+  ok('bonus goalIdeas: never glues a digit to the big-number die', !ideas.some(s => /[0-9]/.test(s) && s.length === 2 && s.includes(b12)));
+  ok('bonus goalIdeas: binary gold ops', Eq.goalIdeas(['7', 'M', '3'], { fractions: true }).some(g => g.tokens.join('') === '7M3' && Eq.fmt(g.value) === '1'));
+  ok('bonus goalIdeas: with a Middle card nothing crashes and turned cubes are digits only', (() => { try { return Eq.goalIdeas(['4', b12, '+', '2'], { fractions: Eq.mathMode(true, ['upside']) }).every(g => g.tokens.every(s => s !== undefined)); } catch (e) { return false; } })());
+  // --- with the Twist die's cards ---
+  const base8 = Eq.mathMode(true, ['basem'], null, { base: 8 });
+  ok('bonus + Base 8: the big-number die keeps its ordinary value (12 is twelve)', val(b12 + '+1', { fractions: base8 }) === '13' && val('17', { fractions: base8 }) === '15');
+  ok('bonus + Base 8: solver uses the big die at its value', Eq.solve({ goal: F(13), req: [b12], opt: ['1', '+'], mode: 'free', fractions: base8, maxDigits: 4, timeMs: 1000 }).found);
+  const avgM = Eq.mathMode(true, ['average']);
+  ok('bonus + Average card: the gold avg and the card average agree', val('3Y9', { fractions: avgM }) === '6' && val('3a9', { fractions: avgM }) === '6');
+  const nfM = Eq.mathMode(true, ['nfactors']);
+  ok('bonus + Number of Factors card: a × after 3! multiplies', Eq.resolve(t('3F*2'), nfM).join('') === '3F*2' && val('3F*2', { fractions: nfM }) === '12');
+  const udM = Eq.mathMode(true, ['upside']);
+  ok('bonus + Upside-down: digits turn, the big-number die never does', val(Eq.UD[3] + '+' + b12, { fractions: udM }) === '9');
+  const wM = Eq.mathMode(true, ['wild0'], ['0']);
+  ok('bonus + 0 Wild: the big-number die is not a 0', val(b10 + '+0', { fractions: wM, wild: 5 }) === '15');
+  const factM = Eq.mathMode(true, ['factorial'], []);
+  ok('bonus + Factorial card: a written ! and the gold n! together', val('3!F', { fractions: factM }) === '720' && Eq.solve({ goal: F(720), req: ['F'], opt: ['3'], mode: 'free', fractions: factM, maxDigits: 3, timeMs: 1000 }).found);
+  const multiM = Eq.mathMode(true, ['multiops']);
+  ok('bonus + Use It Again: cubeTokens never re-uses the big-number die', (() => { const toks = Eq.cubeTokens(t(b12 + '+' + b12), [{ id: 0, s: b12, zone: 'required' }, { id: 1, s: '+', zone: 'permitted' }], multiM); return toks[0].id === 0 && toks[2].id === -1; })());
+  const mk = Eq.mathMode(true, ['multk'], null, { k: 6 });
+  ok('bonus + Multiple of 6: 4! = 24 misses the Goal 18 by 6', Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }], Object.assign(ctxA(18), { fractions: mk })).ok);
+}
+// ================= END BONUS DICE =================
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
