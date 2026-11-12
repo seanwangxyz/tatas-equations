@@ -435,7 +435,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       v.applyMatrix4(camera.projectionMatrix); return Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.97;
     }
     function search(pts, lo, hi) { for (var d = lo; d < hi; d += 0.25) { at(d); if (pts.every(inView)) return d; } return hi; }
-    var dT = search(table, 8, 120), d = extra.length ? search(table.concat(extra), dT, dT * 1.35) : dT;
+    var dT = search(table, 8, 120), d = dT;
+    if (extra.length) {
+      // Tall things behind the table (a creature's head): rather than only backing away, also try aiming a little
+      // toward the far side, which uses the empty band below the near edge. Keep the aim that needs the least distance.
+      var all = table.concat(extra), z0 = look.z, bestZ = z0; d = search(all, dT, dT * 1.35);
+      for (var k = 1; k <= 10; k++) { look.z = z0 - k * 0.5; var dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; } }
+      look.z = bestZ;
+    }
     at(d);
     base.pos.copy(camera.position); base.look.copy(look); applyCam();
   }

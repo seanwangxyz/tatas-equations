@@ -5,15 +5,17 @@
 - Creature attitude: gloating, sore losing, trash talk, bluffing (Settings switches).
 - Training Camp: five solver-made drills with levels; drills earn skill stars; daily puzzle lives inside it and only earns a star once a day.
 
+- Round 3 (Opus agents): bigger opponents, card portraits, kid's 3D player, night/beach/volcano arenas, shadows + glow + close-ups + auto quality, Cup tournaments, How Many Ways?, background thinking, math tastes.
+
 ## Next
+- **Round 4**: Team-up vs the boss; Variation cards (re-read the rulebook variations first).
+- **Check on a real iPad**: frame rate with shadows/glow, auto quality step-down, portraits speed, the kid player's size.
 - **Online play** (Houston ↔ Atlanta): room codes, synced dice, private Solution writing,
   reconnect after a dropped connection. Voice via FaceTime alongside at first.
 - **Monster League** (opponents 6-10: Grub, Splosh, Blaze, Hex, Zog) is built from the two free Quaternius models. Not on the live site until Tata says to publish the model files. Still to do: make them bigger at the table; watch every reaction in real time; retune their skill numbers (only one short playtest so far).
 
-- **Creature thinking speed with all operations unlocked**: in the playtest a whole shake used 4-6 seconds of thinking in total on a laptop (a turn can take close to a second; an iPad is slower, and the screen freezes while it thinks). Move the solver into a background worker.
 - **Playtest with the real kid**: the simulated "beginner" is only a rough stand-in. Retune Snoozy/Penny after watching him play (tests/playtest.js prints the numbers).
 
-- **Math tastes per creature** (idea from Tata, not started): Snoozy small numbers and +; Penny loves −; Rusty × and ÷; Ollie prime-number Goals; Mondo powers and roots. Tastes show in the Goals they set, what they put in Required, the Solutions they write and their lines; they follow the unlock ladder.
 
 ## To mull over
 - **Logs and trig (sin/cos)** as a far-future stage of the ladder.
