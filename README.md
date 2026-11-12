@@ -53,6 +53,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 | `js/main.js` | Tap/drag input, 3D table hooks, startup |
 | `js/three/table.js` | 3D table, dice, cup pour (physics), 3D taps and drags |
 | `js/three/creatures.js` | 3D creature opponents and their animations |
+| `assets/creatures/monsters/` | 3D models for the Monster League (opponents 6-10), see CREDITS.md there |
 | `legacy/` | The last single-file version, kept as a backup |
 
 The plain scripts in `js/` share global names (`S` = saved progress, `G` = current game,

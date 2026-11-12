@@ -23,7 +23,7 @@ function loseMood(o) {
 }
 function talkLine(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
 function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'dance' && Snd.danceMusic) Snd.danceMusic(3200); }
-function setCreature(k) { if (T3.setCreature) T3.setCreature(k); }
+function setCreature(k, pack) { if (T3.setCreature) T3.setCreature(k, pack || 'classic'); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
 function aiPlace(id, zone, who) {
   if (T3.active() && T3.creatureMove) { G.busy = true; G.carrying = true; renderGame(); T3.creatureMove(id, zone, function () { if (!G) return; G.busy = false; G.carrying = false; placeCube(id, zone, who); }); }
@@ -42,7 +42,7 @@ function startMatch(mode, oppIdx, cfg) {
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   go('game'); Snd.setMood('play');
   var ai = firstAI();
-  setCreature(ai ? ai.kind : null);
+  setCreature(ai ? ai.kind : null, ai && ai.pack);
   var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(S.cos.mat === 'stadium' ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
@@ -544,7 +544,7 @@ function endMatch() {
     if (!won && !tie) { creatureMood('dance'); cue('lose'); }
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
-    var nextO = OPPONENTS[idx + 1];
+    var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
       '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
       '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +

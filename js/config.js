@@ -72,9 +72,18 @@ var OPPONENTS = [
   { id: 'owl', name: 'Ollie', title: 'the Wise Owl', emoji: '🦉', color: '#e5dbff', stars: 4, tip: 'Ollie almost never misses. Plan two moves ahead.', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.75, smart: 0.9, goalCubes: 3, goalMax: 60,
     think: ['Hoo-hoo… let me think…', 'Wise moves only…', 'Hmm, hoo…'], now: 'Hoo! NOW!', imp: 'Hoo-hoo… IMPOSSIBLE!', goal: 'A wise Goal…', lose: 'Hoo! You are wise indeed!', win: 'Wisdom wins today!' },
   { id: 'wizard', name: 'Mondo', title: 'the Math Wizard', emoji: '🧙', color: '#fff3bf', stars: 5, tip: 'Mondo sees everything. Check every move twice.', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99,
-    think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' }
+    think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' },
+  // ---- Monster League (opponents 6-10). Each uses the 3D model in the same slot of the monsters pack. ----
+  { id: 'grub', name: 'Grub', title: 'the Grumpy Puglin', emoji: '🐽', color: '#ffdeeb', stars: 1, style: 'careless', maxDigits: 2, timeMs: 150, seeNow: 0.4, seeImp: 0.2, smart: 0.3, goalCubes: 1, goalMax: 12, tip: 'Grub rushes his moves. Watch for the Now! chances he leaves you.', think: ['Hmph. Thinking.', 'Grumble, grumble…', 'Snort. Let me look.'], now: 'Snort! NOW!', imp: 'Hmph! IMPOSSIBLE!', goal: 'Here. A Goal. Hmph.', lose: 'Hmph! Fine. You played well.', win: 'Ha! Even grumpy, I win!' },
+  { id: 'splosh', name: 'Splosh', title: 'the Careful Puglin', emoji: '🐷', color: '#d0ebff', stars: 2, style: 'now-blind', maxDigits: 3, timeMs: 250, seeNow: 0.3, seeImp: 0.85, smart: 0.95, goalCubes: 2, goalMax: 25, tip: 'Splosh loves to shout Impossible! but often misses a Now!', think: ['Carefully, carefully…', 'Let me check twice…', 'Hmm, is that safe?'], now: 'Oh! Oh! NOW!', imp: 'I checked twice: IMPOSSIBLE!', goal: 'A careful little Goal!', lose: 'Oh my! You were too good!', win: 'Careful wins the cup!' },
+  { id: 'blaze', name: 'Blaze', title: 'the Fiery Imp', emoji: '👹', color: '#ffc9c9', stars: 3, style: 'pouncer', maxDigits: 4, timeMs: 350, seeNow: 0.9, seeImp: 0.25, smart: 0.55, goalCubes: 3, goalMax: 40, tip: 'Blaze pounces on every Now! but plays his own cubes too fast.', think: ['Quick, quick, quick!', 'Fire it up…', 'Fast feet, fast brain!'], now: 'Sizzle! NOW!', imp: 'Smoke and ash… IMPOSSIBLE!', goal: 'A red-hot Goal!', lose: 'Whoa! You put my fire out!', win: 'Too hot to handle!' },
+  { id: 'hex', name: 'Hex', title: 'the Tricky Imp', emoji: '👺', color: '#d3f9d8', stars: 4, style: 'trickster', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.8, smart: 0.95, goalCubes: 3, goalMax: 60, tip: 'Hex sets sneaky Goals and rarely slips. Look for the long Solutions.', think: ['Hee hee… a trick…', 'Let me twist this…', 'Sneaky, sneaky…'], now: 'Hee hee! NOW!', imp: 'Tricked you… IMPOSSIBLE!', goal: 'A twisty Goal for you!', lose: 'Out-tricked! How did you do that?', win: 'Tricks win the match!' },
+  { id: 'zog', name: 'Zog', title: 'the Imp King', emoji: '😈', color: '#e5dbff', stars: 5, style: 'boss', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99, tip: 'King Zog misses nothing. Beat him and you rule the Monster League.', think: ['The King considers…', 'Royal thinking…', 'Silence! I am counting.'], now: 'By my crown… NOW!', imp: 'The King declares: IMPOSSIBLE!', goal: 'A Goal fit for a king!', lose: 'I bow to you. Take the crown!', win: 'Long live the King!' }
 ];
-var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99'];
+var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99', '2', '5', '11', '13', '66'];
+var LEAGUE = 5; // creatures per league: 0-4 classic, 5-9 monsters
+// An opponent is open if it starts a league or the one before it has been beaten.
+function oppOpen(i) { return i % LEAGUE === 0 || !!S.beaten[i - 1]; }
 // Creature attitude. All of it is playful teasing between friends: never about being bad at math.
 // Match flow: gloat / sore = after a shake; trash = while playing (Settings switch); bluff = claims that may or may
 // not be true (Settings switch, off by default).
@@ -168,9 +177,74 @@ var TALK = {
       cheeky: ['Ha! A spirited apprentice!', 'Ooh, sassy! I adore it!', 'By my beard! Confidence! Bravo!', 'You have the flair of a wizard!'],
       think: ['Ah! The apprentice ponders. Wise.', 'Take your time. Great magic needs thought.', 'Hmm! A deep ponder. I approve.']
     }
+  },
+  grub: {
+    gloat: ['Hmph. I win. Told you.', 'Snort! Grumpy AND ahead!', 'That almost made me smile. Almost.', 'Number 2 scores! Hmph.'],
+    sore: ['Hmph! I wasn\'t ready.', 'Grumble… good one, I suppose.', 'Snort. Lucky cubes.', 'Fine. FINE. Nice play.'],
+    trash: ['Hmph. Hurry up, I\'m hungry.', 'I play fast. Thinking is boring.', 'Snort! Is that your move?', 'Grumble grumble. My turn yet?'],
+    bluff: ['Hmph. I see a Now! coming.', 'This Goal looks impossible. Probably.', 'I have a plan. A grumpy plan.', 'Snort. One more cube and I\'ve got it.'],
+    greet: ['Hmph. You again. Let\'s play.', 'Snort. Kick-off already?', 'I\'m grumpy AND ready.', 'Fine. One game. Maybe two.'],
+    kidGoodMove: ['Hmph. That was good.', 'Snort! Clever. I don\'t like it.', 'Okay, that was smart.', 'Grumble… nice move.'],
+    kidChallenge: ['Uh oh. Snort.', 'Hmph?! Wait, wait!', 'Gulp. I rushed that one.', 'Oh no. Did I leave that?'],
+    kidWrong: ['Hmph. Happens to me all the time.', 'Don\'t worry. Try again.', 'Close! Have another go.', 'That\'s okay. Even grumps miss.'],
+    close: ['Hmph! This is close.', 'Snort. Too close for me.', 'Neck and neck. I\'m nervous AND grumpy.', 'Tight game! Grumble.'],
+    lastCube: ['Last cube. Hmph. Here we go.', 'Final cube! Snort!', 'One cube left. Don\'t blink.', 'The last one. I\'m almost excited.'],
+    reply: { friendly: ['Hmph. Thanks. You\'re okay.', 'Snort. That was nice of you.', 'Fine. High five. Quick one.'], cheeky: ['Hmph! Cheeky!', 'Snort! Oh, it\'s ON.', 'Ha. I almost laughed.'], think: ['Hmph. Take your time. I won\'t.', 'Thinking? Good idea. I should try it.', 'Snort. Thinking face.'] }
+  },
+  splosh: {
+    gloat: ['Oh! I won! I checked twice!', 'Careful wins! Hooray!', 'I didn\'t make a single splash. Well, one.', 'Number 5 is alive!'],
+    sore: ['Oh dear! I was so careful!', 'Oh my. You were quicker than me.', 'I should have looked for a Now!', 'Well played! I\'ll check three times next time.'],
+    trash: ['Careful now… are you sure about that?', 'I check everything twice. Do you?', 'Slow and safe, that\'s my game.', 'Oh, I wouldn\'t put that there!'],
+    bluff: ['Oh! I think this Goal can\'t be made…', 'Careful, I\'m about to shout something!', 'I checked. It\'s impossible. I think.', 'I see a Solution! Or a puddle.'],
+    greet: ['Oh, hello! Let\'s play carefully!', 'Hi! I brought my lucky scarf.', 'Good luck! Mind the puddles.', 'Ready? I\'ve checked the cubes twice.'],
+    kidGoodMove: ['Oh! That was lovely!', 'Ooh, clever! I didn\'t check for that.', 'Wonderful move!', 'Oh my, you\'re good!'],
+    kidChallenge: ['Oh no, oh no, oh no!', 'Eek! Did I miss one?', 'Oh dear. Let me check…', 'Gulp! I only checked twice!'],
+    kidWrong: ['Oh, so close! Try again!', 'Don\'t worry, I miss those all the time.', 'Good try! You\'ll get the next one.', 'That\'s okay! Take a breath.'],
+    close: ['Oh my, it\'s so close!', 'I can\'t look! It\'s too tight!', 'Neck and neck! How exciting!', 'Careful, careful… it\'s nearly tied!'],
+    lastCube: ['The last cube! Oh my!', 'Final cube! I\'m checking it twice!', 'One left! Carefully now…', 'Last cube! Hold on to your scarf!'],
+    reply: { friendly: ['Oh, thank you! You\'re so kind!', 'Aww! High hoof!', 'You\'re a lovely opponent!'], cheeky: ['Oh! Cheeky! Hee hee!', 'Ooh, you rascal!', 'Splish splash, I\'ll get you back!'], think: ['Take your time! I always do.', 'Good thinking! Check it twice.', 'Thinking is my favourite part too!'] }
+  },
+  blaze: {
+    gloat: ['Sizzle! Too fast for you!', 'Goal! Red-hot number 11!', 'Blink and I score!', 'That one was on FIRE!'],
+    sore: ['Whoa! Who turned on the sprinklers?', 'Okay, okay. You cooled me down.', 'Too fast! I tripped on my own tail.', 'Hot play. Yours, not mine.'],
+    trash: ['Quick, quick! I\'m heating up!', 'Don\'t leave me a Now! I WILL take it.', 'Fast feet, fast cubes!', 'Is it hot in here, or is it me?'],
+    bluff: ['I can smell a Now! from here…', 'One more cube and POW!', 'This Goal is toast. Maybe.', 'I\'m about to pounce. Or not!'],
+    greet: ['Let\'s go, let\'s go, let\'s GO!', 'Kick-off! Try to keep up!', 'Ready to feel the heat?', 'Blaze is in the building!'],
+    kidGoodMove: ['Whoa! Smoking move!', 'Hey! That was fast AND smart!', 'Ooh, that one burned.', 'Nice! You\'ve got fire too.'],
+    kidChallenge: ['Yikes! Too fast, too fast!', 'Uh oh. Did I rush that?', 'Gulp. My tail is sweating.', 'Wait! I wasn\'t looking!'],
+    kidWrong: ['No sweat! Go again.', 'So close! Fire up the next one.', 'Happens when you play fast. Trust me.', 'Shake it off! You\'ve got this.'],
+    close: ['This match is HOT!', 'Neck and neck! I love it!', 'So close I can feel the sparks!', 'Tight game! Turn up the heat!'],
+    lastCube: ['Last cube! Here comes the heat!', 'Final cube! Three, two, one…', 'One left! Ready to pounce!', 'The last cube is sizzling!'],
+    reply: { friendly: ['Ha! Thanks, champ!', 'Fist bump! Careful, it\'s warm.', 'You\'re alright, number 7!'], cheeky: ['Ooh! Spicy!', 'Ha! Bring the heat!', 'Big talk! I like it!'], think: ['Thinking? No time! Okay, a little time.', 'Go on, I\'ll wait. Tapping my foot.', 'Slow and smart. Not my style, but okay!'] }
+  },
+  hex: {
+    gloat: ['Hee hee! Tricked you!', 'You walked right into it!', 'Sneaky number 13 strikes!', 'That was my best trick yet.'],
+    sore: ['Hmm! You saw through my trick.', 'Out-sneaked! That never happens.', 'Clever. Too clever. Hee… hmm.', 'I\'ll need a new trick for you.'],
+    trash: ['Hee hee. Do you see what I see?', 'Careful. Nothing here is what it seems.', 'I have three tricks ready. Maybe four.', 'Look closely. Closer. Too late!'],
+    bluff: ['Hee hee… I already have the Solution.', 'This Goal? Impossible. Or is it?', 'I\'m one cube from a Now! Probably.', 'Trust me. Hee hee. Don\'t trust me.'],
+    greet: ['Hee hee. Welcome to my game.', 'Ready for some tricks?', 'Look sharp. I\'m sneaky today.', 'Kick-off! Watch the cubes, not me.'],
+    kidGoodMove: ['Ooh. THAT was sneaky. I approve.', 'Hmm! You\'re learning my tricks.', 'Clever, clever, clever.', 'A fine trick. Did I teach you that?'],
+    kidChallenge: ['Hmm?! You noticed?', 'Uh oh. The trick is on me.', 'Gulp. Hee… heh.', 'Wait. Let me count again.'],
+    kidWrong: ['Tricky one, wasn\'t it? Try again.', 'So close! Look for the long way round.', 'No shame. That one fooled me too.', 'Good try. The next one is yours.'],
+    close: ['Hee hee, this is tight!', 'Too close to trick anyone now.', 'Neck and neck. Delicious.', 'One slip decides it. Not mine, I hope.'],
+    lastCube: ['The last cube. The final trick.', 'One cube left. Hee hee.', 'Final cube! Watch closely.', 'Last one. No more hiding.'],
+    reply: { friendly: ['Hee! How kind. Suspiciously kind.', 'Thank you. No trick this time.', 'A friend! How unexpected.'], cheeky: ['Hee hee! Cheeky like me!', 'Ooh, sassy. I like you.', 'Bold! Let\'s see if it lasts.'], think: ['Yes, think. Thinking beats tricks.', 'Take your time. I\'m plotting anyway.', 'Hmm. A thinker. Dangerous.'] }
+  },
+  zog: {
+    gloat: ['The King scores! Bow!', 'Long live King Zog!', 'A royal goal. Naturally.', 'My crown stays on my head.'],
+    sore: ['What?! Who beats a king?', 'Hmph. A royal slip.', 'Well played. The King admits it.', 'You may keep that point. This once.'],
+    trash: ['The King sees every cube.', 'Choose wisely. I am watching.', 'A throne is not won with easy moves.', 'Number 66 does not blink.'],
+    bluff: ['The King already knows the answer.', 'I declare this Goal impossible. Perhaps.', 'A Now! is very near. I can feel it.', 'My royal nose smells a Solution.'],
+    greet: ['Welcome to my court, challenger.', 'So. You wish to face the King.', 'Kneel! Just joking. Let\'s play.', 'The Monster League final! Begin!'],
+    kidGoodMove: ['Hmm. A move worthy of a prince.', 'Impressive, challenger.', 'The King did not expect that.', 'Royal applause for that one.'],
+    kidChallenge: ['You challenge the KING?', 'Hmm. Bold. Very bold.', 'Gulp. I mean… proceed.', 'The court holds its breath.'],
+    kidWrong: ['Even kings miss. Try again.', 'Close, challenger. Go once more.', 'No shame in that. It was a hard one.', 'Chin up. A champion keeps going.'],
+    close: ['The crown wobbles! So close!', 'A match fit for a king!', 'Neck and neck. The court is silent.', 'One point decides the throne.'],
+    lastCube: ['The last cube! All rise!', 'Final cube. The throne is at stake.', 'One cube left, challenger.', 'The last cube! Trumpets, please!'],
+    reply: { friendly: ['The King thanks you.', 'A noble gesture. I approve.', 'You have royal manners.'], cheeky: ['Ha! Cheek! To a KING!', 'Bold words, challenger!', 'Ooh. The court gasps.'], think: ['Think well. The King can wait.', 'A wise ruler thinks first.', 'Take your time. I shall polish my crown.'] }
   }
 };
-OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i]; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
+OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i % LEAGUE]; o.pack = i < LEAGUE ? 'classic' : 'monsters'; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
 var DEFAULT_OPP_NAMES = OPPONENTS.map(function (o) { return o.name; });
 function applyOppNames() { OPPONENTS.forEach(function (o, i) { var n = (S.oppNames && S.oppNames[i] || '').trim(); o.name = n || DEFAULT_OPP_NAMES[i]; }); }
 var PIP = { id: 'pip', kind: 'pip', name: 'Pip', title: 'the Cube', emoji: '🟨', color: '#ffe066', stars: 0, maxDigits: 5, timeMs: 400, think: ['My turn!'] };
@@ -195,10 +269,10 @@ function defaults() {
     v: 1, name: 'Champ', xp: 0, badges: {},
     stats: { correct: 0, attempts: 0, nowWins: 0, impWins: 0, goalsSet: 0, pvpShakes: 0, daily: 0, fractionSolutions: 0, streak: 0, noHint: 0, lastWrong: false, bestMatch: 0, shakes: 0, challenges: 0, challengeWins: 0 },
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
-    ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: [false, false, false, false, false],
+    ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: OPPONENTS.map(function () { return false; }),
     cos: { skin: 'classic', mat: 'stadium', victory: 'confetti' },
     set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false },
-    lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: ['', '', '', '', '']
+    lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: OPPONENTS.map(function () { return ''; })
   };
 }
 function merge(d, s) {
@@ -214,7 +288,12 @@ function loadSave() { try { var raw = window.localStorage.getItem(SAVE_KEY); ret
 function persist() { try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { storageOK = false; } }
 var S = merge(defaults(), loadSave());
 // Times and divide are available from the start now, so saves still on the first stage move up one.
-function normalizeSave() { if (!S.ladder || S.ladder.stage < 1) S.ladder = { stage: 1, stars: 0 }; }
+function normalizeSave() {
+  if (!S.ladder || S.ladder.stage < 1) S.ladder = { stage: 1, stars: 0 };
+  // older saves only know five opponents
+  if (!Array.isArray(S.beaten)) S.beaten = []; if (!Array.isArray(S.oppNames)) S.oppNames = [];
+  for (var i = 0; i < OPPONENTS.length; i++) { S.beaten[i] = !!S.beaten[i]; S.oppNames[i] = S.oppNames[i] || ''; }
+}
 normalizeSave();
 
 function checksum(str) { var h = 0; for (var i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; } return (h % 65536).toString(16).padStart(4, '0'); }

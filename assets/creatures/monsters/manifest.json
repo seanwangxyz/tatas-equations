@@ -2,34 +2,108 @@
   "version": 1,
   "name": "Monsters",
   "defaults": {
-    "hide": ["Mace", "Stick", "Chains", "Weapon", "Sword", "Axe", "Club", "Staff", "Shield", "Dagger", "Bow"],
+    "hide": [
+      "Mace",
+      "Stick",
+      "Chains",
+      "Weapon",
+      "Sword",
+      "Axe",
+      "Club",
+      "Staff",
+      "Shield",
+      "Dagger",
+      "Bow"
+    ],
     "yawDeg": 0
   },
   "slots": {
     "sloth": {
-      "name": "Puglin (rose)", "file": "puglin.glb", "baseColor": "textures/puglin_2.webp", "style": "sloth",
-      "height": 4.4, "hipsAt": 0.4275, "pose": { "slouch": -0.04, "headDown": -0.3 },
-      "scarf": { "R": 0.14, "r": 0.04, "tails": false, "dy": -0.02 },
-      "team": { "jersey": "#2f9e44", "dark": "#237a35", "trim": "#d8f5a2", "num": "1", "pattern": "sash" }
+      "name": "Puglin (rose)",
+      "file": "puglin.glb",
+      "baseColor": "textures/puglin_2.webp",
+      "style": "sloth",
+      "height": 4.4,
+      "hipsAt": 0.4275,
+      "pose": {
+        "slouch": -0.04,
+        "headDown": -0.3
+      },
+      "scarf": {
+        "R": 0.14,
+        "r": 0.04,
+        "tails": false,
+        "dy": -0.02
+      },
+      "team": {
+        "jersey": "#2f9e44",
+        "dark": "#237a35",
+        "trim": "#d8f5a2",
+        "num": "2",
+        "pattern": "sash"
+      }
     },
     "penguin": {
-      "name": "Puglin (blue)", "file": "puglin.glb", "baseColor": "textures/puglin_3.webp", "style": "penguin",
-      "height": 4.4, "hipsAt": 0.4275, "pose": { "slouch": -0.04, "headDown": -0.3 },
-      "scarf": { "R": 0.14, "r": 0.04, "tails": false, "dy": -0.02 },
-      "team": { "jersey": "#f1f3f5", "dark": "#1c4f9c", "trim": "#ffd43b", "num": "4", "pattern": "stripes" }
+      "name": "Puglin (blue)",
+      "file": "puglin.glb",
+      "baseColor": "textures/puglin_3.webp",
+      "style": "penguin",
+      "height": 4.4,
+      "hipsAt": 0.4275,
+      "pose": {
+        "slouch": -0.04,
+        "headDown": -0.3
+      },
+      "scarf": {
+        "R": 0.14,
+        "r": 0.04,
+        "tails": false,
+        "dy": -0.02
+      },
+      "team": {
+        "jersey": "#f1f3f5",
+        "dark": "#1c4f9c",
+        "trim": "#ffd43b",
+        "num": "5",
+        "pattern": "stripes"
+      }
     },
     "fox": {
-      "name": "Imp (red)", "file": "imp.glb", "style": "fox",
-      "height": 6.9, "hipsAt": 0.482,
-      "team": { "jersey": "#f8f9fa", "dark": "#e03131", "trim": "#e03131", "num": "9", "pattern": "hoops" }
+      "name": "Imp (red)",
+      "file": "imp.glb",
+      "style": "fox",
+      "height": 6.9,
+      "hipsAt": 0.482,
+      "team": {
+        "jersey": "#f8f9fa",
+        "dark": "#e03131",
+        "trim": "#e03131",
+        "num": "11",
+        "pattern": "hoops"
+      }
     },
     "owl": {
-      "name": "Imp (green)", "file": "imp.glb", "baseColor": "textures/imp_2.webp", "style": "owl", "entrance": "pip",
-      "height": 6.9, "hipsAt": 0.482
+      "name": "Imp (green)",
+      "file": "imp.glb",
+      "baseColor": "textures/imp_2.webp",
+      "style": "owl",
+      "entrance": "pip",
+      "height": 6.9,
+      "hipsAt": 0.482,
+      "team": {
+        "num": "13"
+      }
     },
     "wizard": {
-      "name": "Imp (violet)", "file": "imp.glb", "baseColor": "textures/imp_3.webp", "style": "wizard",
-      "height": 6.9, "hipsAt": 0.482
+      "name": "Imp (violet)",
+      "file": "imp.glb",
+      "baseColor": "textures/imp_3.webp",
+      "style": "wizard",
+      "height": 6.9,
+      "hipsAt": 0.482,
+      "team": {
+        "num": "66"
+      }
     }
   }
 }
