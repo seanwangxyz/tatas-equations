@@ -102,7 +102,7 @@ function speakLine(who, text) {
   var ms = Snd.talk ? Snd.talk(text, ai.kind) : (S.set.voice === true && Snd.speak ? (Snd.speak(text, ai.kind), 1500) : 0);
   if (ms && T3.creatureTalk) T3.creatureTalk(ms);
 }
-function crowdSay(kind) { if (Snd.crowdReact) Snd.crowdReact(kind); }
+function crowdSay(kind, opts) { if (typeof crowdReact === 'function') crowdReact(kind, opts); else if (Snd.crowdReact) Snd.crowdReact(kind); }
 function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', text); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
 function speechHTML() {
   var sp = G.speech || { who: 'pip', text: '' }, face;
@@ -248,6 +248,7 @@ function placeCube(id, zone, who) {
   var left = zoneCubes('resources').length;
   if (left === 0) { renderGame(); setTimeout(lastCubePlayed, 600); return; }
   G.turn = nextP(who); // play passes to the left
+  crowdSay(G.clever ? 'ooh' : 'clap'); G.clever = false;
   if (!isAI(who)) say('pip', pick(['Nice move!', 'Good thinking!', 'Thunk! Placed.', 'Ooh, interesting!']), 'happy');
   if (!isAI(who) && firstAI() && Math.random() < 0.25) creatureMood(pick(['nod', 'nod', 'gasp']));
   renderGame();
@@ -297,7 +298,7 @@ function setGoal(tokens, val) {
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
   if (window.Vari) Vari.afterGoal(tokens); // VARIATIONS: 0 Wild needs the Goal's cubes in the math mode
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
-  Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal');
+  Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
@@ -358,7 +359,7 @@ function challenge(kind, who) {
   if (isAI(who)) { focusAI(who); creatureMood('challenge'); }
   else if (who === 0) playerMood('now', { kind: kind });
   else if (isAI(mover)) { focusAI(mover); creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
-  Snd.slam(); Snd.setMood('challenge'); if (!((isAI(who) || isAI(mover)) && shot('challenge'))) cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
+  Snd.slam(); Snd.setMood('challenge'); if (!((isAI(who) || isAI(mover)) && shot('challenge'))) cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('gasp');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(cname) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(mname) + ' must try to write a Solution.', 'cheer');
   renderGame();
@@ -583,7 +584,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerMood('cheer'); fx3('confetti'); fx3('wave'); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerMood('cheer'); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
@@ -654,6 +655,7 @@ function aiTurn() {
     var mv = t.move;
     G.busy = false;
     var c = G.cubes[mv.id], yum = mv.liked ? tasteLine(o, 'tasteMove', 0.4) : '';
+    G.clever = !!mv.liked;
     say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.' + (yum ? ' ' + yum : (S.set.bluff === true && o.talk && Math.random() < 0.35 ? ' ' + talkLine(o, 'bluff') : '')));
     aiPlace(mv.id, mv.zone, me);
   }).catch(aiOops);
