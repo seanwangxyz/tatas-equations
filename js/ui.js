@@ -219,7 +219,7 @@ function gotoTitle() {
     item('blue', 'settings', 'gear', 'Settings') +
     item('orange', 'tutorial', 'cap', 'How to Play') +
     '</nav>' +
-    '<div class="menu-sub"><button class="btn ghost" data-act="stats">' + ico('chart') + ' My Stats</button></div>' +
+    '<div class="menu-sub"><button class="btn ghost" data-act="stats">' + ico('chart') + ' My Stats</button>' + (window.Season ? '<button class="btn ghost" data-act="season">' + ico('trophy') + ' Season Table</button>' : '') + '</div>' +
     (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>') +
     '</div>';
   go('title');

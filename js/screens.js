@@ -154,6 +154,8 @@ function renderTrophies() {
   function lockNote(s) { return '<br><small>' + ico('lock') + ' Level ' + s.lvl + '</small>'; }
   var html = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('trophy') + ' Trophy Room</h2></div><div class="panel">' +
     '<div class="profile"><div><div class="big">Level ' + L + '<small>' + esc(S.name) + '</small></div></div>' + xpBarHTML() + '<div class="big">' + n + '<small>of ' + BADGES.length + ' badges</small></div></div>';
+  html += '<div class="row" style="justify-content:flex-start;margin:10px 0 2px">' +
+    (window.Cabinet ? Cabinet.buttonHTML('purple') : '') + (window.Fans ? Fans.buttonHTML('green') : '') + (window.Season ? Season.buttonHTML('blue') : '') + '</div>';
   tiers.forEach(function (t) {
     var list = BADGES.filter(function (b) { return b.tier === t[0]; }), got = list.filter(function (b) { return S.badges[b.id]; }).length;
     html += '<h3 class="tierh"><span class="medal tier-' + t[0] + '" style="margin:0;width:30px;height:30px;font-size:0;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)"></span> ' + t[1] + '<small>' + got + ' / ' + list.length + '</small></h3><div class="badges">' + list.map(function (b) {

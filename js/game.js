@@ -695,6 +695,7 @@ function endMatch() {
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
+    var seasonRes = window.Season ? Season.onMatch({ oppIdx: idx, you: a, them: b, won: won, tie: tie, mode: window.Cup && Cup.active() ? 'cup' : 'ai' }) : null;
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
     var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
@@ -702,7 +703,8 @@ function endMatch() {
       '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
       '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
       (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
-      (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
+      (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
+      (seasonRes ? Season.lineHTML(seasonRes) : '');
   } else {
     var top = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
     var winners = idxs().filter(function (i) { return G.players[i].score === top; });
