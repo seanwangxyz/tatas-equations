@@ -55,6 +55,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 | `js/screens.js` | Daily puzzle, opponent picker, Trophy Room, Stats, Settings |
 | `js/camp.js` | Training Camp: solver-made drills (make the Goal, Now or not, Impossible detective, safe move, sneaky Goal) |
 | `js/tutorial.js` | The guided practice shake |
+| `js/online.js`, `js/online-net.js`, `js/online-config.js` | Online play on two devices (room codes, the host runs the game, reconnect); Firebase settings go in `online-config.js`. See docs/handoff/online.md |
 | `js/main.js` | Tap/drag input, 3D table hooks, startup |
 | `js/three/table.js` | 3D table, dice, cup pour (physics), 3D taps and drags |
 | `js/three/player.js` | The kid's own 3D player at the near side |

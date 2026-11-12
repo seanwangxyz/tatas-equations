@@ -6,6 +6,8 @@
 var TATA_RECORD = 16;
 
 var SAVE_KEY = 'tatasEquations.v1';
+// Online-play testing on one computer (?onlinetest=1&p=b): each test tab gets its own pretend player and save.
+if (/[?&]onlinetest=1(&|$)/.test(location.search)) SAVE_KEY += '.test.' + ((location.search.match(/[?&]p=([a-z0-9]{1,8})(&|$)/) || [])[1] || 'a');
 
 // Difficulty ladder. "need" = skill stars (correct Solutions / correct challenges) to unlock the next stage.
 var STAGES = [

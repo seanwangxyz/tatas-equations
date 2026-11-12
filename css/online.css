@@ -1,0 +1,16 @@
+/* Online play (js/online.js). Calm on purpose: nothing here loops or spins. */
+.ol-code{font-family:var(--display);font-size:clamp(44px,11vw,72px);letter-spacing:4px;text-align:center;color:var(--ink);background:#fff;border:4px dashed var(--sky);border-radius:24px;margin:8px auto 10px;padding:6px 18px;width:max-content;max-width:100%}
+.ol-wait{text-align:center;color:var(--ink2);font-weight:800}
+.ol-err{color:var(--bad);font-weight:800}
+.ol-codein{font-family:var(--display);font-size:38px;letter-spacing:3px;text-align:center;text-transform:uppercase;width:min(320px,90%);padding:8px 12px;border:3px solid var(--line);border-radius:18px;background:#fff;color:var(--ink)}
+.ol-codein:focus{outline:none;border-color:var(--sky)}
+.ol-vs{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-size:20px;margin:6px 0 10px}
+.ol-vsx{font-family:var(--display);color:var(--mute);font-size:18px}
+.ol-picks{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:8px}
+.ol-pick{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 14px;border-radius:18px;border:3px solid var(--line);background:#fff;font:inherit;color:var(--ink);cursor:pointer;min-width:150px}
+.ol-pick span{font-size:20px;font-weight:900}
+.ol-pick.on{border-color:var(--good);background:#e1f8ee}
+.ol-banner{position:fixed;top:calc(68px + var(--sat));left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
+  max-width:calc(100vw - 24px);background:var(--paper);color:var(--ink);border:3px solid var(--gold);border-radius:18px;padding:8px 14px;font-weight:800;font-size:17px;box-shadow:var(--shadow)}
+.ol-bb{display:flex;gap:6px}
+.ol-toast{font-weight:800}
