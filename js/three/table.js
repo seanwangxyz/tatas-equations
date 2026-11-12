@@ -16,6 +16,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); if (!renderer.getContext()) return; } catch (e) { return; }
   var hooks = { frame: [], extents: [], shrink: [] }; // other modules (creatures) plug in here
   var ctx = { held: null };              // shared with other 3D modules; filled in at the bottom
+  // ---- COLLECT (spot the fan) block: hooks.tap = [fn(ray, info)], called for a tap that hit no cube and no zone ----
+  hooks.tap = [];
+  // ---- end COLLECT block ----
   api.supported = true;
 
   var scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(38, 1.5, 0.1, 300);
@@ -1206,6 +1209,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (d.on) { var z = zoneAt(ev); if (api.handlers.drop) api.handlers.drop(d.id, z); return; }
     if (d.id != null) { if (api.handlers.cubeTap) api.handlers.cubeTap(d.id); return; }
     var zz = zoneAt(ev); if (zz && api.handlers.zoneTap) api.handlers.zoneTap(zz);
+    // ---- COLLECT (spot the fan) block: a plain tap (no drag, no cube, no zone) is offered to ctx.hooks.tap ----
+    // fn(ray, info): ray = a copy of the world-space THREE.Ray under the pointer; info = { x, y, w, h, camera }
+    if (!zz && hooks.tap.length && ev.button === 0) {
+      pick(ev, []); var tr = ray.ray.clone(), cr = renderer.domElement.getBoundingClientRect();
+      var tinfo = { x: ev.clientX - cr.left, y: ev.clientY - cr.top, w: cr.width, h: cr.height, camera: camera };
+      hooks.tap.forEach(function (f) { try { f(tr, tinfo); } catch (e) {} });
+    }
+    // ---- end COLLECT block ----
   });
   renderer.domElement.addEventListener('pointercancel', function (ev) {
     dropPtr(ev);
