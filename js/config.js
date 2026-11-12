@@ -49,7 +49,7 @@ var UNLOCK_LESSONS = {
 //
 // Snoozy and Penny each have one clear BLIND SPOT instead of random carelessness, so that
 // beating each one teaches the kid one real skill (the playtest has a "Kid who knows the trick"
-// to prove it). The flags below are read by aiDecideChallenge / aiChooseMove / aiWrite in js/game.js.
+// to prove it). The flags below are read by the computer player's decisions in js/ai.js.
 //   style 'shortsighted' (Snoozy): shortView = true. Snoozy only thinks about Solutions with two
 //     number cubes and one operation (like 3 + 4): maxDigits is 2 and it uses that same short view
 //     everywhere: spotting Now!, judging whether the Goal is still possible, checking its own
@@ -62,23 +62,27 @@ var UNLOCK_LESSONS = {
 //     checks that her move doesn't hand the opponent a Now! (smart = 1).
 //     Lesson: be careful what you leave in Required/Permitted; risky moves that make the Goal
 //     harder are safe against Penny; when Penny makes the Goal impossible, call Impossible! yourself.
+//
+// Math tastes: taste = one line for the opponent picker; likes = what it prefers (explained at the top
+// of js/ai.js). A taste only picks between moves, Goals and Solutions it already finds good, so it does
+// not change how strong the creature is, and a taste for a locked operation simply doesn't show yet.
 var OPPONENTS = [
-  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, style: 'shortsighted', shortView: true, maxDigits: 2, timeMs: 150, seeNow: 0.75, seeImp: 0.45, smart: 1, goalCubes: 1, goalMax: 12, tip: 'Snoozy only spots short Solutions.',
+  { id: 'snoozy', name: 'Snoozy', title: 'the Sleepy Sloth', emoji: '🦥', color: '#d3f9d8', stars: 1, style: 'shortsighted', shortView: true, maxDigits: 2, timeMs: 150, seeNow: 0.75, seeImp: 0.45, smart: 1, goalCubes: 1, goalMax: 12, tip: 'Snoozy only spots short Solutions.', taste: 'Loves + and small numbers.', likes: { syms: ['+', '1', '2', '3'], ops: ['+'], sol: [['+']] },
     think: ['Zzz… oh! Is it my turn?', 'Slooowly thinking…', '*yawn* Let me see…'], now: '*yawn*… NOW!', imp: 'Zzz… IMPOSSIBLE!', goal: 'Here is a Goal… *yawn*', lose: 'Zzz… you got me! Good game!', win: 'I won? While napping?' },
-  { id: 'penny', name: 'Penny', title: 'the Puzzle Penguin', emoji: '🐧', color: '#d0ebff', stars: 2, style: 'no-impossible', callsImpossible: false, keepGoal: false, maxDigits: 3, timeMs: 250, seeNow: 0.9, seeImp: 0, smart: 1, goalCubes: 2, goalMax: 25, tip: 'Penny never calls Impossible!',
+  { id: 'penny', name: 'Penny', title: 'the Puzzle Penguin', emoji: '🐧', color: '#d0ebff', stars: 2, style: 'no-impossible', callsImpossible: false, keepGoal: false, maxDigits: 3, timeMs: 250, seeNow: 0.9, seeImp: 0, smart: 1, goalCubes: 2, goalMax: 25, tip: 'Penny never calls Impossible!', taste: 'Loves taking away with −.', likes: { syms: ['-'], ops: ['-'], sol: [['-']] },
     think: ['Waddle, waddle… thinking!', 'Hmm, chilly choices…', 'Let me slide this over…'], now: 'Flippers up: NOW!', imp: 'Brrr… IMPOSSIBLE!', goal: 'Try this Goal on for size!', lose: 'Great waddling! You win!', win: 'Penguin power!' },
-  { id: 'fox', name: 'Rusty', title: 'the Clever Fox', emoji: '🦊', color: '#ffd8a8', stars: 3, tip: 'Rusty spots Now! chances fast. Do not leave him an easy one.', maxDigits: 4, timeMs: 350, seeNow: 0.55, seeImp: 0.5, smart: 0.7, goalCubes: 3, goalMax: 40,
+  { id: 'fox', name: 'Rusty', title: 'the Clever Fox', emoji: '🦊', color: '#ffd8a8', stars: 3, tip: 'Rusty spots Now! chances fast. Do not leave him an easy one.', taste: 'Loves × and ÷.', likes: { syms: ['*', '/'], ops: ['*', '/'], sol: [['*', '/'], ['*'], ['/']] }, maxDigits: 4, timeMs: 350, seeNow: 0.55, seeImp: 0.5, smart: 0.7, goalCubes: 3, goalMax: 40,
     think: ['Hmm… a sly move…', 'Let me sniff this out…', 'Foxy thinking…'], now: 'Gotcha! NOW!', imp: 'Sneaky… IMPOSSIBLE!', goal: 'A clever Goal for you!', lose: 'Outfoxed! Well played!', win: 'Too clever for you this time!' },
-  { id: 'owl', name: 'Ollie', title: 'the Wise Owl', emoji: '🦉', color: '#e5dbff', stars: 4, tip: 'Ollie almost never misses. Plan two moves ahead.', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.75, smart: 0.9, goalCubes: 3, goalMax: 60,
+  { id: 'owl', name: 'Ollie', title: 'the Wise Owl', emoji: '🦉', color: '#e5dbff', stars: 4, tip: 'Ollie almost never misses. Plan two moves ahead.', taste: 'Loves prime numbers: 2, 3, 5, 7, 11, 13…', likes: { syms: ['2', '3', '5', '7'], goal: 'prime', sol: [['7'], ['5']] }, maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.75, smart: 0.9, goalCubes: 3, goalMax: 60,
     think: ['Hoo-hoo… let me think…', 'Wise moves only…', 'Hmm, hoo…'], now: 'Hoo! NOW!', imp: 'Hoo-hoo… IMPOSSIBLE!', goal: 'A wise Goal…', lose: 'Hoo! You are wise indeed!', win: 'Wisdom wins today!' },
-  { id: 'wizard', name: 'Mondo', title: 'the Math Wizard', emoji: '🧙', color: '#fff3bf', stars: 5, tip: 'Mondo sees everything. Check every move twice.', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99,
+  { id: 'wizard', name: 'Mondo', title: 'the Math Wizard', emoji: '🧙', color: '#fff3bf', stars: 5, tip: 'Mondo sees everything. Check every move twice.', taste: 'Loves powers ^ and roots √ (once you unlock them).', likes: { syms: ['^', 'r'], goal: 'pow', ops: ['^', 'r'], sol: [['^', 'r'], ['r'], ['^']] }, maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 3, goalMax: 99,
     think: ['By my beard… let me think…', 'Abraca-math…', 'The cubes whisper to me…'], now: 'Abracadabra… NOW!', imp: 'By my beard… IMPOSSIBLE!', goal: 'Behold, a Goal!', lose: 'You have out-wizarded the Wizard!', win: 'Magic and math win again!' },
   // ---- Monster League (opponents 6-10). Each uses the 3D model in the same slot of the monsters pack. ----
-  { id: 'grub', name: 'Grub', title: 'the Grumpy Puglin', emoji: '🐽', color: '#ffdeeb', stars: 3, style: 'careless', maxDigits: 4, timeMs: 400, seeNow: 0.7, seeImp: 0.6, smart: 0.8, goalCubes: 3, goalMax: 50, tip: 'Grub is as sharp as Rusty, but he still rushes now and then.', think: ['Hmph. Thinking.', 'Grumble, grumble…', 'Snort. Let me look.'], now: 'Snort! NOW!', imp: 'Hmph! IMPOSSIBLE!', goal: 'Here. A Goal. Hmph.', lose: 'Hmph! Fine. You played well.', win: 'Ha! Even grumpy, I win!' },
-  { id: 'splosh', name: 'Splosh', title: 'the Careful Puglin', emoji: '🐷', color: '#d0ebff', stars: 4, style: 'careful', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 60, tip: 'Splosh checks everything twice. Her weak spot: a Now! she is not expecting.', think: ['Carefully, carefully…', 'Let me check twice…', 'Hmm, is that safe?'], now: 'Oh! Oh! NOW!', imp: 'I checked twice: IMPOSSIBLE!', goal: 'A careful little Goal!', lose: 'Oh my! You were too good!', win: 'Careful wins the cup!' },
-  { id: 'blaze', name: 'Blaze', title: 'the Fiery Imp', emoji: '👹', color: '#ffc9c9', stars: 5, style: 'pouncer', maxDigits: 5, timeMs: 600, seeNow: 1, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 80, tip: 'Blaze never misses a Now! Do not leave him one.', think: ['Quick, quick, quick!', 'Fire it up…', 'Fast feet, fast brain!'], now: 'Sizzle! NOW!', imp: 'Smoke and ash… IMPOSSIBLE!', goal: 'A red-hot Goal!', lose: 'Whoa! You put my fire out!', win: 'Too hot to handle!' },
-  { id: 'hex', name: 'Hex', title: 'the Tricky Imp', emoji: '👺', color: '#d3f9d8', stars: 5, fire: 1, style: 'trickster', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 4, goalMax: 99, tip: 'Hex is as strong as Mondo and sets longer, sneakier Goals.', think: ['Hee hee… a trick…', 'Let me twist this…', 'Sneaky, sneaky…'], now: 'Hee hee! NOW!', imp: 'Tricked you… IMPOSSIBLE!', goal: 'A twisty Goal for you!', lose: 'Out-tricked! How did you do that?', win: 'Tricks win the match!' },
-  { id: 'zog', name: 'Zog', title: 'the Imp King', emoji: '😈', color: '#e5dbff', stars: 5, fire: 2, style: 'boss', maxDigits: 6, timeMs: 900, seeNow: 1, seeImp: 1, smart: 1, goalCubes: 5, goalMax: 99, tip: 'King Zog misses nothing and sets the hardest Goals in the game.', think: ['The King considers…', 'Royal thinking…', 'Silence! I am counting.'], now: 'By my crown… NOW!', imp: 'The King declares: IMPOSSIBLE!', goal: 'A Goal fit for a king!', lose: 'I bow to you. Take the crown!', win: 'Long live the King!' }
+  { id: 'grub', name: 'Grub', title: 'the Grumpy Puglin', emoji: '🐽', color: '#ffdeeb', stars: 3, style: 'careless', maxDigits: 4, timeMs: 400, seeNow: 0.7, seeImp: 0.6, smart: 0.8, goalCubes: 3, goalMax: 50, tip: 'Grub is as sharp as Rusty, but he still rushes now and then.', taste: 'Loves big numbers, smashed together with + and ×.', likes: { syms: ['+', '*', '7', '8', '9'], goal: 'big', ops: ['+', '*'], sol: [['*', '+'], ['*'], ['9']] }, think: ['Hmph. Thinking.', 'Grumble, grumble…', 'Snort. Let me look.'], now: 'Snort! NOW!', imp: 'Hmph! IMPOSSIBLE!', goal: 'Here. A Goal. Hmph.', lose: 'Hmph! Fine. You played well.', win: 'Ha! Even grumpy, I win!' },
+  { id: 'splosh', name: 'Splosh', title: 'the Careful Puglin', emoji: '🐷', color: '#d0ebff', stars: 4, style: 'careful', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 60, tip: 'Splosh checks everything twice. Her weak spot: a Now! she is not expecting.', taste: 'Loves even numbers and neat, tidy answers.', likes: { syms: ['2', '4', '6', '8'], goal: 'even', sol: [['2'], ['4'], ['6']] }, think: ['Carefully, carefully…', 'Let me check twice…', 'Hmm, is that safe?'], now: 'Oh! Oh! NOW!', imp: 'I checked twice: IMPOSSIBLE!', goal: 'A careful little Goal!', lose: 'Oh my! You were too good!', win: 'Careful wins the cup!' },
+  { id: 'blaze', name: 'Blaze', title: 'the Fiery Imp', emoji: '👹', color: '#ffc9c9', stars: 5, style: 'pouncer', maxDigits: 5, timeMs: 600, seeNow: 1, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 80, tip: 'Blaze never misses a Now! Do not leave him one.', taste: 'Loves doubles and square numbers: 4, 9, 16, 25…', likes: { syms: ['2', '^', '*'], goal: 'square', sol: [['^', '2'], ['*', '2'], ['+']] }, think: ['Quick, quick, quick!', 'Fire it up…', 'Fast feet, fast brain!'], now: 'Sizzle! NOW!', imp: 'Smoke and ash… IMPOSSIBLE!', goal: 'A red-hot Goal!', lose: 'Whoa! You put my fire out!', win: 'Too hot to handle!' },
+  { id: 'hex', name: 'Hex', title: 'the Tricky Imp', emoji: '👺', color: '#d3f9d8', stars: 5, fire: 1, style: 'trickster', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 4, goalMax: 99, tip: 'Hex is as strong as Mondo and sets longer, sneakier Goals.', taste: 'Loves ÷, and fractions once you unlock them.', likes: { syms: ['/'], goal: 'div', ops: ['/'], sol: [['/']], frac: true }, think: ['Hee hee… a trick…', 'Let me twist this…', 'Sneaky, sneaky…'], now: 'Hee hee! NOW!', imp: 'Tricked you… IMPOSSIBLE!', goal: 'A twisty Goal for you!', lose: 'Out-tricked! How did you do that?', win: 'Tricks win the match!' },
+  { id: 'zog', name: 'Zog', title: 'the Imp King', emoji: '😈', color: '#e5dbff', stars: 5, fire: 2, style: 'boss', maxDigits: 6, timeMs: 900, seeNow: 1, seeImp: 1, smart: 1, goalCubes: 5, goalMax: 99, tip: 'King Zog misses nothing and sets the hardest Goals in the game.', taste: 'A bit of everything, and the longest Goals.', likes: { syms: ['+', '-', '*', '/', '^', 'r'], goal: 'long', mix: true }, think: ['The King considers…', 'Royal thinking…', 'Silence! I am counting.'], now: 'By my crown… NOW!', imp: 'The King declares: IMPOSSIBLE!', goal: 'A Goal fit for a king!', lose: 'I bow to you. Take the crown!', win: 'Long live the King!' }
 ];
 var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99', '2', '5', '11', '13', '66'];
 var LEAGUE = 5; // creatures per league: 0-4 classic, 5-9 monsters
@@ -91,6 +95,8 @@ function oppStars(o) { return '★'.repeat(o.stars) + '<span style="opacity:.3">
 // Situational: greet = match start; kidGoodMove = grudging respect after the kid does well; kidChallenge = nervous when
 // the kid calls Now!/Impossible!; kidWrong = kind and encouraging after the kid's mistake (never gloating);
 // close = tight match; lastCube = the last cube is about to be played.
+// Math tastes (js/ai.js): tasteGoal = it set a Goal it likes; tasteMove = it put a favourite cube in Required/Permitted;
+// tasteSol = its Solution uses its favourite math; tasteFrac (Hex) = its Solution went through a fraction.
 // reply = answers to the kid's emotes, keyed by emote type: friendly, cheeky, think (an object, not an array:
 // use Social.reactionFor(emoteId) rather than talkLine(o, 'reply')).
 var TALK = {
@@ -105,6 +111,9 @@ var TALK = {
     kidWrong: ['That\'s okay! Try again, you can do it.', 'So close! Have another go.', 'No worries. Even I trip over my own paws.', 'It happens! Take your time. I\'m slow too.', 'Good try! Your next one will be great.'],
     close: ['Wow, so close… I\'m wide awake!', 'It\'s a tight one! Who needs naps?', 'Neck and neck! Ooh, exciting.', 'This is the most awake I\'ve ever been.', 'Tied-ish! Don\'t blink. I will, though.'],
     lastCube: ['Last cube! Don\'t wake me for the rest.', 'Final cube… *gasp* so exciting.', 'The last cube! Let\'s see who dreams of this.', 'One cube left. I\'m very awake.', 'Last one! Ready, set, zzz… GO!'],
+    tasteGoal: ['I can add my way to this one. Cozy.', 'Little numbers are the comfiest.', 'Here is a small one. Like a pillow.'],
+    tasteMove: ['Small and cozy. I like it.', 'Plus is my favourite. So comfy.', 'Little cubes for a sleepy sloth.'],
+    tasteSol: ['I just added it up. Easy peasy… zzz.', 'Plus, plus, done. Nap time!', 'Adding is the comfiest math.'],
     reply: {
       friendly: ['Aww, thanks! You\'re nice. Zzz.', 'Good one! High five. Slowly.', 'You\'re a great opponent. Wait, teammate. Both!', 'Thank you! I\'ll nap happy tonight.'],
       cheeky: ['Ha! Bring it on. Slowly.', 'Ooh, spicy! I\'ll answer after a yawn.', 'Cheeky! I like it. *yawn*', 'You do your thing. I\'ll do my nap.'],
@@ -122,6 +131,9 @@ var TALK = {
     kidWrong: ['No worries, that happens to all penguins!', 'So close! Slide right back in there.', 'Good try! Try another one.', 'Don\'t let it chill your spirits!', 'It\'s okay! Everyone slips on ice.'],
     close: ['It\'s a nail-biter! Or a flipper-biter.', 'So close! This is getting hot. For a penguin.', 'Tight game! I love it.', 'Neck and neck on the ice!', 'Whoa, it\'s anyone\'s match!'],
     lastCube: ['Last cube! Final slide!', 'Here comes the last one. Hold on to your flippers!', 'Last cube, big moment!', 'One cube to go. Brrr, exciting!', 'The last cube! Let\'s slide into it!'],
+    tasteGoal: ['I can take away my way to this one!', 'A Goal made for minus. Slide!', 'This one is all about taking away.'],
+    tasteMove: ['Minus! My favourite cube!', 'Take away, take away! Wheee!', 'A minus for the penguin. Yes!'],
+    tasteSol: ['Done! I took away, like a penguin on ice.', 'Minus did it again!', 'Slid down with a minus. Done!'],
     reply: {
       friendly: ['Aww, thanks! You\'re cool too.', 'Great sportsmanship! High flipper!', 'That warms my heart. Even on ice.', 'You\'re a great player to play with!'],
       cheeky: ['Ooh, feeling spicy? I\'m on ice!', 'Ha! That\'s the spirit. Waddle you do next?', 'Confident, huh? Let\'s see it!', 'Nice try yourself! Wink, wink.'],
@@ -139,6 +151,9 @@ var TALK = {
     kidWrong: ['Tough break! You\'ve got another go.', 'Hey, even the best strikers miss. Shake it off!', 'Good try! That one was tricky.', 'No big deal. Next shake, you\'ll nail it.', 'Hang in there, kid. It happens to everyone.'],
     close: ['This is getting hot! I love it.', 'A real battle! Respect.', 'Oooh, it\'s anyone\'s match.', 'Now THIS is a game!', 'Neck and neck! Let\'s go!'],
     lastCube: ['Last cube! Time for a golden goal!', 'The last cube! Make it count.', 'Final play! Here we go!', 'Last cube: showtime!', 'One cube left. Who wants it?'],
+    tasteGoal: ['Times and divide will get me there. Sly!', 'A foxy Goal for × and ÷.', 'I can see the groups already.'],
+    tasteMove: ['Times and divide, my sneaky friends.', 'A × or ÷ always comes in handy.', 'Groups of things! Foxy.'],
+    tasteSol: ['Groups and sharing. That\'s how a fox does it!', 'Times, divide, done. Too quick!', 'Multiply! Gotcha.'],
     reply: {
       friendly: ['Hey, thanks! You\'re alright, kid.', 'Respect! Good game so far.', 'Aw, shucks. You too!', 'That\'s the spirit! Nice one.'],
       cheeky: ['Ha! I like your style. Bring it!', 'Oh, so you want to play like that?', 'Cocky? Me too. Let\'s go!', 'Ooh, trash talk! Fun. Keep it coming.'],
@@ -156,6 +171,9 @@ var TALK = {
     kidWrong: ['Every mistake teaches us something. Hoo!', 'A fine try! Try again, owlet.', 'Do not worry. Even owls drop things.', 'Close! Have another go.', 'Learning is the goal. You are doing it.'],
     close: ['A close contest! How exciting. Hoo!', 'The match hangs in the balance.', 'Both of us are playing well.', 'A thrilling match! I am enjoying it.', 'It is anyone\'s game, owlet.'],
     lastCube: ['The last cube! A decisive moment.', 'Hoo… the final cube.', 'One cube left. Choose wisely.', 'The end approaches. Let us finish with style.', 'The last cube. Let us see what it brings.'],
+    tasteGoal: ['A prime number: only 1 and itself fit into it. Hoo!', 'Primes are the wisest numbers.', 'A prime Goal. How elegant.'],
+    tasteMove: ['A prime number cube. Delightful.', 'Two, three, five, seven… the primes. Hoo!', 'I do enjoy a prime.'],
+    tasteSol: ['A prime made it work. Hoo-hoo!', 'Primes, the building blocks of numbers!', 'Done, with a prime touch.'],
     reply: {
       friendly: ['Thank you, owlet. A kind gesture.', 'Hoo-hoo! Good sportsmanship.', 'Well said! I share the sentiment.', 'You do honor to the game.'],
       cheeky: ['Hoo-hoo! You have spirit, owlet.', 'Cheeky! I shall allow it.', 'Ah, confidence. Let\'s see it.', 'Hoo? A challenge? Delightful.'],
@@ -173,6 +191,9 @@ var TALK = {
     kidWrong: ['A small stumble, apprentice! Try again!', 'Even great wizards miss a spell. Onward!', 'Fear not! The next one will sparkle.', 'Dust yourself off! You\'ve got this!', 'No worries! Every wizard fizzles sometimes.'],
     close: ['By my beard, what a match!', 'The tension! I can taste the sparkles!', 'A thrilling duel!', 'Neck and neck! The crowd holds its breath!', 'The stars are watching this one!'],
     lastCube: ['The LAST cube! Drumroll, please!', 'Behold! The final cube!', 'The last cube! The moment of destiny!', 'One cube left! My heart is a drum!', 'Final cube! Let the magic happen!'],
+    tasteGoal: ['Behold! A Goal with POWER!', 'A power spell for a Goal!', 'Powers! My favourite magic.'],
+    tasteMove: ['Powers and roots, the strongest magic!', 'Ooh, a magic cube. Sparkle!', 'Roots and powers, come to me!'],
+    tasteSol: ['Abracadabra, powers and roots!', 'A spell of powers. Done!', 'The magic of ^ and √!'],
     reply: {
       friendly: ['Thank you, kind apprentice!', 'A noble gesture! My beard bows.', 'Splendid sportsmanship! I am touched.', 'Hurrah! A friend indeed!'],
       cheeky: ['Ha! A spirited apprentice!', 'Ooh, sassy! I adore it!', 'By my beard! Confidence! Bravo!', 'You have the flair of a wizard!'],
@@ -190,6 +211,9 @@ var TALK = {
     kidWrong: ['Hmph. Happens to me all the time.', 'Don\'t worry. Try again.', 'Close! Have another go.', 'That\'s okay. Even grumps miss.'],
     close: ['Hmph! This is close.', 'Snort. Too close for me.', 'Neck and neck. I\'m nervous AND grumpy.', 'Tight game! Grumble.'],
     lastCube: ['Last cube. Hmph. Here we go.', 'Final cube! Snort!', 'One cube left. Don\'t blink.', 'The last one. I\'m almost excited.'],
+    tasteGoal: ['A BIG Goal. Hmph. I like big.', 'Big number. Big Goal. Snort.', 'Here. A large one.'],
+    tasteMove: ['Big cubes. Smash them together.', 'Plus and times. Squish!', 'Hmph. A big one. Good.'],
+    tasteSol: ['Smashed it together. Done. Hmph.', 'Times and plus. SMASH!', 'Big numbers, big squish. Done.'],
     reply: { friendly: ['Hmph. Thanks. You\'re okay.', 'Snort. That was nice of you.', 'Fine. High five. Quick one.'], cheeky: ['Hmph! Cheeky!', 'Snort! Oh, it\'s ON.', 'Ha. I almost laughed.'], think: ['Hmph. Take your time. I won\'t.', 'Thinking? Good idea. I should try it.', 'Snort. Thinking face.'] }
   },
   splosh: {
@@ -203,6 +227,9 @@ var TALK = {
     kidWrong: ['Oh, so close! Try again!', 'Don\'t worry, I miss those all the time.', 'Good try! You\'ll get the next one.', 'That\'s okay! Take a breath.'],
     close: ['Oh my, it\'s so close!', 'I can\'t look! It\'s too tight!', 'Neck and neck! How exciting!', 'Careful, careful… it\'s nearly tied!'],
     lastCube: ['The last cube! Oh my!', 'Final cube! I\'m checking it twice!', 'One left! Carefully now…', 'Last cube! Hold on to your scarf!'],
+    tasteGoal: ['An even Goal! So neat and tidy!', 'Even numbers split in half perfectly!', 'Oh, a lovely even number.'],
+    tasteMove: ['An even cube! Neat!', 'Two, four, six, eight, even is great!', 'Tidy, tidy, even!'],
+    tasteSol: ['Done! Nice and tidy.', 'All neat and even. Lovely!', 'A tidy little Solution!'],
     reply: { friendly: ['Oh, thank you! You\'re so kind!', 'Aww! High hoof!', 'You\'re a lovely opponent!'], cheeky: ['Oh! Cheeky! Hee hee!', 'Ooh, you rascal!', 'Splish splash, I\'ll get you back!'], think: ['Take your time! I always do.', 'Good thinking! Check it twice.', 'Thinking is my favourite part too!'] }
   },
   blaze: {
@@ -216,6 +243,9 @@ var TALK = {
     kidWrong: ['No sweat! Go again.', 'So close! Fire up the next one.', 'Happens when you play fast. Trust me.', 'Shake it off! You\'ve got this.'],
     close: ['This match is HOT!', 'Neck and neck! I love it!', 'So close I can feel the sparks!', 'Tight game! Turn up the heat!'],
     lastCube: ['Last cube! Here comes the heat!', 'Final cube! Three, two, one…', 'One left! Ready to pounce!', 'The last cube is sizzling!'],
+    tasteGoal: ['A square number! Zoom!', 'Double it, square it, hot hot hot!', 'Squares and doubles, my favourite!'],
+    tasteMove: ['Doubles, here I come!', 'Times two! Fast!', 'Squares are super hot!'],
+    tasteSol: ['Doubled it! Zoom!', 'Squared! Sizzle!', 'Double, done, faster than fire!'],
     reply: { friendly: ['Ha! Thanks, champ!', 'Fist bump! Careful, it\'s warm.', 'You\'re alright, number 7!'], cheeky: ['Ooh! Spicy!', 'Ha! Bring the heat!', 'Big talk! I like it!'], think: ['Thinking? No time! Okay, a little time.', 'Go on, I\'ll wait. Tapping my foot.', 'Slow and smart. Not my style, but okay!'] }
   },
   hex: {
@@ -229,6 +259,10 @@ var TALK = {
     kidWrong: ['Tricky one, wasn\'t it? Try again.', 'So close! Look for the long way round.', 'No shame. That one fooled me too.', 'Good try. The next one is yours.'],
     close: ['Hee hee, this is tight!', 'Too close to trick anyone now.', 'Neck and neck. Delicious.', 'One slip decides it. Not mine, I hope.'],
     lastCube: ['The last cube. The final trick.', 'One cube left. Hee hee.', 'Final cube! Watch closely.', 'Last one. No more hiding.'],
+    tasteGoal: ['A Goal to share and divide. Hee hee.', 'Divide and conquer!', 'A sharing Goal for you.'],
+    tasteMove: ['A ÷ cube. My favourite trick.', 'Share and divide. Hee hee.', 'Divide! Sneaky.'],
+    tasteSol: ['Divide and done. Hee hee!', 'Shared out fair and square!', 'A dividing trick!'],
+    tasteFrac: ['Hee hee! I went through a fraction to get there!', 'A sneaky fraction did the trick!', 'Fractions make the best tricks.'],
     reply: { friendly: ['Hee! How kind. Suspiciously kind.', 'Thank you. No trick this time.', 'A friend! How unexpected.'], cheeky: ['Hee hee! Cheeky like me!', 'Ooh, sassy. I like you.', 'Bold! Let\'s see if it lasts.'], think: ['Yes, think. Thinking beats tricks.', 'Take your time. I\'m plotting anyway.', 'Hmm. A thinker. Dangerous.'] }
   },
   zog: {
@@ -242,6 +276,9 @@ var TALK = {
     kidWrong: ['Even kings miss. Try again.', 'Close, challenger. Go once more.', 'No shame in that. It was a hard one.', 'Chin up. A champion keeps going.'],
     close: ['The crown wobbles! So close!', 'A match fit for a king!', 'Neck and neck. The court is silent.', 'One point decides the throne.'],
     lastCube: ['The last cube! All rise!', 'Final cube. The throne is at stake.', 'One cube left, challenger.', 'The last cube! Trumpets, please!'],
+    tasteGoal: ['A long Goal, fit for a king!', 'The King likes his Goals long.', 'Behold, the royal Goal!'],
+    tasteMove: ['The King uses every kind of cube.', 'A royal cube for the royal mat.', 'Every operation serves the King!'],
+    tasteSol: ['A bit of everything. Royal math!', 'Many operations, one King!', 'The King mixed them all. Done!'],
     reply: { friendly: ['The King thanks you.', 'A noble gesture. I approve.', 'You have royal manners.'], cheeky: ['Ha! Cheek! To a KING!', 'Bold words, challenger!', 'Ooh. The court gasps.'], think: ['Think well. The King can wait.', 'A wise ruler thinks first.', 'Take your time. I shall polish my crown.'] }
   }
 };

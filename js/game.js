@@ -235,14 +235,20 @@ function placeCube(id, zone, who) {
   nextTurn();
 }
 // In a 3-player game, a computer player who is NOT next may still challenge the move that was just made.
+// It thinks in the background: returns true while it is looking, then either challenges or carries on with nextTurn().
 function aiInterject() {
   if (G.mode === 'tutorial' || nP() < 3) return false;
   var cands = idxs().filter(function (i) { return isAI(i) && i !== G.lastMover && i !== G.turn; });
-  for (var k = 0; k < cands.length; k++) {
-    var p = cands[k], o = G.players[p].ai, d = aiDecideChallenge(o, snapshot(), G.goal, G.fractions, !nowCheckFor(p), 0.8, true);
-    if (d) { if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, p); return true; }
-  }
-  return false;
+  if (!cands.length || G.aiLooked === orderCounter) return false; // already looked at this move
+  G.aiLooked = orderCounter; G.busy = true; renderGame();
+  var sit = aiSituation(), list = cands.map(function (p) { return { p: p, o: AI.skill(G.players[p].ai), nowOk: !nowCheckFor(p) }; });
+  AIThink.run('interject', [list, snapshot(), G.goal, G.fractions]).then(function (hit) {
+    if (!aiStill(sit)) return;
+    G.busy = false;
+    if (hit) { if (hit.d.kind === 'now') G.aiPlan = hit.d.plan; challenge(hit.d.kind, hit.p); }
+    else nextTurn();
+  }).catch(aiOops);
+  return true;
 }
 function nextTurn() {
   if (G.phase !== 'move') return;
@@ -344,15 +350,15 @@ function passTo(pi, mode, then) {
 // After a challenge in a 3-player game, the Third Party MAY also write a Solution.
 function askThirdParty(tp, kind, cb) {
   if (isAI(tp)) {
-    var o = G.players[tp].ai;
+    var o = G.players[tp].ai, sit = aiSituation();
     say('opp', esc(o.name) + ' is deciding whether to write a Solution too…'); renderGame();
-    setTimeout(function () {
-      var st = snapshot(), r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: st.res, mode: kind === 'last' ? 'free' : kind, fractions: G.fractions, maxDigits: o.maxDigits, timeMs: o.timeMs });
+    aiThink('thirdParty', [AI.skill(o), snapshot(), G.goal, G.fractions, kind], 1300).then(function (r) {
+      if (!aiStill(sit)) return;
       if (r.found && Math.random() < o.smart + 0.15) {
         var toks = symsToCubeTokens(r.tokens, kind), chk = Eq.checkSolution(toks, solCtx(kind));
         say('opp', 'I wrote one too!'); cb({ presented: true, ok: chk.ok, tokens: toks, chk: chk });
       } else { say('opp', 'I\'ll sit this one out.'); cb({ presented: false }); }
-    }, 1300);
+    }).catch(aiOops);
     return;
   }
   ACT.tpYes = function () { closeModal(); writeSolution(tp, kind, function (ok, tokens, chk) { cb({ presented: true, ok: ok, tokens: tokens, chk: chk }); }); };
@@ -397,12 +403,13 @@ function lastCubePlayed() {
       '<button class="btn green" data-act="lastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
   }
   if (ais.length) {
-    var p = ais[0], o = G.players[p].ai, st = snapshot();
+    var p = ais[0], o = G.players[p].ai, st = snapshot(), sit = aiSituation();
     say('opp', pick(o.think)); renderGame();
-    setTimeout(function () {
-      if (aiCallsLastImpossible(o, st, G.goal, G.fractions)) { G.lastMover = mover; challenge('impossible', p); }
+    aiThink('callsLastImpossible', [AI.skill(o), st, G.goal, G.fractions], 1200).then(function (imp) {
+      if (!aiStill(sit)) return;
+      if (imp) { G.lastMover = mover; challenge('impossible', p); }
       else askHumans();
-    }, 1200);
+    }).catch(aiOops);
   } else askHumans();
 }
 ACT.lastImp = function (el) { closeModal(); challenge('impossible', +el.dataset.arg); };
@@ -572,93 +579,42 @@ ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModa
 ACT.toMenu = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
 
 // ======================= COMPUTER PLAYER =======================
-function applySym(st, s, zone) {
-  var res = st.res.slice(), i = res.indexOf(s); res.splice(i, 1);
-  var o = { req: st.req.slice(), perm: st.perm.slice(), res: res };
-  if (zone === 'required') o.req.push(s); else if (zone === 'permitted') o.perm.push(s);
-  return o;
+// The decisions themselves live in js/ai.js (shared with the background worker and tests/playtest.js).
+// The computer thinks in the background (AIThink): the table keeps moving while it thinks. A result
+// that arrives after the situation changed (the kid left, a challenge, a new shake, a cube moved) is dropped.
+function applySym(st, s, zone) { return AI.applySym(st, s, zone); }
+function aiViewDigits(o) { return AI.viewDigits(o); }
+function aiGoalDigits(o) { return AI.goalDigits(o); }
+function aiDecideChallenge(o, st, goal, fractions, nowOk, scale, strictImp) { return AI.decideChallenge(o, st, goal, fractions, nowOk, scale, strictImp); }
+function aiCallsLastImpossible(o, st, goal, fractions) { return AI.callsLastImpossible(o, st, goal, fractions); }
+function aiFree() { return zoneCubes('resources').filter(function (c) { return !c.locked; }).map(function (c) { return { id: c.id, s: c.s }; }); }
+// Right now, on the page, without the creature's math taste (Pip's hint uses this).
+function aiChooseMove(o) { return AI.chooseMove(AI.plain(o), snapshot(), aiFree(), G.goal, G.fractions); }
+function aiSituation() { return { g: G, cubes: G.cubes, phase: G.phase, oc: orderCounter, ch: G.ch }; }
+function aiStill(s) { return !!G && G === s.g && G.cubes === s.cubes && G.phase === s.phase && orderCounter === s.oc && G.ch === s.ch; }
+// Think in the background, and take at least minMs (the creature's calm thinking pause).
+function aiThink(task, args, minMs) {
+  var pause = new Promise(function (ok) { setTimeout(ok, minMs || 0); });
+  return Promise.all([AIThink.run(task, args), pause]).then(function (x) { return x[0]; });
 }
-// ---- Decisions shared by the game and tests/playtest.js (so they cannot drift apart) ----
-// How long a Solution a creature can think about when WRITING or checking an opponent's move.
-// Normal creatures can stretch one number cube past what they notice; a shortView creature cannot.
-function aiViewDigits(o) { return o.shortView ? o.maxDigits : Math.min(6, o.maxDigits + 1); }
-// How long a Solution it looks for when choosing a Goal (shortView creatures set Goals they can solve themselves).
-function aiGoalDigits(o) { return o.shortView ? o.maxDigits : 3; }
-// Should this creature challenge the move just made? Returns {kind:'now', plan} / {kind:'impossible'} / null.
-//   nowOk = a Now! challenge is allowed here; scale = 1 on its own turn, 0.8 when it interjects (3 players);
-//   strictImp = only call Impossible! when the search was complete (interjecting).
-// Creature style flags (js/config.js): shortView = "I can't find one" counts as "there is none";
-// callsImpossible === false = never calls Impossible!.
-function aiDecideChallenge(o, st, goal, fractions, nowOk, scale, strictImp) {
-  var base = { goal: goal, req: st.req, opt: st.perm, res: st.res, fractions: fractions, maxDigits: o.maxDigits, timeMs: o.timeMs };
-  if (nowOk && Math.random() < o.seeNow * scale) {
-    var r = Eq.solve(Object.assign({ mode: 'now' }, base));
-    if (r.found) return { kind: 'now', plan: r };
-  }
-  if (o.callsImpossible !== false && Math.random() < o.seeImp * scale) {
-    var r2 = Eq.solve(Object.assign({ mode: 'impossible' }, base));
-    if (!r2.found && (o.shortView || r2.complete || (!strictImp && Math.random() < 0.3))) return { kind: 'impossible' };
-  }
-  return null;
-}
-// After the last cube: does this creature (not the mover) call Impossible!?
-function aiCallsLastImpossible(o, st, goal, fractions) {
-  if (o.callsImpossible === false || !(Math.random() < o.seeImp)) return false;
-  return !Eq.solve({ goal: goal, req: st.req, opt: st.perm, res: [], mode: 'free', fractions: fractions, maxDigits: o.maxDigits, timeMs: o.timeMs }).found;
-}
-function aiChooseMove(o) {
-  var st = snapshot(), res = zoneCubes('resources').filter(function (c) { return !c.locked; });
-  if (!res.length) return null;
-  var base = { goal: G.goal, fractions: G.fractions, maxDigits: o.maxDigits, timeMs: 90 };
-  function possible(after) { return Eq.solve(Object.assign({ req: after.req, opt: after.perm, res: after.res, mode: 'impossible' }, base)).found; }
-  if (res.length === 1) {
-    var c = res[0];
-    if (o.keepGoal === false) return { id: c.id, zone: Math.random() < 0.5 ? 'required' : 'permitted' }; // does not check the Goal (Penny)
-    var zr = possible(applySym(st, c.s, 'required')), zp = possible(applySym(st, c.s, 'permitted'));
-    return { id: c.id, zone: zr && (!zp || Math.random() < 0.5) ? 'required' : 'permitted' };
-  }
-  var bySym = {}; res.forEach(function (c) { if (!bySym[c.s]) bySym[c.s] = c; });
-  // Choose WHERE to play first, so the computer uses the whole mat (not just Forbidden),
-  // then look for a cube that is safe to put there. Zones are tried in a weighted random order.
-  var W = { required: 0.36, permitted: 0.32, forbidden: 0.32 }, zones = [], pool = ['required', 'permitted', 'forbidden'];
-  while (pool.length) {
-    var tot = pool.reduce(function (a, z) { return a + W[z]; }, 0), r = Math.random() * tot, pick1 = pool[pool.length - 1];
-    for (var zi = 0; zi < pool.length; zi++) { r -= W[pool[zi]]; if (r <= 0) { pick1 = pool[zi]; break; } }
-    zones.push(pick1); pool.splice(pool.indexOf(pick1), 1);
-  }
-  var symList = Object.keys(bySym), cands = [];
-  zones.forEach(function (z) { shuffle(symList.slice()).slice(0, 4).forEach(function (s) { cands.push({ id: bySym[s].id, s: s, zone: z }); }); });
-  if (Math.random() > o.smart) return cands[0]; // a casual (not-so-careful) move
-  var fallback = null, t0 = Date.now();
-  for (var i = 0; i < cands.length; i++) {
-    var cd = cands[i], after = applySym(st, cd.s, cd.zone);
-    if (o.keepGoal !== false && !possible(after)) continue; // keepGoal === false: never checks that the Goal stays possible
-    if (!fallback) fallback = cd;
-    var nowable = after.res.length >= 2 && (after.req.length + after.perm.length) > 0 &&
-      Eq.solve(Object.assign({ req: after.req, opt: after.perm, res: after.res, mode: 'now' }, base, { maxDigits: aiViewDigits(o) })).found;
-    if (!nowable) return cd;
-    if (Date.now() - t0 > 900) break;
-  }
-  return fallback || cands[0];
-}
+function aiOops(e) { if (window.console) console.error('[computer player]', e); }
+function tasteLine(o, kind, chance) { return o.talk && o.talk[kind] && Math.random() < chance ? talkLine(o, kind) : ''; }
 function aiTurn() {
   if (!G || G.phase !== 'move' || !isAI(G.turn)) return;
   var me = G.turn, o = G.players[me].ai;
   G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
-  setTimeout(function () {
-    if (!G || G.phase !== 'move') return;
-    if (G.mode === 'tutorial') { tutAiMove(); return; }
-    var st = snapshot();
-    if (G.lastMover !== null && G.lastMover !== me) {
-      var d = aiDecideChallenge(o, st, G.goal, G.fractions, !nowCheck(), 1, false);
-      if (d) { G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); return; }
-    }
-    var mv = aiChooseMove(o);
+  var pause = 900 + Math.random() * 700;
+  if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
+  var sit = aiSituation();
+  aiThink('turn', [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()], pause).then(function (t) {
+    if (!aiStill(sit) || G.turn !== me) return;
+    if (t.challenge) { var d = t.challenge; G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); return; }
+    var mv = t.move;
     G.busy = false;
-    var c = G.cubes[mv.id];
-    say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.' + (S.set.bluff === true && o.talk && Math.random() < 0.35 ? ' ' + talkLine(o, 'bluff') : ''));
+    var c = G.cubes[mv.id], yum = mv.liked ? tasteLine(o, 'tasteMove', 0.4) : '';
+    say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.' + (yum ? ' ' + yum : (S.set.bluff === true && o.talk && Math.random() < 0.35 ? ' ' + talkLine(o, 'bluff') : '')));
     aiPlace(mv.id, mv.zone, me);
-  }, 900 + Math.random() * 700);
+  }).catch(aiOops);
 }
 // Turn solver symbols into tokens that point at real cubes (Required first, then Permitted, then Resources)
 function symsToCubeTokens(list, mode) {
@@ -679,59 +635,43 @@ function solCtx(mode, goal, cubes, fractions) {
 function aiWrite(pi, mode, cb) {
   var o = G.players[pi].ai;
   say('opp', esc(o.name) + ' is writing a Solution…'); renderGame();
-  setTimeout(function () {
-    var st = snapshot(), r = null;
-    if (mode === 'now' && G.aiPlan) { r = G.aiPlan; G.aiPlan = null; }
-    else r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: mode === 'last' ? [] : st.res, mode: mode === 'last' ? 'free' : mode, fractions: G.fractions, maxDigits: aiViewDigits(o), timeMs: o.timeMs * 2 });
+  var sit = aiSituation(), plan = null;
+  if (mode === 'now' && G.aiPlan) { plan = G.aiPlan; G.aiPlan = null; }
+  var job = plan ? new Promise(function (ok) { setTimeout(function () { ok(plan); }, 1500); }) : aiThink('write', [AI.skill(o), snapshot(), G.goal, G.fractions, mode], 1500);
+  job.then(function (r) {
+    if (!aiStill(sit)) return;
     if (r && r.found) {
       var toks = symsToCubeTokens(r.tokens, mode), chk = Eq.checkSolution(toks, solCtx(mode));
-      say('opp', chk.ok ? 'Done!' : 'Hmm…'); cb(chk.ok, toks, chk);
+      var yum = chk.ok && r.liked ? (r.frac && tasteLine(o, 'tasteFrac', 0.8)) || tasteLine(o, 'tasteSol', 0.6) : '';
+      say('opp', chk.ok ? (yum || 'Done!') : 'Hmm…'); cb(chk.ok, toks, chk);
     } else { say('opp', 'I… couldn\'t find one!'); cb(false, null, null); }
-  }, 1500);
+  }).catch(aiOops);
 }
 function aiSetGoal() {
   if (!G) return;
-  var o = G.players[G.setter].ai, st = stageInfo();
-  var free = zoneCubes('resources');
-  var ideas = Eq.goalIdeas(free.map(function (c) { return c.s; }), { fractions: G.fractions }).filter(function (g) {
-    return g.value.d === 1 && g.value.n >= 1 && g.value.n <= Math.min(o.goalMax, st.maxGoal) && g.tokens.length <= o.goalCubes;
-  });
-  shuffle(ideas);
-  if (o.goalCubes > 1) ideas.sort(function (a, b) { return (b.tokens.length - a.tokens.length) + (Math.random() - 0.5) * 2.2; });
-  var t0 = Date.now();
-  for (var i = 0; i < ideas.length && i < 30 && Date.now() - t0 < 1000; i++) {
-    var g = ideas[i], rest = free.map(function (c) { return c.s; });
-    g.tokens.forEach(function (s) { rest.splice(rest.indexOf(s), 1); });
-    var r = Eq.solve({ goal: g.value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: aiGoalDigits(o), timeMs: 60 });
-    if (r.found) {
-      var used = {}, toks = g.tokens.map(function (s) { var c = free.find(function (x) { return x.s === s && !used[x.id]; }); used[c.id] = 1; return { s: s, id: c.id }; });
-      say('opp', o.goal);
+  var o = G.players[G.setter].ai, st = stageInfo(), sit = aiSituation();
+  AIThink.run('chooseGoal', [AI.skill(o), aiFree(), G.fractions, st.maxGoal]).then(function (pick) {
+    if (!aiStill(sit)) return;
+    if (pick) {
+      var toks = pick.toks;
+      say('opp', (pick.liked && tasteLine(o, 'tasteGoal', 0.6)) || o.goal);
       if (T3.active() && T3.creatureMove) {
         var k = 0;
         (function nextG() {
-          if (!G) return;
-          if (k >= toks.length) { setGoal(toks, g.value); return; }
+          if (!G || G.cubes !== sit.cubes) return;
+          if (k >= toks.length) { setGoal(toks, pick.value); return; }
           var tk = toks[k];
-          T3.creatureMove(tk.id, 'goal', function () { if (!G) return; G.cubes[tk.id].zone = 'goal'; G.goalTokens = toks.slice(0, k + 1); k++; renderGame(); setTimeout(nextG, 200); });
+          T3.creatureMove(tk.id, 'goal', function () { if (!G || G.cubes !== sit.cubes) return; G.cubes[tk.id].zone = 'goal'; G.goalTokens = toks.slice(0, k + 1); k++; renderGame(); setTimeout(nextG, 200); });
         })();
-      } else setGoal(toks, g.value);
+      } else setGoal(toks, pick.value);
       return;
     }
-  }
-  // The computer can't find a Goal: it declares "No Goal"
-  G.busy = false;
-  say('opp', 'I don\'t think any Goal is possible!');
-  renderGame();
-  askNoGoal(G.setter);
+    // The computer can't find a Goal: it declares "No Goal"
+    G.busy = false;
+    say('opp', 'I don\'t think any Goal is possible!');
+    renderGame();
+    askNoGoal(G.setter);
+  }).catch(aiOops);
 }
-function aiFindAnyEquation(o) {
-  var free = zoneCubes('resources').map(function (c) { return c.s; });
-  var ideas = shuffle(Eq.goalIdeas(free, { fractions: G.fractions }).filter(function (g) { return g.value.d === 1; }));
-  var t0 = Date.now();
-  for (var i = 0; i < ideas.length && Date.now() - t0 < 1500; i++) {
-    var rest = free.slice(); ideas[i].tokens.forEach(function (s) { rest.splice(rest.indexOf(s), 1); });
-    var r = Eq.solve({ goal: ideas[i].value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: 4, timeMs: 80 });
-    if (r.found) return { goal: ideas[i].tokens, value: ideas[i].value, sol: r.tokens };
-  }
-  return null;
-}
+// Still thinks on the page (ACT.noGoal waits for the answer); docs/handoff/brain.md has the background version.
+function aiFindAnyEquation(o) { return AI.findAnyEquation(zoneCubes('resources').map(function (c) { return c.s; }), G.fractions); }
