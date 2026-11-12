@@ -11,7 +11,7 @@
 // Library) and "clips" are present, the clips drive the skeleton instead and the rig only adds gaze and reaches on top.
 import * as THREE from 'three';
 import { TEAM, clamp } from './common.js';
-import { STYLE } from './classic.js';
+import { STYLE, NUM_BIG } from './classic.js';
 import { MonsterRig, BONE_NAMES } from './monsterrig.js';
 import { buildJerseyData, makeJerseyMesh, makeScarf, makeArmband } from './monsterwear.js';
 
@@ -113,7 +113,7 @@ export const MonstersPack = {
 
   build(kind) {
     const slot = this.slots[kind], entry = this.cache[kind]; if (!slot || !entry || !this._mods) throw new Error('model not ready');
-    const team = Object.assign({}, TEAM[kind] || TEAM.pip, slot.team || {});
+    const team = Object.assign({}, TEAM[kind] || TEAM.pip, NUM_BIG, slot.team || {});
     const H = slot.height || 6.2;
     const root = new THREE.Group(), body = new THREE.Group(), breathG = new THREE.Group(); root.add(body); body.add(breathG);
     const model = this._mods.SU.clone(entry.gltf.scene); breathG.add(model);
@@ -216,6 +216,7 @@ export const MonstersPack = {
     const bodyShare = rig.pose.bodyShare;
     const actor = {
       kind, root, body, arms, style, top: slot.top || (top + 0.35), headC, invBody,
+      fit: slot.fit || 1, fitY: slot.fitY || 0, lean: slot.lean || 0, portrait: slot.portrait || null,   // framing: size tweak, hip height offset (actor units), resting lean (rad, <0 = back)
       styleKey: slot.entrance || styleName,       // which entrance / exit / idle-flair set the gestures use
       playMood(name) {
         if (!mixer) return; const cl = findClip(name); if (!cl) return;

@@ -23,6 +23,8 @@ const SPEC = {
   pip: { color: 0xffd43b, head: [0.93, 0.88, 0.88], torsoW: 0.9, top: 3.4, L1: 1.25, L2: 1.35 }
 };
 
+// the opponents are seen from above across the table: a bigger, taller shirt number reads clearly there
+export const NUM_BIG = { numScale: 0.96, numTall: 1.05, numY: 126 };
 export const HOLD = 0.66;              // wrist height above the center of a held die (actor units)
 export function restPos(side) { return new THREE.Vector3(side * 1.75, 0.2, 1.45); }
 
@@ -30,7 +32,7 @@ function hex(s) { return new THREE.Color(s).getHex(); }
 
 export function buildClassic(kind) {
   if (!SPEC[kind]) kind = 'pip';
-  const sp = SPEC[kind], team = TEAM[kind], H = sp.head, root = new THREE.Group(), body = new THREE.Group();
+  const sp = SPEC[kind], team = Object.assign({}, TEAM[kind], NUM_BIG), H = sp.head, root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
   const fur = std(sp.color, { vertexColors: true }), furP = std(sp.color), black = std(0x15161a, { roughness: 0.35 }), white = std(0xffffff, { roughness: 0.3 });
   const jerseyM = std(hex(team.jersey)), trimM = std(hex(team.trim));
@@ -199,7 +201,7 @@ export function buildClassic(kind) {
   }[kind];
   const arms = [-1, 1].map((s) => {
     const a = new ArmRig(body, s, {
-      L1: sp.L1, L2: sp.L2, shoulder: [s * 1.0, 1.42, 0.02], maxStretch: 3.8,
+      L1: sp.L1, L2: sp.L2, shoulder: [s * 1.0, 1.42, 0.02], maxStretch: 1.25,
       furMat: std(armColor), foreMat: std(foreC), sleeveMat: jerseyM, trimMat: trimM,
       cuffMat: kind === 'sloth' ? std(0xffffff) : kind === 'fox' ? std(0x24262c) : null, hand
     });
@@ -259,5 +261,6 @@ export function buildClassic(kind) {
     dispose() { }
   };
   actor.eyeObjs = eyes;
+  actor.headObj = head;                // the head group (its origin is the middle of the head), for camera close-ups and portraits
   return actor;
 }

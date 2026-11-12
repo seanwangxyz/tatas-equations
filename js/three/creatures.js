@@ -6,7 +6,10 @@
 //   T3.creatureMoods() -> array of supported mood names (unknown names are ignored; null eases back to rest)
 //   T3.creatureTalk(ms)   the mouth moves (with small head gestures) for about ms, then closes; a mood interrupts it
 //   T3.creatureIdleFlair(on?)   rare, subtle in-character idle one-shots (default on); with no argument returns the setting
-//   T3.creatureMove(cubeId, zoneName, done)   reach, grab, carry, soft release; done() fires exactly once
+//   T3.creatureMove(cubeId, zoneName, done)   reach, grab, carry, soft release; done() fires exactly once. The arm stretches
+//                                             at most ARM_STRETCH (1.25x); the body shuffles, leans and steps for the rest
+//   T3.creatureFocus() -> { head: Vector3 (world), height } | null   for camera close-ups
+//   T3.creatureFrame(layout?, {topH, min, max, rootY, front, handX}?)   tuning hook for the framing (see FRAME); no args: current values
 //   T3.creaturePacks() -> [{id, name, available}]
 //   T3.creatureTempo = 1   (multiplies the duration of reaches; >1 slows them down, handy for inspecting poses)
 //
@@ -26,9 +29,19 @@ import { GEST, MOOD_NAMES } from './creatures/gestures.js';
 var T3 = window.T3;
 if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx;
+  // Framing: how big the creature stands behind the far table edge, per table layout. Every creature is scaled so the
+  // top of its head (ears, hat, horns: actor.top) reaches the same world height topH. The camera fits the table plus that
+  // top, so the table stays the same size whoever is playing, and short creatures (sloth, penguin, puglins) get as big
+  // as the tall ones instead of leaving empty sky. actor.fit fine-tunes one character; min/max bound the scale.
+  // rootY is the hips' height, front how far behind the far table edge the hips are, handX how far from the middle the
+  // resting hands may lie (world units; on a tall screen the scoreboard is close behind the creature's shoulder).
+  var FRAME = {
+    wide: { topH: 6.5, min: 1.4, max: 2.3, rootY: 0.22, front: 1.95, handX: 4.0 },
+    tall: { topH: 6.6, min: 1.4, max: 1.72, rootY: 0.22, front: 1.95, handX: 2.7 }
+  };
   var SCALE = 1.3, ROOT_Y = 0.22, FRONT = 1.95, BASE_LEAN = -0.13, TAU = Math.PI * 2;
-  var ZSTEP = 4.6;           // world units the creature may step forward over the table edge for a far reach
-  var LEAN_MAX = 0.6, SLIDE_MAX = 1.1;
+  var ARM_STRETCH = 1.25;    // the reaching arm may stretch this much at most; the body leans and steps for the rest
+  var LEAN_MAX = 0.55, SLIDE_MAX = 1.1, LIFT_MAX = 1.35;   // LIFT_MAX: hip height (world) once it is up over the table
 
   // ---------- packs ----------
   var packs = {
@@ -48,7 +61,7 @@ if (T3 && T3.ctx) (function () {
   var task = null;
   var nextBlink = 0, blinkT0 = -1e9;
   var pose = 0;                                                  // 0..1 how far the body leans/slides/steps for a far reach
-  var off = { x: 0, z: 0, px: 0, ph: 0 };                        // smoothed world-space step offsets while reaching
+  var off = { x: 0, z: 0, px: 0, pz: 0, ph: 0 };                        // smoothed world-space step offsets while reaching
   var idleSince = 0, nextFlair = 0, flairOn = true;
   var talk = null, lastDance = {};
   var mv = { id: -1, until: 0, crowd: false }, lastPos = new Float32Array(24 * 3), lastPosOK = false;
@@ -122,12 +135,23 @@ if (T3 && T3.ctx) (function () {
   // ---------- placement ----------
   function placeCreature() {
     if (!actor || !ctx.layout) return;
-    var D = ctx.layout.D;
+    var D = ctx.layout.D, fr = FRAME[ctx.layoutName] || FRAME.wide;
+    SCALE = clamp((fr.topH - fr.rootY) / (actor.top || 4), fr.min, fr.max) * (actor.fit || 1);
+    ROOT_Y = fr.rootY + (actor.fitY || 0) * SCALE; FRONT = fr.front;
     base.set(0, ROOT_Y, -D / 2 - FRONT);
     actor.root.position.copy(base); actor.root.scale.setScalar(SCALE); actor.root.updateMatrixWorld(true);
     rp.copy(base);
     headW.copy(actor.headC).multiplyScalar(SCALE).add(rp);
-    for (var i = 0; i < 2; i++) { var a = actor.arms[i]; armSt[i].init = false; a.rest = a.rest || restPos(a.side); C.rest[i] = a.rest; }
+    // resting hands lie on the far rim, never on the Goal zone (the bigger the creature, the further its hands would come in)
+    // and stay within handX of the middle (wide creatures would otherwise cover the scoreboard on a tall screen)
+    var rimZ = (FRONT - 0.6) / SCALE, handX = (fr.handX || 4) / SCALE;
+    for (var i = 0; i < 2; i++) {
+      var a = actor.arms[i]; armSt[i].init = false;
+      if (!a.rest0) a.rest0 = (a.rest || restPos(a.side)).clone();
+      a.rest = a.rest || a.rest0.clone(); a.rest.copy(a.rest0); if (a.rest.z > rimZ) a.rest.z = rimZ;
+      if (Math.abs(a.rest.x) > handX) a.rest.x = Math.sign(a.rest.x) * Math.max(handX, Math.abs(a.baseShoulder ? a.baseShoulder.x : 1) + 0.35);
+      C.rest[i] = a.rest;
+    }
   }
 
   // ---------- public API ----------
@@ -275,7 +299,7 @@ if (T3 && T3.ctx) (function () {
     if (gn && !fadeT0) fadeT0 = performance.now();                 // a reaction in progress eases out so the carry can start
     if (task) finishTask(true);                                  // a new move cuts off any return still in progress
     var now = performance.now(), ai = m.position.x < 0 ? 0 : 1, arm = actor.arms[ai], st = armSt[ai], sty = actor.style, s = sty.speed * (T3.creatureTempo || 1);
-    var T = task = { id: id, m: m, zone: zone, fin: fin, ai: ai, arm: arm, st: st, stage: -1, t0: now, deadline: now + 9000 * (T3.creatureTempo || 1), picked: false, released: false, ended: false, hold: 0, nom: new THREE.Vector3(), R7: new THREE.Vector3() };
+    var T = task = { id: id, m: m, zone: zone, fin: fin, ai: ai, arm: arm, st: st, stage: -1, t0: now, deadline: now + 12000 * (T3.creatureTempo || 1), picked: false, released: false, ended: false, hold: 0, nom: new THREE.Vector3(), R7: new THREE.Vector3(), fix: new THREE.Vector3(), err: 0 };
     T.S = st.goal.clone();
     T.cube = w2l(tmp.copy(m.position)).clone();
     T.G = T.cube.clone(); T.G.y += HOLD;
@@ -293,14 +317,32 @@ if (T3 && T3.ctx) (function () {
     T.dur = [sty.anticipate, clamp(0.34 + 0.03 * d1, 0.4, 0.85), 0.2, 0.17, clamp(0.5 + 0.04 * d2, 0.6, 1.1), 0.22, 0.16, 0.6].map(function (x) { return x * s; });
     T.dur[0] = Math.max(T.dur[0], 0.28 * s);
     T.align0 = st.align; T.open0 = st.open;
-    T.timer = setTimeout(function () { if (task === T) finishTask(true); else if (!T.ended) { T.ended = true; releaseCube(T); T.fin(); } }, 10000 * (T3.creatureTempo || 1));
+    T.timer = setTimeout(function () { if (task === T) finishTask(true); else if (!T.ended) { T.ended = true; releaseCube(T); T.fin(); } }, 13000 * (T3.creatureTempo || 1));
     stats.max = 0;
     setStage(T, 0, now);
     ctx.dirty(); ctx.startLoop();
   };
   var stats = { max: 0 };
   T3.creatureStage = function () { return task ? task.stage : -1; };   // debugging: 0 anticipate .. 7 return, -1 idle
-  T3.creatureStats = function () { return { maxStretch: stats.max, offX: off.x, offZ: off.z, pose: pose, gesture: gn }; };
+  // For short camera close-ups: the head's world position (follows steps, leans and entrances) and the creature's
+  // standing height in world units. null when no creature is at the table.
+  T3.creatureFocus = function () {
+    if (!actor || hidden) return null;
+    actor.root.updateMatrixWorld(true);
+    var h = actor.headC.clone(); if (actor.headObj) actor.headObj.getWorldPosition(h); else h.applyMatrix4(actor.body.matrixWorld);
+    return { head: h, height: actor.top * SCALE + ROOT_Y };
+  };
+  T3._creatureActor = function () { return actor; };              // debugging / tests only
+  // Tuning hook (no effect unless called): T3.creatureFrame('wide', {topH, min, max, rootY, front, handX}) then it refits. No argument: the current values.
+  T3.creatureFrame = function (layout, o) {
+    if (!layout) return { layout: ctx.layoutName, frame: JSON.parse(JSON.stringify(FRAME)), scale: SCALE, rootY: ROOT_Y, front: FRONT, fit: actor ? actor.fit || 1 : null };
+    if (FRAME[layout] && o) ['topH', 'min', 'max', 'rootY', 'front', 'handX'].forEach(function (k) { if (typeof o[k] === 'number') FRAME[layout][k] = o[k]; });
+    if (actor && o && typeof o.lean === 'number') actor.lean = o.lean;
+    if (actor && o && o.fit) actor.fit = o.fit;
+    if (actor && o && o.fitY != null) actor.fitY = o.fitY;
+    placeCreature(); ctx.refit(); ctx.dirty(); ctx.startLoop();
+  };
+  T3.creatureStats = function () { return { maxStretch: stats.max, offX: off.x, offZ: off.z, pose: pose, gesture: gn, err: task ? task.err : 0, fixZ: task ? task.fix.z : 0 }; };
   function cubeYaw(m) {
     var q = m.quaternion, vx = 1 - 2 * (q.y * q.y + q.z * q.z), vz = 2 * (q.x * q.z - q.w * q.y);
     var yw = Math.atan2(-vz, vx), q4 = Math.PI / 2; yw = yw - Math.round(yw / q4) * q4; return clamp(yw, -0.8, 0.8);
@@ -347,6 +389,8 @@ if (T3 && T3.ctx) (function () {
     T.lean = lk;
     st.goal.copy(OUT); st.open = open; st.align = align; st.yaw = yaw;
     if (k >= 1) {
+      // before grabbing (1-3) and before letting go (5): wait, briefly, until the hand is really there (the body may still be stepping)
+      if ((s >= 1 && s <= 3 || s === 5) && T.err > 0.12 && now - T.t0 < (d + 1.8) * 1000) return;
       if (s === 3) { pickCube(T); }
       if (s === 7) { finishTask(false); return; }
       setStage(T, s + 1, now);
@@ -367,24 +411,51 @@ if (T3 && T3.ctx) (function () {
     T.m.position.set(v.x, v.y - HOLD * SCALE, v.z);
     eul.set(tiltX, 0, tiltZ); qTilt.setFromEuler(eul); T.m.quaternion.copy(qBase).premultiply(qTilt);
   }
-  // How the body helps a reach: step along the table edge toward the cube's side, lean and slide over the table, step forward a little.
-  // Driven by the hand target as if the creature stood at its usual spot, so it eases back as the cube comes home.
+  // How the body helps a reach. The arm may only stretch ARM_STRETCH, so for a far cube the creature shuffles along the
+  // table edge toward the cube's side, leans over the table and, if that is still not enough, steps forward over the
+  // table (lifting itself so its tummy clears the felt). Everything eases back as the hand comes home.
+  // Planned from the hand target as if the creature stood at its usual spot (T.nom), plus a correction (T.fix) that only
+  // grows while the hand still falls short of its target, so a pick-up or a drop can never get stuck.
+  function armLen(A) { return (A.L1 + A.L2) * (A.k0 || 1); }
   function posture(Tk, dt) {
-    var t = 0, sx = 0, rel = 0;
+    var t = 0, sx = 0, sz = 0, rel = 0;
     if (Tk && Tk.stage !== 7) {
-      var N = Tk.stage <= 1 ? Tk.H : Tk.nom, shx = Tk.arm.baseShoulder.x, lim = sideLimit() / SCALE;
-      rel = N.x - shx; sx = clamp(Math.sign(rel) * Math.max(0, Math.abs(rel) - 1.6), -lim, lim);
-      var dz = N.z - 0.02, rx = rel - sx; t = clamp((Math.sqrt(rx * rx + dz * dz) - 2.8) / 7.2, 0, 1);
-      rel = rx;
+      var N = Tk.stage <= 1 ? Tk.H : Tk.nom, S = Tk.arm.baseShoulder, lim = sideLimit() / SCALE;
+      var R = armLen(Tk.arm) * Math.min(1.12, ARM_STRETCH * 0.9);    // a comfortable reach: barely stretched
+      var dy = N.y - S.y, Rh = Math.sqrt(Math.max(R * R * 0.3, R * R - dy * dy));
+      rel = N.x - S.x;
+      var ar = Math.abs(rel), sg = rel < 0 ? -1 : 1;
+      sx = sg * Math.max(0, ar - 1.6);
+      if (ar - Math.abs(sx) > Rh * 0.8) sx = sg * (ar - Rh * 0.8);
+      sx = clamp(sx + Tk.fix.x, -lim, lim);
+      var dx = rel - sx, need = (N.z - S.z) - Math.sqrt(Math.max(0, Rh * Rh - dx * dx));   // forward travel the shoulder still needs
+      var LF = SLIDE_MAX + S.y * Math.sin(LEAN_MAX);                     // what a full lean gives
+      t = clamp(need / LF, 0, 1); sz = Math.max(0, need - LF * t) + Tk.fix.z;
+      rel = dx;
     }
-    var k = 1 - Math.exp(-(Tk ? (Tk.stage === 7 ? 9 : 10) : 5) * dt);
-    pose += (t - pose) * k; off.x += (sx * SCALE - off.x) * k; off.z += (t * ZSTEP - off.z) * k;
-    // a little footfall while it shuffles sideways
-    var dx = off.x - off.px; off.px = off.x; off.ph += Math.abs(dx) * 2.4;
-    var sp = dt > 0 ? Math.abs(dx) / dt : 0;
-    if (sp > 0.4) { var g = Math.min(1, sp / 6); P.hop += 0.07 * g * Math.abs(Math.sin(off.ph * 3)); P.sway += 0.04 * g * Math.sin(off.ph * 3); P.turn += clamp(dx / Math.max(dt, 1e-3) * 0.04, -0.3, 0.3); }
+    var k = 1 - Math.exp(-(Tk ? (Tk.stage === 7 ? 6 : 7) : 4) * dt), kz = 1 - Math.exp(-(Tk ? 5 : 4) * dt);
+    pose += (t - pose) * k; off.x += (sx * SCALE - off.x) * k; off.z += (sz * SCALE - off.z) * kz;
+    // a little footfall while it shuffles or steps
+    var dx2 = off.x - off.px, dz2 = off.z - off.pz; off.px = off.x; off.pz = off.z;
+    var dd = Math.sqrt(dx2 * dx2 + dz2 * dz2); off.ph += dd * 2.4;
+    var sp = dt > 0 ? dd / dt : 0;
+    if (sp > 0.4) { var g = Math.min(1, sp / 6); P.hop += 0.07 * g * Math.abs(Math.sin(off.ph * 3)); P.sway += 0.04 * g * Math.sin(off.ph * 3); P.turn += clamp(dx2 / Math.max(dt, 1e-3) * 0.04, -0.3, 0.3); }
     P.slide += pose * SLIDE_MAX; P.lean += pose * LEAN_MAX; P.rx += off.x; P.rz += off.z;
+    // over the table: lift so the body clears the rim and the felt (in world units, converted to the root's offset)
+    if (off.z > 0.01) P.ry += sstep(off.z / Math.max(0.5, FRONT)) * Math.max(0, LIFT_MAX - ROOT_Y);
     P.turn += clamp(rel * 0.03, -0.2, 0.2) * Math.min(1, pose * 2) * (Tk ? 1 : 0);
+  }
+  // after the arms are solved: how far the busy hand still is from where it was asked to be (root space, actor units),
+  // and grow the step correction while it falls short (only during the reach, the carry and the drop)
+  var ERRV = new THREE.Vector3();
+  function trackReach(Tk, dt) {
+    var a = Tk.arm, st = Tk.st;
+    ERRV.copy(a.pos).applyMatrix4(actor.body.matrix).sub(st.goal).negate();
+    Tk.err = ERRV.length();
+    if (Tk.stage >= 1 && Tk.stage <= 6 && Tk.err > 0.06) {
+      var r = Math.min(1, 2.5 * dt);
+      Tk.fix.x = clamp(Tk.fix.x + ERRV.x * r, -6, 6); Tk.fix.z = clamp(Tk.fix.z + Math.max(0, ERRV.z) * r, 0, 12);
+    }
   }
 
   // ---------- watching the table ----------
@@ -423,7 +494,7 @@ if (T3 && T3.ctx) (function () {
     var sty = actor.style, i, a, st, rest;
 
     // ----- reset the pose; gestures then add to it -----
-    P.lean = BASE_LEAN; P.headYaw = 0; P.hop = 0; P.slide = 0; P.turn = 0; P.sway = 0; P.headRoll = 0; P.lid = 0.9; P.lidAsym = 0; P.breathAmp = 1;
+    P.lean = BASE_LEAN + (actor.lean || 0); P.headYaw = 0; P.hop = 0; P.slide = 0; P.turn = 0; P.sway = 0; P.headRoll = 0; P.lid = 0.9; P.lidAsym = 0; P.breathAmp = 1;
     P.browRaise = 0; P.browTilt = 0; P.browAsym = 0; P.smile = 0; P.open = 0; P.shrug = 0; P.happyAmt = 0; P.sadAmt = 0; P.cry = 0; P.cryT = 0; P.steam = 0; P.steamT = 0; P.angry = 0; P.pitchAdd = 0;
     P.rx = 0; P.ry = 0; P.rz = 0; P.rYaw = 0; P.rScale = 1; P.eyeWide = 0; P.pupil = 0; P.mouthW = 1; P.sweat = 0; P.gulp = 0; P.earL = 0; P.earR = 0; P.earUp = 0; P.hatTilt = 0; P.hatLift = 0;
     P.eyeAddX = 0; P.eyeAddY = 0; P.armRate = 9; P.gazeThink = 0; P.gazeSad = 0; P.gazeCam = 0; P.talk = 0; P.task = task ? task.ai + 1 : 0;
@@ -501,7 +572,7 @@ if (T3 && T3.ctx) (function () {
     var yaw = Math.atan2(dx, dz) - comp, pitch = Math.atan2(-dy, hd);
     yaw = clamp(yaw, -1.1, 1.1);
     var hy = clamp(yaw * sty.headGain, -0.75, 0.75), hp = clamp(pitch * sty.headGain, -0.55, 0.6);
-    P.headYaw += hy; P.headPitch = hp - P.lean * 0.5 + P.pitchAdd;
+    P.headYaw += hy; P.headPitch = hp - P.lean * (0.5 + 0.35 * pose) + P.pitchAdd;   // leaning far: keep the face up, eyes on the cube
     P.eyeX = clamp((yaw - hy) / 0.55, -1, 1); P.eyeY = clamp(-(pitch - hp + P.lean * 0.4) / 0.5, -1, 1);
 
     // ----- apply to the character -----
@@ -511,7 +582,7 @@ if (T3 && T3.ctx) (function () {
       tmp.copy(st.goal).applyMatrix4(actor.invBody);
       a.solve(tmp.x, tmp.y, tmp.z, st.align, st.yaw);
     }
-    if (Tk) { if (Tk.arm.stretch > stats.max) stats.max = Tk.arm.stretch; if (Tk.picked && !Tk.released) carryCube(Tk, dt); }
+    if (Tk) { trackReach(Tk, dt); if (Tk.arm.stretch > stats.max) stats.max = Tk.arm.stretch; if (Tk.picked && !Tk.released) carryCube(Tk, dt); }
     fxUpdate(now, dt);
     ctx.dirty();
   }
@@ -520,6 +591,11 @@ if (T3 && T3.ctx) (function () {
   // keep the creature in view when the camera fits the table (it may shuffle sideways along the table edge)
   ctx.hooks.extents.push(function (corners, W, D) {
     placeCreature();
-    if (actor) { var top = actor.top * SCALE + ROOT_Y, z = -D / 2 - FRONT, x = Math.max(3.4, sideLimit() + 2.2); corners.push([-x, top, z], [x, top, z]); }
+    if (actor) {
+      var top = actor.top * SCALE + ROOT_Y, z = -D / 2 - FRONT, x = Math.max(3.4, sideLimit() + 2.2);
+      corners.push([-x, top, z], [x, top, z]);
+      // it stands leaning back a little, so the top of its head is behind the hips: that point sits highest on screen
+      corners.push([0, top + 0.1, z + (actor.headC.z - actor.top * Math.sin(-BASE_LEAN - (actor.lean || 0)) - 0.1) * SCALE]);
+    }
   });
 })();
