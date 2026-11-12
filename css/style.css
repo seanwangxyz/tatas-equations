@@ -115,7 +115,9 @@ h1,h2,h3{margin:.2em 0;font-family:var(--display);font-weight:400;letter-spacing
 #gTop,#gAct,#gGoal{width:100%;max-width:1180px}
 #gMat{width:100%;max-width:1400px;position:relative}
 #game.three{overflow:hidden;gap:6px}
-#game.three #gMat{flex:1 1 auto;min-height:200px}
+#game.three #gMat{flex:1 1 auto;min-height:200px;max-width:none}
+#game.three{padding-left:0;padding-right:0}
+#game.three #gTop,#game.three #gAct,#game.three #gGoal{padding-left:10px;padding-right:10px;box-sizing:border-box}
 #gMat canvas{display:block;width:100%;height:100%;touch-action:none}
 
 .jersey{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:30px;padding:0 5px;color:#fff;font-family:var(--display);font-size:18px;border-radius:10px 10px 7px 7px;position:relative;
