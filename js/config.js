@@ -312,7 +312,7 @@ function defaults() {
     ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: OPPONENTS.map(function () { return false; }),
     cos: { skin: 'classic', mat: 'stadium', victory: 'confetti' },
     set: { music: 0.35, sfx: 0.8, mute: false, shakes: 3, three: true, voice: false, gloat: true, trash: true, bluff: false, avatar: true, variations: true },
-    cups: { run: null, won: {}, list: [] }, ways: { lvl: 1, row: 0, miss: 0, done: 0, total: 0, best: {} }, vari: { base: null, seen: 0 }, team: { mate: 'Tata', mjersey: '17', boss: null }, teamWins: {},
+    cups: { run: null, won: {}, list: [] }, ways: { lvl: 1, row: 0, miss: 0, done: 0, total: 0, best: {} }, gift: { made: [], solved: {} }, trios: {}, vari: { base: null, seen: 0 }, team: { mate: 'Tata', mjersey: '17', boss: null }, teamWins: {},
     lastDedication: '', tutorialDone: false, dailyDone: {}, jersey: '7', oppNames: OPPONENTS.map(function () { return ''; })
   };
 }

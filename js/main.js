@@ -64,4 +64,7 @@ FX.init();
 applyOppNames();
 applyCosmetics();
 $('#splashPip').innerHTML = pipSVG('happy');
+
 window.TataGame = { S: function () { return S; }, G: function () { return G; }, render: function () { renderGame(); }, move: function (id, z) { if (G) { G.selected = id; doMove(id, z); } } }; // for testing in the browser console
+
+if (typeof giftFromHash === 'function') giftFromHash(); // '#puzzle=...' opens a Puzzle from Tata
