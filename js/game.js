@@ -52,6 +52,7 @@ function startMatch(mode, oppIdx, cfg) {
   else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
   else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
+  if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -241,6 +242,7 @@ function doMove(id, zone) {
 }
 function placeCube(id, zone, who) {
   var c = G.cubes[id];
+  if (window.Recorder) Recorder.note('move', { by: who, id: id, zone: zone, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW (before the cube moves)
   c.zone = zone; c.order = ++orderCounter; G.justMoved = id; G.highlight = null;
   G.lastMover = who;
   if (G.team) Team.sync(); // the other teammate takes the team's next turn
@@ -297,6 +299,7 @@ function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
   if (window.Vari) Vari.afterGoal(tokens); // VARIATIONS: 0 Wild needs the Goal's cubes in the math mode
+  if (window.Recorder) Recorder.note('goal', { by: G.setter, goal: val, goalTokens: tokens, cubes: G.cubes, fr: G.fractions, shake: G.shake }); // REVIEW
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
@@ -351,6 +354,7 @@ function banner(text, sub) {
 }
 function thirdOf(a, b) { if (nP() < 3) return null; var r = idxs().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
 function challenge(kind, who) {
+  if (window.Recorder) Recorder.note('challenge', { by: who, kind: kind, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW
   var mover = G.lastMover;
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
   var cname = (G.team && who === 0) ? Team.callerName() : G.players[who].name, mname = (G.team && mover === 0) ? Team.writerName() : G.players[mover].name;
@@ -372,6 +376,7 @@ function challenge(kind, who) {
   }, 1400);
 }
 function writeSolution(pi, mode, cb) {
+  if (window.Recorder && Recorder.armed()) { var cb0 = cb; cb = function (ok, tokens, chk) { if (G) Recorder.note('solution', { by: pi, mode: mode, ok: ok, tokens: tokens, cubes: G.cubes, goal: G.goal, fr: G.fractions }); cb0(ok, tokens, chk); }; } // REVIEW
   if (isAI(pi)) aiWrite(pi, mode, cb);
   else if (G.team && pi === 0) Team.write(mode, cb); // one teammate writes, the other may help
   else if (multiHuman()) passTo(pi, mode, function () { openSolutionBuilder(pi, mode, cb); });
@@ -613,9 +618,11 @@ function endMatch() {
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
   }
   if (window.Social && Social.matchCard) { try { html += Social.matchCard({}); } catch (e) {} }
+  if (window.Review) html += Review.slotHTML(); // REVIEW: empty spot; the button appears only if Pip found something
   var cupRow = (G.mode === 'ai' && window.Cup && Cup.active()) ? Cup.onMatchEnd({ won: won, tie: tie, you: a, them: b, oppIdx: G.oppIdx }) : '';
   html += cupRow || '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
   modal(html, null);
+  if (window.Review) Review.afterMatch(); // REVIEW: thinks at most ~1.5 s, in small slices
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
 ACT.toMenu = function () { closeModal(); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
