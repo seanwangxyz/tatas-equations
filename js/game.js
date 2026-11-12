@@ -74,6 +74,29 @@ function startMatch(mode, oppIdx, cfg) {
   var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
+// Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
+// usable, instead of being parked in Forbidden. (House rule; a fixed set of cubes, like the tutorial's, keeps the old lock.)
+function rerollOps(done) {
+  var g0 = G, c0 = G.cubes, rounds = 0;
+  function okSym(s) { return Eq.isDigit(s) || G.ops.indexOf(s) >= 0; }
+  function bad() { return G.cubes.filter(function (c) { return !okSym(c.s); }); }
+  var b = bad(); if (!b.length) { done(); return; }
+  var names = { '^': 'powers', 'r': 'roots', '*': 'times', '/': 'dividing' }, miss = [];
+  ['*', '/', '^', 'r'].forEach(function (s) { if (b.some(function (c) { return c.s === s; })) miss.push(names[s]); });
+  var list = miss.length > 1 ? miss.slice(0, -1).join(', ') + ' or ' + miss[miss.length - 1] : miss[0];
+  say('pip', 'We aren\'t playing with <b>' + list + '</b> yet, so let me roll ' + (b.length > 1 ? 'these ' + b.length + ' cubes' : 'this cube') + ' again to get something we can use!', 'think');
+  renderGame();
+  function step() {
+    if (!G || G !== g0 || G.cubes !== c0) return;
+    var now = bad();
+    if (!now.length) { say('pip', 'There! Now every cube is one we can use.', 'happy'); renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) done(); }, 500); return; }
+    rounds++;
+    now.forEach(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(okSym); c.s = f[Math.floor(Math.random() * f.length)]; });
+    Snd.clatter(); renderGame();
+    setTimeout(step, 700);
+  }
+  setTimeout(step, 1500);
+}
 function newShake(fixedCubes) {
   var st = stageInfo();
   G.ops = st.ops.slice(); G.fractions = st.fractions;
@@ -95,14 +118,16 @@ function newShake(fixedCubes) {
       G.rolling = false; renderGame();
       setTimeout(function () {
         if (!G || G !== g0 || G.cubes !== c0) return;
-        lockOps();
-        if (G.cubes.some(function (c) { return c.locked; })) say('pip', '🔒 Operations you haven\'t unlocked yet go to Forbidden. Coming soon!');
-        G.phase = 'goal'; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700);
+        var toGoal = function () { G.phase = 'goal'; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700); };
+        if (fixedCubes) { lockOps(); if (G.cubes.some(function (c) { return c.locked; })) say('pip', '🔒 Operations you haven\'t unlocked yet go to Forbidden. Coming soon!'); toGoal(); }
+        else rerollOps(toGoal);
       }, 500);
     });
   } else {
-    lockOps(); renderGame(); Snd.clatter();
-    setTimeout(function () { G.rolling = false; G.phase = 'goal'; startGoalPhase(); }, 1500);
+    if (fixedCubes) lockOps();
+    renderGame(); Snd.clatter();
+    var gF = G, cF = G.cubes;
+    setTimeout(function () { if (!G || G !== gF || G.cubes !== cF) return; var go2 = function () { G.rolling = false; G.phase = 'goal'; startGoalPhase(); }; if (fixedCubes) go2(); else rerollOps(go2); }, fixedCubes ? 1500 : 900);
   }
 }
 function cue(name) { if (T3.cue) T3.cue(name); }
