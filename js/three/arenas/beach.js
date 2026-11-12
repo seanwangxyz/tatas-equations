@@ -2,7 +2,7 @@
 // palm trees, umbrellas and towels, and a small wooden stand of spectators beside a wooden scoreboard.
 // All static (no waves rolling, no swaying palms); the crowd reactions and camera flashes are one-shot.
 import * as THREE from 'three';
-import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, makeBoard, makeBlockCrowd, HEAD_TOP, venueApi, keyLight, venueLayout } from './common.js';
+import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, makeBoard, makeBlockCrowd, venueApi, keyLight, venueLayout } from './common.js';
 
 var BOARD = { bg0: '#0b4f6c', bg1: '#06324a', rows: 'rgba(255,255,255,.035)', head: '#f08c00', headText: '#fff4d6', title: "🌴  TATA'S EQUATIONS  🌴", text: '#ffe066', glow: '#ff9500', edge: '#c98a3c' };
 
@@ -129,22 +129,18 @@ export function buildBeach(W, D, aniso, layoutName, quality, FY) {
   for (var sI = 0; sI < nStr; sI++) roofParts.push({ geo: new THREE.BoxGeometry(standL / nStr, 0.08, standRows * rowD + 0.8), color: sI % 2 ? 0xffffff : 0xff6b6b, m: mtx(standX - standL / 2 + (sI + 0.5) * standL / nStr, roofY + 0.25, z0 - standRows * rowD / 2, -0.18, 0, 0) });
   var roof = new THREE.Mesh(mergeGeos(roofParts), stdm(0xffffff, 0.8, { vertexColors: true })); roof.castShadow = true; g.add(roof);
 
-  var shirts = ['#ff6b6b', '#4dabf7', '#ffd43b', '#51cf66', '#ff922b', '#f783ac', '#ffffff', '#20c997', '#cc5de8'], skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a9714b'];
-  var hairs = ['#2b1d14', '#3b2416', '#1a1a1a', '#6b4423', '#e0b96a', '#c8a165', '#8a3b1c'], hatCols = ['#fff3bf', '#ffe8cc', '#ff8787', '#74c0fc'];
+  // spectators: toy figures in beach clothes (t-shirts, bare arms, shorts, sun hats, sunglasses), dressed by crowd.js
   var pts = [], v = new THREE.Vector3();
   for (var r = 0; r < standRows; r++) {
     var step = 0.66, cnt = Math.floor((standL - 1.0) / step);
     for (var k = 0; k < cnt; k++) {
       if (R() < 0.1) continue;
-      v.set(r * rowD + rowD * 0.55 + (R() - 0.5) * 0.1, (r + 1) * rise, 0.5 + k * step + (R() - 0.5) * 0.14).applyMatrix4(stand.matrix);
-      var hat = R() < 0.4 ? hatCols[Math.floor(R() * 4)] : null; // people in sun hats have no hair cap
-      pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z) + (R() - 0.5) * 0.3, sc: 0.9 + R() * 0.25, shirt: shirts[Math.floor(R() * shirts.length)], skin: skins[Math.floor(R() * skins.length)],
-        hair: hat ? null : hairs[Math.floor(R() * hairs.length)], hat: hat, key: (v.x - (standX - standL / 2)) / standL });
+      v.set(r * rowD + rowD * 0.55 + (R() - 0.5) * 0.08, (r + 1) * rise, 0.5 + k * step + (R() - 0.5) * 0.1).applyMatrix4(stand.matrix);
+      pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z), seatRy: 0, team: R() < 0.5 ? 0 : 1, key: (v.x - (standX - standL / 2)) / standL });
     }
   }
-  // block people in t-shirts (bare arms); sun hats ride on the heads as an extra instanced set
-  var hatGeo = mergeGeos([{ geo: new THREE.CylinderGeometry(0.34, 0.34, 0.03, 12), m: mtx(0, HEAD_TOP + 0.015, 0) }, { geo: new THREE.CylinderGeometry(0.17, 0.2, 0.12, 10), m: mtx(0, HEAD_TOP + 0.07, 0) }]);
-  var crowd = makeBlockCrowd(g, pts, { quality: quality, armCol: 'skin', extras: [{ geo: hatGeo, mat: stdm(0xffffff, 0.9, { vertexColors: true }), has: 'hat', col: 'hat' }] });
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, style: 'beach', seatCol: '#c9955f', seed: 717,
+    teams: [{ shirt: '#ff6b6b', alt: '#ff922b', trim: '#ffffff', seat: '#c9955f' }, { shirt: '#4dabf7', alt: '#20c997', trim: '#ffffff', seat: '#c9955f' }] });
   pts = crowd.pts;
 
   // ----- Wooden scoreboard on posts in the sand -----
