@@ -134,9 +134,10 @@ function rerollOps(done) {
     var now = bad();
     if (!now.length) { say('pip', 'There! Now every cube is one we can use.', 'happy'); renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) done(); }, 500); return; }
     rounds++;
-    now.forEach(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(okSym); c.s = f[Math.floor(Math.random() * f.length)]; });
-    Snd.clatter(); renderGame();
-    setTimeout(step, 700);
+    var roll = now.map(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(okSym); c.s = f[Math.floor(Math.random() * f.length)]; return { id: c.id, s: c.s }; });
+    var next = function () { if (!G || G !== g0 || G.cubes !== c0) return; renderGame(); setTimeout(step, 350); };
+    if (T3.active() && T3.reroll) T3.reroll(roll, next);   // they hop up, tumble and land showing the new face (about 1 s, with the clatter)
+    else { Snd.clatter(); renderGame(); setTimeout(step, 700); }   // flat table: as before
   }
   setTimeout(step, 1500);
 }
