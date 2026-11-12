@@ -1,0 +1,20 @@
+/* Look around + photo buttons over the 3D table (js/three/orbit.js) */
+.orbit-ui{position:absolute;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;z-index:6;pointer-events:none}
+.orbit-ui .btn{pointer-events:auto;min-height:44px}
+.orbit-ui .btn svg{width:22px;height:22px;flex:none}
+.orbit-photo{padding:0;width:44px;min-width:44px;border-radius:14px;display:none}
+.orbit-photo.on{display:inline-flex;align-items:center;justify-content:center}
+/* "Back to my seat": only while the view is away from the seat; fades in, no bouncing */
+.orbit-seat{display:inline-flex;align-items:center;gap:6px;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility 0s linear .25s}
+.orbit-seat.on{opacity:1;visibility:visible;transition:opacity .25s ease}
+@media (max-width:520px){ .orbit-seat .lbl{font-size:13px} .orbit-ui{right:6px;bottom:6px;gap:6px} }
+/* shutter: one soft white flash */
+.orbit-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:5}
+.orbit-flash.go{animation:orbitFlash .45s ease-out both}
+@keyframes orbitFlash{0%{opacity:.55}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){ .orbit-flash.go{animation-duration:.2s} .orbit-seat,.orbit-seat.on{transition:none} }
+/* fallback viewer (iPad without sharing): press and hold to save */
+.orbit-view{position:fixed;inset:0;z-index:9000;background:rgba(6,12,28,.78);display:flex;align-items:center;justify-content:center;padding:16px}
+.orbit-view .ov-card{background:#fffdf6;border-radius:18px;padding:12px;max-width:min(92vw,900px);max-height:92vh;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.orbit-view img{max-width:100%;max-height:70vh;border-radius:10px;display:block;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto}
+.orbit-view p{margin:0;color:#16203c;font-weight:800;text-align:center}
