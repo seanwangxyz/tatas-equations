@@ -22,7 +22,7 @@
 //   likes.sol   = sets of symbols it tries to work into its Solutions, in order (e.g. [['*','+'], ['*']])
 //   likes.mix   = true: tries Solutions that mix two different operations (Zog)
 var AI = (function () {
-  var VERSION = 3; // bump when the messages between the page and the worker change
+  var VERSION = 4; // bump when the messages between the page and the worker change
 
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function assign(a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
@@ -30,7 +30,7 @@ var AI = (function () {
   function has(list, s) { return !!list && list.indexOf(s) >= 0; }
 
   // Only the fields the decisions read (a creature's talk lines stay on the page).
-  var FIELDS = ['name', 'maxDigits', 'timeMs', 'seeNow', 'seeImp', 'smart', 'shortView', 'callsImpossible', 'keepGoal', 'goalCubes', 'goalMax', 'likes'];
+  var FIELDS = ['name', 'maxDigits', 'timeMs', 'seeNow', 'seeImp', 'smart', 'shortView', 'callsImpossible', 'keepGoal', 'goalCubes', 'goalMax', 'likes', 'stars', 'fire'];
   function skill(o) { var s = {}; FIELDS.forEach(function (k) { if (o[k] !== undefined) s[k] = o[k]; }); return s; }
   // The same creature with no tastes (Pip's hints use a creature's eye but should not have its taste).
   function plain(o) { return assign(o, { likes: null }); }
@@ -127,7 +127,7 @@ var AI = (function () {
   function reachableWith(ops, p) { return !!ops && ops.some(function (s) { return !!forcedSolve(p, [s], 30); }); }
   // Hex: notice when his Solution goes through a fraction on the way.
   function mark(o, p, r) {
-    if (p.fractions && o.likes && o.likes.frac) { var ev = Eq.evaluate(r.tokens, { fractions: true }); if (ev.ok && ev.madeFraction) r.frac = true; }
+    if (Eq.fracOn(p.fractions) && o.likes && o.likes.frac) { var ev = Eq.evaluate(r.tokens, { fractions: p.fractions, wild: r.wild }); if (ev.ok && ev.madeFraction) r.frac = true; }
     return r;
   }
 
@@ -235,7 +235,10 @@ var AI = (function () {
   // free = the Resource cubes [{id, s}]. Returns {toks:[{s,id}], value, liked} or null (= "No Goal").
   function chooseGoal(o, free, fractions, maxGoal) {
     var L = o.likes;
+    // Remainder card: don't put the last ÷ cube in the Goal (the card would then do nothing).
+    var divs = Eq.rulesOf(fractions).rem ? free.filter(function (c) { return c.s === '/'; }).length : 0;
     var ideas = Eq.goalIdeas(free.map(function (c) { return c.s; }), { fractions: fractions }).filter(function (g) {
+      if (divs && g.tokens.filter(function (s) { return s === '/'; }).length >= divs) return false;
       return g.value.d === 1 && g.value.n >= 1 && g.value.n <= Math.min(o.goalMax, maxGoal) && g.tokens.length <= o.goalCubes;
     });
     // Longer Goals first (with some randomness). A taste counts about as much as one more cube; Zog loves length.
@@ -250,7 +253,9 @@ var AI = (function () {
     for (var i = 0; i < ideas.length && i < 30 && now() - t0 < 1000; i++) {
       var g = ideas[i], rest = free.map(function (c) { return c.s; });
       g.tokens.forEach(function (s) { rest.splice(rest.indexOf(s), 1); });
-      var p = { goal: g.value, req: [], opt: rest, mode: 'free', fractions: fractions, maxDigits: goalDigits(o), timeMs: 60 };
+      // (0 Wild: the solver also needs the Goal's symbols, because a 0 in the Goal may stand for another digit)
+      // (Three-operation: a Solution needs 3 signs, so it looks at up to 4 number cubes)
+      var p = { goal: g.value, req: [], opt: rest, mode: 'free', fractions: Eq.withGoal(fractions, g.tokens), maxDigits: Eq.rulesOf(fractions).three ? Math.max(4, goalDigits(o)) : goalDigits(o), timeMs: 60 };
       if (!Eq.solve(p).found) continue;
       if (!pick) pick = g;
       if (!L) break; // no taste: the first Goal it can solve, as always
@@ -263,13 +268,36 @@ var AI = (function () {
     var used = {}, toks = pick.tokens.map(function (s) { var c = free.find(function (x) { return x.s === s && !used[x.id]; }); used[c.id] = 1; return { s: s, id: c.id }; });
     return { toks: toks, value: pick.value, liked: liked };
   }
+  // ---- Choosing a variation card (when this creature sets the Goal) ----
+  // cards = the card ids the game offers this shake (unlocked, and each one changes something).
+  // Stronger creatures pick a card more often; weak ones hardly ever. A taste nudges WHICH card.
+  // Three-operation needs long Solutions, so only creatures that see 4+ number cubes pick it.
+  // Returns a card id or null (no variation). rand is optional (tests).
+  var CARD_CHANCE = [0, 0.04, 0.1, 0.25, 0.4, 0.55];
+  function chooseVariation(o, cards, rand) {
+    rand = rand || Math.random;
+    cards = (cards || []).filter(function (c) { return c !== 'threeops' || (o.maxDigits || 0) >= 4; });
+    if (!cards.length) return null;
+    var chance = (CARD_CHANCE[Math.max(0, Math.min(5, o.stars || 0))] || 0) + 0.08 * (o.fire || 0);
+    if (!(rand() < chance)) return null;
+    var L = o.likes || {}, fav = [];
+    if (has(L.ops, '+') || has(L.ops, '*') || L.mix) fav.push('multiops');
+    if (has(L.ops, '/') || L.goal === 'div') fav.push('remainder');
+    if (L.goal === 'big') fav.push('twodigit');
+    if (L.goal === 'long') fav.push('threeops');
+    if (has(L.syms, '0')) fav.push('wild0');
+    fav = fav.filter(function (c) { return cards.indexOf(c) >= 0; });
+    if (fav.length && rand() < 0.6) return fav[Math.floor(rand() * fav.length)];
+    return cards[Math.floor(rand() * cards.length)];
+  }
+
   // "No Goal" was called: can the creature find ANY Goal plus a Solution? (free = Resource symbols)
   function findAnyEquation(free, fractions) {
     var ideas = shuffle(Eq.goalIdeas(free, { fractions: fractions }).filter(function (g) { return g.value.d === 1; }));
     var t0 = now();
     for (var i = 0; i < ideas.length && now() - t0 < 1500; i++) {
       var rest = free.slice(); ideas[i].tokens.forEach(function (s) { rest.splice(rest.indexOf(s), 1); });
-      var r = Eq.solve({ goal: ideas[i].value, req: [], opt: rest, mode: 'free', fractions: fractions, maxDigits: 4, timeMs: 80 });
+      var r = Eq.solve({ goal: ideas[i].value, req: [], opt: rest, mode: 'free', fractions: Eq.withGoal(fractions, ideas[i].tokens), maxDigits: 4, timeMs: 80 });
       if (r.found) return { goal: ideas[i].tokens, value: ideas[i].value, sol: r.tokens };
     }
     return null;
@@ -279,6 +307,7 @@ var AI = (function () {
     VERSION: VERSION, skill: skill, plain: plain, viewDigits: viewDigits, goalDigits: goalDigits, applySym: applySym,
     decideChallenge: decideChallenge, callsLastImpossible: callsLastImpossible, interject: interject,
     chooseMove: chooseMove, turn: turn, write: write, thirdParty: thirdParty, chooseGoal: chooseGoal, findAnyEquation: findAnyEquation,
+    chooseVariation: chooseVariation,
     tasteSolve: tasteSolve, goalLooksLiked: goalLooksLiked, reachableWith: reachableWith, padded: padded,
     // what the worker may run
     TASKS: ['decideChallenge', 'callsLastImpossible', 'interject', 'chooseMove', 'turn', 'write', 'thirdParty', 'chooseGoal', 'findAnyEquation']

@@ -3,11 +3,15 @@
 // (the same file the game runs in its background worker): AI.chooseGoal, AI.chooseMove,
 // AI.decideChallenge (Now!/Impossible!), AI.callsLastImpossible and AI.write.
 // Only the turn order, the scoring and the stand-in kids below are written here.
-// Run with:  node tests/playtest.js [shakesPerPairing] [stage 0-4] [notaste]
+// Run with:  node tests/playtest.js [shakesPerPairing] [stage 0-4] [notaste] [variation]
 //   notaste = the same creatures with their math tastes switched off (to compare strength and taste rates).
+//   variation = a variation card for EVERY shake (wild0, twodigit, threeops, multiops, remainder), or
+//   'anycard' = a random card each shake. Every Solution a player writes is re-checked under the card;
+//   the summary prints how many were wrong (should be 0).
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
-const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv[4] === 'notaste';
+const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv.slice(4).includes('notaste');
+const CARD = process.argv.slice(4).find(a => a !== 'notaste') || null;
 
 // A fake browser, just enough for the scripts to load. Nothing is drawn.
 const store = {};
@@ -47,7 +51,17 @@ const tasteOf = name => TASTE[name] || (TASTE[name] = { goals: 0, goalsLiked: 0,
 const usesAll = (tokens, want) => { const t = tokens.slice(); return want.every(s => { const k = t.indexOf(s); if (k < 0) return false; t.splice(k, 1); return true; }); };
 function solLiked(o, tokens) { const L = LIKES[o.name]; if (!L) return false; if (L.mix) return new Set(tokens.filter(s => '+-*/^r'.includes(s))).size >= 2; return (L.sol || []).some(w => usesAll(tokens, w)); }
 function countSol(o, r) { if (!LIKES[o.name] || !r || !r.found) return; const t = tasteOf(o.name); t.sols++; if (solLiked(o, r.tokens)) t.solsLiked++; }
-const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); return r; };
+// Re-check a solver Solution under the shake's card (0 Wild: the same digit in Goal and Solution).
+const CHECK = { sols: 0, bad: 0, examples: [] };
+function recheck(G, r) {
+  if (!r || !r.found) return;
+  CHECK.sols++;
+  const RU = Eq.rulesOf(G.fractions), ev = Eq.evaluate(r.tokens, { fractions: G.fractions, wild: r.wild });
+  const goal = RU.goal && RU.goal.includes('0') ? Eq.goalAt(RU.goal, r.wild, G.fractions) : G.goal;
+  const nOps = r.tokens.filter(s => !Eq.isDigit(s) && s !== '(' && s !== ')').length;
+  if (!ev.ok || !goal || !Eq.eqF(ev.value, goal) || (RU.three && nOps < 3)) { CHECK.bad++; if (CHECK.examples.length < 5) CHECK.examples.push(r.expr + ' vs ' + (goal ? Eq.fmt(goal) : '?')); }
+}
+const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); recheck(G, r); return r; };
 
 function setGoal(G, o, opp) {
   const free = zone(G, 'resources');
@@ -61,7 +75,7 @@ function setGoal(G, o, opp) {
       const yum = AI.goalLooksLiked({ likes: L }, { tokens: g.toks.map(x => x.s), value: g.value }) || AI.reachableWith(L.ops, p);
       t.goals++; if (yum) t.goalsLiked++;
     }
-    G.goal = g.value; return true;
+    G.goal = g.value; G.goalSyms = g.toks.map(x => x.s); return true;
   }
   // the trick kid prefers Goals that need 3+ numbers against Snoozy
   let ideas = Eq.goalIdeas(free.map(c => c.s), { fractions: G.fractions }).filter(g => g.value.d === 1 && g.value.n >= 1 && g.value.n <= Math.min(o.goalMax, stage.maxGoal) && g.tokens.length <= o.goalCubes);
@@ -78,7 +92,7 @@ function setGoal(G, o, opp) {
   }
   if (!pick) return false;
   const used = {}; pick.tokens.forEach(s => { const c = free.find(x => x.s === s && !used[x.id]); used[c.id] = 1; c.zone = 'goal'; });
-  G.goal = pick.value; return true;
+  G.goal = pick.value; G.goalSyms = pick.tokens.slice(); return true;
 }
 const chooseMove = (G, o) => AI.chooseMove(o, snap(G), zone(G, 'resources'), G.goal, G.fractions);
 
@@ -115,7 +129,12 @@ function playShake(A0, B0, setter, stats) {
   const A = P[0], B = P[1];
   const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })), fractions: stage.fractions };
   G.cubes.forEach(c => { if (!Eq.isDigit(c.s) && stage.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
+  if (CARD) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
+    const card = CARD === 'anycard' ? Eq.VARIATIONS[Math.floor(Math.random() * Eq.VARIATIONS.length)] : CARD;
+    G.fractions = Eq.mathMode(stage.fractions, [card]); stats.cards[card] = (stats.cards[card] || 0) + 1;
+  }
   if (!setGoal(G, P[setter], P[1 - setter])) { stats.noGoal++; return [0, 0]; }
+  if (CARD) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
   let last = setter, turn = 1 - setter, order = 100, moves = 0;
   const pts = [0, 0], end = (how, who) => { stats.ends[how] = (stats.ends[how] || 0) + 1; stats.moves += moves; stats.shakes++; if (who !== undefined) stats.by[who][how] = (stats.by[who][how] || 0) + 1; return pts; };
   for (;;) {
@@ -123,7 +142,7 @@ function playShake(A0, B0, setter, stats) {
     if (last !== turn) {
       const nowOk = s.res.length >= 2 && s.req.length + s.perm.length > 0;
       const d = AI.decideChallenge(o, s, G.goal, G.fractions, nowOk, 1, false);
-      if (d && d.kind === 'now') { countSol(o, d.plan); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
+      if (d && d.kind === 'now') { countSol(o, d.plan); recheck(G, d.plan); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
       if (d && d.kind === 'impossible') {
         const mover = P[last], w = write(G, mover, 'impossible');
         const really = !truth(G, 'impossible').found;
@@ -155,7 +174,7 @@ function playShake(A0, B0, setter, stats) {
 
 const results = [];
 function pairing(A, B) {
-  const stats = { shakes: 0, moves: 0, noGoal: 0, ends: {}, by: [{}, {}], zones: [{ required: 0, permitted: 0, forbidden: 0 }, { required: 0, permitted: 0, forbidden: 0 }] };
+  const stats = { shakes: 0, moves: 0, noGoal: 0, cards: {}, ends: {}, by: [{}, {}], zones: [{ required: 0, permitted: 0, forbidden: 0 }, { required: 0, permitted: 0, forbidden: 0 }] };
   const tot = [0, 0], t0 = Date.now(); let slow = 0;
   for (let k = 0; k < N; k++) { const t1 = Date.now(), p = playShake(A, B, k % 2, stats); slow = Math.max(slow, Date.now() - t1); tot[0] += p[0]; tot[1] += p[1]; }
   const z = i => { const q = stats.zones[i], n = q.required + q.permitted + q.forbidden || 1; return `R ${Math.round(100 * q.required / n)}% / P ${Math.round(100 * q.permitted / n)}% / F ${Math.round(100 * q.forbidden / n)}%`; };
@@ -163,14 +182,16 @@ function pairing(A, B) {
   results.push({ A: A.name, B: B.name, a, b });
   console.log(`\n${A.name} vs ${B.name}  (${stats.shakes} shakes, ${((Date.now() - t0) / 1000).toFixed(1)}s, slowest shake ${slow}ms)`);
   console.log(`  average points per shake: ${A.name} ${a.toFixed(2)}  |  ${B.name} ${b.toFixed(2)}`);
-  console.log(`  average moves before it ends: ${(stats.moves / stats.shakes).toFixed(1)}`);
+  console.log(`  average moves before it ends: ${(stats.moves / stats.shakes).toFixed(1)}` + (stats.noGoal ? `   ("no Goal" shakes, not counted: ${stats.noGoal})` : ''));
   console.log(`  how shakes end: ` + Object.keys(stats.ends).sort().map(k => `${k}: ${stats.ends[k]}`).join('; '));
   console.log(`  ${A.name} challenges: ${JSON.stringify(stats.by[0])}   moves: ${z(0)}`);
   console.log(`  ${B.name} challenges: ${JSON.stringify(stats.by[1])}   moves: ${z(1)}`);
   return a - b;
 }
 
-console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing${NOTASTE ? ', math tastes OFF' : ''}`);
+console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing${NOTASTE ? ', math tastes OFF' : ''}${CARD ? ', variation card: ' + CARD : ''}`);
+if (CARD && CARD !== 'anycard' && Eq.VARIATIONS.indexOf(CARD) < 0) { console.log('Unknown card ' + CARD + '. Cards: ' + Eq.VARIATIONS.join(', ') + ', anycard'); process.exit(1); }
+process.on('exit', () => { if (CARD) console.log(`Variation check (${CARD}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the card` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); });
 for (let i = 0; i < OPPONENTS.length - 1; i++) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
 OPPONENTS.forEach(o => pairing(BEGINNER, o));
 [0, 1, 2, 4].forEach(i => pairing(PRACTICED, OPPONENTS[i]));

@@ -141,7 +141,7 @@ These cases are unit-tested in `tests/engine.test.js`.
 | 4 | Powers & roots | Basic rules allow any real number | Elementary General Rule always applies (whole numbers only) | Keeps every value an exact fraction; matches his division |
 | 5 | Fractions before they're unlocked | Not in the rules (difficulty ladder is your request) | Until "Fractions" unlocks, division must come out whole at every step | Your ladder: fractions come later |
 | 6 | Locked operations | Not in the rules | Cubes showing a locked operation go straight to Forbidden with a 🔒 "Coming soon!" tag right after the roll | Your request; the official cube set stays intact |
-| 7 | Timers, bonus moves, variations | Full tournament rules | Left out: no timers, bonus moves or Adventurous variations | Not in the seven Basic rules; you asked for no punishing timers |
+| 7 | Timers, bonus moves, variations | Full tournament rules | Left out: no timers or bonus moves. Five Elementary variations are now in, as optional "variation cards" (see section 5) | Not in the seven Basic rules; you asked for no punishing timers |
 | 13 | "No Goal" with 3 players | The Third Party may also write an Equation after a "No Goal" challenge | The Third Party is scored as if they chose not to write (6 if the challenger was wrong, 2 if right) | Rare case; the rules allow not writing |
 | 14 | Out-of-turn challenges | Anyone may challenge at any moment | People get "can challenge too" buttons after every move; a computer player in the third seat may also challenge out of turn | Same rule, made tappable |
 | 8 | Writing an Equation | Players write "Solution = Goal" on paper | Built with tap-to-place cubes; the game checks it instantly | No typing |
@@ -149,3 +149,102 @@ These cases are unit-tested in `tests/engine.test.js`.
 | 10 | "No Goal" vs the computer | The opponent agrees or challenges | The computer searches for any Goal + Solution. If it finds one it challenges and shows it; if not it agrees | Fair and rules-faithful |
 | 11 | Daily puzzle | Not in the rules | A seeded daily roll with a pre-set Goal and Required/Permitted cubes the solver has checked is solvable | Your request |
 | 12 | Who may challenge | Anyone, any time | In 2-player play only the next player can challenge, so challenges happen on your turn | With two players, they're the same thing |
+
+---
+
+## 5. Variations ("Adventurous Equations", sections II-B and XIII-A, pages E2–E3 and E17–E19)
+
+I read these sections in the same 2026-27 PDF (downloaded 2026-11-11 and turned into text). The text
+conversion dropped some symbols (√, ÷, −), so I filled those in from the surrounding words and examples.
+
+A **variation** is an extra rule for one shake. In the game each one is a **variation card**.
+
+### How a card is chosen
+
+| | Official (section II-B, pages E2–E3) | What the game does |
+|---|---|---|
+| When | After the roll, before the Goal is set | Same |
+| Who | **Every** player picks one, the Goal-setter first. In 2-player matches the player who is not the Goal-setter must pick **two** (II-B-3) | **SIMPLIFIED:** only the Goal-setter may pick, and at most **one** card. "No card" is always there |
+| Time | 15 seconds each | No timer (you asked for no punishing timers) |
+| A card that changes nothing | Costs 1 point and you pick again (II-B-2). The rules' example: choosing 0 Wild when no 0 was rolled | Such cards are simply not offered, so nobody can lose a point |
+| Computer players | — | A creature that sets the Goal sometimes picks a card: Snoozy about 4% of the time, Penny 10%, Rusty 24%, Ollie 41%, Mondo 55%, King Zog 70%. Its math taste nudges which card |
+
+The engine can play several cards at once (they are tested together a little), but the game only offers one.
+
+### The five cards in the game
+
+**1. 0 is Wild** (XIII-A-3, page E17)
+- Official (paraphrase): the 0 cube may stand for any numeral on the cubes, but it must stand for the same
+  numeral everywhere it appears, in the Goal and the Solution. The writer must write down what the 0 stands for; if they
+  don't, it means 0 (Appendix A note, page E12).
+- Game: every 0 cube stands for the same digit, 0 to 9, in the Goal and in the Solution.
+- Kid version: "A 0 cube can stand for any digit from 0 to 9, but every 0 means the same digit (in the
+  Goal too)." Example: Goal 8, Solution 5 + 0, where the 0 stands for 3.
+- ⚠ Interpretations:
+  - "Any numeral on the cubes" = a digit 0–9 (that is the Elementary reading; Middle Division lets 0 be any symbol).
+  - The kid does **not** have to say what his 0 means. The game tries 0 first, then 1, 2, … 9, accepts the
+    Solution if any digit works, and tells him which digit it used. (Officially an unwritten 0 means 0.)
+  - A Goal with a 0 is legal if the 0 can stand for some digit that makes it legal (so 8 ÷ 0 is a legal
+    Goal: the 0 could be 2). The Goal's value on screen is the one with 0 = 0 (or the first digit that works),
+    with a note that the 0 is wild.
+  - A two-digit Goal like 1 0 means 1 followed by the wild digit (10 to 19). The rulebook's own example
+    "(5x5) − 2 = 03" reads 0 3 as 23 this way.
+
+**2. Two-digit Numbers** (XIII-A-8 "Two-digit Numerals", page E18; played in Elementary in 2026-27)
+- Official: "Two-digit numerals are allowed in Solutions."
+- Game: two number cubes side by side in a Solution make one number (2 and 3 → 23). Three in a row is still not allowed.
+- Kid version: "In your Solution, two number cubes side by side can make one two-digit number." Example: 23 + 1 = 24.
+- ⚠ Interpretations: a leading 0 is allowed (0 5 = 5), the same as the game already allows in Goals.
+  A Solution may be just one two-digit number (Goal 23, Solution 2 3): it has two cubes, and nothing forbids it.
+
+**3. Use It Again** (XIII-A-5 "Multiple Operations", page E18)
+- Official (paraphrase): any operation sign that is not in Forbidden (or the Goal) may be used many times in
+  a Solution. Comment (a): after Impossible! any operation in Resources may be repeated; after Now!, if the one Resource
+  cube is an operation it may be repeated. A Goal still uses each cube once.
+- Game: exactly that. In the Solution builder an operation cube you may use stays tappable (dashed outline).
+- Kid version: "Any operation cube you may use can be used again and again in your Solution." Example: one
+  + cube, 1 + 2 + 3 = 6.
+- ⚠ Interpretations: if two + cubes are in Required, the Solution must show + at least twice (one for each
+  cube). The computer's search stacks square roots at most 3 deep (√√√); deeper ones are never useful with
+  these cubes, but it is a search limit, not a rule.
+
+**4. Three Operations** (XIII-A-6 "Three-operation Solution", page E18)
+- Official (paraphrase): every Solution must contain at least three operation symbols (+, −, ×, ÷, ^, √).
+- Game: a Solution needs at least three operation cubes. A square root with no little number counts (it is a √ cube).
+  Parentheses don't count.
+- Kid version: "Every Solution must use at least three operation signs." Example: 4 + 3 × 2 − 1 = 9.
+- ⚠ Interpretation: the card is only offered when at least three operation cubes were rolled (with fewer,
+  no Solution could ever count, which I treat as "has no effect").
+
+**5. Remainder** (XIII-A-7, page E18)
+- Official (paraphrase): A ⊘ B (⊘ = a ÷ cube turned sideways) is the remainder when A is divided by B;
+  A and B must be positive whole numbers and A at most 1000. Examples include 15 ⊘ 2 = 1 and 45 ⊘ 70 = 45.
+- Game: in the Solution builder, the button "Turn ÷ sideways" turns the last ÷ into a remainder; it shows as
+  **rem** on the cube. 7 rem 3 = 1.
+- Kid version: "Turn a ÷ cube sideways and it means what is left over when you divide." Example: 7 ÷ 3 is 2
+  with 1 left over, so 7 rem 3 = 1.
+- ⚠ Interpretations:
+  - Order: rem goes with × and ÷, left to right (the tournament has no order of operations; the game uses
+    school order, see #2 in section 4).
+  - Only in Solutions, not in the Goal. The rule does not mention the Goal; keeping Goals plain keeps the
+    Goal builder simple.
+  - 0 rem 3 is not allowed (A must be 1, 2, 3, …), as the rule says.
+
+### Elementary variations left out, and why
+
+| Variation | Why not (for now) |
+|---|---|
+| 1 Sideways (a number cube means 1 ÷ that number) | Needs fractions, and a way to show a sideways number cube. Could come after Fractions unlock |
+| 2 Upside-down (a number cube means its negative) | Negative numbers; the game avoids minus signs in front of numbers |
+| 4 Factorial (two ! signs, written in) | ! is not a cube, and the writer may also put ! into the **Goal** (the rules' example reads the Goal 9 ÷ 8 as 9! ÷ 8!), so the Goal's value would change with the writer. Numbers get huge fast |
+| 9 LCM, 10 GCF, 11 Number of Factors (2026-27 list) | They give √, ^ and × a second meaning; middle-school ideas; confusing next to the normal meaning |
+| 12–15 Average, Smallest Prime, Percent, Decimal Point | The even-year list: not played in Elementary in 2026-27 |
+
+### When cards unlock (house rule, not in the rulebook)
+- Cards start only after the basics: the first card arrives when the ladder reaches **Fractions**
+  (that is, after + − × ÷ have earned their stars), or straight away if Tata switched the ladder off.
+- Then one new card for every **4 skill points** (correct Solutions plus correct Impossible! calls), in this
+  order: Two-digit Numbers, Use It Again, 0 is Wild, Three Operations, Remainder.
+- A new card is announced once, calmly, the next time a Goal is set.
+- A creature only picks cards the kid has already unlocked.
+- Parent corner switch "Variation cards" turns them all off (see docs/handoff/variations.md).

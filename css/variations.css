@@ -1,0 +1,38 @@
+/* Variation cards (js/variations.js). Calm: one gentle "deal" when a card arrives, nothing loops. */
+.vari-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:10px 0 4px}
+.vari-cards.one{grid-template-columns:minmax(0,340px);justify-content:center}
+.vari-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;
+  font:inherit;color:var(--ink);background:#fff;border:3px solid var(--line);border-radius:18px;padding:12px 10px 10px;
+  box-shadow:0 4px 0 rgba(0,0,0,.08)}
+button.vari-card{cursor:pointer}
+button.vari-card:hover,button.vari-card:focus-visible{border-color:var(--gold);outline:none}
+button.vari-card:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,.08)}
+.vari-card b{font-family:var(--display);font-weight:400;font-size:21px;letter-spacing:.3px}
+.vari-card .vc-icon{font-size:30px;line-height:1}
+.vari-card .vc-rule{font-size:15px;line-height:1.3;color:var(--ink2)}
+.vari-card .vc-ex{display:flex;flex-direction:column;gap:4px;width:100%;margin-top:4px}
+.vari-card .vc-ex .expr{--mini:30px;min-height:0;padding:4px}
+.vari-card .vc-ex small{font-size:13.5px;line-height:1.3;color:var(--mute)}
+.vari-card.none{justify-content:center;background:#f6f8fc}
+.vari-card.new{border-color:var(--gold)}
+.vari-card .vc-new{position:absolute;top:-10px;right:10px;background:var(--gold);color:#4a2f00;font-size:12px;font-weight:900;padding:2px 8px;border-radius:999px}
+.vari-new-line{text-align:center;color:#8a5a00}
+.modal p.vari-small{font-size:15.5px;text-align:center;color:var(--ink2);margin:6px 0}
+
+/* the reminder on the table */
+.vari-chip{position:absolute;z-index:6;top:max(64px,calc(var(--sat) + 60px));left:max(10px,var(--sal));display:flex;align-items:center;gap:8px;
+  font:inherit;color:var(--ink);background:var(--paper);border:3px solid var(--gold);border-radius:14px;padding:5px 10px 5px 8px;
+  box-shadow:0 4px 0 rgba(0,0,0,.18);cursor:pointer;text-align:left;max-width:min(240px,46vw)}
+.vari-chip .vc-icon{font-size:22px;line-height:1}
+.vari-chip small{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+.vari-chip b{display:block;font-size:15px;line-height:1.1}
+.vari-chip em{display:block;font-style:normal;font-size:11.5px;color:#8a5a00;margin-top:2px}
+.vari-chip.dealt{animation:variDeal .55s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes variDeal{from{transform:translateY(-14px) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.vari-chip.dealt{animation:none}}
+
+/* the builders */
+.vari-note{display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;margin:2px auto 6px;max-width:640px;
+  background:#fff7dc;border:2px solid var(--gold);border-radius:12px;padding:4px 10px;font-size:14.5px;line-height:1.3;color:var(--ink)}
+.vari-note .vc-icon{font-size:18px}
+.cube.mini.again{opacity:.85;outline:3px dashed var(--gold);outline-offset:1px}

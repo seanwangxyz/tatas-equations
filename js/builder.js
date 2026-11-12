@@ -34,49 +34,70 @@ function openSolutionBuilder(pi, mode, cb) {
 function builderUsed() { var u = {}; B.tokens.forEach(function (t) { if (typeof t === 'object') u[t.id] = 1; }); return u; }
 function renderBuilder() {
   var used = builderUsed(), cubes = B.cubes, live = '', liveCls = 'meh', checks = '';
+  var RU = Eq.rulesOf(B.fractions); // a variation card in play? (js/variations.js; plain true/false = none)
+  var chk = B.kind === 'solution' ? Eq.checkSolution(B.tokens, solCtx(B.mode, B.goal, cubes, B.fractions)) : null;
   if (B.tokens.length) {
     if (B.kind === 'goal') {
       var g = Eq.checkGoal(B.tokens, B.fractions);
-      if (g.ok) { live = '= ' + Eq.fmt(g.value); liveCls = 'good'; } else live = g.reasons[0];
+      if (g.ok) {
+        live = '= ' + Eq.fmt(g.value); liveCls = 'good';
+        if (g.wildValues) { var w0 = Object.keys(g.wildValues)[0]; live += ' when the 0 means ' + w0 + '. The 0 is wild, so it can mean another digit too!'; }
+      } else live = g.reasons[0];
     } else {
       var ev = Eq.evaluate(B.tokens, { fractions: B.fractions });
-      if (ev.ok) { live = '= ' + Eq.fmt(ev.value) + (Eq.eqF(ev.value, B.goal) ? ' matches the Goal!' : ''); liveCls = Eq.eqF(ev.value, B.goal) ? 'good' : ''; }
+      if (chk.equal) { live = '= ' + Eq.fmt(chk.value) + (chk.wildAs ? ' (with the 0 meaning ' + chk.wildAs + ')' : '') + ' matches the Goal!'; liveCls = 'good'; }
+      else if (ev.ok) { live = '= ' + Eq.fmt(ev.value) + (RU.wild && B.tokens.some(function (t) { return t.s === '0'; }) ? ' when the 0 means 0. No digit for the 0 makes it match yet.' : ''); liveCls = ''; }
       else live = (ev.code === 'incomplete' || ev.code === 'paren') ? '…keep building' : ev.msg;
     }
   } else live = B.kind === 'goal' ? 'Tap cubes to build your Goal' : 'Tap cubes and ( ) to build a Solution';
   if (B.kind === 'solution') {
-    var chk = Eq.checkSolution(B.tokens, solCtx(B.mode, B.goal, cubes, B.fractions)), R = chk.reasons.join(' ');
+    var R = chk.reasons.join(' ');
     var reqIds = cubes.filter(function (c) { return c.zone === 'required'; }).map(function (c) { return c.id; });
     var reqUsed = reqIds.filter(function (id) { return used[id]; }).length;
     var items = [[(chk.cubes || 0) >= 2, 'At least 2 cubes']];
     if (reqIds.length) items.push([reqUsed === reqIds.length, 'All Required used (' + reqUsed + '/' + reqIds.length + ')']);
     if (B.mode === 'now') items.push([(chk.resUsed || 0) <= 1, 'At most 1 Resource (' + (chk.resUsed || 0) + ')']);
-    items.push([!/two-digit/.test(R), 'One-digit numbers only']);
-    items.push([chk.value && Eq.eqF(chk.value, B.goal), 'Equals the Goal']);
+    if (RU.two) items.push([!/three-digit/.test(R), 'Numbers up to two digits']);
+    else items.push([!/two-digit/.test(R), 'One-digit numbers only']);
+    if (RU.three) items.push([(chk.ops || 0) >= 3, 'At least 3 operation signs (' + (chk.ops || 0) + ')']);
+    items.push([!!chk.equal, 'Equals the Goal']);
     checks = '<div class="checks">' + items.map(function (x) { return '<span class="' + (x[0] ? 'y' : 'n') + '">' + (x[0] ? '✔' : '○') + ' ' + x[1] + '</span>'; }).join('') + '</div>';
   }
   var pools = B.pools.map(function (p) {
     if (!p.ids.length && !p.req) return '';
     var countUsed = p.ids.filter(function (id) { return used[id]; }).length, full = p.max && countUsed >= p.max;
     return '<div class="pool' + (p.forb ? ' forb' : '') + '"><h4>' + p.label + '</h4><div class="cubes">' +
-      (p.ids.map(function (id) { var c = cubes[id]; return cubeHTML(c, 'mini' + (used[id] ? ' used' : '') + (p.forb ? '' : '') + (full && !used[id] ? ' used' : ''), '').replace('class="cube', p.forb ? 'class="cube' : 'data-act="bAdd" class="cube'); }).join('') || '<span style="color:#868e96">none</span>') + '</div></div>';
+      (p.ids.map(function (id) { var c = cubes[id], again = reusable(c); return cubeHTML(c, 'mini' + (used[id] && !again ? ' used' : '') + (used[id] && again ? ' again' : '') + (full && !used[id] ? ' used' : ''), '').replace('class="cube', p.forb ? 'class="cube' : 'data-act="bAdd" class="cube'); }).join('') || '<span style="color:#868e96">none</span>') + '</div></div>';
   }).join('');
-  var goalLine = B.kind === 'solution' ? '<div class="b-goal">' + ico('target') + ' Goal: <span class="expr" style="padding:4px 8px">' + tokensHTML(B.goalTokens, cubes) + '</span> = ' + Eq.fmt(B.goal) + '</div>' : '';
-  $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + goalLine +
+  var gZero = RU.wild && B.goalTokens && B.goalTokens.some(function (t) { return (typeof t === 'string' ? t : t.s) === '0'; });
+  var goalLine = B.kind === 'solution' ? '<div class="b-goal">' + ico('target') + ' Goal: <span class="expr" style="padding:4px 8px">' + tokensHTML(B.goalTokens, cubes) + '</span> = ' + Eq.fmt(B.goal) + (gZero ? ' <small>(when the 0 means 0: the 0 is wild!)</small>' : '') + '</div>' : '';
+  var side = B.kind === 'solution' && RU.rem ? '<button class="btn small" data-act="bSide" title="Remainder card: turn the last ÷ sideways">↪ Turn ÷ sideways</button>' : '';
+  $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + (window.Vari ? Vari.builderNote(B.fractions) : '') + goalLine +
     '<div class="expr" id="bExpr" style="margin-top:8px">' + (B.tokens.length ? tokensHTML(B.tokens, cubes).replace(/data-bi=/g, 'data-act="bRemove" data-bi=') : '<span style="color:rgba(255,255,255,.7)">tap cubes below…</span>') + '</div>' +
     '<div class="b-live ' + liveCls + '">' + live + '</div>' + checks +
-    '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button><button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button></div>' +
+    '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button><button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button>' + side + '</div>' +
     pools +
     '<div class="row" style="margin-top:12px">' + (B.kind === 'goal' ? '<button class="btn big green" data-act="bSubmit">' + ico('target') + ' Set this Goal!</button>' + (B.noCancel ? '' : '<button class="btn" data-act="bCancel">Cancel</button>')
       : '<button class="btn big green" data-act="bSubmit">' + ico('check') + ' Check my Solution!</button>' + (B.mode === 'daily' ? '<button class="btn" data-act="bCancel">Close</button>' : '<button class="btn" data-act="bGiveUp">I can\'t find one</button>')) + '</div>' +
     '<p style="text-align:center;font-size:14px;color:#868e96;margin:6px 0 0">Tip: tap a cube in your expression to take it back out.</p>';
 }
+// Multiple Operations card: an operation cube in a Solution may be tapped again (the cube stays bright).
+function reusable(c) { return !!B && B.kind === 'solution' && Eq.rulesOf(B.fractions).multi && !Eq.isDigit(c.s); }
 ACT.bAdd = function (el) {
-  var id = +el.dataset.id; if (builderUsed()[id]) return;
+  var id = +el.dataset.id, u = builderUsed();
+  if (u[id] && !reusable(B.cubes[id])) return;
   var pool = B.pools.find(function (p) { return p.ids.indexOf(id) >= 0; });
   if (!pool || pool.forb) return;
-  if (pool.max) { var u = builderUsed(); if (pool.ids.filter(function (x) { return u[x]; }).length >= pool.max) { Snd.boop(); return; } }
+  if (pool.max && !u[id]) { if (pool.ids.filter(function (x) { return u[x]; }).length >= pool.max) { Snd.boop(); return; } }
   B.tokens.push({ s: B.cubes[id].s, id: id }); Snd.click(); renderBuilder();
+};
+// Remainder card: turn the last ÷ in the Solution sideways (÷ <-> rem), or back again.
+ACT.bSide = function () {
+  for (var i = B.tokens.length - 1; i >= 0; i--) {
+    var t = B.tokens[i];
+    if (typeof t === 'object' && (t.s === '/' || t.s === 'm')) { B.tokens[i] = { s: t.s === '/' ? 'm' : '/', id: t.id }; Snd.click(); renderBuilder(); return; }
+  }
+  Snd.boop(); var el = $('#builderBox .b-live'); if (el) el.textContent = 'Put a ÷ cube in your Solution first, then turn it sideways.';
 };
 ACT.bRemove = function (el) { var i = +el.dataset.bi; B.tokens.splice(i, 1); Snd.click(); renderBuilder(); };
 ACT.bParen = function (el) { B.tokens.push(el.dataset.arg); Snd.click(); renderBuilder(); };
