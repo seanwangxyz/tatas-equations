@@ -10,10 +10,23 @@ function multiHuman() { return !!G && humans().length > 1; }
 function firstAI() { for (var i = 0; i < G.players.length; i++) if (G.players[i].ai) return G.players[i].ai; return null; }
 // With two creatures at the table (mode 'ai3') one of them is 'up': it is the one shown in 3D and the one speaking.
 function curAI() { return (G && G.act != null && G.players[G.act] && G.players[G.act].ai) || firstAI(); }
+// Which creature at the table plays for player i (two creatures: the first AI player is creature 0, the second is creature 1).
+function aiSeat(i) { var n = -1; for (var j = 0; j <= i && j < G.players.length; j++) if (G.players[j].ai) n++; return n < 0 ? 0 : n; }
+// Run fn with player i's creature addressed by the T3.creature* calls (then the previous one again).
+function creatureAt(i, fn) { if (T3.creatureWith) T3.creatureWith(aiSeat(i), fn); else fn(); }
 function focusAI(i) {
-  if (!G || !G.players[i] || !G.players[i].ai || G.act === i) return;
-  var many = G.players.filter(function (p) { return p.ai; }).length > 1, had = G.act != null; G.act = i;
-  if (many && had) { setCreature(G.players[i].ai.kind, G.players[i].ai.pack); if (current === 'game') renderGame(); }
+  if (!G || !G.players[i] || !G.players[i].ai) return;
+  if (T3.creatureUse) T3.creatureUse(aiSeat(i));           // both creatures stay at the table: just address this one
+  if (G.act === i) return;
+  var had = G.act != null; G.act = i;
+  if (had && current === 'game') renderGame();             // the speech bubble's face follows the creature that is up
+}
+// Every creature at the table walks in (the second one a moment later, from its own side).
+function creaturesEnter() {
+  if (!T3.creatureEnter) return;
+  if (!(T3.creatureCount && T3.creatureCount() > 1)) { T3.creatureEnter(); return; }
+  T3.creatureWith(0, function () { T3.creatureEnter(); });
+  setTimeout(function () { if (G && T3.creatureWith) T3.creatureWith(1, function () { T3.creatureEnter(); }); }, 450);
 }
 function zoneCubes(z) { return G.cubes.filter(function (c) { return c.zone === z; }).sort(function (a, b) { return a.order - b.order; }); }
 function syms(z) { return zoneCubes(z).map(function (c) { return c.s; }); }
@@ -49,7 +62,7 @@ function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'd
 function setCreature(k, pack) { if (T3.setCreature) T3.setCreature(k, pack || 'classic'); }
 // The computer's creature reaches over and moves the cube (3D), or it just moves (flat mat).
 function aiPlace(id, zone, who) {
-  if (T3.active() && T3.creatureMove) { G.busy = true; G.carrying = true; renderGame(); T3.creatureMove(id, zone, function () { if (!G) return; G.busy = false; G.carrying = false; placeCube(id, zone, who); }); }
+  if (T3.active() && T3.creatureMove) { G.busy = true; G.carrying = true; renderGame(); if (T3.creatureUse) T3.creatureUse(aiSeat(who)); T3.creatureMove(id, zone, function () { if (!G) return; G.busy = false; G.carrying = false; placeCube(id, zone, who); }); }
   else placeCube(id, zone, who);
 }
 // Which person at the table reaches over for a human's move (3D): this device's player, or the second human (mate).
@@ -97,8 +110,11 @@ function startMatch(mode, oppIdx, cfg) {
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
-  setCreature(ai ? ai.kind : null, ai && ai.pack); playerShow(); seatPeople(mode, cfg);
-  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); if (T3.creatureEnter) T3.creatureEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+  var ais = G.players.filter(function (p) { return p.ai; });
+  if (ais.length > 1 && T3.setCreatures) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }));
+  else setCreature(ai ? ai.kind : null, ai && ai.pack);
+  playerShow(); seatPeople(mode, cfg);
+  var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
@@ -622,6 +638,11 @@ function endShake(r) {
     var ao = G.players[aiI].ai, ap = r.pts[aiI] || 0, hp = r.pts[0] || 0;
     if (ap > hp) { var gl = S.set.gloat !== false && Math.random() < 0.5; creatureMood(gl ? 'gloat' : 'happy'); aiTalk = gl ? talkLine(ao, 'gloat') : (talkLine(ao, 'kidWrong') || ''); }
     else if (ap < hp) { creatureMood(Math.random() < 0.3 ? 'cry' : 'sad'); if (Math.random() < 0.7) aiTalk = talkLine(ao, Math.random() < 0.5 ? 'kidGoodMove' : 'sore') || talkLine(ao, 'sore'); }
+    // the other creature (Three at the table) reacts to its own shake, a beat later
+    idxs().filter(function (i) { return isAI(i) && i !== aiI; }).forEach(function (i) {
+      var p = r.pts[i] || 0, m = p > hp ? (Math.random() < 0.5 ? 'happy' : 'clap') : p < hp ? (Math.random() < 0.5 ? 'sad' : 'shrug') : null;
+      if (m) setTimeout(function () { if (G && G.phase === 'over') creatureAt(i, function () { if (T3.creatureMood) T3.creatureMood(m); }); }, 350);
+    });
   }
   var sample = sampleSolution();
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
@@ -679,7 +700,11 @@ function endMatch() {
     if (aiI !== undefined) focusAI(aiI);
     if (G.mode === 'ai3') { var sole = winners.indexOf(0) >= 0 && winners.length === 1; if (window.Trio) Trio.onMatchEnd(sole); if (sole) playerCelebrate(); else playerMood(winners.indexOf(0) >= 0 ? 'clap' : 'aw'); if (sole) { fx3('confetti'); fx3('wave'); board('GOOOAL!'); } }
     if (G.mode !== 'ai3') { if (winners.indexOf(0) >= 0 && winners.length === 1) { playerCelebrate(); mateMood('clap'); } else if (winners.indexOf(1) >= 0 && !isAI(1)) { mateMood('cheer'); playerMood('clap'); } }
-    if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'dance' : loseMood(G.players[aiI].ai));
+    idxs().filter(isAI).forEach(function (i) {
+      var m = winners.indexOf(i) >= 0 ? 'dance' : loseMood(G.players[i].ai);
+      creatureAt(i, function () { if (T3.creatureMood) T3.creatureMood(m); });
+    });
+    if (aiI !== undefined && winners.indexOf(aiI) >= 0 && Snd.danceMusic) Snd.danceMusic(3200);   // once, even if both dance
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
     html = '<h2 class="hero">' + (winners.length > 1 ? 'Tie: ' + names.join(' & ') + '!' : names[0] + ' wins!') + '</h2>' +
@@ -783,6 +808,7 @@ function aiSetGoal() {
           if (!G || G.cubes !== sit.cubes) return;
           if (k >= toks.length) { setGoal(toks, pick.value); return; }
           var tk = toks[k];
+          if (T3.creatureUse) T3.creatureUse(aiSeat(G.setter));
           T3.creatureMove(tk.id, 'goal', function () { if (!G || G.cubes !== sit.cubes) return; G.cubes[tk.id].zone = 'goal'; G.goalTokens = toks.slice(0, k + 1); k++; renderGame(); setTimeout(nextG, 200); });
         })();
       } else setGoal(toks, pick.value);
