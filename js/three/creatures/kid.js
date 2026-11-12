@@ -50,9 +50,13 @@ export const KID = {
   // body build (the grown-up uses other values)
   torsoX: 1, torsoY: 1, neckLen: 0.5, hipY: -0.6, thigh: 0.55, shin: 1.0, legR: 1, shortsY: -0.3, shortsH: 0.72, shortsR: 0.82,
   L1: 0.92, L2: 0.98, armR: 1, handS: 0.6,
-  head: { sx: 1, sy: 1.02, sz: 0.98, jaw: 0.1, chin: 0 },
-  face: { eyeX: 0.34, eyeY: 0.02, eyeR: 0.2, browY: 0.33, browLen: 0.2, browTh: 0.045, mouthY: -0.42, mouthW: 1, noseY: -0.15, cheekX: 0.5, cheekY: -0.27, cheekR: 0.12 }
+  // a soft oval: a little taller than wide, full round cheeks, a small chin, a round back of the head
+  head: { sx: 0.95, sy: 1.06, sz: 0.98, jaw: 0.18, chin: 0, cheek: 0.075, back: 0.04 },
+  face: { eyeX: 0.32, eyeY: 0.02, eyeR: 0.172, browY: 0.29, browLen: 0.21, browTh: 0.033, mouthY: -0.43, mouthW: 1, noseY: -0.14, cheekX: 0.5, cheekY: -0.3, cheekR: 0.14 }
 };
+// His look: light warm skin, dark-brown almond eyes that smile with the grin, thin dark brows, rosy cheeks
+export const KID_LOOK = { skin: '#efc19d', hair: '#3b2314', hairStyle: 'swept', eyes: '#3f2412', brows: null, cheeks: '#f0938a', stubble: false, adult: false, streaks: null,
+  eyeW: 1.14, eyeH: 0.92, tilt: 0.07, happy: 0.3, iris: 0.74, vneck: false };
 
 // Back of the shirt: lathe u = 0 is the chest (+z), u = 0.5 the back (-z). Name over the number, like a real kit.
 // front: a small number on the chest too (for someone seen from the front, across the table).
@@ -89,6 +93,14 @@ export function kidJerseyTexture(kit, num, name, front) {
     g.fillStyle = '#fff'; g.beginPath(); g.arc(W * 0.06, 52, 11, 0, 7); g.fill();
     g.fillStyle = kit.dark; g.beginPath(); g.arc(W * 0.06, 52, 5, 0, 7); g.fill();
   }
+  if (kit.vneck) {
+    // a V-neck: an open V of skin at the front (u = 0, drawn at both canvas edges so the seam joins it), trimmed
+    const vee = (x0) => {
+      g.fillStyle = kit.vneck; g.beginPath(); g.moveTo(x0 - 34, 0); g.lineTo(x0 + 34, 0); g.lineTo(x0, 52); g.closePath(); g.fill();
+      g.strokeStyle = kit.trim; g.lineWidth = 7; g.lineJoin = 'miter'; g.beginPath(); g.moveTo(x0 - 37, 0); g.lineTo(x0, 56); g.lineTo(x0 + 37, 0); g.stroke();
+    };
+    vee(0); vee(W);
+  }
   const cx = W * 0.5;
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
   const FONT = '"Arial Black", Impact, "Trebuchet MS", sans-serif';
@@ -119,11 +131,16 @@ export function kidJerseyTexture(kit, num, name, front) {
 // The head is a deformed sphere. surf(d) gives the surface point for a unit direction d, so the hair, the mouth and the
 // cheek decals can all be laid exactly on it (radially), whatever the head shape.
 function makeSurf(R, H) {
+  const cheek = H.cheek || 0, back = H.back || 0;
   return function (dx, dy, dz, out) {
     // a softer, narrower jaw below the cheeks, and a chin that comes forward a little (grown-up)
     const low = clamp(-dy - 0.25, 0, 1), jaw = 1 - H.jaw * low * low * 1.6;
     const chin = H.chin * clamp(-dy - 0.45, 0, 1) * clamp(dz, 0, 1);
-    out.set(dx * R * H.sx * jaw, dy * R * H.sy - chin * R * 0.35, dz * R * H.sz * (1 - 0.4 * H.jaw * low * low) + chin * R * 0.25);
+    // full round cheeks (a kid's): a soft bulge out and forward, low on the front half of the face
+    const ch = cheek * Math.exp(-Math.pow((dy + 0.3) / 0.24, 2)) * clamp(dz * 1.6 + 0.25, 0, 1);
+    // a rounder back of the head (the crown and occiput are what we see from the seat)
+    const bk = back * clamp(-dz, 0, 1) * clamp(dy + 0.6, 0, 1);
+    out.set(dx * R * H.sx * (jaw + ch + bk * 0.5), dy * R * H.sy - chin * R * 0.35, dz * R * H.sz * (1 - 0.4 * H.jaw * low * low + 0.6 * ch + bk) + chin * R * 0.25);
     return out;
   };
 }
@@ -137,12 +154,39 @@ function facePoint(surf, R, x, y, off, out) {
 
 // Hair styles: a displaced shell around the head. line(d) = the hairline (unit-direction y below which there is no hair),
 // thick(d) = how far the hair stands off the scalp (head radii). Vertices outside the hair are tucked inside the head.
+// Strands that fan out from a crown whorl (a point at the back of the top of the head) and curl a little around it, so
+// the hair reads as hair from behind and above (the seat camera) and the fringe flows across the forehead.
+// Returns 0..1 (1 = the middle of a lock, 0 = the groove between two locks) and the distance from the crown (radians).
+function whorl(C, E1, E2, N, twist) {
+  return function (d, out) {
+    const cd = clamp(d.x * C.x + d.y * C.y + d.z * C.z, -1, 1), dist = Math.acos(cd);
+    const phi = Math.atan2(d.x * E2.x + d.y * E2.y + d.z * E2.z, d.x * E1.x + d.y * E1.y + d.z * E1.z);
+    out.r = 0.5 + 0.5 * Math.cos(N * phi + twist * dist + 1.7 * Math.sin(dist * 3.1)); out.dist = dist;
+    return out;
+  };
+}
+function basis(cx, cy, cz) {
+  const C = new THREE.Vector3(cx, cy, cz).normalize(), E1 = new THREE.Vector3().crossVectors(C, new THREE.Vector3(1, 0, 0)).normalize(), E2 = new THREE.Vector3().crossVectors(C, E1);
+  return [C, E1, E2];
+}
+// his whorl: at the back of the crown, a little to his left; the twist sends the fringe across toward his right
+const KW = basis(0.14, 0.74, -0.66), kidWhorl = whorl(KW[0], KW[1], KW[2], 19, -2.6), _w = { r: 0, dist: 0 };
 export const HAIR_STYLES = {
-  // his own: straight and fairly thick, a fringe swept across the forehead toward his left, over the tops of the ears
+  // his own: straight, thick and full, a longish cut. The fringe sweeps diagonally across the forehead from his left to
+  // his right and ends just above the eyebrows (lowest over his right brow); the sides cover the top half of the ears;
+  // full and round at the crown and the back. (Local +x is his left.)
   swept: {
-    front: (x) => 0.46 - 0.13 * x - 0.035 * Math.abs(Math.sin(x * 9.5 + 0.6)), side: 0.04, back: -0.5,
-    thick: (d, line) => 0.1 + 0.05 * clamp(d.y, 0, 1) + 0.035 * clamp(1 - (d.y - line) * 5, 0, 1) * clamp(d.z, 0, 1),
-    grain: (d) => 0.012 * Math.sin((d.x * 0.8 + d.y * 0.6) * 22 + d.z * 4), lift: 0.03
+    front: (x) => 0.45 + 0.13 * clamp(x, -1, 1) - 0.065 * Math.abs(Math.sin(x * 9 + 0.9)) + 0.06 * clamp((x - 0.5) * 3, 0, 1), side: -0.1, back: -0.62,
+    thick: (d, line) => {
+      kidWhorl(d, _w);
+      const crown = 0.035 * Math.exp(-Math.pow(_w.dist / 0.45, 2));                         // a little lift at the whorl
+      return 0.13 + 0.07 * clamp(d.y + 0.2, 0, 1) + crown + 0.03 * clamp(Math.abs(d.x) - 0.55, 0, 1) * clamp(d.y + 0.4, 0, 1)
+        + 0.025 * clamp(1 - (d.y - line) * 5, 0, 1) * clamp(d.z, 0, 1);                     // a thick fringe
+    },
+    grain: (d) => { kidWhorl(d, _w); return 0.03 * (_w.r - 0.5) * clamp(_w.dist / 0.35, 0, 1); },
+    shade: (d) => { kidWhorl(d, _w); const f = clamp(_w.dist / 0.35, 0, 1); return 0.8 + 0.3 * _w.r * f + 0.12 * (1 - f) + 0.1 * clamp(d.y, 0, 1); },
+    jag: (a) => -0.06 * Math.pow(Math.abs(Math.sin(a * 8 + 0.4)), 0.7) - 0.03 * Math.abs(Math.sin(a * 19)),
+    lift: 0.025, frontW: 0.8
   },
   // a short crop: thin, the ears and forehead show
   short: { front: (x) => 0.58 - 0.02 * Math.abs(Math.sin(x * 12)), side: 0.32, back: -0.32, thick: () => 0.045, grain: (d) => 0.006 * Math.sin(d.x * 30) * Math.sin(d.y * 30), lift: 0 },
@@ -154,11 +198,17 @@ export const HAIR_STYLES = {
   // a long bob down to the jaw
   long: { front: (x) => 0.42 - 0.04 * Math.abs(Math.sin(x * 6)), side: -0.78, back: -0.85, thick: (d) => 0.1 + 0.05 * clamp(d.y, 0, 1) + 0.05 * clamp(-d.y, 0, 1),
     grain: (d) => 0.01 * Math.sin(Math.atan2(d.x, d.z) * 18), lift: 0.03, frontW: 0.62 },
-  // Tata's: longer on top and tousled, falling to both sides from a soft middle parting
+  // Tata's: long on top and tousled, parted a little off the middle and falling to both sides like curtains, the
+  // strands reaching down to the brows at the sides of the forehead (a narrow V of forehead shows at the parting)
   tousled: {
-    front: (x) => 0.5 - 0.22 * clamp(Math.abs(x) * 1.6, 0, 1) + 0.06 * clamp(1 - Math.abs(x) * 6, 0, 1) - 0.04 * Math.abs(Math.sin(x * 8 + 0.4)), side: 0.02, back: -0.48,
-    thick: (d, line) => 0.12 + 0.12 * clamp(d.y, 0, 1) + 0.03 * clamp(1 - (d.y - line) * 5, 0, 1),
-    grain: (d) => 0.03 * Math.sin(d.x * 9 + d.z * 5) * Math.sin(d.y * 11 + d.x * 3) + 0.015 * Math.sin(Math.atan2(d.x, d.z) * 14), lift: 0.04
+    front: (x) => { const ax = Math.abs(x - 0.06); return 0.6 - 0.36 * clamp(ax * 2.3, 0, 1) + 0.14 * clamp((ax - 0.6) * 2.5, 0, 1) - 0.045 * Math.abs(Math.sin(x * 12 + 0.4)); },
+    side: 0.0, back: -0.56, frontW: 0.85,
+    thick: (d, line) => 0.13 + 0.13 * clamp(d.y + 0.1, 0, 1) + 0.035 * clamp(1 - (d.y - line) * 5, 0, 1) + 0.02 * Math.sin(d.x * 7 + d.z * 4) * Math.sin(d.y * 9),
+    // strands run from the parting down over the sides (rings around the front-back axis), a little wavy
+    grain: (d) => 0.028 * (0.5 + 0.5 * Math.cos(30 * d.z + 2.2 * Math.sin(d.x * 5 + d.y * 3)) - 0.5) * clamp(d.y + 0.5, 0, 1),
+    shade: (d) => 0.8 + 0.32 * (0.5 + 0.5 * Math.cos(30 * d.z + 2.2 * Math.sin(d.x * 5 + d.y * 3))) * clamp(d.y + 0.5, 0, 1),
+    jag: (a) => -0.05 * Math.pow(Math.abs(Math.sin(a * 7 + 1.1)), 0.8),
+    lift: 0.05
   }
 };
 function hairLine(st, d, out) {
@@ -167,14 +217,18 @@ function hairLine(st, d, out) {
   const c = d.z / Math.max(1e-6, Math.sqrt(d.x * d.x + d.z * d.z));
   const wf = Math.pow(clamp((c - (1 - fw)) / fw, 0, 1), 1.3), wb = clamp(-c, 0, 1);
   if (out) out.wf = wf;
-  return wf * st.front(d.x) + wb * st.back + (1 - wf - wb) * st.side;
+  // jag: uneven ends round the sides and back (so the cut doesn't read as a bowl)
+  const jg = st.jag ? st.jag(Math.atan2(d.x, d.z)) * (1 - wf) : 0;
+  return wf * st.front(d.x) + wb * st.back + (1 - wf - wb) * st.side + jg;
 }
 // The hair is a cap laid over the scalp from the crown down to the hairline, column by column around the head, so its
 // edge follows the hairline exactly (clean fringe strands, no stair steps). A short rim turns the edge back into the
 // scalp so it never looks hollow. Sides and back thin out toward the edge; the fringe stays thick (a blunt cut).
 function hairGeometry(R, surf, st) {
-  const NT = 144, NP = 40, rows = NP + 3, pos = new Float32Array(NT * rows * 3), d = new THREE.Vector3(), o = new THREE.Vector3(), info = { wf: 0 };
-  const put = (j, i, x, y, z) => { const k = (j * NT + i) * 3; pos[k] = x; pos[k + 1] = y; pos[k + 2] = z; };
+  const NT = 176, NP = 44, rows = NP + 3, pos = new Float32Array(NT * rows * 3), col = new Float32Array(NT * rows * 3), d = new THREE.Vector3(), o = new THREE.Vector3(), info = { wf: 0 };
+  // per-vertex shade (locks lighter, the grooves between them darker), multiplied with the hair colour
+  const shadeOf = st.shade || ((dd) => 1 + 6 * st.grain(dd));
+  const put = (j, i, x, y, z, sh) => { const k = (j * NT + i) * 3; pos[k] = x; pos[k + 1] = y; pos[k + 2] = z; col[k] = col[k + 1] = col[k + 2] = sh; };
   for (let i = 0; i < NT; i++) {
     const th = i / NT * Math.PI * 2, st0 = Math.sin(th), ct0 = Math.cos(th);
     let ph = Math.PI / 2;
@@ -190,20 +244,21 @@ function hairGeometry(R, surf, st) {
       surf(d.x, d.y, d.z, o); o.multiplyScalar(1 + thk);
       // a fringe stands a little proud of the forehead so it reads from the side too
       if (st.lift && d.z > 0.2) o.z += st.lift * R * clamp(1 - (d.y - line) * 4, 0, 1);
-      put(j, i, o.x, o.y, o.z); if (j === NP) edgeTh = thk;
+      const sh = clamp(shadeOf(d), 0.55, 1.35) * (0.9 + 0.1 * e);   // the cut ends a touch darker
+      put(j, i, o.x, o.y, o.z, sh); if (j === NP) edgeTh = thk;
     }
     // rim: from the edge back under, into the scalp
     d.set(Math.sin(ph) * st0, Math.cos(ph), Math.sin(ph) * ct0); surf(d.x, d.y, d.z, o);
     const lz = st.lift && d.z > 0.2 ? st.lift * R * 0.5 : 0;
-    put(NP + 1, i, o.x * (1 + edgeTh * 0.45), o.y * (1 + edgeTh * 0.45), o.z * (1 + edgeTh * 0.45) + lz);
-    put(NP + 2, i, o.x * 0.97, o.y * 0.97, o.z * 0.97);
+    put(NP + 1, i, o.x * (1 + edgeTh * 0.45), o.y * (1 + edgeTh * 0.45), o.z * (1 + edgeTh * 0.45) + lz, 0.78);
+    put(NP + 2, i, o.x * 0.97, o.y * 0.97, o.z * 0.97, 0.7);
   }
   const idx = [];
   for (let j = 0; j < rows - 1; j++) for (let i = 0; i < NT; i++) {
     const a = j * NT + i, b = j * NT + (i + 1) % NT, c = (j + 1) * NT + i, e = (j + 1) * NT + (i + 1) % NT;
     idx.push(a, c, b, b, c, e);
   }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx);
   g.computeVertexNormals();
   return g;
 }
@@ -238,17 +293,18 @@ function faceStrip(surf, R, shapes, off, NU, NV) {
 export const MOUTHS = ['grin', 'big', 'smile', 'hmm', 'o', 'shout'];
 function mouthSpecs(w0, y0, adult) {
   const m = {
-    grin: { w: 0.7, cy: 0.07, tc: -0.025, bc: -0.31, pt: 1, pb: 0.6, sk: 0, xo: 0, teeth: 0.095, low: 0.035, tongue: [0.5, 0.08] },
-    big: { w: 0.72, cy: 0.08, tc: -0.01, bc: -0.4, pt: 1, pb: 0.55, sk: 0, xo: 0, teeth: 0.08, low: 0.03, tongue: [0.55, 0.1] },
+    // his grin: very wide and open, the upper teeth showing with the two front teeth a little bigger
+    grin: { w: 0.76, cy: 0.09, tc: -0.02, bc: -0.3, pt: 1.1, pb: 0.6, sk: 0, xo: 0, teeth: 0.1, front: 0.35, low: 0.035, tongue: [0.5, 0.07] },
+    big: { w: 0.78, cy: 0.1, tc: -0.005, bc: -0.4, pt: 1.1, pb: 0.55, sk: 0, xo: 0, teeth: 0.09, front: 0.3, low: 0.03, tongue: [0.55, 0.1] },
     smile: { w: 0.5, cy: 0.05, tc: -0.03, bc: -0.07, pt: 1, pb: 0.9, sk: 0, xo: 0, teeth: 0, low: 0, tongue: [0, 0] },
     hmm: { w: 0.26, cy: -0.01, tc: -0.005, bc: -0.035, pt: 1, pb: 1, sk: 0.05, xo: 0.07, teeth: 0, low: 0, tongue: [0, 0] },
     o: { w: 0.2, cy: -0.06, tc: 0.025, bc: -0.15, pt: 0.5, pb: 0.5, sk: 0, xo: 0, teeth: 0, low: 0, tongue: [0.6, 0.04] },
     shout: { w: 0.36, cy: -0.1, tc: 0.03, bc: -0.33, pt: 0.5, pb: 0.5, sk: 0, xo: 0, teeth: 0.06, low: 0.02, tongue: [0.6, 0.09] }
   };
   if (adult) {
-    // a grown-up's resting face is a warm smile with a little of the teeth showing, not a kid's huge grin
-    m.grin = { w: 0.6, cy: 0.06, tc: -0.03, bc: -0.13, pt: 1, pb: 0.75, sk: 0, xo: 0, teeth: 0.05, low: 0, tongue: [0, 0] };
-    m.smile = { w: 0.52, cy: 0.05, tc: -0.03, bc: -0.065, pt: 1, pb: 0.9, sk: 0, xo: 0, teeth: 0, low: 0, tongue: [0, 0] };
+    // a grown-up's resting face is a gentle closed-mouth smile (Tata's), not a kid's huge grin
+    m.grin = { w: 0.56, cy: 0.055, tc: -0.028, bc: -0.052, pt: 1, pb: 0.85, sk: 0, xo: 0, teeth: 0, low: 0, tongue: [0, 0] };
+    m.smile = { w: 0.6, cy: 0.07, tc: -0.03, bc: -0.1, pt: 1, pb: 0.8, sk: 0, xo: 0, teeth: 0.04, low: 0, tongue: [0, 0] };
   }
   MOUTHS.forEach((k) => { m[k].w *= w0; m[k].xo *= w0; m[k].y0 = y0; });
   return m;
@@ -259,7 +315,9 @@ function edges(s, u) {
 }
 const mouthShape = (s) => (u, v) => { const e = edges(s, u); return [s.xo + u * s.w / 2, e[0] + (e[1] - e[0]) * v]; };
 const teethShape = (s) => (u, v) => {
-  const e = edges(s, u), gap = e[0] - e[1], h = Math.min(s.teeth * Math.pow(1 - u * u, 0.25), gap * 0.5), t0 = Math.min(0.008, h * 0.5);
+  // the two front teeth a little longer (s.front), with a hint of a gap between them
+  const ft = 1 + (s.front || 0) * clamp((0.27 - Math.abs(u)) / 0.05, 0, 1) * (Math.abs(u) < 0.02 ? 0.35 : 1);
+  const e = edges(s, u), gap = e[0] - e[1], h = Math.min(s.teeth * Math.pow(1 - u * u, 0.25) * ft, gap * 0.55), t0 = Math.min(0.008, h * 0.5);
   return [s.xo + u * s.w / 2 * 0.94, e[0] - t0 - (h - t0) * v];
 };
 const lowTeethShape = (s) => (u, v) => {
@@ -296,11 +354,14 @@ function faceDisc(surf, R, cx, cy, rx, ry, off) {
 export function buildKid(kit, num, name, look) { return buildHuman({ dims: KID, kit: kit, num: num, name: name, look: look }); }
 
 export function buildHuman(spec) {
-  const D = spec.dims || KID, kit = spec.kit || KITS.red, look = Object.assign({ skin: '#e4b089', hair: KIT_DEFAULT.hair, hairStyle: 'swept', eyes: '#6b3d1e', brows: null, cheeks: '#ef8f86', stubble: false, adult: false, streaks: null }, spec.look || {});
+  const D = spec.dims || KID, kit = spec.kit || KITS.red, look = Object.assign({}, KID_LOOK, spec.look || {});
   const root = new THREE.Group(), body = new THREE.Group(), chest = new THREE.Group();
   root.add(body); body.add(chest);
   const skin = std(new THREE.Color(look.skin).getHex(), { roughness: 0.68 }), hairM = std(new THREE.Color(look.hair).getHex(), { roughness: 0.8 }), dark = std(0x231a16, { roughness: 0.35 });
-  const jerseyTex = kidJerseyTexture(kit, spec.num, spec.name, spec.front);
+  // the hair shell carries per-vertex shading (locks and grooves); a little sheen so it reads as hair, not a helmet
+  const hairShellM = std(new THREE.Color(look.hair).getHex(), { roughness: 0.55, vertexColors: true });
+  const vkit = (k) => look.vneck ? Object.assign({}, k, { vneck: look.skin }) : k;
+  const jerseyTex = kidJerseyTexture(vkit(kit), spec.num, spec.name, spec.front);
   const shirtM = std(0xffffff, { map: jerseyTex, roughness: 0.85 }), sleeveM = std(new THREE.Color(kit.jersey).getHex(), { roughness: 0.85 });
   const trimM = std(new THREE.Color(kit.trim).getHex(), { roughness: 0.7 }), shortsM = std(new THREE.Color(kit.shorts).getHex(), { roughness: 0.8 });
   const add = (geo, mat, parent, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); parent.add(m); return m; };
@@ -343,8 +404,8 @@ export function buildHuman(spec) {
     const st = HAIR_STYLES[styleId] || HAIR_STYLES.swept;
     if (hairMesh) { head.remove(hairMesh); hairMesh.geometry.dispose(); }
     hairExtras.children.slice().forEach((c) => { hairExtras.remove(c); if (c.geometry) c.geometry.dispose(); if (c.material && c.material !== hairM) c.material.dispose(); });
-    if (col) hairM.color.set(col);
-    hairMesh = add(hairGeometry(R, surf, st), hairM, head);
+    if (col) { hairM.color.set(col); hairShellM.color.set(col); }
+    hairMesh = add(hairGeometry(R, surf, st), hairShellM, head);
     if (st.spikes) {
       const cg = new THREE.ConeGeometry(0.1 * R / 0.74, 0.34 * R / 0.74, 7);
       for (let i = 0; i < 9; i++) {
@@ -357,10 +418,10 @@ export function buildHuman(spec) {
     if (look.streaks) {
       // a few lighter strands in Tata's hair: thin tapered locks falling to both sides of the parting
       const sm = std(new THREE.Color(look.streaks).getHex(), { roughness: 0.75 }), lg = new THREE.SphereGeometry(1, 10, 8);
-      [[-0.24, 0.72, 0.62, -1], [0.3, 0.7, 0.62, 1], [-0.52, 0.5, 0.6, -1], [0.1, 0.82, 0.52, 1], [0.5, 0.52, 0.62, 1]].forEach((q) => {
+      [[-0.24, 0.72, 0.62, -1], [0.3, 0.7, 0.62, 1], [-0.46, 0.55, 0.62, -1], [0.12, 0.8, 0.55, 1], [0.48, 0.55, 0.64, 1], [-0.1, 0.62, 0.76, -1], [0.22, 0.6, 0.74, 1], [-0.62, 0.62, 0.3, -1]].forEach((q, qi) => {
         _d.set(q[0], q[1], q[2]).normalize(); surf(_d.x, _d.y, _d.z, _p);
-        const th = HAIR_STYLES.tousled.thick(_d, 0.3) * 0.92; _p.multiplyScalar(1 + th);
-        const m = add(lg, sm, hairExtras, _p.x, _p.y, _p.z); m.scale.set(0.035 * R, 0.24 * R, 0.022 * R);
+        const th = HAIR_STYLES.tousled.thick(_d, 0.3) * 0.95; _p.multiplyScalar(1 + th);
+        const m = add(lg, sm, hairExtras, _p.x, _p.y, _p.z); m.scale.set(0.032 * R, (qi > 4 ? 0.3 : 0.25) * R, 0.02 * R);
         // lie along the hair, falling sideways and down from the parting
         _n.copy(_d); const down = new THREE.Vector3(q[3] * 0.75, -1, 0).projectOnPlane(_n).normalize();
         m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), down);
@@ -374,7 +435,7 @@ export function buildHuman(spec) {
   [-1, 1].forEach((s) => { _d.set(s, -0.1, -0.04).normalize(); surf(_d.x, _d.y, _d.z, _p); const e = add(earG, skin, head, _p.x * 0.97, _p.y, _p.z); e.scale.set(0.09 * R / 0.74, 0.165 * R / 0.74, 0.13 * R / 0.74); });
   // nose: a small soft button
   facePoint(surf, R, 0, F.noseY, -0.02, _p); const nose = add(new THREE.SphereGeometry(1, 12, 10), std(new THREE.Color(look.skin).multiplyScalar(0.93).getHex(), { roughness: 0.6 }), head, _p.x, _p.y, _p.z);
-  nose.scale.set(0.085 * R, 0.075 * R, 0.07 * R * (look.adult ? 1.5 : 1));
+  nose.scale.set(0.08 * R, 0.068 * R, 0.06 * R * (look.adult ? 1.6 : 1));
   // rosy cheeks
   const cheekM = std(new THREE.Color(look.cheeks).getHex(), { roughness: 0.75 });
   const cheeks = [-1, 1].map((s) => add(faceDisc(surf, R, s * F.cheekX, F.cheekY, F.cheekR, F.cheekR * 0.78, 0.004), cheekM, head));
@@ -384,6 +445,10 @@ export function buildHuman(spec) {
     const sh = (u, v) => { const x = u * 0.6, top = -0.2 - 0.06 * Math.abs(u), yb = -1.0 + 0.25 * u * u; return [x, top + (yb - top) * v]; };
     const sm = new THREE.MeshStandardMaterial({ map: stubbleTexture(), transparent: true, depthWrite: false, roughness: 0.9, color: 0xffffff });
     add(faceStrip(surf, R, [sh], 0.003, 24, 10), sm, head);
+    // a faint moustache over the upper lip
+    const my = F.mouthY + 0.01, mu = (u, v) => [u * 0.27, my + 0.075 - 0.03 * u * u + (-0.065 + 0.02 * u * u) * v];
+    const mm = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.brows || look.hair).getHex(), transparent: true, opacity: 0.32, depthWrite: false, roughness: 0.9 });
+    add(faceStrip(surf, R, [mu], 0.005, 16, 2), mm, head).renderOrder = 1;
   }
 
   // eyes: sclera, iris, pupil and two glints; a skin-coloured upper lid that closes for blinks and half-closes for squints
@@ -392,20 +457,28 @@ export function buildHuman(spec) {
   const lidM = std(new THREE.Color(look.skin).getHex(), { roughness: 0.68 });
   const lidGeo = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); lidGeo.scale(1.12 * er, 1.12 * er * 1.1, 1.12 * er); lidGeo.rotateX(Math.PI / 2);
   const ball = new THREE.SphereGeometry(1, 20, 14);
+  // almond eyes: a little wider than tall; the outer corner a touch higher (look.tilt)
+  const EX = look.eyeW || 1, EY = look.eyeH || 1.1;
+  // lower lid: a cap of a shell round the eyeball (like the upper lid), around an axis that tips from down-and-back
+  // (hidden) to down-and-forward; its edge across the eye then curves UP in the middle: a happy crescent
+  const lowGeo = new THREE.SphereGeometry(1, 22, 8, 0, Math.PI * 2, 0, Math.PI * 0.3); lowGeo.rotateX(Math.PI);
   const eyes = [-1, 1].map((s) => {
     const g = new THREE.Group(); facePoint(surf, R, s * F.eyeX, F.eyeY, -0.07, _p); g.position.copy(_p);
-    g.rotation.order = 'YXZ'; g.rotation.set(-Math.asin(F.eyeY) * 0.7, Math.asin(s * F.eyeX) * 0.8, 0); head.add(g);
-    const sc = add(ball, scleraM, g); sc.scale.set(er, er * 1.1, er * 0.62);
+    g.rotation.order = 'YXZ'; g.rotation.set(-Math.asin(F.eyeY) * 0.7, Math.asin(s * F.eyeX) * 0.8, -s * (look.tilt || 0)); head.add(g);
+    const sc = add(ball, scleraM, g); sc.scale.set(er * EX, er * EY, er * 0.62);
     const pu = new THREE.Group(); pu.position.z = er * 0.5; g.add(pu);
-    const ir = add(ball, irisM, pu); ir.scale.set(er * 0.6, er * 0.64, er * 0.18);
-    const pp = add(ball, pupilM, pu, 0, 0, er * 0.05); pp.scale.set(er * 0.32, er * 0.34, er * 0.15);
+    const IR = look.iris || 0.64, ir = add(ball, irisM, pu); ir.scale.set(er * IR, er * IR * 1.06, er * 0.18);
+    const pp = add(ball, pupilM, pu, 0, 0, er * 0.05); pp.scale.set(er * IR * 0.52, er * IR * 0.56, er * 0.15);
     const gl = add(ball, glintM, pu, er * 0.2, er * 0.24, er * 0.14); gl.scale.setScalar(er * 0.15);
     const gl2 = add(ball, glintM, pu, -er * 0.14, -er * 0.18, er * 0.13); gl2.scale.setScalar(er * 0.07);
-    const lid = add(lidGeo, lidM, g); lid.rotation.x = -Math.PI * 0.95;
-    return { g, pu, lid, side: s };
+    const lid = add(lidGeo, lidM, g); lid.rotation.x = -Math.PI * 0.95; lid.scale.x = EX;
+    // the lower lid: rises when he grins (see setFace), so the eye turns into a happy
+    // crescent (its top edge curves upward across the eye)
+    const low = add(lowGeo, lidM, g, 0, 0, -er * 0.05); low.scale.set(er * 1.08 * EX, er * 1.08 * EY, er * 0.72);
+    return { g, pu, lid, low, side: s };
   });
   // brows (hair colour, or their own)
-  const browM = std(new THREE.Color(look.brows || look.hair).getHex(), { roughness: 0.8 });
+  const browM = std(look.brows ? new THREE.Color(look.brows).getHex() : new THREE.Color(look.hair).multiplyScalar(0.85).getHex(), { roughness: 0.8 });
   const browGeo = new THREE.CapsuleGeometry(F.browTh * R, F.browLen * R, 4, 8); browGeo.rotateZ(Math.PI / 2);
   const brows = [-1, 1].map((s) => {
     const g = new THREE.Group(); facePoint(surf, R, s * F.eyeX, F.browY, 0.02, _p); g.position.copy(_p);
@@ -420,7 +493,7 @@ export function buildHuman(spec) {
     add(faceStrip(surf, R, list.map(mouthShape), 0.006, 24, 4), innerM, head),
     add(faceStrip(surf, R, list.map(tongueShape), 0.011, 12, 2), tongueM, head),
     add(faceStrip(surf, R, list.map(lowTeethShape), 0.013, 12, 1), teethM, head),
-    add(faceStrip(surf, R, list.map(teethShape), 0.016, 20, 1), teethM, head)
+    add(faceStrip(surf, R, list.map(teethShape), 0.016, 50, 1), teethM, head)
   ];
   mouth.forEach((m, i) => { m.renderOrder = 1 + i; });
 
@@ -437,12 +510,17 @@ export function buildHuman(spec) {
   function setFace(E) {
     const m = E.mouth || {};
     mouth.forEach((me) => { const inf = me.morphTargetInfluences; for (let k = 1; k < MOUTHS.length; k++) inf[k - 1] = clamp(m[MOUTHS[k]] || 0, 0, 1); });
-    const sq = clamp(E.squint || 0, 0, 1), wide = clamp(E.wide || 0, 0, 1);
+    // his resting face is a grin, so his eyes are a little "smiley" even at rest (look.happy); a wide-eyed look or an
+    // "o" / worried face opens them again
+    const wide = clamp(E.wide || 0, 0, 1), mm = E.mouth || {};
+    const sq = clamp((E.squint || 0) + (look.happy || 0) * (1 - wide) * (1 - clamp((mm.o || 0) + (mm.hmm || 0) + (mm.shout || 0) * 0.6, 0, 1)), 0, 1);
     eyes.forEach((e) => {
-      const open = clamp(E.lid == null ? 0.95 : E.lid, 0, 1) * (1 - 0.35 * sq);
+      const open = clamp(E.lid == null ? 0.95 : E.lid, 0, 1) * (1 - 0.14 * sq);
       e.lid.rotation.x = -Math.PI * (0.06 + 0.89 * open) - wide * 0.1;
-      e.g.scale.set(1 + 0.05 * wide, 1 - 0.18 * sq + 0.1 * wide, 1);
-      e.pu.position.x = clamp(E.gazeX || 0, -1, 1) * er * 0.3; e.pu.position.y = clamp(E.gazeY || 0, -1, 1) * er * 0.28;
+      e.g.scale.set(1 + 0.05 * wide, 1 - 0.1 * sq + 0.1 * wide, 1);
+      // lower lid: tucked away at 0, a crescent covering the lower half of the eye at a full squint
+      e.low.rotation.x = -(-0.75 + 1.6 * sq); e.low.visible = sq > 0.12;
+      e.pu.position.x = clamp(E.gazeX || 0, -1, 1) * er * 0.3; e.pu.position.y = clamp(E.gazeY || 0, -1, 1) * er * 0.28 + sq * er * 0.12;
     });
     brows.forEach((b) => {
       const up = (E.browUp || 0) + (b.side < 0 ? 1 : -1) * (E.browAsym || 0);
@@ -453,7 +531,7 @@ export function buildHuman(spec) {
   setFace({});
 
   function setKit(k, n, nm, front) {
-    const old = shirtM.map; shirtM.map = kidJerseyTexture(k, n, nm, front == null ? spec.front : front); shirtM.needsUpdate = true; if (old) old.dispose();
+    const old = shirtM.map; shirtM.map = kidJerseyTexture(vkit(k), n, nm, front == null ? spec.front : front); shirtM.needsUpdate = true; if (old) old.dispose();
     sleeveM.color.set(k.jersey); trimM.color.set(k.trim); shortsM.color.set(k.shorts); sockM.color.set(k.sock);
   }
   function setHair(col, styleId) {
