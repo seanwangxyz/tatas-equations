@@ -1,0 +1,119 @@
+/* ===================================================================
+   Title screen and splash (js/ui.js gotoTitle, js/three/title.js).
+   The 3D scene lives in the fixed layer #t3title behind the screens; the menu is HTML on top of it,
+   in a glass panel: on the right on wide screens, at the bottom in portrait. Without 3D the flat
+   title is used (same markup, no .t3 class). Nothing here loops: only one-shot entrances and feedback.
+   =================================================================== */
+
+/* ---------- the 3D layer ---------- */
+#t3title{position:fixed;inset:0;z-index:0;pointer-events:none;display:none;background:#02040c;overflow:hidden}
+#t3title canvas{display:block}
+body.t3on #t3title{display:block}
+#t3title.on{animation:t3fade .7s ease both}
+@keyframes t3fade{from{opacity:0}to{opacity:1}}
+/* a soft dark edge where the menu sits, so the text always reads on top of the floodlights */
+body.t3on #t3title::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 90% at 30% 35%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
+
+/* visually hidden, still read out (the 3D cubes show the name; the h1 says it for screen readers) */
+#splash.t3 .logo,#title.t3 .t-logo{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
+/* ---------- splash ---------- */
+#splash{cursor:pointer}
+#splash.t3{justify-content:flex-end;padding-bottom:max(48px,calc(var(--sab) + 34px));background:linear-gradient(rgba(2,4,12,0) 58%,rgba(2,4,12,.6))}
+#splash.t3 #splashPip{display:none}
+#splash .tapgo{font-size:28px;min-height:72px;min-width:280px;border-radius:28px;padding:14px 34px;
+  box-shadow:0 6px 0 var(--edge),0 12px 22px rgba(4,14,24,.35),inset 0 2px 0 var(--hi),0 0 0 6px rgba(255,200,61,.22),0 0 38px rgba(255,200,61,.4)}
+#splash .tapgo .ico{width:1.1em;height:1.1em}
+#splash.t3 .tapgo{font-size:32px;min-height:80px;min-width:min(320px,86vw)}
+
+/* ---------- title: shared (flat and 3D) ---------- */
+#title .t-greet{display:flex;align-items:center;gap:10px;margin:4px 0 10px;flex-wrap:nowrap}
+#title .t-panel{display:flex;flex-direction:column;align-items:center;width:100%}
+#title .menu{width:min(640px,94vw)}
+
+/* sticker buttons: an icon badge, a glossy top, a little lift on hover, a squish on press */
+#title .menu .btn,#title .menu-sub .btn{transition:transform .16s cubic-bezier(.3,1.6,.5,1),box-shadow .16s,filter .15s}
+#title .menu .btn{border-radius:22px;padding:9px 18px 9px 10px;gap:13px;min-height:62px;overflow:hidden;
+  box-shadow:0 5px 0 var(--edge),0 10px 18px rgba(0,0,0,.32),inset 0 2px 0 var(--hi),inset 0 0 0 2px rgba(255,255,255,.16)}
+#title .menu .btn::after{content:"";position:absolute;left:7px;right:7px;top:4px;height:44%;border-radius:17px 17px 50% 50%/17px 17px 14px 14px;
+  background:linear-gradient(rgba(255,255,255,.34),rgba(255,255,255,0));pointer-events:none}
+#title .menu .btn .bi{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:44px;height:44px;border-radius:15px;
+  background:rgba(255,255,255,.2);box-shadow:inset 0 -3px 0 rgba(0,0,0,.14),0 1px 0 rgba(255,255,255,.3)}
+#title .menu .btn.yellow .bi{background:rgba(255,255,255,.5)}
+#title .menu .btn .bi .ico{width:26px;height:26px}
+#title .menu .btn .bl{position:relative;z-index:1;text-align:left;line-height:1.05}
+#title .menu .btn.hero{justify-content:center;min-height:82px;font-size:36px;padding-left:16px}
+#title .menu .btn.hero .bi{width:54px;height:54px;border-radius:18px}
+#title .menu .btn.hero .bi .ico{width:32px;height:32px}
+@media (hover:hover){
+  #title .menu .btn:hover,#splash .tapgo:hover{transform:translateY(-3px) scale(1.02);filter:brightness(1.07)}
+  #title .menu .btn:hover{box-shadow:0 8px 0 var(--edge),0 16px 26px rgba(0,0,0,.34),inset 0 2px 0 var(--hi),inset 0 0 0 2px rgba(255,255,255,.24)}
+  #title .menu-sub .btn:hover{transform:translateY(-2px)}
+}
+#title .menu .btn:active,#splash .tapgo:active{transform:translateY(4px) scale(.97);filter:none;box-shadow:0 1px 0 var(--edge),0 2px 6px rgba(0,0,0,.28),inset 0 2px 0 var(--hi)}
+#title .menu .btn:focus-visible,#title .menu-sub .btn:focus-visible,#splash .tapgo:focus-visible{outline:4px solid #fff;outline-offset:3px}
+
+/* ---------- title: 3D ---------- */
+#title.t3{padding:max(12px,calc(var(--sat) + 8px)) max(16px,var(--sar)) max(14px,calc(var(--sab) + 8px)) max(16px,var(--sal))}
+#title.t3 .title-top{margin:0}
+#title.t3 .t-pip{display:none}
+/* Pip's greeting floats over his head in the scene (placed by title.js), once the opening is over */
+#title.t3 .t-greet{position:fixed;left:-999px;top:-999px;z-index:2;margin:0;pointer-events:none;transform:translate(-50%,calc(-100% - 6px)) scale(.6);transform-origin:50% 100%;opacity:0;
+  transition:opacity .35s ease,transform .45s cubic-bezier(.2,1.5,.4,1)}
+#title.t3.t3-rest .t-greet{opacity:1;transform:translate(-50%,calc(-100% - 6px)) scale(1)}
+#title.t3 .t-greet .bubble{font-size:16px;padding:9px 14px;max-width:min(270px,70vw);text-align:center;border-radius:18px}
+#title.t3 .t-greet .bubble::before{left:50%;top:auto;bottom:-8px;margin:0 0 0 -9px;width:18px;height:18px}
+/* the glass panel */
+#title.t3 .t-panel{background:linear-gradient(180deg,rgba(16,30,72,.6),rgba(6,12,32,.74));border:1.5px solid rgba(255,255,255,.16);border-radius:30px;padding:16px 16px 14px;
+  box-shadow:0 22px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14);-webkit-backdrop-filter:blur(10px) saturate(1.15);backdrop-filter:blur(10px) saturate(1.15);
+  animation:panelIn .5s cubic-bezier(.2,.9,.3,1.1) both .05s}
+#t3title.t3-low ~ #title.t3 .t-panel{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(8,16,40,.86)}
+@keyframes panelIn{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
+#title.t3 .playercard{width:100%;margin:0 0 10px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}
+#title.t3 .stagechip{margin:0 0 12px;font-size:14px;background:rgba(0,0,0,.3)}
+#title.t3 .menu{width:100%;gap:12px}
+#title.t3 .menu-sub{margin-top:12px}
+
+/* wide screens (desktop, iPad landscape): the panel on the right, the scene on the left */
+@media (min-aspect-ratio:11/10) and (min-width:700px){
+  #title.t3 .t-panel{position:absolute;right:max(20px,calc(var(--sar) + 12px));top:50%;width:clamp(330px,32vw,410px);max-height:calc(100% - 28px);overflow-y:auto;
+    animation-name:panelInSide;transform:translateY(-50%)}
+  @keyframes panelInSide{from{opacity:0;transform:translate(24px,-50%)}to{opacity:1;transform:translateY(-50%)}}
+  #title.t3 .menu{grid-template-columns:1fr}
+  #title.t3 .menu .btn{min-height:58px;font-size:23px}
+  #title.t3 .menu .btn.hero{min-height:76px;font-size:34px}
+}
+@media (min-aspect-ratio:11/10) and (min-width:700px) and (max-height:700px){
+  #title.t3 .t-panel{padding:12px}
+  #title.t3 .menu{gap:9px}
+  #title.t3 .menu .btn{min-height:50px;font-size:20px}
+  #title.t3 .menu .btn .bi{width:36px;height:36px}
+  #title.t3 .menu .btn.hero{min-height:64px;font-size:30px}
+}
+/* portrait (phones, iPad upright): the scene on top, the panel at the bottom */
+@media not all and (min-aspect-ratio:11/10), (max-width:699px){
+  #title.t3{justify-content:flex-start;padding-top:max(38vh,250px)}
+  #title.t3 .t-panel{margin-top:auto;width:min(600px,100%);padding:12px 12px 10px;border-radius:26px}
+  #title.t3 .menu{grid-template-columns:1fr 1fr;gap:10px}
+  #title.t3 .menu .btn{min-height:54px;font-size:19px;padding:7px 10px 7px 7px;gap:9px;border-radius:19px}
+  #title.t3 .menu .btn .bi{width:38px;height:38px;border-radius:13px}
+  #title.t3 .menu .btn .bi .ico{width:22px;height:22px}
+  #title.t3 .menu .btn.hero{grid-column:1/-1;min-height:66px;font-size:30px}
+  #title.t3 .menu .btn.hero .bi{width:46px;height:46px}
+  #title.t3 .playercard{padding:7px 12px 7px 8px;margin-bottom:8px}
+  #title.t3 .playercard .jersey{width:38px;height:38px;font-size:21px}
+  #title.t3 .playercard .pc-name{font-size:19px}
+  #title.t3 .stagechip{font-size:13px;margin-bottom:10px;padding:4px 12px}
+  #title.t3 .menu-sub{margin-top:10px}
+  #title.t3 .menu-sub .btn{min-height:44px;font-size:16px}
+}
+@media (max-width:360px){
+  #title.t3 .menu .btn{font-size:17px}
+}
+/* the flat title (no 3D): the same buttons on the mat, laid out as before */
+#title:not(.t3) .t-panel{gap:0}
+@media (prefers-reduced-motion:reduce){
+  #t3title.on,#title.t3 .t-panel{animation:none}
+  #title.t3 .t-greet{transition:none}
+}

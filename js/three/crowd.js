@@ -887,6 +887,7 @@ export function makeBlockCrowd(group, pts, o) {
     },
     reset: function () { reacts = []; nPrev = 0; pending = false; restoreAll(); if (current === api) current = null; }
   };
-  current = api; install();
+  if (!o.detached) current = api; // o.detached: a crowd T3.crowd never drives (the title screen's own stadium)
+  install();
   return api;
 }

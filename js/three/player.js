@@ -1086,6 +1086,8 @@ if (T3 && T3.ctx) (function () {
     ['into', 'low', 'gap', 'hair'].forEach(function (k) { if (typeof o[k] === 'number') SEAT[k] = o[k]; });
     refitFor(); return JSON.parse(JSON.stringify(SEAT));
   };
+  // the title screen (js/three/title.js) builds its own copy of him from the same spec: { who, dims, kit, num, name, look, front }
+  T3.playerSpec = function (o) { return specOf(o, 'main'); };
   // debugging / previews: the model objects (read-only use please)
   T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
 

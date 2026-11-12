@@ -28,10 +28,13 @@
 <link rel="stylesheet" href="css/gift.css">
 <link rel="stylesheet" href="css/orbit.css">
 <link rel="stylesheet" href="css/online.css">
+<link rel="stylesheet" href="css/title.css"><!-- TITLE: 3D title screen layout -->
 </head>
 <body class="mat-felt skin-classic">
-<section id="splash" class="screen on">
-  <div class="logo">Tata's<span class="eq">Equations</span></div>
+<!-- TITLE: the 3D title scene's layer (js/three/title.js); the whole splash is one big "tap to play" -->
+<div id="t3title" aria-hidden="true"></div>
+<section id="splash" class="screen on" data-act="start">
+  <h1 class="logo">Tata's<span class="eq">Equations</span></h1>
   <div id="splashPip" class="pip" style="width:130px;height:146px"></div>
   <button class="btn big yellow tapgo" data-act="start"><svg class="ico f" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg> Tap to Play!</button>
 </section>
@@ -64,6 +67,7 @@
 <script src="js/engine.js"></script>
 <script src="js/config.js"></script>
 <script src="js/sound.js"></script>
+<script src="js/title-sfx.js"></script><!-- TITLE -->
 <script src="js/crowd-sfx.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/ui.js"></script>
@@ -92,5 +96,6 @@
 <script type="module" src="js/three/creatures.js"></script>
 <script type="module" src="js/three/portraits.js"></script>
 <script type="module" src="js/three/player.js"></script>
+<script type="module" src="js/three/title.js"></script><!-- TITLE: last, after the table and the player -->
 </body>
 </html>
