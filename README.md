@@ -30,7 +30,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 # The "Kid who knows the trick" shows those blind spots can be learned.
 ```
 
-218 checks: the evaluator, the Solution validator, the solver, and the official 2- and
+320 checks: the evaluator, the Solution validator, the solver, and the official 2- and
 3-player challenge scoring.
 
 ## Where things live
@@ -47,6 +47,8 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 | `js/progress.js` | XP, levels, badges, unlock celebrations, pop-up helpers |
 | `js/game.js` | Game flow (turns, challenges, last cube, scoring screens) and the computer player |
 | `js/ai.js`, `js/ai-worker.js` | The computer player's decisions and math tastes; it thinks in a background worker so the picture never freezes |
+| `js/variations.js` | Variation cards: an extra official rule for one shake (pick, unlock, reminder) |
+| `js/team.js` | Team-up vs the boss: two people share one side against a creature (house rules) |
 | `js/cup.js` | Cup tournaments: quarter-final, semi-final, final, trophy lift |
 | `js/ways.js` | How Many Ways?: one Goal, find many different Solutions |
 | `js/builder.js` | The tap-to-build Goal/Solution screen |

@@ -7,8 +7,9 @@
 
 - Round 3 (Opus agents): bigger opponents, card portraits, kid's 3D player, night/beach/volcano arenas, shadows + glow + close-ups + auto quality, Cup tournaments, How Many Ways?, background thinking, math tastes.
 
+- Round 4: Team-up vs the boss (house rules in docs/handoff/team.md); five Variation cards from rulebook XIII-A (RULES_SUMMARY.md section 5).
+
 ## Next
-- **Round 4**: Team-up vs the boss; Variation cards (re-read the rulebook variations first).
 - **Check on a real iPad**: frame rate with shadows/glow, auto quality step-down, portraits speed, the kid player's size.
 - **Online play** (Houston ↔ Atlanta): room codes, synced dice, private Solution writing,
   reconnect after a dropped connection. Voice via FaceTime alongside at first.
