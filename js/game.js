@@ -52,6 +52,33 @@ function aiPlace(id, zone, who) {
   if (T3.active() && T3.creatureMove) { G.busy = true; G.carrying = true; renderGame(); T3.creatureMove(id, zone, function () { if (!G) return; G.busy = false; G.carrying = false; placeCube(id, zone, who); }); }
   else placeCube(id, zone, who);
 }
+// Which person at the table reaches over for a human's move (3D): this device's player, or the second human (mate).
+// (Online keeps the plain move: remote moves are applied in one step by js/online.js.)
+function avatarMoveFn(who) {
+  if (!T3.active() || !T3.playerMove || G.mode === 'online' || G.mode === 'tutorial') return null;
+  if (G.team && who === 0) return G.team.cur === 0 ? T3.playerMove : T3.mateMove;   // Team-up: whoever's go it is
+  if (who === 0) return T3.playerMove;
+  if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3')) return T3.mateMove;
+  return null;
+}
+// A human's move: the kid (or the mate) picks the cube up and lobs it into the zone, like aiPlace for creatures.
+function humanPlace(id, zone, who) {
+  var fn = avatarMoveFn(who);
+  if (!fn) { placeCube(id, zone, who); return; }
+  var sit = G.cubes; G.busy = true; G.carrying = true; renderGame();
+  fn(id, zone, function () { if (!G || G.cubes !== sit) return; G.busy = false; G.carrying = false; placeCube(id, zone, who); });
+}
+function humanGoal(tokens, val) {
+  var fn = avatarMoveFn(G.setter); if (!fn) { setGoal(tokens, val); return; }
+  var sit = G.cubes, k = 0; G.busy = true; G.carrying = true; renderGame();
+  (function next() {
+    if (!G || G.cubes !== sit) return;
+    while (k < tokens.length && typeof tokens[k] !== 'object') k++;                 // parentheses: nothing to carry
+    if (k >= tokens.length || G.skipCarry) { G.skipCarry = false; G.carrying = false; G.busy = false; setGoal(tokens, val); return; }
+    var tk = tokens[k];
+    fn(tk.id, 'goal', function () { if (!G || G.cubes !== sit) return; G.cubes[tk.id].zone = 'goal'; G.goalTokens = tokens.slice(0, k + 1); k++; renderGame(); setTimeout(next, 60); }, { quick: true });
+  })();
+}
 function startMatch(mode, oppIdx, cfg) {
   var shakes = S.set.shakes || 3;
   G = { mode: mode, oppIdx: oppIdx, cfg: cfg, shakes: shakes, shake: 1, setter: 0, players: [], trailed: false };
@@ -256,6 +283,7 @@ ACT.quitGame = function () {
 ACT.reallyQuit = function () { closeModal(); mateShow(null); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
+  if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once
   if (!G) return;
   var id = +el.dataset.id, c = G.cubes[id];
   if (c.locked) { say('pip', 'That ' + show(c.s) + ' cube is locked 🔒. <b>Coming soon!</b> Keep solving to unlock it.'); return; }
@@ -271,14 +299,14 @@ ACT.zoneTap = function (el, e) {
   if (!G || G.selected == null || !humanTurn()) return;
   doMove(G.selected, el.dataset.arg);
 };
-function doMove(id, zone) {
+function doMove(id, zone, dragged) {
   var c = G.cubes[id];
   if (!humanTurn() || c.zone !== 'resources' || c.locked) return;
   if (['required', 'permitted', 'forbidden'].indexOf(zone) < 0) return;
   if (zone === 'forbidden' && zoneCubes('resources').length === 1) { say('pip', 'The very last cube can\'t go to Forbidden. Put it in <b>Required</b> or <b>Permitted</b>!', 'think'); Snd.boop(); return; }
   if (G.mode === 'tutorial' && !tutAllowMove(c, zone)) return;
   G.selected = null;
-  placeCube(id, zone, G.turn);
+  if (dragged) placeCube(id, zone, G.turn); else humanPlace(id, zone, G.turn);
 }
 function placeCube(id, zone, who) {
   var c = G.cubes[id];
@@ -333,7 +361,7 @@ function nextTurn() {
 ACT.goOn = function () { if (!G || !G.wait || G.phase !== 'move') return; G.wait = false; Snd.click(); aiTurn(); };
 ACT.buildGoal = function () {
   if (!G || G.phase !== 'goal' || isAI(G.setter)) return;
-  openGoalBuilder(G.setter, function (tokens, val) { setGoal(tokens, val); });
+  openGoalBuilder(G.setter, function (tokens, val) { humanGoal(tokens, val); });
 };
 function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });

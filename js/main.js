@@ -33,7 +33,7 @@ document.addEventListener('pointerup', function (e) {
   suppressClick = true; setTimeout(function () { suppressClick = false; }, 50);
   $('#ghost').style.display = 'none';
   var t = document.elementFromPoint(e.clientX, e.clientY), z = t && t.closest('[data-zone]');
-  if (z && ['required', 'permitted', 'forbidden'].indexOf(z.dataset.zone) >= 0) doMove(d.id, z.dataset.zone);
+  if (z && ['required', 'permitted', 'forbidden'].indexOf(z.dataset.zone) >= 0) doMove(d.id, z.dataset.zone, true);
   else { G.selected = null; renderGame(); }
 });
 document.addEventListener('pointercancel', function () { if (drag && drag.on) { $('#ghost').style.display = 'none'; G.selected = null; renderGame(); } drag = null; });
@@ -49,7 +49,7 @@ T3.handlers = {
   },
   zoneTap: function (z) { if (G && G.selected != null && humanTurn()) doMove(G.selected, z); },
   drop: function (id, z) {
-    if (G && z && ['required', 'permitted', 'forbidden'].indexOf(z) >= 0 && humanTurn()) { G.selected = id; doMove(id, z); }
+    if (G && z && ['required', 'permitted', 'forbidden'].indexOf(z) >= 0 && humanTurn()) { G.selected = id; doMove(id, z, true); }
     if (G && G.cubes[id].zone === 'resources') { G.selected = null; renderGame(); }
   },
   targetZones: function () { if (!G || G.selected == null || G.phase !== 'move') return []; return ['required', 'permitted', 'forbidden'].filter(canMoveTo); }
