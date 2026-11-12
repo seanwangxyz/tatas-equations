@@ -288,6 +288,231 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   ok('a level-5 sized deal (5 digits, 4 operations) finishes quickly', lv5.complete && Date.now() - t0 < 400, Date.now() - t0);
 }
 
+// ---------------- Variation cards (Adventurous Equations, PDF section XIII-A) ----------------
+{
+  const MM = (vars, fr, goal) => Eq.mathMode(!!fr, vars, goal ? t(goal) : null);
+  // default: no variation = plain boolean = the old behaviour
+  ok('mathMode with no variation is just the fractions boolean', Eq.mathMode(true, []) === true && Eq.mathMode(false) === false);
+  ok('unknown variation ids are dropped', Eq.mathMode(false, ['nope']) === false);
+  ok('fracOn reads both shapes', Eq.fracOn(true) && !Eq.fracOn(MM(['twodigit'])) && Eq.fracOn(MM(['twodigit'], true)));
+  ok('withGoal adds the Goal symbols (and leaves booleans alone)', Eq.withGoal(true, t('10')) === true && Eq.withGoal(MM(['wild0']), [{ s: '1', id: 3 }, '(', { s: '0', id: 4 }, ')']).goal.join('') === '10');
+
+  // --- evaluate ---
+  const vcases = [
+    ['23', { fractions: MM(['twodigit']) }, '23'],          // Two-digit: glued digits in a Solution
+    ['23+4', { fractions: MM(['twodigit']) }, '27'],
+    ['123', { fractions: MM(['twodigit']) }, 'ERR:threedigit2'],
+    ['23', { fractions: MM(['threeops']) }, 'ERR:concat'],   // other cards don't allow gluing
+    ['7m3', { fractions: MM(['remainder']) }, '1'],          // 7 ÷ 3 = 2 remainder 1
+    ['15m2', { fractions: MM(['remainder', 'twodigit']) }, '1'],
+    ['3m7', { fractions: MM(['remainder']) }, '3'],          // A < B: the remainder is A
+    ['8m8', { fractions: MM(['remainder']) }, '0'],
+    ['2+7m3', { fractions: MM(['remainder']) }, '3'],        // m sits with × ÷
+    ['(2+7)m4', { fractions: MM(['remainder']) }, '1'],
+    ['0m3', { fractions: MM(['remainder']) }, 'ERR:remwhole'], // A must be a counting number
+    ['7m0', { fractions: MM(['remainder']) }, 'ERR:remwhole'],
+    ['(1-3)m2', { fractions: MM(['remainder']) }, 'ERR:remwhole'],
+    ['7m3', {}, 'ERR:syntax'],                               // no Remainder card: m is not a symbol
+    ['5+0', { fractions: MM(['wild0']), wild: 4 }, '9'],     // 0 Wild: 0 stands for 4
+    ['5+0', { fractions: MM(['wild0']) }, '5'],              // default: 0 means 0
+    ['5+0', { wild: 4 }, '5'],                               // wild ignored without the card
+    ['10', { fractions: MM(['wild0']), wild: 7, multiDigit: true }, '17'],
+    ['0*6/0', { fractions: MM(['wild0']), wild: 3 }, '6'],   // every 0 is the same digit
+  ];
+  vcases.forEach(([e, o, want]) => { const got = val(e, o); ok(`variation evaluate ${e} ${JSON.stringify(o)} → ${want}`, got === want, got); });
+  ok('Remainder is not allowed in a Goal', Eq.evaluate(t('7m3'), { fractions: MM(['remainder']), inGoal: true }).code === 'remgoal');
+
+  // --- Goal check with 0 Wild ---
+  const g1 = Eq.checkGoal(t('8/0'), MM(['wild0']));
+  ok('0 Wild: Goal 8÷0 is legal (0 can be 1, 2, 4 or 8…) and reads 8÷1 = 8 first', g1.ok && Eq.fmt(g1.value) === '8' && Eq.fmt(g1.wildValues[2]) === '4' && !g1.wildValues[0], g1);
+  ok('no 0 Wild: Goal 8÷0 is still illegal', !Eq.checkGoal(t('8/0'), false).ok);
+  ok('0 Wild: Goal 10 reads 10 when 0 means 0', Eq.fmt(Eq.checkGoal(t('10'), MM(['wild0'])).value) === '10');
+
+  // --- Solution check ---
+  const M = mat([[1, '5', 'required'], [2, '+', 'permitted'], [3, '0', 'permitted'], [4, '3', 'permitted'], [5, '*', 'permitted'], [6, '2', 'resources'], [7, '/', 'permitted'], [8, '1', 'permitted'], [9, '-', 'permitted']]);
+  const ctx = (mode, goal, fr) => ({ goal: F(goal), zone: M.zone, required: M.required, mode, label: M.label, fractions: fr });
+  let r = Eq.checkSolution(sol(M, [1, 4]), ctx('impossible', 53, MM(['twodigit'])));
+  ok('Two-digit: 53 made from 5 and 3 (two cubes)', r.ok, r.reasons);
+  r = Eq.checkSolution(sol(M, [1, 4]), ctx('impossible', 53, false));
+  ok('no card: 5,3 glued is rejected', !r.ok);
+  r = Eq.checkSolution(sol(M, [1, 2, 4, 5, 8, 9, 4]), ctx('impossible', 7, MM(['threeops'])));
+  ok('the same digit cube twice is still rejected with a card on', !r.ok && r.reasons.some(x => /twice/.test(x)), r.reasons);
+  r = Eq.checkSolution(sol(M, [1, 2, 4]), ctx('impossible', 8, MM(['threeops'])));
+  ok('Three-operation: 5+3 has only 1 operation → not correct', !r.ok && r.reasons.some(x => /at least 3 operation/.test(x)), r.reasons);
+  r = Eq.checkSolution(sol(M, [1, 2, 4, 5, 8, 9, 8]), ctx('impossible', 7, MM(['threeops'])));
+  ok('digit cube 1 used twice is rejected', !r.ok);
+  r = Eq.checkSolution(sol(M, [1, 2, 4, 5, 8, 9, 3]), ctx('impossible', 8, MM(['threeops'])));
+  ok('Three-operation: 5+3×1−0 = 8 has 3 operations → correct', r.ok && r.ops === 3, r);
+  r = Eq.checkSolution(sol(M, [1, 2, 4, 2, 8]), ctx('impossible', 9, MM(['multiops'])));
+  ok('Multiple Operations: 5+3+1 uses the + cube twice → correct', r.ok && r.cubes === 4, r);
+  r = Eq.checkSolution(sol(M, [1, 2, 4, 2, 8]), ctx('impossible', 9, false));
+  ok('no card: the + cube twice is rejected', !r.ok && r.reasons.some(x => /twice/.test(x)), r.reasons);
+  r = Eq.checkSolution([{ s: '5', id: 1 }, { s: 'm', id: 7 }, { s: '3', id: 4 }], ctx('impossible', 2, MM(['remainder'])));
+  ok('Remainder: 5 (sideways ÷) 3 = 2', r.ok, r.reasons);
+  r = Eq.checkSolution([{ s: '5', id: 1 }, { s: 'm', id: 7 }, { s: '3', id: 4 }], ctx('impossible', 2, false));
+  ok('no card: a sideways ÷ is not allowed', !r.ok);
+  r = Eq.checkSolution(sol(M, [1, 2, 3]), ctx('impossible', 8, MM(['wild0'])));
+  ok('0 Wild: 5+0 = 8 when 0 means 3, and says so', r.ok && r.wildAs === 3, r);
+  r = Eq.checkSolution(sol(M, [1, 2, 3]), ctx('impossible', 15, MM(['wild0'])));
+  ok('0 Wild: 5+0 can never be 15 (0 is at most 9)', !r.ok && r.reasons.some(x => /every digit/.test(x)), r.reasons);
+  // Goal "10" with 0 Wild: the Goal's 0 and the Solution's 0 are the same digit
+  const wg = (g) => Eq.mathMode(false, ['wild0'], t(g));
+  r = Eq.checkSolution(sol(M, [1, 5, 4]), Object.assign(ctx('impossible', 10, wg('10')), {}));
+  ok('0 Wild Goal 10: 5×3 = 15 works when the Goal 0 means 5', r.ok && r.wildAs === 5, r);
+  r = Eq.checkSolution(sol(M, [1, 2, 3]), ctx('impossible', 10, wg('10')));
+  ok('0 Wild Goal 10: 5+0 never works (5+w ≠ 10+w)', !r.ok, r.reasons);
+  r = Eq.checkSolution(sol(M, [1, 2, 3]), ctx('impossible', 10, MM(['wild0'])));
+  ok('0 Wild Goal 10 read as just 10 if the Goal symbols are unknown: 5+0 with 0=5', r.ok && r.wildAs === 5, r);
+
+  // --- Solver: hand-made cases ---
+  const S = (name, p, want, fr) => solveCheckV(name, p, want, fr);
+  function solveCheckV(name, p, want, fr) {
+    const r = Eq.solve(Object.assign({ timeMs: 1500, fractions: fr }, p));
+    ok(name + ` (found=${want})`, r.found === want, r);
+    if (r.found) {
+      const RU = Eq.rulesOf(fr);
+      const ev = Eq.evaluate(r.tokens, { fractions: fr, wild: r.wild });
+      const goal = RU.goal && RU.goal.includes('0') ? Eq.goalAt(RU.goal, r.wild, fr) : p.goal;
+      ok(name + ' — answer re-checks: ' + r.expr + (r.wild != null ? ' (0=' + r.wild + ')' : ''), ev.ok && goal && Eq.eqF(ev.value, goal), ev);
+      if (RU.three) ok(name + ' — has 3+ operations', r.tokens.filter(s => !Eq.isDigit(s) && s !== '(' && s !== ')').length >= 3, r.tokens);
+    }
+    return r;
+  }
+  S('Two-digit: 53 from 5, 3', { goal: F(53), req: ['5', '3'], opt: [], mode: 'impossible' }, true, MM(['twodigit']));
+  S('Two-digit: 26 can not be made from 2, 3, 1 and one +', { goal: F(26), req: [], opt: ['2', '3', '+', '1'], mode: 'impossible' }, false, MM(['twodigit']));
+  S('Two-digit: 24 = 23+1', { goal: F(24), req: [], opt: ['2', '3', '+', '1'], mode: 'impossible' }, true, MM(['twodigit']));
+  S('no card: 24 from 2,3,+,1 is impossible', { goal: F(24), req: [], opt: ['2', '3', '+', '1'], mode: 'impossible' }, false, false);
+  S('Three-operation: 6 from 1,2,3,+,+ needs 3 ops → no', { goal: F(6), req: [], opt: ['1', '2', '3', '+', '+'], mode: 'impossible' }, false, MM(['threeops']));
+  S('Three-operation: 6 = 1+2+3×1? uses 4 digits: 1,2,3,1,+,+,*', { goal: F(6), req: [], opt: ['1', '2', '3', '1', '+', '+', '*'], mode: 'impossible' }, true, MM(['threeops']));
+  S('Three-operation: √9+√4 = 5 has 3 operation signs', { goal: F(5), req: [], opt: ['9', '4', '+', 'r', 'r'], mode: 'impossible' }, true, MM(['threeops']));
+  S('Multiple Operations: 1+2+3 = 6 with one + cube', { goal: F(6), req: ['1', '2', '3'], opt: ['+'], mode: 'impossible' }, true, MM(['multiops']));
+  S('no card: 1+2+3 needs two + cubes', { goal: F(6), req: ['1', '2', '3'], opt: ['+'], mode: 'impossible' }, false, false);
+  S('Multiple Operations: 2×3×4 = 24 with one Required ×', { goal: F(24), req: ['*'], opt: ['2', '3', '4'], mode: 'impossible' }, true, MM(['multiops']));
+  S('Multiple Operations: √√(8×2) = 2 with one √', { goal: F(2), req: ['r', '8', '2', '*'], opt: [], mode: 'impossible' }, true, MM(['multiops']));
+  S('Multiple Operations + Now: the Resource + may repeat', { goal: F(6), req: ['1', '2', '3'], opt: [], res: ['+', '7'], mode: 'now' }, true, MM(['multiops']));
+  S('Remainder: 1 = 7 (sideways ÷) 3', { goal: F(1), req: ['7', '3', '/'], opt: [], mode: 'impossible' }, true, MM(['remainder']));
+  S('no card: 7,3,÷ never makes 1', { goal: F(1), req: ['7', '3', '/'], opt: [], mode: 'impossible' }, false, false);
+  S('Remainder and ÷ from two cubes: (8÷2)m3 = 1 ', { goal: F(1), req: ['8', '2', '3', '/', '/'], opt: [], mode: 'impossible' }, true, MM(['remainder']));
+  S('0 Wild: 8 = 5+0 (0 means 3)', { goal: F(8), req: ['5', '0', '+'], opt: [], mode: 'impossible' }, true, MM(['wild0']));
+  S('no card: 5+0 is 5, not 8', { goal: F(8), req: ['5', '0', '+'], opt: [], mode: 'impossible' }, false, false);
+  S('0 Wild: two 0s are the same digit: 0+0 = 7 is impossible', { goal: F(7), req: ['0', '0', '+'], opt: [], mode: 'impossible' }, false, MM(['wild0']));
+  S('0 Wild: 0+0 = 8 (both 4)', { goal: F(8), req: ['0', '0', '+'], opt: [], mode: 'impossible' }, true, MM(['wild0']));
+  S('0 Wild Goal 10: 5×3 (Goal 0 = 5)', { goal: F(10), req: ['5', '3', '*'], opt: [], mode: 'impossible' }, true, wg('10'));
+  S('0 Wild Goal 10: 5+0 never', { goal: F(10), req: ['5', '0', '+'], opt: [], mode: 'impossible' }, false, wg('10'));
+  S('0 Wild Goal 8÷0 (illegal when 0 = 0): 2+2 with 0 = 2', { goal: F(8), req: ['2', '2', '+'], opt: [], mode: 'impossible' }, true, wg('8/0'));
+  S('0 Wild + Two-digit: 35 = 0 and 5 glued, 0 meaning 3', { goal: F(35), req: ['0', '5'], opt: [], mode: 'impossible' }, true, MM(['wild0', 'twodigit']));
+
+  // --- Solver agrees with brute force on small cube sets ---
+  // brute: build every fully parenthesized expression from a sub-multiset of the cubes (Required
+  // always in), evaluate it with Eq.evaluate, and collect every value it can make.
+  function bruteVals(req, opt, fr, w) {
+    const RU = Eq.rulesOf(fr), all = req.concat(opt);
+    const availO = {}; all.filter(s => !Eq.isDigit(s)).forEach(s => availO[s] = (availO[s] || 0) + 1);
+    const reqO = {}; req.filter(s => !Eq.isDigit(s)).forEach(s => reqO[s] = (reqO[s] || 0) + 1);
+    const opTypes = Object.keys(availO).filter(s => s !== 'r');
+    if (RU.rem && availO['/']) opTypes.push('m');
+    const hasR = !!availO.r, maxRoots = RU.multi ? 3 : (availO.r || 0);
+    const memo = {};
+    function gen(D) { // D: array of digit symbols (ordered splits handled by trying all subsets)
+      const key = D.slice().sort().join('');
+      if (memo[key]) return memo[key];
+      let out = [];
+      if (D.length === 1) out.push({ s: D[0], u: {} });
+      if (RU.two && D.length === 2) { out.push({ s: D[0] + D[1], u: {} }); out.push({ s: D[1] + D[0], u: {} }); }
+      const n = D.length;
+      for (let mask = 1; mask < (1 << n) - 1; mask++) {
+        const A = [], B = [];
+        for (let i = 0; i < n; i++) (mask & (1 << i) ? A : B).push(D[i]);
+        const gA = gen(A), gB = gen(B);
+        gA.forEach(a => gB.forEach(b => {
+          opTypes.forEach(o => { const u = Object.assign({}, a.u); for (const k in b.u) u[k] = (u[k] || 0) + b.u[k]; const ct = o === 'm' ? '/' : o; u[ct] = (u[ct] || 0) + 1; out.push({ s: '(' + a.s + o + b.s + ')', u }); });
+          if (hasR) { const u = Object.assign({}, a.u); for (const k in b.u) u[k] = (u[k] || 0) + b.u[k]; u.r = (u.r || 0) + 1; out.push({ s: '(' + a.s + 'r' + b.s + ')', u }); }
+        }));
+      }
+      if (hasR) { // unary roots, up to maxRoots deep
+        let layer = out;
+        for (let d = 0; d < maxRoots; d++) { layer = layer.map(e => ({ s: 'r(' + e.s + ')', u: Object.assign({}, e.u, { r: (e.u.r || 0) + 1 }) })); out = out.concat(layer); }
+      }
+      // keep only what the cube counts allow (Multiple Operations: no limit)
+      out = out.filter(e => RU.multi || Object.keys(e.u).every(k => e.u[k] <= (availO[k] || 0)));
+      memo[key] = out;
+      return out;
+    }
+    const reqD = req.filter(Eq.isDigit), optD = opt.filter(Eq.isDigit), vals = new Set();
+    for (let mask = 0; mask < (1 << optD.length); mask++) {
+      const D = reqD.slice(); optD.forEach((d, i) => { if (mask & (1 << i)) D.push(d); });
+      if (!D.length) continue;
+      gen(D).forEach(e => {
+        if (!Object.keys(reqO).every(k => (e.u[k] || 0) >= reqO[k])) return;
+        const cubes = D.length + Object.keys(e.u).reduce((a, k) => a + (RU.multi ? Math.min(1, e.u[k]) : e.u[k]), 0);
+        if (cubes < 2) return;
+        const nOps = Object.keys(e.u).reduce((a, k) => a + e.u[k], 0);
+        if (RU.three && nOps < 3) return;
+        const ev = Eq.evaluate(t(e.s), { fractions: fr, wild: w });
+        if (ev.ok) vals.add(ev.value.n + '/' + ev.value.d);
+      });
+    }
+    return vals;
+  }
+  const bruteSets = [
+    ['twodigit', [], ['1', '2', '3', '+', '-']],
+    ['twodigit', ['*'], ['2', '4', '0', '-']],
+    ['threeops', [], ['1', '2', '3', '4', '+', '-', '*']],
+    ['threeops', [], ['9', '4', '2', '+', 'r', '-']],
+    ['multiops', [], ['1', '2', '3', '+', '*']],
+    ['multiops', ['-'], ['2', '5', '7', 'r']],
+    ['multiops', ['+'], ['1', '2', '3', '4', '*']],
+    ['multiops', [], ['2', '8', '*', 'r', '1']],
+    ['remainder', [], ['7', '3', '2', '/', '+']],
+    ['remainder', ['/'], ['9', '4', '5', '-', '/']],
+    ['wild0', [], ['0', '3', '2', '+', '*']],
+    ['wild0', ['0'], ['0', '5', '-', '/']],
+  ];
+  bruteSets.forEach(([v, req, opt]) => {
+    const fr = MM([v]);
+    const zero = req.concat(opt).includes('0') && v === 'wild0';
+    const reach = new Set();
+    (zero ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : [undefined]).forEach(w => bruteVals(req, opt, fr, w).forEach(k => reach.add(k)));
+    let agree = 0, bad = [];
+    for (let g = -12; g <= 99; g++) {
+      const r = Eq.solve({ goal: F(g), req, opt, mode: 'impossible', fractions: fr, maxDigits: 6, timeMs: 1500 });
+      const want = reach.has(g + '/1');
+      if (r.found === want && (want || r.complete)) agree++; else bad.push(g);
+    }
+    ok(`brute force agrees with the solver: ${v}, Required [${req}] + [${opt}] (${reach.size} values)`, bad.length === 0, bad);
+  });
+  // fractions on as well (Remainder + fractions, Two-digit + fractions)
+  [['remainder', ['8', '3', '/', '/', '+']], ['twodigit', ['1', '2', '4', '/', '+']]].forEach(([v, opt]) => {
+    const fr = MM([v], true), reach = bruteVals([], opt, fr, undefined);
+    let bad = [];
+    [...reach].slice(0, 400).forEach(k => { const [n, d] = k.split('/').map(Number); if (!Eq.solve({ goal: F(n, d), req: [], opt, mode: 'impossible', fractions: fr, timeMs: 1500 }).found) bad.push(k); });
+    ok(`brute force (fractions): solver finds every value of ${v} [${opt}] (${reach.size})`, bad.length === 0, bad.slice(0, 5));
+  });
+
+  // --- default unchanged: the solver gives the same answers with a math mode that has no card ---
+  {
+    const rand = Eq.rng(99); let same = true;
+    for (let k = 0; k < 12; k++) {
+      const cubes = Eq.roll(rand).map(c => c.s), goal = F(1 + Math.floor(rand() * 30));
+      const a = Eq.solve({ goal, req: [], opt: [], res: cubes, mode: 'impossible', timeMs: 800, maxDigits: 4 });
+      const b = Eq.solve({ goal, req: [], opt: [], res: cubes, mode: 'impossible', timeMs: 800, maxDigits: 4, fractions: { fractions: false, vars: [] } });
+      if (a.found !== b.found || a.expr !== b.expr) same = false;
+    }
+    ok('no variation: identical answers on 12 random rolls', same);
+  }
+  // --- speed: a full roll under each card stays inside the time budget ---
+  Eq.VARIATIONS.forEach(v => {
+    const rand = Eq.rng(4242); let worst = 0;
+    for (let k = 0; k < 8; k++) {
+      const cubes = Eq.roll(rand).map(c => c.s), goal = F(1 + Math.floor(rand() * 40));
+      const t0 = Date.now();
+      Eq.solve({ goal, req: [], opt: [], res: cubes, mode: 'impossible', timeMs: 700, maxDigits: 5, fractions: Eq.mathMode(false, [v], v === 'wild0' ? ['1', '0'] : null) });
+      worst = Math.max(worst, Date.now() - t0);
+    }
+    ok(`${v}: 8 full-roll searches each under 1s (worst ${worst}ms)`, worst < 1000);
+  });
+}
+
 // ---------------- How Many Ways?: medals ----------------
 {
   const M = Eq.wayMedals;

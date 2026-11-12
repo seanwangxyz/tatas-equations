@@ -55,6 +55,7 @@ function newShake(fixedCubes) {
   function lockOps() { G.cubes.forEach(function (c) { if (!Eq.isDigit(c.s) && G.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; c.order = ++orderCounter; } }); }
   G.goalTokens = []; G.goal = null; G.lastMover = null; G.selected = null; G.hintUsed = false; G.turn = G.setter;
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
+  if (window.Vari) Vari.reset(); // VARIATIONS (js/variations.js): no card yet this shake
   xpLog = [];
   G.phase = 'roll'; G.rolling = true;
   cue('reset'); Snd.setMood('play'); board('');
@@ -101,6 +102,7 @@ function speechHTML() {
 }
 
 function startGoalPhase() {
+  if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
   if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); setTimeout(aiSetGoal, 1100); }
   else {
@@ -271,6 +273,7 @@ ACT.buildGoal = function () {
 function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
+  if (window.Vari) Vari.afterGoal(tokens); // VARIATIONS: 0 Wild needs the Goal's cubes in the math mode
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal');
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
@@ -624,6 +627,7 @@ function aiTurn() {
 }
 // Turn solver symbols into tokens that point at real cubes (Required first, then Permitted, then Resources)
 function symsToCubeTokens(list, mode) {
+  if (window.Vari && Vari.on()) return Vari.cubeTokens(list, mode); // VARIATIONS: sideways ÷ and re-used operation cubes
   var pools = zoneCubes('required').concat(zoneCubes('permitted'), (mode === 'last' ? [] : zoneCubes('resources'))), used = {};
   return list.map(function (s) {
     if (s === '(' || s === ')') return s;

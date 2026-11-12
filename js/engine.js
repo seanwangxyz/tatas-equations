@@ -14,7 +14,7 @@ var Eq = (function () {
   };
   var COLORS = ['red', 'blue', 'green', 'black'];
   var OPS = ['+', '-', '*', '/', '^', 'r'];            // r = root (√)
-  var SHOW = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', 'r': '√', '(': '(', ')': ')' };
+  var SHOW = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': '^', 'r': '√', '(': '(', ')': ')', 'm': 'rem' }; // m = a sideways ÷ (Remainder card)
   var LIMIT = 1000000;                                  // biggest numerator/denominator we check
   var TWO = { n: 2, d: 1 };
 
@@ -69,9 +69,54 @@ var Eq = (function () {
         var g = Math.round(Math.pow(b.n, 1 / a.n));
         for (var c = Math.max(0, g - 1); c <= g + 1; c++) if (Math.pow(c, a.n) === b.n) return { n: c, d: 1 };
         return 'rootnotwhole';
+      case 'm': // Remainder variation (XIII-A-7): a sideways ÷. A and B counting numbers, A ≤ 1000.
+        if (a.d !== 1 || b.d !== 1 || a.n < 1 || b.n < 1) return 'remwhole';
+        if (a.n > 1000) return 'rembig';
+        return { n: a.n % b.n, d: 1 };
     }
     return 'syntax';
   }
+
+  // ---- Variations (Adventurous Equations, PDF section XIII-A, Elementary) ----
+  // A "math mode" value is what the game passes everywhere as `fractions`: either a plain
+  // true/false (no variation: exactly the old behaviour), or a plain-data object
+  //   { fractions: true/false, vars: ['wild0', ...], goal: [Goal symbols] }
+  // (plain data so it can travel to the Web Worker). `goal` is only needed for 0 Wild, where a 0
+  // in the Goal may stand for another digit too. Variation ids:
+  //   wild0     0 Wild (XIII-A-3): every 0 cube stands for the same digit 0-9, in Goal and Solution.
+  //   twodigit  Two-digit Numerals (XIII-A-8): two digit cubes side by side make a number in a Solution.
+  //   threeops  Three-operation Solution (XIII-A-6): a Solution needs at least three operation signs.
+  //   multiops  Multiple Operations (XIII-A-5): an operation cube the Solution may use can be used many times.
+  //   remainder Remainder (XIII-A-7): a ÷ cube turned sideways means "the remainder of A ÷ B" (symbol m).
+  var VARIATIONS = ['wild0', 'twodigit', 'threeops', 'multiops', 'remainder'];
+  function rulesOf(x) {
+    var R = { fr: false, wild: false, two: false, three: false, multi: false, rem: false, goal: null, any: false };
+    if (x && typeof x === 'object') {
+      R.fr = !!x.fractions; R.goal = x.goal || null;
+      (x.vars || []).forEach(function (v) {
+        if (v === 'wild0') R.wild = true; else if (v === 'twodigit') R.two = true; else if (v === 'threeops') R.three = true;
+        else if (v === 'multiops') R.multi = true; else if (v === 'remainder') R.rem = true;
+      });
+      R.any = R.wild || R.two || R.three || R.multi || R.rem;
+    } else R.fr = !!x;
+    return R;
+  }
+  // Build a math mode. With no variations it is just the fractions boolean (so nothing changes).
+  function mathMode(fractions, vars, goalSyms) {
+    vars = (vars || []).filter(function (v) { return VARIATIONS.indexOf(v) >= 0; });
+    if (!vars.length) return !!fractions;
+    var m = { fractions: !!fractions, vars: vars.slice() };
+    if (goalSyms) m.goal = goalSyms.slice();
+    return m;
+  }
+  // The same math mode, now knowing the Goal's symbols (0 Wild needs them).
+  function withGoal(m, goalSyms) {
+    if (!m || typeof m !== 'object') return m;
+    return mathMode(m.fractions, m.vars, (goalSyms || []).map(sym).filter(function (s) { return s !== '(' && s !== ')'; }));
+  }
+  function fracOn(m) { return rulesOf(m).fr; }
+  function varsOf(m) { return (m && typeof m === 'object' && m.vars) ? m.vars.slice() : []; }
+  function hasZero(list) { return list.some(function (t) { return sym(t) === '0'; }); }
 
   var MSG = {
     divzero: "You can't divide by zero. Nobody can, not even the wizard!",
@@ -84,6 +129,10 @@ var Eq = (function () {
     rootnotwhole: "That root isn't a whole number. Square roots that work: √0, √1, √4, √9, √16, √25, …",
     concat: "Two digit cubes are touching, so they make a two-digit number. In a Solution every cube is its own one-digit number. Put an operation between them!",
     threedigit: "Three digits in a row make a three-digit number. The Goal can only use one- or two-digit numbers.",
+    threedigit2: "Three digits in a row make a three-digit number. Even with the Two-digit card, numbers can have at most two digits.",
+    remwhole: "For a remainder (sideways ÷), both numbers must be counting numbers: 1, 2, 3, …",
+    rembig: "For a remainder (sideways ÷), the first number must be 1000 or less.",
+    remgoal: "A sideways ÷ (remainder) can only be used in a Solution, not in the Goal.",
     sign: "+ and − can only add or subtract. They can't be a plus or minus sign in front of a number.",
     opstart: "An operation needs a number on both sides.",
     incomplete: "It isn't finished yet. It ends with an operation or an open parenthesis.",
@@ -100,19 +149,25 @@ var Eq = (function () {
   // opts.multiDigit: allow two-digit numerals (Goal only). opts.fractions: fractions unlocked.
   // Order: ( ) first, then roots (√ binds to the item right after it; a number right
   // before √ is its index), then ^ (right to left), then × ÷, then + − (left to right).
+  // opts.fractions may be a math mode (see Variations above). opts.wild = the digit the 0 cubes stand
+  // for (0 Wild; default 0). opts.inGoal = this is a Goal (a sideways ÷ is not allowed there).
+  // With Remainder, 'm' (a sideways ÷) sits with × and ÷ (left to right).
   function evaluate(tokens, opts) {
     opts = opts || {};
-    var fr = !!opts.fractions, maxD = opts.multiDigit ? 2 : 1, madeFraction = false;
+    var RU = rulesOf(opts.fractions);
+    var fr = RU.fr, maxD = (opts.multiDigit || RU.two) ? 2 : 1, madeFraction = false;
+    var w = (RU.wild && typeof opts.wild === 'number') ? String(opts.wild) : '0';
     var toks = [], i = 0;
     while (i < tokens.length) {
       var s = sym(tokens[i]);
       if (isDigit(s)) {
         var j = i, str = '';
-        while (j < tokens.length && isDigit(sym(tokens[j]))) { str += sym(tokens[j]); j++; }
-        if (str.length > maxD) return err(maxD === 1 ? 'concat' : 'threedigit');
+        while (j < tokens.length && isDigit(sym(tokens[j]))) { var c = sym(tokens[j]); str += c === '0' ? w : c; j++; }
+        if (str.length > maxD) return err(maxD === 1 ? 'concat' : opts.multiDigit ? 'threedigit' : 'threedigit2');
         toks.push({ k: 'n', v: { n: parseInt(str, 10), d: 1 } });
         i = j;
       } else if (OPS.indexOf(s) >= 0 || s === '(' || s === ')') { toks.push({ k: s }); i++; }
+      else if (s === 'm' && RU.rem) { if (opts.inGoal) return err('remgoal'); toks.push({ k: s }); i++; }
       else return err('syntax');
     }
     if (!toks.length) return err('empty');
@@ -127,7 +182,7 @@ var Eq = (function () {
     }
     function term() {
       var l = power();
-      while (peek() === '*' || peek() === '/') { var o = toks[p++].k; var r = power(); l = chk(opCore(o, l, r, fr)); }
+      while (peek() === '*' || peek() === '/' || peek() === 'm') { var o = toks[p++].k; var r = power(); l = chk(opCore(o, l, r, fr)); }
       return l;
     }
     function power() {
@@ -153,7 +208,7 @@ var Eq = (function () {
       }
       if (k === 'r') { p++; var x = atom(); return chk(opCore('r', TWO, x, fr)); }
       if (k === '+' || k === '-') fail('sign');
-      if (k === '*' || k === '/' || k === '^') fail('opstart');
+      if (k === '*' || k === '/' || k === '^' || k === 'm') fail('opstart');
       if (k === ')') fail(p === 0 ? 'paren' : 'opstart');
       fail('incomplete');
     }
@@ -174,9 +229,26 @@ var Eq = (function () {
     var n = cubeCount(tokens);
     if (n < 1) return { ok: false, reasons: [MSG.empty] };
     if (n > 6) return { ok: false, reasons: ['A Goal can have at most six cubes.'] };
-    var ev = evaluate(tokens, { multiDigit: true, fractions: fractions });
+    var ev = evaluate(tokens, { multiDigit: true, fractions: fractions, inGoal: true });
+    var RU = rulesOf(fractions);
+    if (RU.wild && hasZero(tokens)) {
+      // 0 Wild: the Goal is legal if the 0 can stand for SOME digit that makes it legal.
+      // value = the value when 0 means 0 if that is legal, else the first digit that works.
+      var vals = {}, first = null;
+      for (var w = 0; w <= 9; w++) {
+        var e2 = evaluate(tokens, { multiDigit: true, fractions: fractions, inGoal: true, wild: w });
+        if (e2.ok) { vals[w] = e2.value; if (!first) first = e2; }
+      }
+      if (!first) return { ok: false, reasons: [ev.msg] };
+      return { ok: true, value: first.value, reasons: [], wildValues: vals };
+    }
     if (!ev.ok) return { ok: false, reasons: [ev.msg] };
     return { ok: true, value: ev.value, reasons: [] };
+  }
+  // 0 Wild: the Goal's value when every 0 stands for digit w (null if that is not legal).
+  function goalAt(goalSyms, w, fractions) {
+    var e = evaluate(goalSyms, { multiDigit: true, fractions: fractions, inGoal: true, wild: w });
+    return e.ok ? e.value : null;
   }
 
   // ---- Solution check ----
@@ -188,9 +260,16 @@ var Eq = (function () {
     tokens.forEach(function (t) { if (typeof t === 'object' && t.id != null) ids.push(t.id); });
     if (!ids.length) return { ok: false, value: null, reasons: [MSG.empty] };
     var label = ctx.label || function (id) { return String(id); };
-    if (ids.length < 2) reasons.push('A Solution needs at least two cubes.');
+    var RU = rulesOf(ctx.fractions);
+    var opCount = 0;
+    tokens.forEach(function (t) { if (typeof t === 'object' && t.id != null && !isDigit(t.s)) opCount++; });
+    var distinct = uniq(ids).length;
+    if (distinct < 2) reasons.push('A Solution needs at least two cubes.');
     var forb = [], res = 0, goalUsed = false, seen = {};
-    ids.forEach(function (id) {
+    tokens.forEach(function (t) {
+      if (typeof t !== 'object' || t.id == null) return;
+      var id = t.id;
+      if (seen[id] && RU.multi && !isDigit(t.s)) return; // Multiple Operations: an operation cube may be used again
       if (seen[id]) reasons.push('The same cube was used twice.');
       seen[id] = true;
       var z = ctx.zone(id);
@@ -198,6 +277,7 @@ var Eq = (function () {
       else if (z === 'resources') res++;
       else if (z === 'goal') goalUsed = true;
     });
+    if (RU.three && opCount < 3) reasons.push('With the Three-operation card, a Solution needs at least 3 operation signs (this one has ' + opCount + ').');
     if (forb.length) reasons.push('It uses a Forbidden cube (' + forb.map(label).join(', ') + '). Forbidden cubes are off-limits.');
     var missing = (ctx.required || []).filter(function (id) { return ids.indexOf(id) < 0; });
     if (missing.length) reasons.push('It leaves out Required cube' + (missing.length > 1 ? 's ' : ' ') + missing.map(label).join(', ') + '. Every Required cube must be used.');
@@ -205,13 +285,32 @@ var Eq = (function () {
     if ((ctx.mode === 'last' || ctx.mode === 'daily') && res > 0) reasons.push('Only cubes on the mat (Required and Permitted) may be used.');
     if (goalUsed) reasons.push('Cubes in the Goal stay in the Goal. They can\'t go in the Solution.');
     var ev = evaluate(tokens, { fractions: ctx.fractions });
-    var value = null;
-    if (!ev.ok) reasons.push(ev.msg);
+    var value = null, equal = false, wildAs = null;
+    var gZero = RU.wild && RU.goal && hasZero(RU.goal), sZero = RU.wild && hasZero(tokens);
+    if (gZero || sZero) {
+      // 0 Wild: every 0 (Goal and Solution) stands for the same digit. The game tries 0 first, then
+      // 1-9, and takes the first digit that makes the Equation true. (Officially the writer writes
+      // down what the 0 means; here the game finds it for you and says which digit it used.)
+      var firstOk = null;
+      for (var w = 0; w <= 9 && !equal; w++) {
+        var ew = evaluate(tokens, { fractions: ctx.fractions, wild: w });
+        if (!ew.ok) continue;
+        if (!firstOk) firstOk = ew;
+        var gw = gZero ? goalAt(RU.goal, w, ctx.fractions) : ctx.goal;
+        if (gw && eqF(ew.value, gw)) { equal = true; ev = ew; wildAs = w; }
+      }
+      if (!equal && firstOk) ev = firstOk;
+      if (!ev.ok) reasons.push(ev.msg);
+      else {
+        value = ev.value;
+        if (!equal) reasons.push('Your Solution equals ' + fmt(value) + (sZero ? ' when 0 means 0' : '') + (gZero ? '' : ', but the Goal is ' + fmt(ctx.goal)) + '. I tried every digit 0 to 9 for the wild 0, and none of them makes it equal the Goal.');
+      }
+    } else if (!ev.ok) reasons.push(ev.msg);
     else {
-      value = ev.value;
-      if (!eqF(value, ctx.goal)) reasons.push('Your Solution equals ' + fmt(value) + ', but the Goal is ' + fmt(ctx.goal) + '.');
+      value = ev.value; equal = eqF(value, ctx.goal);
+      if (!equal) reasons.push('Your Solution equals ' + fmt(value) + ', but the Goal is ' + fmt(ctx.goal) + '.');
     }
-    return { ok: reasons.length === 0, value: value, reasons: reasons, madeFraction: !!ev.madeFraction, cubes: ids.length, resUsed: res };
+    return { ok: reasons.length === 0, value: value, equal: equal, wildAs: wildAs, ops: opCount, reasons: reasons, madeFraction: !!ev.madeFraction, cubes: distinct, resUsed: res };
   }
 
   // ---- Solver ----
@@ -225,7 +324,7 @@ var Eq = (function () {
   function combine(o, L, R, v) {
     switch (o) {
       case '+': case '-': return { v: v, s: L.s + o + (R.p <= 1 ? '(' + R.s + ')' : R.s), p: 1 };
-      case '*': case '/': return { v: v, s: wrap(L, 2) + o + (R.p <= 2 ? '(' + R.s + ')' : R.s), p: 2 };
+      case '*': case '/': case 'm': return { v: v, s: wrap(L, 2) + o + (R.p <= 2 ? '(' + R.s + ')' : R.s), p: 2 };
       case '^': return { v: v, s: (L.p <= 3 ? '(' + L.s + ')' : L.s) + '^' + wrap(R, 3), p: 3 };
       case 'r': return { v: v, s: wrap(L, 4) + 'r' + wrap(R, 4), p: 3.5 };
     }
@@ -251,30 +350,44 @@ var Eq = (function () {
   }
 
   // p: {goal, req:[symbols], opt:[symbols], res:[symbols], mode:'now'|'impossible'|'free',
-  //     fractions, maxDigits, timeMs}
+  //     fractions (true/false or a math mode with variations), maxDigits, timeMs}
   // 'now': all req + any opt + at most one res. 'impossible'/'free': all req + any of opt∪res.
-  // Returns {found:true, expr, tokens} or {found:false, complete:bool}.
+  // Returns {found:true, expr, tokens, wild?} or {found:false, complete:bool}.
   // complete=false means it ran out of time or hit the size limit, so "not found" isn't proof.
+  // Variations: 0 Wild tries every digit for the 0 cubes (and the Goal's 0s, from the math mode's
+  // goal symbols); Two-digit adds glued pairs of digit cubes; Three-operation keeps, for every value,
+  // the count of operation signs (capped at 3); Multiple Operations lets any available operation
+  // repeat; Remainder lets a ÷ cube be used as 'm'. With no variation everything is as before.
   function solve(p) {
     var deadline = nowMs() + (p.timeMs || 500);
-    var base = { goal: p.goal, req: p.req || [], fractions: !!p.fractions, maxDigits: p.maxDigits || 6, deadline: deadline, memo: new Map() };
+    var RU = rulesOf(p.fractions);
+    var opt = p.opt || [], res = p.res || [], req = p.req || [];
+    var memo = new Map();
     var scen = [];
-    var opt = p.opt || [], res = p.res || [];
     if (p.mode === 'now') {
       scen.push({ opt: opt, must: null });
       uniq(res).forEach(function (s) { scen.push({ opt: opt.concat([s]), must: s }); });
     } else scen.push({ opt: opt.concat(res), must: null });
+    var gZero = RU.wild && RU.goal && hasZero(RU.goal);
+    var sZero = RU.wild && hasZero(req.concat(opt, res));
+    var ws = (gZero || sZero) ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : [null];
     var complete = true;
-    for (var i = 0; i < scen.length; i++) {
-      var r = core(base, scen[i].opt, scen[i].must);
-      if (r.found) return r;
-      if (!r.complete) complete = false;
-      if (nowMs() > deadline) { complete = false; break; }
+    for (var wi = 0; wi < ws.length; wi++) {
+      var w = ws[wi], goal = gZero ? goalAt(RU.goal, w, p.fractions) : p.goal;
+      if (!goal) continue; // the Goal is not legal when 0 means this digit
+      var base = { goal: goal, req: req, fractions: RU.fr, RU: RU, wild: w, maxDigits: p.maxDigits || 6, deadline: deadline, memo: memo };
+      for (var i = 0; i < scen.length; i++) {
+        var r = core(base, scen[i].opt, scen[i].must);
+        if (r.found) { if (w !== null) r.wild = w; return r; }
+        if (!r.complete) complete = false;
+        if (nowMs() > deadline) return { found: false, complete: false };
+      }
     }
     return { found: false, complete: complete };
   }
 
   function core(base, opt, must) {
+    var RU = base.RU, multi = RU.multi;
     var all = base.req.concat(opt);
     var reqD = base.req.filter(isDigit).sort();
     var reqO = countMap(base.req.filter(function (s) { return !isDigit(s); }));
@@ -287,27 +400,43 @@ var Eq = (function () {
     if (totalD > maxD) complete = false; // bigger Solutions exist that we won't search
 
     // Only "track" (count) op types that could run out; plentiful ones are treated as unlimited.
+    // Multiple Operations: every available type is tracked as "used yet?" (a count that stops at
+    // the number of Required cubes of that type, at least 1) and never runs out.
     var tracked = [], caps = [], idx = {};
     OPS.forEach(function (t) {
       var a = availO[t] || 0;
       if (!a) return;
+      if (multi) { idx[t] = tracked.length; tracked.push(t); caps.push(Math.max(1, reqO[t] || 0)); return; }
       if (t === 'r' || (reqO[t] || 0) > 0 || a < maxD - 1 || must === t) { idx[t] = tracked.length; tracked.push(t); caps.push(a); }
     });
     var radix = [], mul = 1, unit = {};
     tracked.forEach(function (t, i) { unit[t] = mul; radix.push(mul); mul *= caps[i] + 1; });
     function dec(u, i) { return Math.floor(u / radix[i]) % (caps[i] + 1); }
     function addU(u1, u2) {
-      for (var i = 0; i < tracked.length; i++) if (dec(u1, i) + dec(u2, i) > caps[i]) return -1;
-      return u1 + u2;
+      if (!multi) {
+        for (var i = 0; i < tracked.length; i++) if (dec(u1, i) + dec(u2, i) > caps[i]) return -1;
+        return u1 + u2;
+      }
+      var out = 0;
+      for (var j = 0; j < tracked.length; j++) out += Math.min(caps[j], dec(u1, j) + dec(u2, j)) * radix[j];
+      return out;
     }
+    function useOp(u, t) { return idx[t] === undefined ? u : addU(u, unit[t]); }
     var binOps = OPS.filter(function (t) { return (availO[t] || 0) > 0; });
+    if (RU.rem && (availO['/'] || 0) > 0) binOps.push('m'); // Remainder: a ÷ cube used sideways
     var hasRoot = (availO.r || 0) > 0;
-    var cfg = tracked.map(function (t, i) { return t + caps[i]; }).join(',') + '|' + binOps.join('') + '|' + (base.fractions ? 'F' : '');
+    var three = RU.three, two = RU.two;
+    var cfg = tracked.map(function (t, i) { return t + caps[i]; }).join(',') + '|' + binOps.join('') + '|' + (base.fractions ? 'F' : '') +
+      (RU.any ? '|' + (two ? '2' : '') + (three ? '3' : '') + (multi ? 'M' : '') + (RU.rem ? 'R' : '') + 'w' + base.wild : '');
     var tick = 0;
+    var W = base.wild;
+    function leafV(ch) { return (ch === '0' && W !== null && W !== undefined) ? W : +ch; }
+    // value key: the value, plus (Three-operation) how many operation signs, capped at 3
+    function vkey(v, o) { return three ? v.n + '/' + v.d + '#' + Math.min(3, o) : v.n + '/' + v.d; }
 
     function put(m, u, e) {
       var out = m.get(u); if (!out) { out = new Map(); m.set(u, out); }
-      var k = e.v.n + '/' + e.v.d;
+      var k = vkey(e.v, e.o);
       if (!out.has(k)) out.set(k, e);
     }
     function dp(S) {
@@ -315,8 +444,12 @@ var Eq = (function () {
       if (m) return m;
       if (nowMs() > base.deadline) throw TIMEOUT;
       m = new Map();
-      if (S.length === 1) put(m, 0, { v: { n: +S, d: 1 }, s: S, p: 4 });
+      if (S.length === 1) put(m, 0, { v: { n: leafV(S), d: 1 }, s: S, p: 4, o: 0 });
       else {
+        if (two && S.length === 2) { // Two-digit Numerals: the two cubes glued, both orders
+          put(m, 0, { v: { n: leafV(S[0]) * 10 + leafV(S[1]), d: 1 }, s: S, p: 4, o: 0 });
+          if (S[0] !== S[1]) put(m, 0, { v: { n: leafV(S[1]) * 10 + leafV(S[0]), d: 1 }, s: S[1] + S[0], p: 4, o: 0 });
+        }
         var sp = splits(S);
         for (var si = 0; si < sp.length; si++) {
           var A = sp[si][0], B = sp[si][1];
@@ -326,9 +459,8 @@ var Eq = (function () {
               var uAB = addU(uA, uB);
               if (uAB < 0) return;
               for (var oi = 0; oi < binOps.length; oi++) {
-                var o = binOps[oi], u = uAB;
-                if (o === 'r') { /* binary root needs a √ cube: always tracked */ }
-                if (idx[o] !== undefined) { u = addU(uAB, unit[o]); if (u < 0) continue; }
+                var o = binOps[oi], u = uAB, cubeT = o === 'm' ? '/' : o;
+                if (idx[cubeT] !== undefined) { u = addU(uAB, unit[cubeT]); if (u < 0) continue; }
                 if ((o === '+' || o === '*') && A > B) continue;
                 var out = m.get(u); if (!out) { out = new Map(); m.set(u, out); }
                 vmA.forEach(function (ea) {
@@ -336,8 +468,8 @@ var Eq = (function () {
                     if (((++tick) & 4095) === 0 && nowMs() > base.deadline) throw TIMEOUT;
                     var r = opCore(o, ea.v, eb.v, base.fractions);
                     if (typeof r === 'string') return;
-                    var k = r.n + '/' + r.d;
-                    if (!out.has(k)) out.set(k, combine(o, ea, eb, r));
+                    var oc = ea.o + eb.o + 1, k = vkey(r, oc);
+                    if (!out.has(k)) { var e = combine(o, ea, eb, r); e.o = oc; out.set(k, e); }
                   });
                 });
               }
@@ -346,17 +478,23 @@ var Eq = (function () {
         }
       }
       if (hasRoot) {
-        var adds = [];
-        m.forEach(function (vm, u) {
-          var u2 = addU(u, unit.r);
-          if (u2 < 0) return;
-          vm.forEach(function (e) {
-            if (e.v.d !== 1 || e.v.n < 0) return;
-            var r = opCore('r', TWO, e.v, false);
-            if (typeof r !== 'string') adds.push([u2, { v: r, s: 'r' + wrap(e, 4), p: 4 }]);
+        // square roots with no index cube. Multiple Operations: √ may repeat (√√16), up to 3 deep.
+        for (var rep = 0; rep < (multi ? 3 : 1); rep++) {
+          var adds = [];
+          m.forEach(function (vm, u) {
+            var u2 = useOp(u, 'r');
+            if (u2 < 0) return;
+            vm.forEach(function (e) {
+              if (e.v.d !== 1 || e.v.n < 0) return;
+              var r = opCore('r', TWO, e.v, false);
+              if (typeof r !== 'string') adds.push([u2, { v: r, s: 'r' + wrap(e, 4), p: 4, o: e.o + 1 }]);
+            });
           });
-        });
-        adds.forEach(function (a) { put(m, a[0], a[1]); });
+          var before = 0; m.forEach(function (vm) { before += vm.size; });
+          adds.forEach(function (a) { put(m, a[0], a[1]); });
+          var after = 0; m.forEach(function (vm) { after += vm.size; });
+          if (after === before) break;
+        }
       }
       base.memo.set(key, m);
       return m;
@@ -372,7 +510,7 @@ var Eq = (function () {
     })(0, reqD.slice());
     cands = cands.filter(function (c) { return c.length >= 1; }).map(function (c) { return c.sort().join(''); });
     cands.sort(function (a, b) { return a.length - b.length; });
-    var gk = base.goal.n + '/' + base.goal.d;
+    var gk = vkey(base.goal, 3);
     try {
       for (var ci = 0; ci < cands.length; ci++) {
         var T = cands[ci];
@@ -458,7 +596,8 @@ var Eq = (function () {
     CUBE_FACES: CUBE_FACES, COLORS: COLORS, OPS: OPS, SHOW: SHOW, MSG: MSG,
     frac: F, eqF: eqF, fmt: fmt, isDigit: isDigit, opCore: opCore,
     evaluate: evaluate, checkGoal: checkGoal, checkSolution: checkSolution, cubeCount: cubeCount,
-    solve: solve, goalIdeas: goalIdeas, rng: rng, roll: roll, uniq: uniq
+    solve: solve, goalIdeas: goalIdeas, rng: rng, roll: roll, uniq: uniq,
+    VARIATIONS: VARIATIONS, mathMode: mathMode, withGoal: withGoal, fracOn: fracOn, varsOf: varsOf, rulesOf: rulesOf, goalAt: goalAt
   };
 })();
 
