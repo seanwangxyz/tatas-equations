@@ -1,6 +1,6 @@
 // Shared building blocks for the extra venues (night stadium, beach, volcano).
-// Everything is generated in code. Nothing here animates at rest: the crowd wave and the camera
-// flashes are one-shot effects driven by step(), which returns false again once they finish.
+// Everything is generated in code. Nothing here animates at rest: the crowd reactions (wave, clap, ooh,
+// gasp, cheer, aw) and the camera flashes are one-shot effects driven by step(), which returns false again once they finish.
 import * as THREE from 'three';
 
 export function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -140,45 +140,24 @@ export function makeBoard(o) {
   return { group: group, setBoard: function (text) { paintBoard(cv, text, o.pal); tex.needsUpdate = true; } };
 }
 
-// ----- Instanced crowd -----
-// pts: [{ x, y, z, ry, sc, key (0..1 along the stands, for the wave), <colour fields> }]
-// parts: [{ geo, mat, col: field name in pts (or null) }]. Returns { meshes, N, setWave(t) }.
-export function makeCrowd(group, pts, parts) {
-  var N = pts.length, tc = new THREE.Color(), meshes = parts.map(function (pt) {
-    var m = new THREE.InstancedMesh(pt.geo, pt.mat, Math.max(1, N)); m.count = N; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false; group.add(m); return m;
-  });
-  pts.forEach(function (p, i) {
-    var M = mtx(p.x, p.y, p.z, 0, p.ry || 0, 0, p.sc);
-    parts.forEach(function (pt, k) { meshes[k].setMatrixAt(i, M); if (pt.col) meshes[k].setColorAt(i, tc.set(p[pt.col])); });
-  });
-  var baseY = new Float32Array(N), key = new Float32Array(N);
-  pts.forEach(function (p, i) { baseY[i] = p.y; key[i] = p.key; });
-  return {
-    meshes: meshes, N: N,
-    setWave: function (t) { // t in 0..1 along the stands; t < 0 puts everyone back down
-      var f = t * 1.5 - 0.25, wd = 0.15;
-      for (var i = 0; i < N; i++) {
-        var d = (key[i] - f) / wd, up = t >= 0 && d > -1 && d < 1 ? 0.5 * (1 + Math.cos(Math.PI * d)) : 0, y = baseY[i] + 0.9 * up;
-        for (var k = 0; k < meshes.length; k++) meshes[k].instanceMatrix.array[i * 16 + 13] = y;
-      }
-      meshes.forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
-    }
-  };
-}
+// ----- Instanced crowd: block people, see ../crowd.js (makeBlockCrowd) -----
+export { makeBlockCrowd, HEAD_TOP } from '../crowd.js';
 
 // ----- The venue API that table.js drives (same shape as the stadium's) -----
-// o = { group, crowd, pts, quality(), setBoard, flashColor, flashN }
+// o = { group, crowd (from makeBlockCrowd), pts, quality(), setBoard, flashColor, flashN }
 export function venueApi(o) {
   var g = o.group, R = rng(99), fT = flashTex(), FN = o.flashN || 24, flashes = [];
   for (var q = 0; q < FN; q++) {
     var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: fT, color: o.flashColor || 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     sp.visible = false; sp.renderOrder = 4; g.add(sp); flashes.push({ sp: sp, t0: 0, dur: 0, sc: 1 });
   }
-  var waveS = null, flashing = false, quality = o.quality || function () { return 2; }, pts = o.pts || [];
+  var flashing = false, quality = o.quality || function () { return 2; }, pts = o.pts || [];
   return {
     group: g, legs: true, key: o.key || null,
     setBoard: o.setBoard || function () {},
-    wave: function () { if (document.hidden || quality() < 1 || !o.crowd || !o.crowd.N) return false; waveS = { t0: performance.now(), dur: 1700 }; return true; },
+    wave: function () { if (document.hidden || quality() < 1 || !o.crowd || !o.crowd.N) return false; return o.crowd.react('wave'); },
+    // crowd reactions: 'clap' | 'ooh' | 'gasp' | 'cheer' | 'aw' (see ../crowd.js); also reachable as T3.crowd(kind, opts)
+    crowd: function (kind, opts) { if (document.hidden || !o.crowd) return false; return o.crowd.react(kind, opts); },
     flash: function () {
       if (document.hidden || !pts.length) return false;
       var qq = quality(), n = qq >= 2 ? FN : qq === 1 ? Math.ceil(FN / 2) : 6, now = performance.now();
@@ -189,8 +168,7 @@ export function venueApi(o) {
       flashing = true; return true;
     },
     step: function (now) { // true while something is still moving
-      var busy = false;
-      if (waveS) { var k = (now - waveS.t0) / waveS.dur; if (k >= 1) { o.crowd.setWave(-1); waveS = null; } else { o.crowd.setWave(k); busy = true; } }
+      var busy = !!(o.crowd && o.crowd.step(now));
       if (flashing) {
         var live = false;
         for (var i = 0; i < FN; i++) {
@@ -204,7 +182,7 @@ export function venueApi(o) {
       }
       return busy;
     },
-    dispose: function () { if (waveS && o.crowd) o.crowd.setWave(-1); waveS = null; flashing = false; }
+    dispose: function () { if (o.crowd) o.crowd.reset(); flashing = false; }
   };
 }
 

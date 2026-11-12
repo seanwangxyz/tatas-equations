@@ -1,10 +1,11 @@
 // Stadium theme: the table sits on a striped pitch in a stylised soccer ground.
-// Raked stands with an instanced low-poly crowd, floodlights, goals with nets, corner flags,
-// ad boards and a scoreboard. All static: nothing here animates at rest. The crowd "wave" and
-// camera flashbulbs are one-shot effects driven by step(); they finish and stop asking for frames.
+// Raked stands with an instanced crowd of block people (crowd.js), floodlights, goals with nets, corner flags,
+// ad boards and a scoreboard. All static: nothing here animates at rest. The crowd reactions (wave, clap,
+// ooh, gasp, cheer, aw) and camera flashbulbs are one-shot effects driven by step(); they finish and stop asking for frames.
 import * as THREE from 'three';
 import { FLOOR_Y, softTexture } from './environment.js';
 import { keyLight } from './arenas/common.js';
+import { makeBlockCrowd } from './crowd.js';
 
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function cvs(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
@@ -126,9 +127,10 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   stand(Math.PI, -standX, sideZ1, sideZ1 - sideZ0, 'left');
   stand(0, standX, sideZ0, sideZ1 - sideZ0, 'right');
 
-  // ----- Crowd (two instanced meshes: bodies and heads) -----
+  // ----- Crowd: blocky people (js/three/crowd.js), facing the table -----
   var reds = ['#e03131', '#e03131', '#e03131', '#e03131', '#e03131', '#c92a2a', '#ffffff', '#ffffff', '#ffd43b'], blues = ['#1c7ed6', '#1c7ed6', '#1c7ed6', '#1c7ed6', '#1971c2', '#1971c2', '#ffffff', '#ffffff', '#ffd43b'];
-  var skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a9714b'], pts = [], v = new THREE.Vector3(), tmpc = new THREE.Color();
+  var skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a9714b'], hairs = ['#2b1d14', '#3b2416', '#1a1a1a', '#6b4423', '#c8a165', '#8a3b1c', '#9a9a9a'];
+  var pts = [], v = new THREE.Vector3();
   seats.forEach(function (s) {
     for (var r = 0; r < rows; r++) {
       var step = 0.62, cnt = Math.floor((s.len - 1.2) / step);
@@ -138,7 +140,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
         v.set(u, y, sv).applyMatrix4(s.m);
         var left = s.team === 'left' ? true : s.team === 'right' ? false : v.x < 0;
         if (R() < 0.12) left = !left;
-        pts.push({ x: v.x, y: v.y, z: v.z, body: (left ? reds : blues)[Math.floor(R() * 9)], head: skins[Math.floor(R() * 6)], sc: 0.9 + R() * 0.25 });
+        pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z) + (R() - 0.5) * 0.3, shirt: (left ? reds : blues)[Math.floor(R() * 9)], skin: skins[Math.floor(R() * 6)], hair: R() < 0.12 ? null : hairs[Math.floor(R() * hairs.length)], sc: 0.9 + R() * 0.25 });
       }
     }
   });
@@ -146,16 +148,9 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var boardW = tall ? 5.6 : 10.5, boardH = tall ? 2.5 : 3.4, boardX = tall ? -6.0 : 9.4;
   var bx0 = boardX - boardW / 2 - 0.3, bx1 = boardX + boardW / 2 + 0.3, bzA = z0 - 1.0 * rowD, boardY0 = FY + 1.2;
   pts = pts.filter(function (p) { return !(p.x > bx0 && p.x < bx1 && p.z < bzA - 0.2 && p.y < boardY0 + boardH + 0.4); });
-  var N = pts.length, bodyGeo = new THREE.BoxGeometry(0.46, 0.5, 0.34).translate(0, 0.27, 0), headGeo = new THREE.IcosahedronGeometry(0.19, 0).translate(0, 0.74, 0);
-  var bodies = new THREE.InstancedMesh(bodyGeo, stdm(0xffffff, 0.85), N), heads = new THREE.InstancedMesh(headGeo, stdm(0xffffff, 0.8), N), mt = new THREE.Matrix4();
-  bodies.frustumCulled = heads.frustumCulled = false;
-  pts.forEach(function (p, i) {
-    mt.makeScale(p.sc, p.sc, p.sc).setPosition(p.x, p.y, p.z); bodies.setMatrixAt(i, mt); heads.setMatrixAt(i, mt);
-    bodies.setColorAt(i, night ? tmpc.set(p.body).multiplyScalar(0.3) : tmpc.set(p.body)); heads.setColorAt(i, night ? tmpc.set(p.head).multiplyScalar(0.3) : tmpc.set(p.head));
-  });
-  g.add(bodies); g.add(heads);
-  var baseY = new Float32Array(N), key = new Float32Array(N);
-  pts.forEach(function (p, i) { baseY[i] = p.y; var th = Math.atan2(p.x, -(p.z - D / 2)); key[i] = (th + 1.75) / 3.5; }); // 0..1 from the left side, round the back, to the right
+  pts.forEach(function (p) { var th = Math.atan2(p.x, -(p.z - D / 2)); p.key = (th + 1.75) / 3.5; }); // 0..1 from the left side, round the back, to the right
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, dim: night ? 0.3 : 1 });
+  pts = crowd.pts; var N = pts.length;
 
   // ----- Ad boards along the touchline, trackside -----
   var adT = adTexture(aniso), adLen = backL - 6; adT.wrapS = THREE.RepeatWrapping; adT.repeat.set(adLen / 16, 1);
@@ -229,22 +224,16 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
 
   // ----- One-shot effects: wave and flashbulbs -----
   // night: the main light comes from the front-left floodlight tower (key light for the stage agent's shadows)
-  var keyL = null; // (not "key": that name is the crowd-wave array above)
+  var keyL = null;
   if (night) { keyL = keyLight(0xeef3ff, 1.35, -standX - rows * rowD - 1.5, FY + 30, D / 2 + 9, W, D); g.add(keyL); }
 
-  var waveS = null, flashing = false;
-  function setWave(t) { // t in 0..1 along the stands
-    var ya = bodies.instanceMatrix.array, yb = heads.instanceMatrix.array, f = t * 1.5 - 0.25, wd = 0.15;
-    for (var i = 0; i < N; i++) {
-      var d = (key[i] - f) / wd, up = d > -1 && d < 1 ? 0.5 * (1 + Math.cos(Math.PI * d)) : 0, y = baseY[i] + 0.9 * up;
-      ya[i * 16 + 13] = y; yb[i * 16 + 13] = y;
-    }
-    bodies.instanceMatrix.needsUpdate = true; heads.instanceMatrix.needsUpdate = true;
-  }
+  var flashing = false;
   var api = {
     group: g, legs: true, key: keyL,
     setBoard: function (text) { paintBoard(bcv, text); btex.needsUpdate = true; },
-    wave: function () { if (document.hidden || quality() < 1) return false; waveS = { t0: performance.now(), dur: 1700 }; return true; },
+    wave: function () { if (document.hidden || quality() < 1 || !N) return false; return crowd.react('wave'); },
+    // crowd reactions: 'clap' | 'ooh' | 'gasp' | 'cheer' | 'aw' (see crowd.js); also reachable as T3.crowd(kind, opts)
+    crowd: function (kind, opts) { if (document.hidden) return false; return crowd.react(kind, opts); },
     flash: function () {
       if (document.hidden) return false;
       var q = quality(), n = q >= 2 ? FN : q === 1 ? 14 : 6, now = performance.now();
@@ -256,11 +245,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
       flashing = true; return true;
     },
     step: function (now) { // returns true while something is still moving
-      var busy = false;
-      if (waveS) {
-        var k = (now - waveS.t0) / waveS.dur;
-        if (k >= 1) { setWave(-1); waveS = null; } else { setWave(k); busy = true; }
-      }
+      var busy = crowd.step(now);
       if (flashing) {
         var live = false;
         for (var i = 0; i < FN; i++) {
@@ -274,7 +259,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
       }
       return busy;
     },
-    dispose: function () { waveS = null; flashing = false; }
+    dispose: function () { crowd.reset(); flashing = false; }
   };
   return api;
 }

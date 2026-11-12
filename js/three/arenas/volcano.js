@@ -1,9 +1,9 @@
 // Volcano venue: the Monster League's home ground. A green pitch inside a friendly cartoon crater:
 // a glowing lava stream around the pitch, rock terraces packed with cheerful little monsters,
 // monster banners on the crater wall, puffy clouds on the rim and a stone scoreboard.
-// Warm and fun, never scary. All static at rest; the wave and the sparkles are one-shot.
+// Warm and fun, never scary. All static at rest; the crowd reactions and the sparkles are one-shot.
 import * as THREE from 'three';
-import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, sweep, uPath, alongPath, makeBoard, makeCrowd, venueApi, keyLight, venueLayout } from './common.js';
+import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, sweep, uPath, alongPath, makeBoard, makeBlockCrowd, HEAD_TOP, venueApi, keyLight, venueLayout } from './common.js';
 import { pitchTexture } from '../stadium.js';
 
 var BOARD = { bg0: '#2b1250', bg1: '#170833', rows: 'rgba(255,255,255,.04)', head: '#ff7a1a', headText: '#fff1d6', title: '🌋  MONSTER LEAGUE  🌋', text: '#ffe066', glow: '#ff6a00', edge: '#7a4b2a' };
@@ -49,20 +49,23 @@ function bannerAtlas() {
   }
   return ctex(c, 4);
 }
-// Monster face: two eyes (white with dark pupils) and a little smile, as flat discs just in front of the
-// body (about 40 triangles: hundreds of monsters must stay cheap on an iPad). Vertex coloured.
+// Block-monster face for the cube head (neck pivot at y 0; the head's front face is at z 0.17): two big
+// eyes (white with dark pupils) and a little smile, as flat discs just in front of the face. Vertex coloured,
+// about 40 triangles: hundreds of monsters must stay cheap on an iPad.
 function faceGeometry() {
-  var parts = [];
+  var parts = [], zf = 0.172;
   [-1, 1].forEach(function (s) {
-    parts.push({ geo: new THREE.CircleGeometry(0.1, 8), color: 0xffffff, m: mtx(s * 0.1, 0.47, 0.262, -0.25, s * 0.3, 0) });
-    parts.push({ geo: new THREE.CircleGeometry(0.05, 6), color: 0x1b1b2a, m: mtx(s * 0.105, 0.46, 0.272, -0.25, s * 0.3, 0) });
+    parts.push({ geo: new THREE.CircleGeometry(0.07, 8), color: 0xffffff, m: mtx(s * 0.08, 0.22, zf) });
+    parts.push({ geo: new THREE.CircleGeometry(0.035, 6), color: 0x1b1b2a, m: mtx(s * 0.08, 0.21, zf + 0.004) });
   });
-  parts.push({ geo: new THREE.RingGeometry(0.05, 0.075, 6, 1, Math.PI * 1.1, Math.PI * 0.8), color: 0x1b1b2a, m: mtx(0, 0.36, 0.272, -0.1, 0, 0) });
+  parts.push({ geo: new THREE.RingGeometry(0.035, 0.055, 6, 1, Math.PI * 1.1, Math.PI * 0.8), color: 0x1b1b2a, m: mtx(0, 0.12, zf + 0.002) });
   return mergeGeos(parts.map(function (p) { p.geo.deleteAttribute('uv'); return p; }));
 }
+// two little horns on top of the cube head
 function hornGeometry() {
-  return mergeGeos([-1, 1].map(function (s) { var gg = new THREE.ConeGeometry(0.06, 0.2, 6); gg.deleteAttribute('uv'); return { geo: gg, color: 0xffffff, m: mtx(s * 0.15, 0.68, 0, 0, 0, -s * 0.35) }; }));
+  return mergeGeos([-1, 1].map(function (s) { var gg = new THREE.ConeGeometry(0.055, 0.18, 6); gg.deleteAttribute('uv'); return { geo: gg, color: 0xffffff, m: mtx(s * 0.11, HEAD_TOP + 0.07, 0, 0, 0, -s * 0.35) }; }));
 }
+function lighter(css, k) { return '#' + new THREE.Color(css).lerp(new THREE.Color(0xffffff), k).getHexString(); }
 
 export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
   var g = new THREE.Group(), R = rng(1313), L = venueLayout(W, D, layoutName), tall = L.tall, lineZ = L.lineZ;
@@ -102,7 +105,7 @@ export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
   [-1, 1].forEach(function (s) { var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.45, 3.0, 6), rockM); pole.position.set(bx + s * bw * 0.38, FY + 1.0, bzA - 0.5); g.add(pole); });
 
   // ----- Monster crowd: bodies, faces, and horns on about half of them -----
-  var pts = [], horned = [];
+  var pts = [];
   for (var r = 0; r < rows; r++) {
     var u = r * rowD + rowD * 0.55, seats = alongPath(path, 0.8, 0.12, R);
     seats.forEach(function (s) {
@@ -110,18 +113,16 @@ export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
       var x = s.x + s.nx * u, z = s.z + s.nz * u, y = FY + (r + 1) * rise;
       if (z > zf - 1.5) return;
       if (x > bx - bw / 2 - 0.4 && x < bx + bw / 2 + 0.4 && z < bzA + 0.2 && z > zb - TW - 0.5 && y < by0 + bh + 0.4) return; // hidden behind the scoreboard
-      var p = { x: x, y: y, z: z, ry: Math.atan2(-s.nx, -s.nz) + (R() - 0.5) * 0.4, sc: 1.0 + R() * 0.35, body: MONSTER[Math.floor(R() * MONSTER.length)], key: s.t };
-      pts.push(p);
-      if (R() < 0.5) horned.push({ x: p.x, y: p.y, z: p.z, ry: p.ry, sc: p.sc, key: p.key, horn: R() < 0.6 ? '#fff4e6' : '#ffd8a8' });
+      var col = MONSTER[Math.floor(R() * MONSTER.length)];
+      pts.push({ x: x, y: y, z: z, ry: Math.atan2(-s.nx, -s.nz) + (R() - 0.5) * 0.4, sc: 1.0 + R() * 0.3, shirt: col, skin: lighter(col, 0.18), hair: null, face: 1, horn: R() < 0.5 ? (R() < 0.6 ? '#fff4e6' : '#ffd8a8') : null, key: s.t });
     });
   }
-  var bodyGeo = new THREE.IcosahedronGeometry(0.3, 1); bodyGeo.scale(1, 1.12, 0.92); bodyGeo.translate(0, 0.33, 0);
-  var crowd = makeCrowd(g, pts, [
-    { geo: bodyGeo, mat: stdm(0xffffff, 0.7), col: 'body' },
-    { geo: faceGeometry(), mat: stdm(0xffffff, 0.5, { vertexColors: true, flatShading: false, side: THREE.DoubleSide }), col: null }
-  ]);
-  var horns = makeCrowd(g, horned, [{ geo: hornGeometry(), mat: stdm(0xffffff, 0.6, { vertexColors: true }), col: 'horn' }]);
-  var both = { N: crowd.N, setWave: function (t) { crowd.setWave(t); horns.setWave(t); } };
+  // block monsters: a cube head (lighter than the body) with a cartoon face, horns on about half of them
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, eyes: false, armCol: 'shirt', extras: [
+    { geo: faceGeometry(), mat: stdm(0xffffff, 0.5, { vertexColors: true, flatShading: false, side: THREE.DoubleSide }), has: 'face', col: null },
+    { geo: hornGeometry(), mat: stdm(0xffffff, 0.6, { vertexColors: true }), has: 'horn', col: 'horn' }
+  ] });
+  pts = crowd.pts;
 
   // ----- Banners hanging on the crater wall (one merged mesh using the atlas) -----
   // the lower wall runs from (TW+0.4, TH+1.1) to (TW+1.1, TH+2.9): lean the banners back with it, just in front of it
@@ -160,5 +161,5 @@ export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
   // ----- Warm key light from in front (the table must stay crisp; the lava adds warm fill from THEMES) -----
   var key = keyLight(0xffeedd, 1.2, 9, FY + 34, 15, W, D); g.add(key);
 
-  return venueApi({ group: g, crowd: both, pts: pts, quality: quality, setBoard: board.setBoard, flashColor: 0xffd27a, flashN: 22, key: key });
+  return venueApi({ group: g, crowd: crowd, pts: pts, quality: quality, setBoard: board.setBoard, flashColor: 0xffd27a, flashN: 22, key: key });
 }
