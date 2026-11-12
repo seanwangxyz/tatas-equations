@@ -149,12 +149,12 @@ function renderGame() {
   $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
     '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>';
   if (three) {
-    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + tokensHTML(G.goalTokens, G.cubes) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + '</span></div>' : '';
+    $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + tokensHTML(G.goalTokens, G.cubes) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + (window.Vari && Vari.wildNote() ? ' <small>(0 is wild)</small>' : '') + '</span></div>' : '';
     T3.attach($('#gMat')); T3.sync(G);
   } else {
     $('#gGoal').innerHTML = '';
     $('#gMat').innerHTML = '<div class="mat">' +
-    '<div class="zone z-goal" data-zone="goal"><h3>🎯 GOAL ' + (G.goal ? '<span class="gval">= ' + Eq.fmt(G.goal) + '</span>' : '') + '</h3><div class="cubes">' + goalHTML + '</div></div>' +
+    '<div class="zone z-goal" data-zone="goal"><h3>🎯 GOAL ' + (G.goal ? '<span class="gval">= ' + Eq.fmt(G.goal) + (window.Vari && Vari.wildNote() ? ' (0 is wild)' : '') + '</span>' : '') + '</h3><div class="cubes">' + goalHTML + '</div></div>' +
     '<div class="zrow">' + zoneHTML('required', '✅ REQUIRED', 'must use') + zoneHTML('permitted', '👍 PERMITTED', 'may use') + zoneHTML('forbidden', '⛔ FORBIDDEN', "can't use") + '</div>' +
     '<div class="zone z-res" data-zone="resources"><h3>🎲 RESOURCES <small>' + resC.length + ' left</small></h3><div class="cubes">' + resHTML + '</div></div>' +
     '</div>' ;
@@ -483,7 +483,7 @@ function humanChallengesNoGoal(ci, setter) {
   say('pip', esc(G.players[ci].name) + ': build a Goal, then a Solution for it, using any Resource cubes!');
   openGoalBuilder(ci, function (tokens, val) {
     tokens.forEach(function (t) { if (typeof t === 'object') G.cubes[t.id].zone = 'goal'; });
-    G.goalTokens = tokens; G.goal = val; renderGame();
+    G.goalTokens = tokens; G.goal = val; if (window.Vari) Vari.afterGoal(tokens); renderGame();
     openSolutionBuilder(ci, 'free', function (ok, sol, chk) {
       var sols = {}; sols[ci] = { ok: ok, tokens: sol, chk: chk };
       endShake({ pts: noGoalScore(ci, setter, ok), lines: [esc(G.players[ci].name) + (ok ? ' proved a Goal was possible!' : '\'s Equation wasn\'t correct, so the "No Goal" call stands.')], sols: sols });
@@ -496,6 +496,7 @@ function sampleSolution() {
   if (!G.goal) return null;
   var st = snapshot();
   var r = Eq.solve({ goal: G.goal, req: st.req, opt: st.perm, res: st.res, mode: 'impossible', fractions: G.fractions, maxDigits: 6, timeMs: 900 });
+  G.sampleWild = r.found ? r.wild : null;
   return r.found ? r.tokens : null;
 }
 function solHTML(i, s) {
@@ -538,7 +539,7 @@ function endShake(r) {
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div>' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
-    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + exprBox(sample) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(G.goal) + '</p>' :
+    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + exprBox(sample) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(G.goal) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' :
       (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.</div>' : '')) +
     idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
