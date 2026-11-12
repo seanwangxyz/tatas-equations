@@ -461,4 +461,266 @@ var Eq = (function () {
     solve: solve, goalIdeas: goalIdeas, rng: rng, roll: roll, uniq: uniq
   };
 })();
+
+// ===================== HOW MANY WAYS? (distinct Solutions) =====================
+// Added on top of Eq; nothing above is changed. Exports: Eq.wayKey, Eq.allWays, Eq.waysFor, Eq.wayMedals.
+//
+// When are two Solutions the SAME way? (kid version; the game's "?" pop-up says the same)
+//   1. Swapping the order of numbers you add, take away, multiply or divide:
+//        2+3 = 3+2,  2×3 = 3×2,  9−4+2 = 9+2−4,  8÷4×2 = 8×2÷4.
+//   2. Moving parentheses inside a chain of + and − (or a chain of × and ÷), or moving a minus:
+//        (2+3)+4 = 2+(3+4),  9−(4−2) = 9−4+2,  8÷(4÷2) = 8÷4×2,  7−(0−2)×7 = 7−(0−7)×2 = 7+2×7.
+//   3. Adding a helper that changes nothing: + or − a part that equals 0 (+0, +(3−3), +0×7),
+//      × or ÷ a part that equals 1 (×1, ÷1, ×(5−4)), a number and its opposite (+4−4, ×4÷4),
+//      a power or root that changes nothing (5^1, 1^3 = 1, 0^2 = 0, √1 = 1, √0 = 0, a root with
+//      index 1), and writing the little 2 on a square root (2√9 = √9).
+//   4. The same trick with a different number: 2÷2 = 4÷4 (a number divided by itself is 1),
+//      3^0 = 9^0 (anything to the power 0 is 1), 3−3 = 5−5 (a number minus itself is 0).
+// Everything else is a NEW way: different cubes (2+3 vs 1+4), a different operation
+// (2+3 vs 6−1 vs 2×3−1), or a different shape (2×(3+4) vs 2×3+2×4).
+// Which cube of a color is used never matters: only the symbols.
+(function (Eq) {
+  'use strict';
+  var OPS = Eq.OPS, isDigit = Eq.isDigit, opCore = Eq.opCore;
+  var TWO = { n: 2, d: 1 };
+  function isOne(v) { return v.n === 1 && v.d === 1; }
+  function vk(v) { return v.n + '/' + v.d; }
+  function negV(v) { return { n: -v.n, d: v.d }; }
+  function nowMs() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+
+  // ---- Canonical form ----
+  // A node is {k: key string, v: value, t: 'n' (number) | 'S' (sum) | 'P' (product) | 'W' (power) |
+  //   'R' (root) | 'x' (a trick like x÷x whose numbers don't matter), it: [[sign, node], ...] for S and P,
+  //   h: a helper was removed somewhere, tr: a "same trick, any number" was used somewhere}.
+  function atom(d) { return { k: d, v: { n: +d, d: 1 }, t: 'n', h: false, tr: false }; }
+  var ATOM2 = atom('2');
+  // biggest part first (so (3−2)×1 keeps the (3−2) and drops the ×1), then alphabetical
+  function byKey(x, y) { var a = x[1].k, b = y[1].k; return b.length - a.length || (a < b ? -1 : a > b ? 1 : 0); }
+  function chainKey(t, items) {
+    var pos = [], neg = [];
+    items.forEach(function (x) { (x[0] > 0 ? pos : neg).push(x[1].k); });
+    return t + '(' + pos.sort().join(',') + '|' + neg.sort().join(',') + ')';
+  }
+  function copyH(n) { var c = {}; for (var q in n) c[q] = n[q]; c.h = true; return c; }
+  function negate(n, v) { return { k: chainKey('S', [[-1, n]]), v: v, t: 'S', it: [[-1, n]], h: n.h, tr: n.tr }; }
+  // t = 'S' (a ± b) or 'P' (a ×/÷ b); sb = +1 for + or ×, −1 for − or ÷; v = value of the whole thing
+  function chain(t, a, b, sb, v) {
+    var raw = [], kept = [], h = a.h || b.h, tr = a.tr || b.tr, dropped = false, neg = false;
+    function isHelper(n) { return t === 'S' ? n.v.n === 0 : isOne(n.v); }
+    function add(n, s) {
+      // a minus inside a product moves out front: 7×(0−2) is −(7×2)
+      if (t === 'P' && n.t === 'S' && n.it.length === 1 && n.it[0][0] < 0) { neg = !neg; n = n.it[0][1]; }
+      var list = n.t === t ? n.it.map(function (x) { return [x[0] * s, x[1]]; }) : [[s, n]];
+      list.forEach(function (x) { raw.push(x); });
+      if (isHelper(n)) { dropped = true; return; }
+      list.forEach(function (x) { kept.push(x); });
+    }
+    add(a, 1); add(b, sb);
+    // a number and its opposite cancel (+4 −4, ×4 ÷4)
+    for (var i = 0; i < kept.length; i++) {
+      for (var j = i + 1; j < kept.length; j++) {
+        if (kept[i][0] !== kept[j][0] && kept[i][1].k === kept[j][1].k) { kept.splice(j, 1); kept.splice(i, 1); i--; dropped = true; break; }
+      }
+    }
+    var inner = neg ? negV(v) : v, res;
+    if (!kept.length) {
+      if (raw.some(function (x) { return !isHelper(x[1]); })) { // it all cancelled: x−x or x÷x, any x
+        res = { k: t + '(=)', v: inner, t: 'x', h: h || raw.some(function (x) { return isHelper(x[1]); }), tr: true };
+      } else { // nothing but helpers (1×1, (3−2)×1, 0+0): keep just one of them
+        var pos = raw.filter(function (x) { return x[0] > 0; }).sort(byKey), one = (pos.length ? pos : raw.slice().sort(byKey))[0];
+        res = one[0] > 0 ? copyH(one[1]) : negate(copyH(one[1]), inner);
+      }
+    } else if (kept.length === 1 && kept[0][0] > 0) {
+      res = dropped ? copyH(kept[0][1]) : kept[0][1];
+    } else {
+      res = { k: chainKey(t, kept), v: inner, t: t, it: kept, h: h || dropped, tr: tr };
+    }
+    if (tr) res.tr = true;
+    return neg ? negate(res, v) : res;
+  }
+  function mkNode(o, a, b, v) {
+    var tr = a.tr || b.tr;
+    switch (o) {
+      case '+': return chain('S', a, b, 1, v);
+      case '-': return chain('S', a, b, -1, v);
+      case '*': return chain('P', a, b, 1, v);
+      case '/': return chain('P', a, b, -1, v);
+      case '^':
+        if (isOne(b.v) || isOne(a.v) || a.v.n === 0) return withTr(copyH(a), tr); // 5^1, 1^3, 0^2 change nothing
+        if (b.v.n === 0) return { k: 'W(*,0)', v: v, t: 'x', h: a.h || b.h, tr: true }; // anything^0 = 1
+        return { k: 'W(' + a.k + ',' + b.k + ')', v: v, t: 'W', h: a.h || b.h, tr: tr };
+      case 'r': // a = index, b = radicand
+        if (isOne(a.v) || isOne(b.v) || b.v.n === 0) return withTr(copyH(b), tr); // 1√x, √1, √0
+        return { k: 'R(' + a.k + ',' + b.k + ')', v: v, t: 'R', h: a.h || b.h || (a.k === '2' && a !== ATOM2), tr: tr };
+    }
+  }
+  function withTr(n, tr) { if (tr) n.tr = true; return n; }
+
+  // Key of a Solution the kid built. tokens: symbols or {s} objects, one-digit numbers only.
+  // Returns {ok:true, key, value, helper, trick} or {ok:false, code, msg}. Same grammar as Eq.evaluate.
+  function wayKey(tokens, opts) {
+    opts = opts || {};
+    var ev = Eq.evaluate(tokens, { fractions: opts.fractions });
+    if (!ev.ok) return ev;
+    var toks = tokens.map(function (t) { return typeof t === 'string' ? t : t.s; }), p = 0, fr = !!opts.fractions;
+    function peek() { return toks[p]; }
+    function bin(o, a, b) { var r = opCore(o, a.v, b.v, fr); if (typeof r === 'string') throw { code: r }; return mkNode(o, a, b, r); }
+    function expr() { var l = term(); while (peek() === '+' || peek() === '-') { var o = toks[p++]; l = bin(o, l, term()); } return l; }
+    function term() { var l = power(); while (peek() === '*' || peek() === '/') { var o = toks[p++]; l = bin(o, l, power()); } return l; }
+    function power() { var b = rootChain(); if (peek() === '^') { p++; return bin('^', b, power()); } return b; }
+    function rootChain() { var a = atomP(); while (peek() === 'r') { p++; a = bin('r', a, atomP()); } return a; }
+    function atomP() {
+      var k = toks[p++];
+      if (isDigit(k)) return atom(k);
+      if (k === '(') { var v = expr(); p++; return v; }
+      if (k === 'r') { var x = atomP(); return bin('r', ATOM2, x); }
+      throw { code: 'syntax' };
+    }
+    try { var n = expr(); return { ok: true, key: n.k, value: n.v, helper: !!n.h, trick: !!n.tr }; }
+    catch (e) { if (e && e.code) return { ok: false, code: e.code, msg: Eq.MSG[e.code] || e.code }; throw e; }
+  }
+
+  // ---- Enumerate every distinct way ----
+  function wrap(e, need) { return e.p < need ? '(' + e.s + ')' : e.s; }
+  function text(o, L, R) { // fewest parentheses that Eq.evaluate reads back the same way
+    switch (o) {
+      case '+': case '-': return { s: L.s + o + (R.p <= 1 ? '(' + R.s + ')' : R.s), p: 1 };
+      case '*': case '/': return { s: wrap(L, 2) + o + (R.p <= 2 ? '(' + R.s + ')' : R.s), p: 2 };
+      case '^': return { s: (L.p <= 3 ? '(' + L.s + ')' : L.s) + '^' + wrap(R, 3), p: 3 };
+      case 'r': return { s: wrap(L, 4) + 'r' + wrap(R, 4), p: 3.5 };
+    }
+  }
+  var splitCache = {};
+  function splits(S) {
+    if (splitCache[S]) return splitCache[S];
+    var vals = Eq.uniq(S.split('')), cnt = vals.map(function (v) { return S.split(v).length - 1; });
+    var out = [], cur = vals.map(function () { return 0; });
+    (function rec(i) {
+      if (i === vals.length) {
+        var a = '', b = '', na = 0;
+        for (var k = 0; k < vals.length; k++) { a += vals[k].repeat(cur[k]); b += vals[k].repeat(cnt[k] - cur[k]); na += cur[k]; }
+        if (na > 0 && na < S.length) out.push([a, b]);
+        return;
+      }
+      for (var c = 0; c <= cnt[i]; c++) { cur[i] = c; rec(i + 1); }
+    })(0);
+    splitCache[S] = out;
+    return out;
+  }
+  var STOP = { stop: true };
+
+  // p: {cubes: [symbols], fractions, timeMs (default 300), maxNodes (default 150000)}
+  // Every cube is optional (like Permitted cubes). A Solution needs at least two cubes.
+  // Returns {complete, ms, nodes, byValue: {'n/d': [way, ...]}} where
+  // way = {key, expr (internal symbols), tokens, cubes (count), ops: [op symbols used]};
+  // each value's list is sorted fewest cubes first. complete=false: ran out of time or room,
+  // so there may be more ways than listed.
+  function allWays(p) {
+    var t0 = nowMs(), deadline = t0 + (p.timeMs || 300), maxNodes = p.maxNodes || 150000, fr = !!p.fractions;
+    var syms = (p.cubes || []).map(function (s) { return typeof s === 'string' ? s : s.s; });
+    var digits = syms.filter(isDigit).sort().join('');
+    var cnt = {}; syms.forEach(function (s) { if (!isDigit(s)) cnt[s] = (cnt[s] || 0) + 1; });
+    var types = OPS.filter(function (o) { return cnt[o] > 0; }), opsTotal = 0;
+    types.forEach(function (o) { opsTotal += cnt[o]; });
+    var radix = {}, mul = 1; types.forEach(function (o) { radix[o] = mul; mul *= cnt[o] + 1; });
+    function dec(u, o) { return Math.floor(u / radix[o]) % (cnt[o] + 1); }
+    function addU(a, b) { for (var i = 0; i < types.length; i++) { var o = types[i]; if (dec(a, o) + dec(b, o) > cnt[o]) return -1; } return a + b; }
+    function used(u) { var n = 0; types.forEach(function (o) { n += dec(u, o); }); return n; }
+    var memo = {}, nodes = 0, tick = 0, complete = true;
+    function put(m, u, e) {
+      var b = m.get(u); if (!b) { b = new Map(); m.set(u, b); }
+      if (b.has(e.c.k)) return;
+      b.set(e.c.k, e);
+      if (++nodes > maxNodes) throw STOP;
+    }
+    function dp(S) {
+      if (memo[S]) return memo[S];
+      if (nowMs() > deadline) throw STOP;
+      var m = new Map();
+      if (S.length === 1) put(m, 0, { v: { n: +S, d: 1 }, c: atom(S), s: S, p: 4 });
+      else if (S.length - 1 <= opsTotal) {
+        splits(S).forEach(function (sp) {
+          var A = sp[0], B = sp[1], mA = dp(A), mB = dp(B);
+          mA.forEach(function (bA, uA) {
+            mB.forEach(function (bB, uB) {
+              var uAB = addU(uA, uB); if (uAB < 0) return;
+              types.forEach(function (o) {
+                if ((o === '+' || o === '*') && A > B) return; // the other order gives the same way
+                var u = addU(uAB, radix[o]); if (u < 0) return;
+                bA.forEach(function (ea) {
+                  bB.forEach(function (eb) {
+                    if (((++tick) & 2047) === 0 && nowMs() > deadline) throw STOP;
+                    var r = opCore(o, ea.v, eb.v, fr);
+                    if (typeof r === 'string') return;
+                    var c = mkNode(o, ea.c, eb.c, r), tx = text(o, ea, eb);
+                    put(m, u, { v: r, c: c, s: tx.s, p: tx.p });
+                  });
+                });
+              });
+            });
+          });
+        });
+      }
+      // square roots (no index cube): √x, and √√x if there are two √ cubes
+      for (var rep = 0; rep < (cnt.r || 0); rep++) {
+        var adds = [];
+        m.forEach(function (b, u) {
+          var u2 = addU(u, radix.r); if (u2 < 0) return;
+          b.forEach(function (e) {
+            if (e.v.d !== 1 || e.v.n < 0) return;
+            var r = opCore('r', TWO, e.v, false);
+            if (typeof r !== 'string') adds.push([u2, { v: r, c: mkNode('r', ATOM2, e.c, r), s: 'r' + wrap(e, 4), p: 4 }]);
+          });
+        });
+        if (!adds.length) break;
+        adds.forEach(function (a) { put(m, a[0], a[1]); });
+      }
+      memo[S] = m;
+      return m;
+    }
+    // every sub-multiset of the digits, smallest first
+    var subs = [''];
+    Eq.uniq(digits.split('')).forEach(function (d) {
+      var c = digits.split(d).length - 1, next = [];
+      subs.forEach(function (s) { for (var k = 0; k <= c; k++) next.push(s + d.repeat(k)); });
+      subs = next;
+    });
+    subs = subs.filter(function (s) { return s.length >= 1 && s.length - 1 <= opsTotal; }).map(function (s) { return s.split('').sort().join(''); });
+    subs.sort(function (a, b) { return a.length - b.length || (a < b ? -1 : 1); });
+    var byValue = {}, seen = {};
+    try { subs.forEach(function (S) { dp(S); }); } catch (x) { if (x !== STOP) throw x; complete = false; }
+    subs.forEach(function (S) {
+      var m = memo[S]; if (!m) return;
+      m.forEach(function (b, u) {
+        var nc = S.length + used(u);
+        if (nc < 2) return;
+        b.forEach(function (e) {
+          var k = vk(e.v), id = k + '#' + e.c.k;
+          var w = { key: e.c.k, expr: e.s, tokens: e.s.split(''), cubes: nc, ops: types.filter(function (o) { return dec(u, o) > 0; }) };
+          if (seen[id]) { if (nc < seen[id].cubes) { var L = byValue[k]; L[L.indexOf(seen[id])] = w; seen[id] = w; } return; }
+          seen[id] = w; (byValue[k] = byValue[k] || []).push(w);
+        });
+      });
+    });
+    Object.keys(byValue).forEach(function (k) { byValue[k].sort(function (a, b) { return a.cubes - b.cubes || a.expr.length - b.expr.length; }); });
+    return { complete: complete, ms: Math.round(nowMs() - t0), nodes: nodes, byValue: byValue };
+  }
+  // The distinct ways to make one Goal. p: like allWays plus goal ({n,d}).
+  function waysFor(p) {
+    var a = allWays(p);
+    return { complete: a.complete, ms: a.ms, ways: a.byValue[vk(p.goal)] || [] };
+  }
+  // Medal thresholds for a puzzle with `total` ways. Gold never needs every way once there are 4+,
+  // and tops out at 10, so a puzzle with lots of ways stays reachable.
+  function wayMedals(total) {
+    if (total <= 1) return { bronze: 1, silver: 1, gold: 1 };
+    if (total === 2) return { bronze: 1, silver: 2, gold: 2 };
+    if (total === 3) return { bronze: 1, silver: 2, gold: 3 };
+    var gold = Math.min(10, Math.max(3, Math.ceil(total * 0.6)));
+    var bronze = Math.max(1, Math.round(gold / 3)), silver = Math.max(bronze + 1, Math.round(gold * 2 / 3));
+    if (silver >= gold) silver = gold - 1;
+    return { bronze: bronze, silver: silver, gold: gold };
+  }
+  Eq.wayKey = wayKey; Eq.allWays = allWays; Eq.waysFor = waysFor; Eq.wayMedals = wayMedals;
+})(Eq);
 /*ENGINE-END*/

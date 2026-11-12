@@ -194,5 +194,109 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   rows.forEach(([label, args, want]) => { const got = sc(...args); ok('scoring: ' + label, same(got, want), got); });
 }
 
+// ---------------- How Many Ways?: what counts as the same way ----------------
+{
+  const K = (e, fr) => { const r = Eq.wayKey(t(e), { fractions: fr }); return r.ok ? r.key : 'ERR:' + r.code; };
+  const H = e => Eq.wayKey(t(e), { fractions: true }).helper;
+  const same = [
+    ['2+3', '3+2'], ['2*3', '3*2'], ['(2+3)+4', '2+(3+4)'], ['4+2+3', '3+(4+2)'],
+    ['9-4+2', '9+2-4'], ['9-(4-2)', '9-4+2'], ['8/4*2', '8*2/4'], ['8/(4/2)', '8/4*2'],
+    ['2*(3+4)', '(4+3)*2'], ['(6-1)*2', '2*(6-1)'],
+    ['2+3+0', '2+3'], ['2+3-0', '3+2'], ['(2+3)*1', '2+3'], ['(2+3)/1', '2+3'], ['2+3+0*7', '2+3'],
+    ['5*(3-2)', '5*1'], ['5+(3-3)', '5*1'], ['2+3+4-4', '2+3'], ['2*3*4/4', '2*3'], ['5^1', '5*1'],
+    ['r9', '2r9'], ['1r9', '9*1'],
+    ['8-1^3', '8-1'], ['8-1^3', '8-1^4'], ['6+0^2', '6+0'], ['r1+4', '1+4'], ['r0+4', '4+0'], ['7-1*1', '7-1'], ['7-(3-2)*1', '7-(3-2)'],
+    ['3^0+6', '9^0+6'], ['4-2^(0+0)', '4-3^0'], ['2/2+3', '3+4/4'], ['5-5+2', '2+0'], ['(3-3)*4+2', '2+0'],
+    ['7-(0-2)*7', '7-(0-7)*2'], ['7-(0-2*7)', '7+2*7'], ['0-5', '5*(0-1)'], ['9/(0-3)', '0-9/3'],
+  ];
+  same.forEach(([a, b]) => ok(`same way: ${a} = ${b}`, K(a, true) === K(b, true) && !/ERR/.test(K(a, true)), [K(a, true), K(b, true)]));
+  const diff = [
+    ['2+3', '1+4'], ['2+3', '6-1'], ['6-1', '2*3-1'], ['2+2', '2*2'], ['2*(3+4)', '2*3+2*4'],
+    ['9-4+2', '9-(4+2)+5'], ['4+3/3', '4+1'], ['3+2/2', '3+2^0'], ['8-1^3', '8-(3-2)'], ['7+2*7', '7*2-7'], ['2^3', '3^2'], ['8-2', '2-8'], ['8/2', '2/8'],
+    ['r9', '9'], ['3r8', '8r3'],
+  ];
+  diff.forEach(([a, b]) => ok(`different ways: ${a} ≠ ${b}`, K(a, true) !== K(b, true), [K(a, true), K(b, true)]));
+  ok('helper flag: 2+3+0 has a helper', H('2+3+0') === true);
+  ok('helper flag: 5*(3-2) has a helper', H('5*(3-2)') === true);
+  ok('helper flag: 3+2 has none', H('3+2') === false);
+  ok('helper flag: 9-(4-2) has none', H('9-(4-2)') === false);
+  const TR = e => Eq.wayKey(t(e), { fractions: true }).trick;
+  ok('trick flag: 3+2/2 and 9^0+6 are tricks, 3+2 is not', TR('3+2/2') && TR('9^0+6') && !TR('3+2'));
+  ok('wayKey refuses 5/0', !Eq.wayKey(t('5/0')).ok);
+  ok('wayKey refuses 7/2 with fractions locked', Eq.wayKey(t('7/2')).code === 'fraction');
+  ok('wayKey refuses 23 (two-digit)', !Eq.wayKey(t('23')).ok);
+  ok('wayKey reads cube tokens {s,id}', Eq.wayKey([{ s: '3', id: 4 }, { s: '+', id: 7 }, { s: '2', id: 1 }]).key === K('2+3'));
+}
+
+// ---------------- How Many Ways?: enumeration ----------------
+{
+  const vkey = v => v.n + '/' + v.d;
+  const has = (cubes, toks) => { const c = {}; cubes.forEach(s => c[s] = (c[s] || 0) + 1); return toks.every(s => s === '(' || s === ')' || (c[s]-- > 0)); };
+  const w6 = Eq.waysFor({ cubes: t('2346+-*'), goal: F(6) });
+  ok('ways to make 6 from 2 3 4 6 + − ×: 7 and complete', w6.ways.length === 7 && w6.complete, w6.ways.map(w => w.expr));
+  ok('ways list starts with the fewest cubes', w6.ways[0].cubes === 3);
+  // every listed way is a real, distinct Solution made of the given cubes, and wayKey agrees with it
+  const sets = [['1235+-', false], ['2346+-*', false], ['12345+-*/', false], ['12345+-*/', true], ['0368+-*/', true], ['2349+*^r', false], ['1349r-*', false]];
+  sets.forEach(([cs, fr]) => {
+    const cubes = t(cs), a = Eq.allWays({ cubes, fractions: fr, timeMs: 5000 });
+    let bad = 0, n = 0;
+    Object.keys(a.byValue).forEach(k => {
+      const keys = {};
+      a.byValue[k].forEach(w => {
+        n++;
+        const ev = Eq.evaluate(w.tokens, { fractions: fr }), wk = Eq.wayKey(w.tokens, { fractions: fr });
+        if (!ev.ok || vkey(ev.value) !== k || !wk.ok || wk.key !== w.key || keys[w.key] || w.cubes < 2 || Eq.cubeCount(w.tokens) !== w.cubes || !has(cubes, w.tokens)) bad++;
+        keys[w.key] = 1;
+      });
+    });
+    ok(`allWays ${cs}${fr ? ' (fractions)' : ''}: ${n} ways, all valid, distinct and matching wayKey`, a.complete && n > 0 && bad === 0, { bad, n, complete: a.complete });
+  });
+  // brute force: build every fully-parenthesized expression from the cubes and count distinct keys
+  function brute(cs, goal, fr) {
+    const D = t(cs).filter(Eq.isDigit), O = t(cs).filter(s => !Eq.isDigit(s)), keys = new Set();
+    function trees(leaves) { // leaves: array of strings -> all fully parenthesized trees with '?' op slots in order
+      if (leaves.length === 1) return [{ s: leaves[0], k: 0 }];
+      const out = [];
+      for (let i = 1; i < leaves.length; i++) trees(leaves.slice(0, i)).forEach(L => trees(leaves.slice(i)).forEach(R => out.push({ s: '(' + L.s + '#' + R.s + ')', k: L.k + R.k + 1 })));
+      return out;
+    }
+    function perms(arr, k) { if (k === 0) return [[]]; const out = []; arr.forEach((x, i) => perms(arr.slice(0, i).concat(arr.slice(i + 1)), k - 1).forEach(p => out.push([x].concat(p)))); return out; }
+    for (let k = 1; k <= Math.min(D.length, O.length + 1); k++) {
+      const dps = new Set(perms(D, k).map(p => p.join(''))), ops = new Set(perms(O, k - 1).map(p => p.join('')));
+      dps.forEach(dp => trees(dp.split('')).forEach(tr => ops.forEach(op => {
+        let i = 0; const s = tr.s.replace(/#/g, () => op[i++]);
+        if (k < 2) return;
+        const ev = Eq.evaluate(t(s), { fractions: fr });
+        if (ev.ok && Eq.eqF(ev.value, goal)) keys.add(Eq.wayKey(t(s), { fractions: fr }).key);
+      })));
+    }
+    return keys;
+  }
+  [['1234+-*', 5, false], ['2346+-/', 3, false], ['2346+-/', 3, true], ['0125+-*', 5, false], ['1236+*-', 6, false]].forEach(([cs, g, fr]) => {
+    const bk = brute(cs, F(g), fr), w = Eq.waysFor({ cubes: t(cs), goal: F(g), fractions: fr });
+    const wk = new Set(w.ways.map(x => x.key)), same = bk.size === wk.size && [...bk].every(k => wk.has(k));
+    ok(`brute force agrees: ${cs} make ${g}${fr ? ' (fractions)' : ''} → ${bk.size} ways`, same && w.complete, { brute: bk.size, ways: wk.size });
+  });
+  // square roots count √x and √√x
+  ok('square root: 9 √ makes 3 one way (√9)', Eq.waysFor({ cubes: t('9r'), goal: F(3) }).ways.length === 1);
+  const rr = Eq.waysFor({ cubes: t('97+rr'), goal: F(2) }).ways.map(w => w.expr);
+  ok('two √ cubes: √√(9+7) = 2 is found', rr.some(e => /rr/.test(e)), rr);
+  // the time budget is honoured and reported
+  const big = Eq.allWays({ cubes: t('234689+-*/^r'), fractions: true, timeMs: 60 });
+  ok('a giant deal stops on time and says it is not complete', !big.complete && big.ms < 400, big.ms);
+  const t0 = Date.now(), lv5 = Eq.allWays({ cubes: t('12345+-*/'), fractions: true, timeMs: 2000 });
+  ok('a level-5 sized deal (5 digits, 4 operations) finishes quickly', lv5.complete && Date.now() - t0 < 400, Date.now() - t0);
+}
+
+// ---------------- How Many Ways?: medals ----------------
+{
+  const M = Eq.wayMedals;
+  ok('medals for 3 ways: 1 / 2 / 3', JSON.stringify(M(3)) === JSON.stringify({ bronze: 1, silver: 2, gold: 3 }));
+  let good = true;
+  for (let n = 4; n <= 200; n++) { const m = M(n); if (!(m.bronze >= 1 && m.bronze < m.silver && m.silver < m.gold && m.gold < n && m.gold <= 10)) good = false; }
+  ok('medals for 4-200 ways: bronze < silver < gold < every way, gold at most 10', good);
+  ok('medals for 10 ways: gold is 6', M(10).gold === 6);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

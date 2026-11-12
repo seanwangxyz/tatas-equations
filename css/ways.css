@@ -1,0 +1,35 @@
+/* ======================= HOW MANY WAYS? ======================= */
+/* Everything is prefixed wy- so it can't clash. Animations run once on an event, then settle. */
+.wy-mat{max-width:980px}
+.wy-panel{margin-top:12px;display:flex;flex-direction:column;gap:12px}
+.wy-trackbox{display:flex;flex-direction:column;gap:6px;padding:0 34px 26px}
+.wy-count{font-size:20px;text-align:center}
+.wy-count b{font-family:var(--display);font-weight:400;font-size:30px;color:var(--purple)}
+.wy-track{position:relative;height:16px;border-radius:999px;background:#e4e8f1;box-shadow:inset 0 2px 4px rgba(0,0,0,.15);margin-top:30px}
+.wy-fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,#ffd43b,#ff8a1f);transition:width .5s ease}
+.wy-stop{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
+.wy-stop .medal{width:52px;height:52px;font-size:24px;margin:0}
+.wy-stop .medal::before{inset:4px;border-width:2px}
+.wy-stop .medal.locked span{font-family:var(--display);font-weight:400;font-size:22px;color:#7d869c}
+.wy-stop small{position:absolute;top:56px;font-size:13px;color:var(--ink2);font-weight:800;white-space:nowrap}
+.wy-stop.got small{color:var(--ink)}
+.wy-shelf{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.wy-shelf.empty{color:var(--mute);font-size:17px;text-align:center;padding:10px;border:3px dashed #d7dce8;border-radius:18px}
+.wy-way{display:flex;align-items:center;gap:6px;background:#fff;border-radius:18px;padding:4px 8px 4px 4px;box-shadow:0 4px 0 #d7dce8,0 6px 10px rgba(20,30,60,.1)}
+.wy-way .expr{--mini:34px;min-height:44px;padding:4px}
+.wy-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--purple);color:#fff;font-family:var(--display);font-weight:400;font-size:16px;flex:0 0 auto}
+.wy-inline{display:inline-flex;gap:2px;vertical-align:middle;background:var(--pitch-d);border-radius:10px;padding:2px 4px}
+.wy-inline .paren{height:30px;font-size:22px;width:12px}
+/* one-shot animations */
+.wy-new{animation:wyNew .6s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes wyNew{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.wy-same{animation:wySame .55s ease both;outline:4px solid var(--gold);outline-offset:2px}
+@keyframes wySame{0%,100%{transform:none}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-3px)}}
+.wy-pop{animation:wyPop .7s cubic-bezier(.2,1.5,.4,1) both}
+.wy-stop.wy-pop{animation:none}
+.wy-stop.wy-pop .medal{animation:wyPop .7s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes wyPop{0%{transform:scale(.3)}70%{transform:scale(1.25)}100%{transform:none}}
+.wy-nudge .bubble{animation:wyNudge .45s ease both}
+@keyframes wyNudge{0%{transform:translateY(-6px);opacity:.4}100%{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.wy-new,.wy-same,.wy-pop,.wy-stop.wy-pop .medal,.wy-nudge .bubble{animation:none}.wy-fill{transition:none}}
+@media (max-width:520px){.wy-hdr h2{font-size:24px}.wy-hdr h2 small{display:none}.wy-trackbox{padding:0 26px 26px}.wy-stop .medal{width:42px;height:42px;font-size:20px}.wy-stop small{top:46px}}
