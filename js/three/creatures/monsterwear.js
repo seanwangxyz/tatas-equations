@@ -27,8 +27,8 @@ export function fitJerseyTexture(t, C, Hh) {
   g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, H * 0.09, W, H * 0.025);
   // big number on the chest (and on the back, split across the wrap seam), outlined so it reads on any colour at game size
   const drawNum = (cx) => {
-    g.save(); g.translate(cx, H * 0.54); g.scale(sx, 1);
-    g.font = '900 ' + Math.round(H * (t.num.length > 1 ? 0.4 : 0.48)) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.save(); g.translate(cx, H * (t.numYf || 0.54)); g.scale(sx, t.numTall || 1);   // numYf: height of the number's centre (0 = collar)
+    g.font = '900 ' + Math.round(H * (t.num.length > 1 ? 0.4 : 0.48) * (t.numScale || 1)) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.lineJoin = 'round'; g.lineWidth = 46; g.strokeStyle = 'rgba(0,0,0,.55)'; g.strokeText(t.num, 0, 0);
     g.lineWidth = 26; g.strokeStyle = t.trim; g.strokeText(t.num, 0, 0);
     g.fillStyle = '#fff'; g.fillText(t.num, 0, 0); g.restore();

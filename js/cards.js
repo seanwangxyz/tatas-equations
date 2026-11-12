@@ -1,6 +1,8 @@
 'use strict';
 // ======================= SOCCER-CARD ALBUM =======================
-// 24 collectible cards drawn in code (CSS + emoji + the game's own line icons: no image files).
+// 34 collectible cards drawn in code (CSS + the game's own line icons: no image files). Creature cards show a
+// head-and-shoulders picture of the 3D creature (T3.portrait, js/three/portraits.js) and fall back to the
+// creature's emoji when 3D is unavailable or the picture is not ready yet.
 // Every card has an explicit, checkable way to earn it. Nothing is random, nothing can be lost:
 // once a card is earned it is saved in S.cards[id] = 'YYYY-MM-DD'.
 //
@@ -37,7 +39,13 @@ var Cards = (function () {
     { i: 1, id: 'penny', pos: 'Defender', stats: [['Slide', 90], ['Chill', 99], ['Waddle', 78]] },
     { i: 2, id: 'fox', pos: 'Striker', stats: [['Speed', 95], ['Cheek', 90], ['Shooting', 88]] },
     { i: 3, id: 'owl', pos: 'Midfielder', stats: [['Vision', 97], ['Patience', 99], ['Wisdom', 95]] },
-    { i: 4, id: 'wizard', pos: 'Captain', stats: [['Magic', 99], ['Drama', 97], ['Flair', 96]] }
+    { i: 4, id: 'wizard', pos: 'Captain', stats: [['Magic', 99], ['Drama', 97], ['Flair', 96]] },
+    // Monster League (opponents 6-10)
+    { i: 5, id: 'grub', pos: 'Defender', stats: [['Grumble', 99], ['Tackles', 88], ['Snorts', 94]] },
+    { i: 6, id: 'splosh', pos: 'Keeper', stats: [['Care', 99], ['Checks', 96], ['Saves', 90]] },
+    { i: 7, id: 'blaze', pos: 'Winger', stats: [['Speed', 97], ['Heat', 99], ['Pounce', 93]] },
+    { i: 8, id: 'hex', pos: 'Playmaker', stats: [['Tricks', 99], ['Twists', 95], ['Vision', 92]] },
+    { i: 9, id: 'zog', pos: 'Captain', stats: [['Crown', 99], ['Power', 97], ['Calm', 95]] }
   ];
   var LIST = [];
   CREATURES.forEach(function (c) {
@@ -93,11 +101,31 @@ var Cards = (function () {
   function titleOf(c) { return c.kind === 'skill' ? 'Skill card' : c.creature === 'pip' ? 'the Cube' : opp(c.creature).title; }
   function numOf(c) { return c.kind === 'skill' ? c.num : c.creature === 'pip' ? '0' : opp(c.creature).num; }
   function colorOf(c) { return c.kind === 'skill' ? c.color : c.creature === 'pip' ? '#ffe066' : opp(c.creature).color; }
+  // ----- Creature pictures (3D portraits) -----
+  var PSIZE = 256;
+  function imgHTML(url) { return '<img class="sc-portrait" src="' + url + '" alt="" draggable="false" style="display:block;width:100%;height:100%;object-fit:contain;border-radius:50%">'; }
+  function portraitHTML(o) {
+    var emo = '<span class="sc-emo">' + o.emoji + '</span>', T = window.T3, k = o.kind, pk = o.pack || 'classic', r = null;
+    if (!k || !T || typeof T.portrait !== 'function') return emo;
+    try { r = T.portrait(k, pk, PSIZE); } catch (e) { r = null; }
+    if (typeof r === 'string') return imgHTML(r);
+    if (r && typeof r.then === 'function') {
+      var tag = k + '-' + pk;
+      // the card is on screen by the time the picture is ready: swap the emoji for it (if the picture fails, the emoji stays)
+      r.then(function (url) {
+        if (!url) return;
+        var els = document.querySelectorAll('.sc-emo[data-pt="' + tag + '"]');
+        for (var i = 0; i < els.length; i++) els[i].outerHTML = imgHTML(url);
+      }, function () { /* keep the emoji */ });
+      return '<span class="sc-emo" data-pt="' + tag + '">' + o.emoji + '</span>';
+    }
+    return emo;
+  }
   function artOf(c, locked) {
     var inner;
     if (c.kind === 'skill') inner = '<span class="sc-ico">' + (typeof ico === 'function' ? ico(c.icon) : '★') + '</span>';
     else if (c.creature === 'pip') inner = (typeof pipSVG === 'function') ? '<span class="sc-pip">' + pipSVG(locked ? 'happy' : 'cheer') + '</span>' : '<span class="sc-emo">🟨</span>';
-    else inner = '<span class="sc-emo">' + opp(c.creature).emoji + '</span>';
+    else inner = portraitHTML(opp(c.creature));
     return '<div class="sc-art" style="--c:' + colorOf(c) + '">' + inner + (c.kind === 'gold' && !locked ? '<span class="sc-star">★</span>' : '') + '</div>';
   }
   function statsHTML(c) {

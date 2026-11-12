@@ -6,8 +6,9 @@
 //   * spine_01..03, neck, head   rotations in the BODY frame (so "pitch" is always forward/back whatever the bone's local axes are)
 //   * clavicles                  shrug / relaxed shoulders
 //   * arms                       analytic two-bone IK to the requested hand target on the REAL arm bones. When the target is
-//                                farther than the arm reaches, the arm stretches (cartoon rubber arm): the bones are scaled along
-//                                their length, so the real mesh and textures stay in use and the colours always match.
+//                                farther than the arm reaches, the arm stretches a little (at most MAXK): the bones are scaled
+//                                along their length, so the real mesh and textures stay in use. The runtime leans and steps
+//                                the body for anything farther.
 //   * fingers                    curl with the hand's `open` value (fist <-> open), thumb included
 // Upper arm, forearm and hand get explicit world matrices (matrixAutoUpdate off) so stretching can never shear the hand.
 // No per-frame allocations: every temporary below is module-level.
@@ -20,7 +21,7 @@ const dq = new THREE.Quaternion(), w0 = new THREE.Quaternion(), qi = new THREE.Q
 const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), vE = new THREE.Vector3(), vW = new THREE.Vector3(), vd1 = new THREE.Vector3(), vd2 = new THREE.Vector3(), vh = new THREE.Vector3(), vS = new THREE.Vector3();
 const vs = new THREE.Vector3(), mA = new THREE.Matrix4(), mB = new THREE.Matrix4(), mU = new THREE.Matrix4(), mL = new THREE.Matrix4(), mH = new THREE.Matrix4();
 const ONES = [1, 1];
-const MAXK = 3.0;                   // longest the arm may stretch, as a multiple of its natural length
+const MAXK = 1.25;                  // longest the reaching arm may stretch (x its usual length); the body leans and steps for the rest
 
 // bone-name patterns of the Unreal-style humanoid (override any of them in the manifest slot's "bones")
 export const BONE_NAMES = { pelvis: 'pelvis', spine: ['spine_01', 'spine_02', 'spine_03'], neck: 'neck_01', head: 'Head', clav: 'clavicle_', up: 'upperarm_', lo: 'lowerarm_', hand: 'hand_' };
@@ -144,7 +145,7 @@ export class MonsterRig {
     va.set(tx - S.x, ty - S.y, tz - S.z); let d = va.length();
     const Ls = a.L1 + a.L2, base = Ls * a.k0, reach = base * 0.985; let k = a.k0;
     // only the arm that is carrying a die may stretch a long way; in gestures the hand just stops a little short of far targets
-    if (d > reach) { let s = d / reach; const mx = this.taskArm === a.idx + 1 ? MAXK : 1.3; if (s > mx) { s = mx; d = reach * s; va.setLength(d); } k = a.k0 * s; }
+    if (d > reach) { let s = d / reach; const mx = this.taskArm === a.idx + 1 ? MAXK : 1.2; if (s > mx) { s = mx; d = reach * s; va.setLength(d); } k = a.k0 * s; }
     if (d < 0.45) { d = 0.45; if (va.lengthSq() < 1e-6) va.set(0, -1, 0); va.setLength(d); }
     a.stretch = k / a.k0;
     const l1 = a.L1 * k, l2 = a.L2 * k, vx = va.x / d, vy = va.y / d, vz = va.z / d;

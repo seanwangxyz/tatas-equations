@@ -78,11 +78,15 @@ export function jerseyTexture(t) {
   g.fillStyle = '#fff'; g.beginPath(); g.arc(670, 96, 24, 0, 7); g.fill();
   g.fillStyle = '#222'; g.beginPath(); for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * Math.PI * 0.4; g.lineTo(670 + Math.cos(a) * 11, 96 + Math.sin(a) * 11); } g.fill();
   g.lineWidth = 4; g.strokeStyle = t.trim; g.beginPath(); g.arc(670, 96, 27, 0, 7); g.stroke();
-  // big number, outlined so it reads at any jersey color
-  g.font = '900 ' + (t.num.length > 1 ? 150 : 170) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineJoin = 'round'; g.lineWidth = 22; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(t.num, 512, 140);
-  g.lineWidth = 12; g.strokeStyle = t.trim; g.strokeText(t.num, 512, 140);
-  g.fillStyle = '#fff'; g.fillText(t.num, 512, 140);
+  // big number, outlined so it reads at any jersey color. Optional t.numScale (bigger), t.numTall (taller than wide:
+  // the far-side creatures are seen from above, so a stretched number reads as a normal one) and t.numY (its centre,
+  // in canvas pixels from the collar; smaller = higher on the chest). Defaults: 1, 1, 140.
+  const ns = t.numScale || 1, nt = t.numTall || 1;
+  g.save(); g.translate(512, t.numY || 140); g.scale(1, nt);
+  g.font = '900 ' + Math.round((t.num.length > 1 ? 150 : 170) * ns) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineJoin = 'round'; g.lineWidth = 22; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(t.num, 0, 0);
+  g.lineWidth = 12; g.strokeStyle = t.trim; g.strokeText(t.num, 0, 0);
+  g.fillStyle = '#fff'; g.fillText(t.num, 0, 0); g.restore();
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; return tex;
 }
 function star(g, x, y, r, n) {
