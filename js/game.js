@@ -41,6 +41,7 @@ function startMatch(mode, oppIdx, cfg) {
     if (cfg.creature >= 0) G.players.push({ name: OPPONENTS[cfg.creature].name, ai: OPPONENTS[cfg.creature], score: 0, list: [] });
     else G.players.push({ name: cfg.n3 || 'Mama', ai: null, score: 0, list: [] });
   }
+  else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -131,6 +132,7 @@ function renderGame() {
   if (!G) return;
   var el = $('#game'), three = T3.active(), resC = zoneCubes('resources');
   var scores = G.players.map(function (p, i) {
+    if (G.team && i === 0) return Team.hudHTML(p, i === G.turn && G.phase === 'move');
     var face = p.ai ? avatarHTML(p.ai, 'sm') : (i === 0 ? '<span class="jersey">' + esc(S.jersey || '7') + '</span>' : '<span class="jersey j' + (i + 1) + '">' + (i + 1) + '</span>');
     return '<div class="pl' + (i === G.turn && G.phase === 'move' ? ' turn' + (isAI(i) ? ' opp-turn' : '') : '') + '" data-pi="' + i + '">' + face + '<b>' + esc(p.name) + '</b><span class="pts" data-v="' + p.score + '">' + p.score + '</span></div>';
   }).join('');
@@ -155,7 +157,7 @@ function renderGame() {
     '<div class="zone z-res" data-zone="resources"><h3>🎲 RESOURCES <small>' + resC.length + ' left</small></h3><div class="cubes">' + resHTML + '</div></div>' +
     '</div>' ;
   }
-  $('#gAct').innerHTML = speechHTML() + '<div class="acts">' + actionsHTML() + '</div>';
+  $('#gAct').innerHTML = speechHTML() + '<div class="acts">' + (G.team ? Team.barHTML() : '') + actionsHTML() + '</div>';
   G.justMoved = null;
   hudCountUp();
 }
@@ -228,6 +230,7 @@ function placeCube(id, zone, who) {
   var c = G.cubes[id];
   c.zone = zone; c.order = ++orderCounter; G.justMoved = id; G.highlight = null;
   G.lastMover = who;
+  if (G.team) Team.sync(); // the other teammate takes the team's next turn
   if (!T3.active()) Snd.thunk();
   var left = zoneCubes('resources').length;
   if (left === 0) { renderGame(); setTimeout(lastCubePlayed, 600); return; }
@@ -255,11 +258,12 @@ function aiInterject() {
 }
 function nextTurn() {
   if (G.phase !== 'move') return;
+  if (G.team) Team.sync(); // (also catches the Goal the team just set)
   if (aiInterject()) return;
   if (isAI(G.turn)) { setTimeout(aiTurn, 500); return; }
   var last = zoneCubes('resources').length === 1;
   if (G.mode === 'tutorial') { tutPrompt(); renderGame(); return; }
-  var name = multiHuman() ? '<b>' + esc(G.players[G.turn].name) + '</b>, your' : 'Your';
+  var name = G.team ? Team.yourName() : multiHuman() ? '<b>' + esc(G.players[G.turn].name) + '</b>, your' : 'Your';
   if (last) say('pip', name + ' turn. Only ONE cube left! Move it to <b>Required</b> or <b>Permitted</b>, or call <b>Impossible!</b> if no Solution can be made.', 'think');
   else say('pip', name + ' turn! Tap a Resource cube, then tap a section. Or, if you spot something, challenge: <b>Now!</b> or <b>Impossible!</b>');
   renderGame();
@@ -327,13 +331,14 @@ function thirdOf(a, b) { if (nP() < 3) return null; var r = idxs().filter(functi
 function challenge(kind, who) {
   var mover = G.lastMover;
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
-  banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', G.players[who].name + ' challenges!');
+  var cname = (G.team && who === 0) ? Team.callerName() : G.players[who].name, mname = (G.team && mover === 0) ? Team.writerName() : G.players[mover].name;
+  banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', cname + ' challenges!');
   if (isAI(who)) creatureMood('challenge');
   else if (who === 0) playerMood('now', { kind: kind });
   else if (isAI(mover)) { creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
   Snd.slam(); Snd.setMood('challenge'); if (!((isAI(who) || isAI(mover)) && shot('challenge'))) cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
-  else say('pip', kind === 'now' ? esc(G.players[who].name) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(G.players[mover].name) + ' must try to write a Solution.', 'cheer');
+  else say('pip', kind === 'now' ? esc(cname) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(mname) + ' must try to write a Solution.', 'cheer');
   renderGame();
   var writer = kind === 'now' ? who : mover;
   setTimeout(function () {
@@ -345,6 +350,7 @@ function challenge(kind, who) {
 }
 function writeSolution(pi, mode, cb) {
   if (isAI(pi)) aiWrite(pi, mode, cb);
+  else if (G.team && pi === 0) Team.write(mode, cb); // one teammate writes, the other may help
   else if (multiHuman()) passTo(pi, mode, function () { openSolutionBuilder(pi, mode, cb); });
   else openSolutionBuilder(pi, mode, cb);
 }
@@ -381,7 +387,8 @@ function resolveChallenge(ok, tokens, chk, tpRes) {
     var tn = esc(G.players[ch.tp].name);
     lines.push(tpRes && tpRes.presented ? tn + ' (Third Party) also wrote a Solution: ' + (tpRes.ok ? 'correct!' : 'not correct.') : tn + ' (Third Party) didn\'t write one.');
   }
-  if (!isAI(0) && G.mode !== 'tutorial') {
+  if (G.team) { Team.challengeLines(ch, ok, lines); Team.challengeXP(ch, pts); }
+  else if (!isAI(0) && G.mode !== 'tutorial') {
     if (ch.challenger === 0) {
       S.stats.challenges++;
       var won = pts[0] === 6;
@@ -425,7 +432,7 @@ function startLastWrite() {
   function step(k) {
     if (k >= nP()) {
       var pts = {}, lines = ['After the last cube, everyone wrote a Solution.'];
-      idxs().forEach(function (i) { pts[i] = results[i].ok ? 4 : 2; lines.push(esc(G.players[i].name) + (results[i].ok ? ' was correct: 4 points!' : ' scores 2.')); });
+      idxs().forEach(function (i) { pts[i] = results[i].ok ? 4 : 2; lines.push(esc(G.players[i].name) + (results[i].ok ? (G.team && i === 0 ? ' were' : ' was') + ' correct: 4 points!' : (G.team && i === 0 ? ' score 2.' : ' scores 2.'))); });
       endShake({ pts: pts, lines: lines, sols: results });
       return;
     }
@@ -521,10 +528,10 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai' || G.mode === 'team') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
-  var html = '<h2 class="hero">' + (G.mode === 'ai' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
+  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'team' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div>' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
@@ -541,6 +548,7 @@ function nextShake() {
   G.shake++; G.setter = nextP(G.setter); newShake();
 }
 function endMatch() {
+  if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
   var a = G.players[0].score, html;
   if (G.mode === 'ai') {
     var b = G.players[1].score, won = a > b, tie = a === b;

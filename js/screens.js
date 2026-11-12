@@ -96,6 +96,7 @@ function renderSetup() {
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
     (window.Cup ? Cup.setupHTML() : '') +
     '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
+    (window.Team ? Team.setupCardHTML() : '') +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
     '</div><div class="row" style="margin-top:18px"><b style="font-family:var(--display);font-weight:400;font-size:20px">Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';

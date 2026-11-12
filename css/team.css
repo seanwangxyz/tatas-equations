@@ -1,0 +1,47 @@
+/* ======================= TEAM-UP VS THE BOSS (js/team.js) =======================
+   No looping animation: the turn badge only changes size/opacity with a short transition. */
+
+/* Setup card and pop-up */
+.tm-card-av{background:#d3f9d8;color:#2b8a3e;font-size:46px}
+.tm-bosses{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:8px}
+.tm-boss{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:92px;padding:8px 8px 6px;border-radius:16px;border:3px solid var(--line,#dee2e6);background:#fff;font:inherit;cursor:pointer}
+.tm-boss b{font-size:15px}
+.tm-boss .stars{font-size:11px;color:#f08c00;white-space:nowrap}
+.tm-boss.on{border-color:var(--gold,#ffc83d);background:#fff4cf;box-shadow:0 0 0 3px rgba(255,200,61,.35)}
+.tm-rules{margin:8px 0 10px;padding-left:22px;font-size:15px;line-height:1.4}
+
+/* HUD: the team's score slot (two jerseys, shared score) */
+.pl.team-pl{gap:7px}
+.pl.team-pl .tm-js{display:inline-flex;gap:3px;align-items:center}
+.pl.team-pl .tm-nm{display:flex;flex-direction:column;line-height:1.05;min-width:0}
+.pl.team-pl .tm-nm small{font-size:10px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;color:#ffd43b;display:inline-flex;align-items:center;gap:3px}
+.pl.team-pl .tm-nm small .ico{width:12px;height:12px}
+.pl.team-pl.turn::after{content:attr(data-go);text-transform:uppercase}
+.jersey.tm-on{transform:scale(1.15);box-shadow:0 0 0 2px var(--gold,#ffc83d),0 0 10px rgba(255,200,61,.6)}
+.jersey.tm-off{opacity:.45;transform:scale(.88)}
+.tm-js .jersey{transition:transform .25s,opacity .25s,box-shadow .25s}
+
+/* The team bar above the buttons: whose turn inside the team */
+.teambar{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:16px;text-align:center;line-height:1.25}
+.teambar b{font-family:var(--display);font-weight:400;font-size:19px}
+.teambar .jersey{flex:none}
+
+/* "Who spotted it?" and the pencil pop-ups */
+.tm-who .btn{min-width:150px}
+.tm-who .btn .jersey{margin-right:4px}
+.jersey.tm-big{min-width:58px;height:54px;font-size:30px;border-radius:16px 16px 11px 11px}
+
+/* End of match */
+.tm-end{display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0 2px}
+.tm-end .tm-amp{font-family:var(--display);font-size:30px;color:#868e96}
+.tm-end.won .jersey{animation:tmPop .6s ease-out 1 both}
+.tm-end.won .jersey + .tm-amp + .jersey{animation-delay:.15s}
+.tm-endline{text-align:center;font-size:19px;margin:4px 0 8px}
+@keyframes tmPop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){ .tm-end.won .jersey{animation:none} .tm-js .jersey{transition:none} }
+
+@media (max-width:700px){
+  .pl.team-pl .tm-nm small{display:none}
+  .pl.team-pl .tm-js .jersey{min-width:22px;height:22px;font-size:12px}
+  .teambar{font-size:14px}
+}
