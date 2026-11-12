@@ -84,7 +84,7 @@ ACT.bBack = function () { B.tokens.pop(); Snd.click(); renderBuilder(); };
 ACT.bClear = function () { B.tokens = []; renderBuilder(); };
 ACT.bCancel = function () { if (typeof playerMood === 'function') playerMood(null); $('#builder').classList.remove('on'); B = null; };
 ACT.bGiveUp = function () { if (typeof playerMood === 'function') playerMood(null); var b = B; $('#builder').classList.remove('on'); B = null; b.onDone(null, true); };
-ACT.bSubmit = function () {
+ACT.bSubmit = function () { if (typeof playerMood === 'function') playerMood(null);
   var b = B;
   if (b.kind === 'goal') {
     var g = Eq.checkGoal(b.tokens, b.fractions);
