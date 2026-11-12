@@ -32,7 +32,7 @@
 | To unlock | Stars needed | Running total |
 |---|---|---|
 | × and ÷ (whole answers) | available from the start | 0 |
-| Fractions | 6 | 6 |
+| Bigger Goals (to 50). Fractions are allowed from the start | 6 | 6 |
 | Powers (^) | 6 more | 12 |
 | Roots (√) | 6 more | 18 |
 

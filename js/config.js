@@ -11,9 +11,9 @@ if (/[?&]onlinetest=1(&|$)/.test(location.search)) SAVE_KEY += '.test.' + ((loca
 
 // Difficulty ladder. "need" = skill stars (correct Solutions / correct challenges) to unlock the next stage.
 var STAGES = [
-  { id: 'addsub', name: 'Adding & Subtracting', icon: '➕', ops: ['+', '-'], fractions: false, need: 5, maxGoal: 20 },
-  { id: 'muldiv', name: 'Times & Divide', icon: '✖️', ops: ['+', '-', '*', '/'], fractions: false, need: 6, maxGoal: 40 },
-  { id: 'frac', name: 'Fractions', icon: '🍕', ops: ['+', '-', '*', '/'], fractions: true, need: 6, maxGoal: 50 },
+  { id: 'addsub', name: 'Adding & Subtracting', icon: '➕', ops: ['+', '-'], fractions: true, need: 5, maxGoal: 20 },
+  { id: 'muldiv', name: 'Times & Divide', icon: '✖️', ops: ['+', '-', '*', '/'], fractions: true, need: 6, maxGoal: 40 },
+  { id: 'frac', name: 'Bigger Goals', icon: '🎯', ops: ['+', '-', '*', '/'], fractions: true, need: 6, maxGoal: 50 },
   { id: 'pow', name: 'Powers', icon: '🚀', ops: ['+', '-', '*', '/', '^'], fractions: true, need: 6, maxGoal: 80 },
   { id: 'root', name: 'Roots', icon: '🌱', ops: ['+', '-', '*', '/', '^', 'r'], fractions: true, need: 0, maxGoal: 99 }
 ];

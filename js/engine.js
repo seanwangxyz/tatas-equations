@@ -121,7 +121,7 @@ var Eq = (function () {
   var MSG = {
     divzero: "You can't divide by zero. Nobody can, not even the wizard!",
     big: "That number got too gigantic for our cubes to check.",
-    fraction: "That division doesn't come out even. Fractions unlock later, so try a different division!",
+    fraction: "That division doesn't come out even. Fractions are switched off in Settings, so try a different division!",
     powwhole: "For powers (^), both numbers must be whole numbers like 0, 1, 2, 3.",
     zerozero: "0 ^ 0 isn't a number. Even grown-up mathematicians argue about it!",
     rootindex: "The number in front of √ must be 1, 2, 3, … (no number in front means 2).",
