@@ -229,8 +229,8 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
 
   // ----- One-shot effects: wave and flashbulbs -----
   // night: the main light comes from the front-left floodlight tower (key light for the stage agent's shadows)
-  var key = null;
-  if (night) { key = keyLight(0xeef3ff, 1.35, -standX - rows * rowD - 1.5, FY + 30, D / 2 + 9, W, D); g.add(key); }
+  var keyL = null; // (not "key": that name is the crowd-wave array above)
+  if (night) { keyL = keyLight(0xeef3ff, 1.35, -standX - rows * rowD - 1.5, FY + 30, D / 2 + 9, W, D); g.add(keyL); }
 
   var waveS = null, flashing = false;
   function setWave(t) { // t in 0..1 along the stands
@@ -242,7 +242,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
     bodies.instanceMatrix.needsUpdate = true; heads.instanceMatrix.needsUpdate = true;
   }
   var api = {
-    group: g, legs: true, key: key,
+    group: g, legs: true, key: keyL,
     setBoard: function (text) { paintBoard(bcv, text); btex.needsUpdate = true; },
     wave: function () { if (document.hidden || quality() < 1) return false; waveS = { t0: performance.now(), dur: 1700 }; return true; },
     flash: function () {

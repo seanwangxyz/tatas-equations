@@ -73,7 +73,7 @@ if (T3 && T3.ctx) (function () {
 
   // current gesture (a mood, dance, entrance/exit or idle flair): only one at a time
   var gn = null, gv = 0, gT0 = 0, gDur = 0, gTempo = 1, gDone = null, gFired = 0, gSide = 1, gTimer = 0, fadeT0 = 0, pendingMood = null;
-  var C = { P: P, u: 0, un: 0, e: 0, sty: null, kind: '', v: 0, side: 1, out: 15, amp: 1, turns: 1, rest: [null, null], arm: null, fx: null, once: null };
+  var C = { P: P, u: 0, un: 0, e: 0, sty: null, kind: '', v: 0, side: 1, out: 15, amp: 1, turns: 1, rest: [{ x: -1.6, y: 1.2, z: 1.2 }, { x: 1.6, y: 1.2, z: 1.2 }], arm: null, fx: null, once: null };
 
   T3.creatureMoods = function () { return MOOD_NAMES.slice(); };
   T3.creatureDances = function () { return actor ? actor.style.dances.slice() : []; };
