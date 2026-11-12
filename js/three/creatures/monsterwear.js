@@ -29,9 +29,12 @@ export function fitJerseyTexture(t, C, Hh) {
   const drawNum = (cx) => {
     g.save(); g.translate(cx, H * (t.numYf || 0.54)); g.scale(sx, t.numTall || 1);   // numYf: height of the number's centre (0 = collar)
     g.font = '900 ' + Math.round(H * (t.num.length > 1 ? 0.4 : 0.48) * (t.numScale || 1)) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineJoin = 'round'; g.lineWidth = 46; g.strokeStyle = 'rgba(0,0,0,.55)'; g.strokeText(t.num, 0, 0);
+    g.lineJoin = 'round';
+    if (t.numInk) { g.lineWidth = 22; g.strokeStyle = t.numEdge || '#ffffff'; g.strokeText(t.num, 0, 0); g.fillStyle = t.numInk; g.fillText(t.num, 0, 0); g.restore(); }   // dark number on a light shirt
+    else {
+    g.lineWidth = 46; g.strokeStyle = 'rgba(0,0,0,.55)'; g.strokeText(t.num, 0, 0);
     g.lineWidth = 26; g.strokeStyle = t.trim; g.strokeText(t.num, 0, 0);
-    g.fillStyle = '#fff'; g.fillText(t.num, 0, 0); g.restore();
+    g.fillStyle = '#fff'; g.fillText(t.num, 0, 0); g.restore(); }
   };
   drawNum(W * 0.5); drawNum(0); drawNum(W);
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.ClampToEdgeWrapping;

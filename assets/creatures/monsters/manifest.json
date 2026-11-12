@@ -140,9 +140,14 @@
       "height": 6.9,
       "hipsAt": 0.482,
       "team": {
-        "num": "66",
+        "num": "10",
         "numScale": 1.2,
-        "numYf": 0.44
+        "numYf": 0.44,
+        "jersey": "#ffffff",
+        "dark": "#8fd0f5",
+        "trim": "#16233f",
+        "pattern": "stripes",
+        "numInk": "#16233f"
       },
       "fit": 1.12,
       "scarf": {

@@ -51,6 +51,7 @@ if (T3 && T3.ctx) (function () {
   function dist(a, b) { var x = rgb(a), y = rgb(b), dr = x[0] - y[0], dg = x[1] - y[1], db = x[2] - y[2]; return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db) / 3; }
   function pickKit(op) {
     var order = ['red', 'purple', 'teal'];
+    return 'red'; // he always wears his home kit now (Tata's request), even against another red shirt
     if (!op) return 'red';
     for (var i = 0; i < order.length; i++) if (dist(KITS[order[i]].jersey, op.col) > 75) return order[i];
     return 'teal';

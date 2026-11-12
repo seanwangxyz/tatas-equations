@@ -7,7 +7,8 @@ import { std, ArmRig, clamp } from './common.js';
 // Kits for the kid. The first one matches his red jersey badge in the HUD; player.js picks another
 // when the opponent's shirt is too close in colour.
 export const KITS = {
-  red: { jersey: '#e03131', dark: '#b52424', trim: '#ffffff', shorts: '#ffffff', sock: '#e03131' },
+  // Home kit: deep red with sea-green trim and tone-on-tone waves (national-team style; no crest or maker's logo).
+  red: { jersey: '#c9342c', dark: '#b12a23', trim: '#2f8f7c', shorts: '#1f6b5a', sock: '#c9342c', waves: '#e2584b', ink: '#ffffff' },
   purple: { jersey: '#7048e8', dark: '#5730cf', trim: '#ffd43b', shorts: '#2b2f77', sock: '#7048e8' },
   teal: { jersey: '#0ca678', dark: '#087f5b', trim: '#ffffff', shorts: '#1d2b3a', sock: '#0ca678' }
 };
@@ -23,27 +24,37 @@ export const KID = {
 export function kidJerseyTexture(kit, num, name) {
   const W = 512, H = 160, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
   g.fillStyle = kit.jersey; g.fillRect(0, 0, W, H);
-  // two soft side panels in the darker shade (under the arms)
-  g.fillStyle = kit.dark; g.fillRect(W * 0.2, 0, W * 0.07, H); g.fillRect(W * 0.73, 0, W * 0.07, H);
-  // collar and hem trim
-  g.fillStyle = kit.trim; g.fillRect(0, 0, W, 10); g.fillRect(0, H - 9, W, 9);
-  g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(0, 10, W, 4);
-  // little crest on the chest (wearer's left), seen only when he turns
-  g.fillStyle = '#fff'; g.beginPath(); g.arc(W * 0.06, 52, 11, 0, 7); g.fill();
-  g.fillStyle = kit.dark; g.beginPath(); g.arc(W * 0.06, 52, 5, 0, 7); g.fill();
+  if (kit.waves) {
+    // tone-on-tone wavy lines all round the shirt (whole number of waves so the seam matches)
+    g.strokeStyle = kit.waves; g.globalAlpha = 0.6; g.lineWidth = 1.6;
+    for (let y = 16; y < H; y += 11) { g.beginPath(); for (let x = 0; x <= W; x += 4) { const yy = y + Math.sin(x / W * Math.PI * 2 * 9 + y * 0.35) * 2.6; if (x) g.lineTo(x, yy); else g.moveTo(x, yy); } g.stroke(); }
+    g.globalAlpha = 1;
+    // collar band in the trim colour with a thin red line through it; no hem band
+    g.fillStyle = kit.trim; g.fillRect(0, 0, W, 11); g.fillStyle = kit.jersey; g.fillRect(0, 5, W, 1.5);
+    g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(0, 11, W, 3);
+  } else {
+    // two soft side panels in the darker shade (under the arms)
+    g.fillStyle = kit.dark; g.fillRect(W * 0.2, 0, W * 0.07, H); g.fillRect(W * 0.73, 0, W * 0.07, H);
+    // collar and hem trim
+    g.fillStyle = kit.trim; g.fillRect(0, 0, W, 10); g.fillRect(0, H - 9, W, 9);
+    g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(0, 10, W, 4);
+    // little crest on the chest (wearer's left), seen only when he turns
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(W * 0.06, 52, 11, 0, 7); g.fill();
+    g.fillStyle = kit.dark; g.beginPath(); g.arc(W * 0.06, 52, 5, 0, 7); g.fill();
+  }
   const cx = W * 0.5;
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
   const nm = String(name || '').toUpperCase().slice(0, 12);
   if (nm) {
     let fs = 24; g.font = '900 ' + fs + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif';
     const maxW = W * 0.3; while (fs > 12 && g.measureText(nm).width > maxW) { fs -= 1; g.font = '900 ' + fs + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif'; }
-    g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeText(nm, cx, 34);
-    g.fillStyle = kit.trim === '#ffffff' ? '#ffffff' : kit.trim; g.fillText(nm, cx, 34);
+    g.lineWidth = kit.ink ? 3 : 5; g.strokeStyle = kit.ink ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.35)'; g.strokeText(nm, cx, 34);
+    g.fillStyle = kit.ink || (kit.trim === '#ffffff' ? '#ffffff' : kit.trim); g.fillText(nm, cx, 34);
   }
   const n = String(num || '7').slice(0, 2);
   g.font = '900 ' + (n.length > 1 ? 84 : 92) + 'px "Arial Black", Impact, "Trebuchet MS", sans-serif';
-  g.lineWidth = 12; g.strokeStyle = 'rgba(0,0,0,.4)'; g.strokeText(n, cx, 98);
-  g.lineWidth = 6; g.strokeStyle = kit.trim === '#ffffff' ? kit.dark : kit.trim; g.strokeText(n, cx, 98);
+  if (!kit.ink) { g.lineWidth = 12; g.strokeStyle = 'rgba(0,0,0,.4)'; g.strokeText(n, cx, 98); }
+  g.lineWidth = kit.ink ? 5 : 6; g.strokeStyle = kit.trim === '#ffffff' ? kit.dark : kit.trim; g.strokeText(n, cx, 98);
   g.fillStyle = '#fff'; g.fillText(n, cx, 98);
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2; return tex;
 }

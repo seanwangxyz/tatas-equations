@@ -18,7 +18,7 @@
 //   Cup.CUPS, Cup.isOpen(cupOrId), Cup.state()
 var Cup = (function () {
   // Opponent indexes (js/config.js OPPONENTS): 0 Snoozy*, 1 Penny**, 2 Rusty***, 3 Ollie****, 4 Mondo*****,
-  // 5 Grub***, 6 Splosh****, 7 Blaze*****, 8 Hex*****+, 9 Zog*****++
+  // 5 Grub***, 6 Splosh****, 7 Blaze*****, 8 Hex*****+, 9 Messy (id zog)*****++
   var CUPS = [
     { id: 'kickoff', name: 'Kick-off Cup', blurb: 'Your first cup! Three friendly matches.', opps: [0, 1, 5],
       metal: ['#ffe0b8', '#e39a52', '#9a5a1f'], ribbon: '#2f8cff', xpFirst: 100, xpAgain: 25,
@@ -29,7 +29,7 @@ var Cup = (function () {
     { id: 'monster', name: 'Monster Cup', blurb: 'Splosh, Blaze and Hex. The Monster League\'s tough ones.', opps: [6, 7, 8],
       metal: ['#e9ffd6', '#7fd35a', '#2f7a2a'], ribbon: '#7a3cf0', xpFirst: 200, xpAgain: 40,
       open: function () { return oppOk(6); }, lockText: 'Beat Grub to open this cup.' },
-    { id: 'champions', name: 'Champions Cup', blurb: 'Mondo, Hex and King Zog. Only the very best!', opps: [4, 8, 9],
+    { id: 'champions', name: 'Champions Cup', blurb: 'Mondo, Hex and King Messy. Only the very best!', opps: [4, 8, 9],
       metal: ['#fff7c2', '#ffc83d', '#c98a00'], ribbon: '#ef4565', xpFirst: 300, xpAgain: 50,
       open: function () { return beat(4) || beat(7) || wins('creature') > 0 || wins('monster') > 0; }, lockText: 'Beat Mondo or Blaze to open this cup.' }
   ];
