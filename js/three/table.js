@@ -690,6 +690,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var m = meshes[i], mouth = new THREE.Vector3(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
     var b = new CANNON.Body({ mass: 1, material: world.diceMat }); b.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)));
     b.position.set(mouth.x + (Math.random() - 0.5) * 0.9, Math.max(1.2, mouth.y + (Math.random() - 0.5) * 0.6), mouth.z + (Math.random() - 0.5) * 1.2);
+    // never outside the rim (the walls only keep in what starts inside)
+    b.position.x = Math.max(-layout.W / 2 + 1, Math.min(layout.W / 2 - 1, b.position.x)); b.position.z = Math.max(-layout.D / 2 + 1, Math.min(layout.D / 2 - 1, b.position.z));
     var tx = (Math.random() - 0.5) * layout.W * 0.55, tz = (Math.random() - 0.3) * layout.D * 0.5, dx = tx - b.position.x, dz = tz - b.position.z, len = Math.hypot(dx, dz) || 1, sp = 6 + Math.random() * 6;
     b.velocity.set(dx / len * sp, -1 + Math.random() * 3, dz / len * sp);
     b.angularVelocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
@@ -730,7 +732,10 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     syncBodies(); finishPour();
   }
   function tickPour(now, dt) {
-    var t = (now - pour.t0) / 1000, e = function (x) { return x < 0 ? 0 : x > 1 ? 1 : (1 - Math.cos(x * Math.PI)) / 2; };
+    // the pour runs on its own clock that never jumps: after a long frame (the stadium loading) the cup would otherwise
+    // already be on its way out and the cubes would fall beside the table
+    pour.clock = (pour.clock || 0) + Math.min(Math.max(dt, 0), 0.05);
+    var t = pour.clock, e = function (x) { return x < 0 ? 0 : x > 1 ? 1 : (1 - Math.cos(x * Math.PI)) / 2; };
     if (t < 0.55) cup.position.lerpVectors(pour.from, pour.at, e(t / 0.55));
     cup.rotation.z = 2.05 * e((t - 0.5) / 0.4) * (1 - e((t - 1.45) / 0.45));
     if (t > 1.45) cup.position.lerpVectors(pour.at, pour.from, e((t - 1.45) / 0.6));
