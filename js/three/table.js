@@ -424,7 +424,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // for through hooks.extents (a creature's head, a kid in front), fits on screen. The extra points may push the
   // camera back by at most 35% beyond what the table alone needs, so a very tall creature or an object right
   // next to the camera can never shrink the table to a postage stamp. Points behind or right at the camera don't fit.
-  var extraPts = [];
+  // Hooks are called with the camera already standing at a sensible view (first the table-only fit, then the result
+  // of the first pass), so a module that places something relative to the view (the kid behind the near rim) can
+  // read ctx.camera. A point may carry a 4th value: true = a must (the top of a creature's head: the creature shrinks
+  // until it fits). Points the fit cannot include (beyond the 35% cap) are simply left out of view: their module
+  // checks visibility itself (ctx.camBase).
+  var extraPts = [], CAP = 1.35, CAP_SOFT = 1.4;
+  api._fitCaps = function (a, b) { if (a) CAP = a; if (b) CAP_SOFT = b; if (layout) { fitCamera(); dirty = true; } return [CAP, CAP_SOFT]; }; // tuning / tests
   function fitCamera() {
     var W = layout.W, D = layout.D, tilt = layout.tilt, look = new THREE.Vector3(0, 0, layoutName === 'tall' ? 0.7 : 0.6);
     var table = [[-W / 2 - 0.7, 0.6, -D / 2 - 0.7], [W / 2 + 0.7, 0.6, -D / 2 - 0.7], [-W / 2 - 0.7, 0.6, D / 2 + 0.7], [W / 2 + 0.7, 0.6, D / 2 + 0.7]], v = new THREE.Vector3(), extra = [];
@@ -434,7 +440,6 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       extra = extra.filter(function (c) { return c && isFinite(c[0]) && isFinite(c[1]) && isFinite(c[2]); });
       extraPts = extra;
     }
-    gather(1);
     camera.updateProjectionMatrix();
     function at(d) { camera.position.set(0, Math.sin(tilt) * d, look.z + Math.cos(tilt) * d); camera.lookAt(look); camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); }
     function inView(c) {
@@ -443,17 +448,31 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     }
     function search(pts, lo, hi) { for (var d = lo; d < hi; d += 0.25) { at(d); if (pts.every(inView)) return d; } return hi; }
     var dT = search(table, 8, 120), d = dT, z00 = look.z;
+    at(dT); gather(1);
+    // The closest view that holds the table and the extra points, aiming along the table: toward the far side (uses
+    // the empty band below the near edge, for a creature's head) or toward the near side (room below the near rim,
+    // for the kid standing there). Keeps the aim that needs the least distance; never more than 35% further back.
+    function solve() {
+      // 'soft' points (the kid's head below the near rim) may take the camera a little further back (40% instead of
+      // 35%), so that on wide, short screens the creature does not have to shrink as much to make room for him
+      var cap = extra.some(function (c) { return c[3] === 'soft'; }) ? CAP_SOFT : CAP;
+      var all = table.concat(extra), z0 = z00, bestZ = z0; look.z = z0; d = search(all, dT, dT * cap);
+      for (var k = 1; k <= 10; k++) {
+        look.z = z0 - k * 0.5; var dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; }
+        look.z = z0 + k * 0.4; dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; }
+      }
+      look.z = bestZ; at(d);
+    }
+    function mustOK() { return extra.every(function (c) { return c[3] !== true || inView(c); }); }
     // If the head still does not fit (a wide, short screen), the creature itself gets a little smaller, step by step.
     for (var s = 1; extra.length && s > 0.5; s -= 0.06) {
       if (s < 1) gather(s);
-      look.z = z00;
-      // Tall things behind the table (a creature's head): rather than only backing away, also try aiming a little
-      // toward the far side, which uses the empty band below the near edge. Keep the aim that needs the least distance.
-      var all = table.concat(extra), z0 = look.z, bestZ = z0; d = search(all, dT, dT * 1.35);
-      for (var k = 1; k <= 10; k++) { look.z = z0 - k * 0.5; var dk = search(all, 8, d); if (dk < d - 0.01) { d = dk; bestZ = look.z; } }
-      look.z = bestZ; at(d);
-      if (extra.every(function (c) { return !c[3] || inView(c); })) break;   // only points marked as a must (the top of the head)
+      solve();
+      if (mustOK()) break;   // only points marked as a must (the top of the head)
     }
+    if (s <= 0.5) s += 0.06;
+    // a second pass with the camera where the first one put it: view-relative placements (the kid) settle
+    if (extra.length) { gather(s); solve(); }
     at(d);
     api._fit = { d: d, dT: dT, s: s, lookZ: look.z, pts: extra.map(function (c) { return [c[0].toFixed(1), c[1].toFixed(1), c[2].toFixed(1), !!c[3], inView(c)]; }), table: table.every(inView) };
     base.pos.copy(camera.position); base.look.copy(look); applyCam();
@@ -513,8 +532,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function tweenTo(m, pos, q, scale, opts) {
     anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m);
-    anims.push({ m: m, p0: m.position.clone(), p1: pos, q0: m.quaternion.clone(), q1: q, s0: m.scale.x, s1: scale, t0: performance.now(), dur: opts.dur, arc: opts.arc, land: opts.land });
-    if (opts.land && opts.arc > 1) Snd.pickup();
+    anims.push({ m: m, p0: m.position.clone(), p1: pos, q0: m.quaternion.clone(), q1: q, s0: m.scale.x, s1: scale, t0: performance.now(), dur: opts.dur, arc: opts.arc, land: opts.land, lin: !!opts.lin });
+    if (opts.land && opts.arc > 1 && !opts.quiet) Snd.pickup();
     dirty = true;
   }
   function setGlow(z, v, instant) {
@@ -614,10 +633,12 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       tint(m, c.locked ? 0x9a9a9a : 0xffffff, G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000);
       var same = u.tpos && u.tpos.distanceTo(pos) < 0.01 && Math.abs(u.tscale - t.scale) < 0.01 && u.tq && u.tq.angleTo(q) < 0.01;
       if (same && !force) return;
-      var moved = u.zone && u.zone !== c.zone, fromPour = u.fromPour, dropped = u.dropped; u.dropped = false;
+      var moved = u.zone && u.zone !== c.zone, fromPour = u.fromPour, dropped = u.dropped, toss = u.toss; u.dropped = false; u.toss = false;
       u.tpos = pos.clone(); u.tq = q.clone(); u.tscale = t.scale; u.zone = c.zone; u.fromPour = false;
       if (force && same) { m.position.copy(pos); m.quaternion.copy(q); m.scale.setScalar(t.scale); return; }
-      tweenTo(m, pos, q, t.scale, dropped ? { dur: 380, arc: 0.3, land: true } : moved ? { dur: 650, arc: 3, land: true } : fromPour ? { dur: 750 + Math.random() * 250, arc: 1.2 } : { dur: 220, arc: 0 });
+      // toss: let go of from a hand short of the slot (the kid's player), a quick lob that lands with the usual thunk
+      var td = toss ? m.position.distanceTo(pos) : 0;
+      tweenTo(m, pos, q, t.scale, toss ? { dur: Math.min(560, Math.max(300, 230 + 34 * td)), arc: Math.min(2.6, Math.max(0.6, 0.35 + 0.2 * td)), land: true, lin: true, quiet: true } : dropped ? { dur: 380, arc: 0.3, land: true } : moved ? { dur: 650, arc: 3, land: true } : fromPour ? { dur: 750 + Math.random() * 250, arc: 1.2 } : { dur: 220, arc: 0 });
     });
     dirty = true;
   };
@@ -756,7 +777,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (anims.length) {
       anims = anims.filter(function (a) {
         var k = Math.min(1, (now - a.t0) / a.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-        a.m.position.lerpVectors(a.p0, a.p1, e); a.m.position.y += Math.sin(k * Math.PI) * a.arc;
+        // lin (a toss): the cube already moves as it leaves the hand, so it flies at an even pace along a parabola
+        a.m.position.lerpVectors(a.p0, a.p1, a.lin ? k : e); a.m.position.y += a.lin ? 4 * k * (1 - k) * a.arc : Math.sin(k * Math.PI) * a.arc;
         a.m.quaternion.copy(a.q0).slerp(a.q1, e); a.m.scale.setScalar(a.s0 + (a.s1 - a.s0) * e);
         if (k >= 1 && a.land) { Snd.thunk(); landFx(a, now); if (api.handlers.landed) api.handlers.landed(a.m.userData.id); }
         return k < 1;

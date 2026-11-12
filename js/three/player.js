@@ -24,11 +24,17 @@
 //   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' | 'back' |
 //                                'face' | { yaw, close } (any angle; close = head and shoulders).
 //                                For the kit designer's live preview. Drawn offscreen with the main renderer.
+//   T3.playerMove(id, zone, done, {quick}?)  he reaches out, picks the cube up and puts it in the zone (a quick lob for
+//                                the far zones); same contract as T3.creatureMove: done() exactly once (at the release,
+//                                ~0.6 s; at once if he can't); 2.5 s safety timeout. T3.mateMove: the same for the mate.
+//   T3.playerMoveFinish()        finish any move now (the cube goes to its slot, done() fires). T3.playerMoving().
 //   T3.playerState()             debugging: {shown, fits, visible, mood, scale, ...}
+//   T3.playerSeat(o) / T3.playerMoveTuning(o)   tuning hooks (see SEAT / MOVE)
 //
-// Placement: he stands just off the near-left corner of the table, low at the bottom edge. Every time the camera
-// is fitted (resize, layout change) a small search finds the biggest spot where no part of him overlaps the table
-// (mat, cubes, labels). If nothing fits (tall phones), he stays hidden. The 'left' mate gets the same kind of search.
+// Placement: his home seat is the middle of the near side, his back to the seat camera, feet on the pitch just
+// outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
+// for his head (the extents hook marks those points 'soft', see table.js). If his head can't be on screen he stays
+// hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table.
 // Style rule (Tata's): at rest a person is completely still, apart from an occasional single blink (the creatures
 // blink too). Everything else is a one-shot in response to an event, and it settles back to rest.
 import * as THREE from 'three';
@@ -45,12 +51,14 @@ if (T3 && !T3.ctx) {
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
   T3.playerSet = function () {}; T3.mate = function () { return false; }; T3.mateMood = function () {}; T3.playerCelebrate = function () { return false; };
   T3.playerCelebrations = function () { return CELEBS.slice(); }; T3.playerPortrait = function () { return Promise.resolve(null); };
+  T3.playerMove = T3.mateMove = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
+  T3.playerMoveFinish = function () { return false; }; T3.playerMoving = function () { return false; };
 }
 if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
   var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
-  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd'];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side'];
   var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
   function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
@@ -59,7 +67,7 @@ if (T3 && T3.ctx) (function () {
     return { role: role, model: null, key: '', who: '', dims: KID, shown: false, fits: false, placedOnce: false,
       place: { x: 0, y: -0.2, z: 0, s: 1, rot: Math.PI, hd: 0, drop: 0 }, P: zero(POSE), cur: zero(POSE), F: zero(FACE), Fc: zero(FACE, { lid: 0.95 }),
       arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }),
-      g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null };
+      g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, task: null };
   }
   var me = makeAvatar('main'), mate = makeAvatar('mate');
   var needPlace = true, lastLayout = null;
@@ -203,34 +211,54 @@ if (T3 && T3.ctx) (function () {
     [[-ow, od], [ow, od], [ow, -od], [-ow, -od]].forEach(function (c, i) { proj(c[0], 0.6, c[1], pp); quad[i][0] = pp[0]; quad[i][1] = pp[1]; });
     return L;
   }
+  // ----- his home seat: the middle of the near side, his back to the seat camera, feet on the pitch -----
+  // He stands just outside the near rim. Seen from the seat camera (high behind him, looking down across the table),
+  // anything lower than the line of sight through the rim's inner edge shows BELOW the rim on screen, so it never
+  // covers the felt. He is sized so that the outline of his head (hair included) just touches that line: his hair
+  // may overlap the wooden rim a little, never the felt, cubes or zone labels. The camera fit (extents hook) then
+  // makes a band of room below the rim for his head and shoulders. Same rule on wide and tall screens.
+  var SEAT = { gap: 0.25, hair: 1.16, into: 1.4, low: 0.75, minS: { kid: 1.15, tata: 0.95 }, maxS: { kid: 2.3, tata: 1.9 } };
+  function headInfo(D, s, z) {
+    // head centre (world y, z) and radius with the hair, for a person standing on the pitch with hips at z
+    var hy = FLOOR_Y + (D.NECK_Y + D.HEAD_UP - D.FOOT) * s, hz = z - 0.12 * s;   // he looks a little down: the head sits a bit forward
+    return { y: hy, z: hz, r: D.HEAD_R * SEAT.hair * Math.max(D.head ? D.head.sx : 1, D.head ? D.head.sy : 1) * s };
+  }
+  function seatZ(D, s, L) { return L.D / 2 + 0.85 + SEAT.gap + 0.86 * D.torsoX * s; }   // his tummy just clears the rim
+  // The line of sight from the camera through a line across the felt just inside the near rim, in the (z, y) plane;
+  // n points down / toward him. Cubes never lie that close to the near edge (the Resources slots fill from the far
+  // side of the zone: 24 cubes take 2 rows on the wide table, 3 on the tall one, ending 2.5+ units short of the rim),
+  // so his hair may cover the rim and that empty band of felt, nothing else.
+  function sightLine(camPos, L) {
+    var iz = L.D / 2 - SEAT.into, ry = 0.5, lz = camPos.z - iz, ly = camPos.y - ry, len = Math.sqrt(lz * lz + ly * ly) || 1;
+    return { iz: iz, ry: ry, nz: ly / len, ny: -lz / len };
+  }
+  function seatFor(A, camPos, L) {
+    var D = A.dims, ln = sightLine(camPos, L), key = D === KID ? 'kid' : 'tata', lo = SEAT.minS[key], hi = SEAT.maxS[key];
+    function clear(s) { var z = seatZ(D, s, L), h = headInfo(D, s, z); return (h.z - ln.iz) * ln.nz + (h.y - ln.ry) * ln.ny - h.r; }
+    if (clear(lo) < 0) return null;                    // even a small kid would cover the felt (camera too low): no seat
+    if (clear(hi) >= 0) lo = hi;
+    else for (var it = 0; it < 22; it++) { var mid = (lo + hi) / 2; if (clear(mid) >= 0) lo = mid; else hi = mid; }
+    var s = lo, z = seatZ(D, s, L);
+    return { x: 0, z: z, s: s, rot: Math.PI, hd: 0, drop: 0, head: headInfo(D, s, z), ln: ln };
+  }
+  // the points the camera fit should keep on screen for him: his whole head and the tops of his shoulders
+  function seatPoints(A, b, out) {
+    var h = b.head, ln = b.ln;   // 'soft': table.js may back the camera off a little more for these (see fitCamera)
+    out.push([0, h.y + h.r * 0.95, h.z, 'soft'], [-h.r, h.y, h.z, 'soft'], [h.r, h.y, h.z, 'soft']);
+    out.push([0, h.y + ln.ny * h.r * SEAT.low, h.z + ln.nz * h.r * SEAT.low, 'soft']);   // the low edge of his head on screen (the shoulders follow below)
+  }
   function placeMain() {
-    var A = me, L = ctx.layout, ow = tbl.ow, od = tbl.od;
+    var A = me, L = ctx.layout;
     why.head = why.table = why.sunk = why.near = 0;
-    // big enough to read: his head at least ~30 CSS px tall (NDC height 2 = the whole canvas)
-    var ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
-    var best = null, bestScore = -1e9, CAP = 0.34, MIN = Math.max(0.06, 60 / ch);
-    var ax = -ow - 1.4, az = od - 0.6;   // the spot he would like best: just off the near-left corner
-    var SIZES = A.dims === KID ? [1.8, 1.6, 1.45, 1.3, 1.15, 1.0] : [1.5, 1.35, 1.2, 1.05, 0.9, 0.8];
-    for (var si = 0; si < SIZES.length; si++) {
-      var s = SIZES[si];
-      for (var di = 0; di < 4; di++) {
-        drop = di * 1.5;
-        for (var x = -ow - 9; x <= 0.01; x += 0.5) {
-          for (var z = od - 5; z <= od + 6; z += 0.5) {
-            // mostly back-to-camera (so the name and number read), turned a little toward the middle of the table
-            var away = wrap(Math.atan2(x - pcam.position.x, z - pcam.position.z) - Math.PI), toward = wrap(Math.atan2(-x, L.D * 0.1 - z) - Math.PI);
-            var yaw = clamp(away * 0.65 + toward * 0.35, -0.6, 0.6);
-            var hd = fitsAt(A, x, z, s, Math.PI + yaw); if (hd < MIN) continue;
-            var dx = x - ax, dz = z - az;
-            var sc = Math.min(hd, CAP) * 10 - Math.max(0, hd - CAP) * 4 - 0.04 * Math.sqrt(dx * dx + dz * dz) + s * 0.3 - drop * 0.03;
-            if (sc > bestScore) { bestScore = sc; best = { x: x, z: z, s: s, rot: Math.PI + yaw, hd: hd, drop: drop }; }
-          }
-        }
-      }
-    }
-    drop = 0;
-    A.fits = !!best; A.placedOnce = true;
-    if (best) setPlace(A, best);
+    // with the view the camera really ended up with (the fit's last pass used almost the same one)
+    var b = seatFor(A, pcam.position, L);
+    A.fits = false; A.placedOnce = true;
+    if (!b) { why.table++; return; }
+    // his head must really be on screen (the fit may have hit its limit on a very narrow screen)
+    proj(0, b.head.y, b.head.z, pp);
+    if (pp[2] > 1 || pp[1] < -0.97 || pp[1] > 0.97) { why.head++; return; }
+    var hb = [0, 0, 0]; proj(0, b.head.y + b.head.r, b.head.z, hb); b.hd = hb[1] - pp[1];
+    A.fits = true; setPlace(A, b);
   }
   function setPlace(A, b) {
     A.place.y = FLOOR_Y - b.drop - A.dims.FOOT * b.s; A.place.drop = b.drop; A.place.x = b.x; A.place.z = b.z; A.place.s = b.s; A.place.rot = b.rot; A.place.hd = b.hd;
@@ -446,6 +474,182 @@ if (T3 && T3.ctx) (function () {
     return true;
   }
 
+  // ---------- picking up a cube and putting it in a zone (T3.playerMove / T3.mateMove) ----------
+  // Like T3.creatureMove, but quick (a person, not a show): reach (lean, and a side step along the table edge if the
+  // cube is off to one side), grab, a small lift, and then either set it down in its slot (if the slot is within
+  // reach) or, much more often, since the zones are far across the table, a gentle underarm lob into the slot. done()
+  // fires at the release (about 0.6 s), the cube lands in its slot (table.js tweens it: `toss` / `dropped`), and he
+  // eases back to rest. The arm stretches at most MOVE.stretch; the body leans at most MOVE.lean. If the cube itself
+  // is out of reach (a deep tall-screen table, or the mate across the table), it hops up into his open hand.
+  var MOVE = { stretch: 1.2, lean: 0.62, fwd: 0.22, hopMax: 3, T: [0.26, 0.34, 0.47, 0.6, 0.78], safety: 2500 };
+  function slotFor(id, zone) {
+    // where a cube will come to rest in a zone (mirrors table.js gridSlots / the Goal row; an approximation is fine)
+    var L = ctx.layout, Gm = (typeof G !== 'undefined') ? G : null, r = L && L.z[zone];
+    if (!r) return null;
+    var a = { x: r[0] + 0.25, z: r[1] + 1.05, w: r[2] - 0.5, d: r[3] - 1.25 }, i;
+    if (!Gm || !Gm.cubes) return { x: a.x + a.w / 2, z: a.z + a.d / 2 };
+    if (zone === 'goal') {
+      var gt = Gm.goalTokens || [], total = 1.2, before = 0;
+      for (i = 0; i < gt.length; i++) { if (typeof gt[i] === 'object' && gt[i].id === id) continue; var wd = (gt[i] === '(' || gt[i] === ')') ? 0.55 : 1.2; before += wd; total += wd; }
+      var gs = Math.min(1, a.w / Math.max(total, 1)), x0 = a.x + (a.w - total * gs) / 2;
+      return { x: x0 + before * gs + 0.6 * gs, z: a.z + a.d / 2 };
+    }
+    var n = 0; for (i = 0; i < Gm.cubes.length; i++) { var c = Gm.cubes[i]; if (c.zone === zone && c.id !== id) n++; }
+    var cnt = n + 1, s = 1.25, cols, rows;
+    while (s > 0.45) { cols = Math.max(1, Math.floor(a.w / s)); rows = Math.max(1, Math.floor(a.d / s)); if (cols * rows >= cnt) break; s -= 0.05; }
+    cols = Math.max(1, Math.floor(a.w / s));
+    var used = Math.min(cnt, cols), offx = (a.w - used * s) / 2;
+    return { x: a.x + offx + s / 2 + (n % cols) * s, z: a.z + s / 2 + Math.floor(n / cols) * s };
+  }
+  var M0 = new THREE.Matrix4(), M0i = new THREE.Matrix4(), q0 = new THREE.Quaternion(), YAX = new THREE.Vector3(0, 1, 0);
+  // his resting frame (hips, facing, scale) as a matrix: world <-> his own kid units
+  function restFrame(A) {
+    q0.setFromAxisAngle(YAX, A.place.rot); M0.compose(v3.set(A.place.x, A.place.y, A.place.z), q0, v4.set(A.place.s, A.place.s, A.place.s)); M0i.copy(M0).invert();
+  }
+  // the lean / forward step / side step that brings a shoulder within reach of a target (his units); null if none does
+  function planReach(A, T, sideMax) {
+    var D = A.dims, R = (D.L1 + D.L2) * 0.985 * MOVE.stretch, i = T.x < 0 ? 0 : 1, sx = (i ? 1 : -1) * D.SH_X;
+    var lat = T.x - sx, sd = clamp((lat < 0 ? -1 : 1) * Math.max(0, Math.abs(lat) - 0.45), -sideMax, sideMax), sh = new THREE.Vector3();
+    for (var a = 0; a <= MOVE.lean + 1e-6; a += 0.04) {
+      for (var f = 0; f <= MOVE.fwd + 1e-6; f += MOVE.fwd / 2) {
+        sh.set(sx + sd, D.SH_Y * Math.cos(a), D.SH_Y * Math.sin(a) + f);
+        if (sh.distanceTo(T) <= R * 0.96) return { arm: i, lean: a, fwd: f, side: sd, sh: sh, R: R, ok: true };
+      }
+    }
+    sh.set(sx + sd, D.SH_Y * Math.cos(MOVE.lean), D.SH_Y * Math.sin(MOVE.lean) + MOVE.fwd);
+    return { arm: i, lean: MOVE.lean, fwd: MOVE.fwd, side: sd, sh: sh, R: R, ok: false };
+  }
+  function sideRoom(A) {
+    // how far he may step sideways (his units): along the near edge for the kid's seat, a little for the others
+    var L = ctx.layout; if (A === me) return Math.max(0, (L.W / 2 - 1.2 - Math.abs(A.place.x)) / A.place.s);
+    return (A.seat === 'far' ? 2.4 : 1.0);
+  }
+  function startTask(A, id, zone, done, opts) {
+    var fired = false;
+    function fin() { if (fired) return; fired = true; try { done && done(); } catch (e) { console.warn(e); } }
+    try {
+      if (A.task) endTask(A, true);
+      var m = ctx.meshes[id], L = ctx.layout, sl = L && slotFor(id, zone);
+      if (!A.model || !A.shown || !A.fits || !A.model.root.visible || document.hidden || !m || !m.visible || !sl || ctx.held != null) { fin(); return; }
+      var now = performance.now(), q = opts && opts.quick ? 0.8 : 1, D = A.dims, s = A.place.s;
+      if (A.g) A.g = null;                                                   // a reaction in progress gives way
+      restFrame(A);
+      var cs = m.scale.x, above = 0.5 * cs + 0.26 * D.handS * s;           // wrist height above the cube's centre (world): half a cube + the palm
+      // where the cube rests (its slot target: a cube that was lifted as "selected" is just settling back down)
+      var rest = m.userData.tpos && ctx.held !== id ? m.userData.tpos : m.position;
+      var cubeL = new THREE.Vector3().copy(rest).applyMatrix4(M0i);           // his units
+      var aboveL = above / s, G0 = cubeL.clone(); G0.y += aboveL;
+      var pk = planReach(A, G0, sideRoom(A)), Gk = G0.clone();
+      if (!pk.ok) { Gk.copy(pk.sh).addScaledVector(v3.copy(G0).sub(pk.sh).normalize(), pk.R * 0.93); }   // as far as he reaches: the cube hops up to it
+      // far out of reach (the mate across the table, the far end of a tall table): he reaches toward it and sends it
+      // straight to its slot (one lob from where it lies) instead of a long hop into his hand
+      var send = !pk.ok && G0.distanceTo(Gk) * s > MOVE.hopMax;
+      var H = Gk.clone(); H.y += 0.45; H.z -= 0.08;
+      // the drop: the slot, in his units
+      var slotW = new THREE.Vector3(sl.x, 0.5 * cs, sl.z), slotL = slotW.clone().applyMatrix4(M0i), SL = slotL.clone(); SL.y += aboveL;
+      var tw = clamp(Math.atan2(slotL.x, slotL.z) * 0.45, -0.4, 0.4);       // turns his shoulders a little toward the zone
+      var pz = planReach(A, SL, 0), place = pz.ok && pz.lean <= 0.4;          // close enough to set it down (not stepping for it)
+      var Wd = Gk.clone(), Rl, Fo;
+      if (send) {
+        H = Gk.clone(); H.y += 0.35; Gk = H.clone(); Wd = H.clone();
+        var dS = v4.set(slotL.x - H.x, 0, slotL.z - H.z).normalize(); Rl = H.clone().addScaledVector(dS, 0.35); Rl.y += 0.25; Fo = Rl.clone();
+        place = false;
+      } else if (place) { Wd.y += 0.6; Wd.z -= 0.2; Rl = SL.clone(); Rl.y += 0.12; Fo = Rl.clone(); Fo.y += 0.45; Fo.z -= 0.2; }
+      else {
+        // underarm lob from where he picked it up: a small lift and draw back, then the hand swings forward and up
+        // toward the zone and lets go (the arm may run out of reach on the way: the cube simply leaves from the hand)
+        var dir = v4.set(slotL.x - Gk.x, 0, slotL.z - Gk.z).normalize();
+        Wd.y += 0.45; Wd.addScaledVector(dir, -0.3);
+        Rl = Gk.clone().addScaledVector(dir, 0.55); Rl.y += 0.85;
+        Fo = Gk.clone().addScaledVector(dir, 0.75); Fo.y += 1.25;
+      }
+      // where the hand is now (chest space -> world -> his units)
+      A.model.root.updateMatrixWorld(true);
+      var S0 = A.arm[pk.arm].goal.clone().applyMatrix4(A.model.chest.matrixWorld).applyMatrix4(M0i);
+      A.task = { id: id, m: m, zone: zone, fin: fin, t0: now, q: q, arm: pk.arm, plan: pk, hop: !pk.ok && !send, send: send, place: place, tw: tw,
+        P: { H: H, G: Gk, W: Wd, R: Rl, F: Fo }, cube0: rest.clone(), above: above, picked: false, released: false, qBase: m.quaternion.clone(),
+        S: S0, cubeL: cubeL, slotL: slotL, tgt: S0.clone() };
+      A.task.timer = setTimeout(function () { if (A.task && A.task.fin === fin) endTask(A, true); else fin(); }, MOVE.safety);
+      A.settled = false; ctx.dirty(); ctx.startLoop();
+    } catch (e) { console.warn('playerMove', e); endTask(A, true); fin(); }
+  }
+  function pickUp(T) {
+    if (T.picked) return; T.picked = true; ctx.dropAnims(T.m); ctx.held = T.id; T.qBase.copy(T.m.quaternion); T.cube0.copy(T.m.position);
+    if (typeof Snd !== 'undefined' && Snd.pickup && !T.hop) Snd.pickup();
+  }
+  function letGo(T, mode) {
+    if (T.released) return; T.released = true;
+    if (ctx.held === T.id) ctx.held = null;
+    T.m.userData[mode === 'place' ? 'dropped' : 'toss'] = true;
+    T.fin();
+    // if nobody re-synced the table (the game did not place the cube), put it back where the game says it is
+    var m = T.m; setTimeout(function () { if ((m.userData.toss || m.userData.dropped) && T3.sync && T3.lastG && ctx.held !== T.id) { try { T3.sync(T3.lastG); } catch (e) {} } }, 700);
+  }
+  // instant: the cube goes to its slot right now (lobbed from wherever it is) and done() fires; he eases back to rest
+  function endTask(A, instant) {
+    var T = A.task; if (!T) return;
+    clearTimeout(T.timer); A.task = null;
+    if (!T.released) letGo(T, T.place && T.picked ? 'place' : 'toss');
+    if (ctx.held === T.id) ctx.held = null;
+    ctx.dirty(); ctx.startLoop();
+  }
+  // the hand's target along the move (his units), and the body's help
+  var HT = new THREE.Vector3();
+  function taskAt(A, T, u) {
+    var K = MOVE.T, t1 = K[0] * T.q, t2 = K[1] * T.q, t3 = K[2] * T.q, t4 = K[3] * T.q, t5 = K[4] * T.q, P = T.P, k;
+    if (u < t1) { k = easeIO(u / t1); HT.lerpVectors(T.S, P.H, k); HT.y += 0.25 * Math.sin(Math.PI * k); }
+    else if (u < t2) HT.lerpVectors(P.H, P.G, easeIO((u - t1) / (t2 - t1)));
+    else if (u < t3) HT.lerpVectors(P.G, P.W, easeOut((u - t2) / (t3 - t2)));
+    else if (u < t4) { k = (u - t3) / (t4 - t3); HT.lerpVectors(P.W, P.R, T.place ? easeIO(k) : k * k * (1.6 - 0.6 * k)); }
+    else HT.lerpVectors(P.R, P.F, easeOut((u - t4) / (t5 - t4)));
+    // body: reach (lean / steps), then a smaller lean into the lob, then back
+    // wH: the reach is held through the lob (he stays leaning over the table until he lets go), then he comes back
+    var pl = T.plan, wH = sstep(u / (t1 * 0.85)) * (1 - sstep((u - t4) / (t5 - t4 + 0.2))), wT = sstep((u - t2) / (t4 - t2)) * wH;
+    var Pp = A.P, sg = T.arm ? 1 : -1;
+    Pp.lean += pl.lean * wH + 0.1 * wT; Pp.fwd += pl.fwd * wH; Pp.side += pl.side * wH;
+    Pp.twist += -sg * 0.16 * (wH - wT) + T.tw * wT;
+    Pp.hop += 0.05 * Math.sin(Math.PI * clamp(u / t1, 0, 1)) * Math.min(1, Math.abs(pl.side) / 1.5);   // one little bob as he steps
+    var look = u < t2 + 0.05 ? T.cubeL : T.slotL;
+    Pp.headYaw += clamp(Math.atan2(look.x, look.z), -0.7, 0.7) * 0.8; Pp.headPitch += (u < t2 + 0.05 ? 0.25 : 0.0) - 0.05;
+    face(A, { gazeY: u < t2 + 0.05 ? -0.55 : -0.2, browUp: 0.2, big: u > t3 && u < t5 ? 0.35 : 0 }, 1);
+    return HT;
+  }
+  var CH = new THREE.Vector3(), HW = new THREE.Vector3();
+  // after the body is posed: the busy arm goes straight to its target (no smoothing lag), the cube follows the hand
+  function taskArm(A, T, now) {
+    var u = (now - T.t0) / 1000, K = MOVE.T, m = A.model;
+    if (u >= K[4] * T.q) { endTask(A, false); return false; }
+    var tgt = T.tgt;   // computed in step() before posing
+    m.root.updateMatrixWorld(true);
+    // his units -> world (resting frame; the target is anchored to the table) -> chest
+    HW.copy(tgt).applyMatrix4(M0frame(A));
+    inv.copy(m.chest.matrixWorld).invert(); CH.copy(HW).applyMatrix4(inv);
+    var arm = m.arms[T.arm], R = A.arm[T.arm], t2 = K[1] * T.q, t4 = K[3] * T.q;
+    var open = u < t2 - 0.03 ? lerp(0.35, 1, sstep(u / (t2 * 0.6))) : u < t4 ? lerp(1, 0.1, sstep((u - t2 + 0.03) / 0.06)) : lerp(0.1, 0.8, sstep((u - t4) / 0.1));
+    var align = u < t4 ? lerp(0.4, 1, sstep(u / (t2 * 0.8))) : lerp(1, 0.4, sstep((u - t4) / 0.15));
+    if (T.send) { open = Math.max(open, 0.85); align = Math.min(align, 0.45); }   // an open hand toward the cube
+    arm.open = open; arm.solve(CH.x, CH.y, CH.z, align, 0);
+    R.goal.copy(CH); R.des.copy(CH); R.al = align; R.op = open; R.dAl = align; R.dOp = open;
+    // the cube: hops up to the hand if he can't reach it, rides in the hand, and goes at the release
+    HW.copy(arm.pos).applyMatrix4(m.chest.matrixWorld);
+    var t1 = K[0] * T.q, hopT0 = t1 - 0.1 * T.q;
+    if (T.send) { if (u >= t1 + 0.06 * T.q) letGo(T, 'toss'); return true; }   // the cube goes from where it lies
+    if (!T.picked && (T.hop ? u >= hopT0 : u >= t2)) pickUp(T);
+    if (T.picked && !T.released) {
+      var cy = HW.y - T.above;
+      if (T.hop && u < t2) {
+        var k = clamp((u - hopT0) / (t2 - hopT0), 0, 1), e = easeOut(k);
+        T.m.position.set(lerp(T.cube0.x, HW.x, e), lerp(T.cube0.y, cy, e) + 0.9 * Math.sin(Math.PI * k), lerp(T.cube0.z, HW.z, e));
+      } else T.m.position.set(HW.x, cy, HW.z);
+      T.m.quaternion.copy(T.qBase);
+      if (u >= t4) letGo(T, T.place ? 'place' : 'toss');
+    }
+    return true;
+  }
+  var MF = new THREE.Matrix4();
+  function M0frame(A) { q0.setFromAxisAngle(YAX, A.place.rot); return MF.compose(v3.set(A.place.x, A.place.y, A.place.z), q0, v4.set(A.place.s, A.place.s, A.place.s)); }
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { endTask(me, true); endTask(mate, true); } });
+
   // ---------- per frame ----------
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function update(now) {
@@ -457,9 +661,10 @@ if (T3 && T3.ctx) (function () {
     step(me, now); step(mate, now);
   }
   function step(A, now) {
-    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; return; }
+    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; if (A.task) endTask(A, true); return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
+    if (document.hidden && A.task) endTask(A, true);
     var P = A.P, F = A.F, i, k;
     for (k in P) P[k] = 0; P.headPitch = 0.22;
     for (k in F) F[k] = 0; F.lid = 0.95;
@@ -470,8 +675,10 @@ if (T3 && T3.ctx) (function () {
       if (u > A.g.dur || fd <= 0) A.g = null;
       else d.fn(A, u, env(u, A.g.dur, d.att, d.rel) * fd, A.g.opts);
     }
-    // smooth everything toward the targets (calm follow-through, never a snap)
-    var kb = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-10 * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g, cur = A.cur, Fc = A.Fc;
+    var T = A.task;
+    if (T) T.tgt.copy(taskAt(A, T, (now - T.t0) / 1000));
+    // smooth everything toward the targets (calm follow-through, never a snap; quicker while he moves a cube)
+    var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-10 * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T, cur = A.cur, Fc = A.Fc;
     while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
     for (k in cur) { var df = P[k] - cur[k]; if (Math.abs(df) > 1e-4) moving = true; cur[k] += df * kb; }
     for (k in Fc) { var dff = F[k] - Fc[k]; if (Math.abs(dff) > 1e-3) moving = true; Fc[k] += dff * kf; }
@@ -490,8 +697,9 @@ if (T3 && T3.ctx) (function () {
     var ca = clamp(cur.crouch, 0, 1) * 0.85, kn = clamp(cur.kneel, 0, 1) * Math.PI / 2;
     var dropL = (D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn);
     m.setKnees(-ca, -ca, 2 * ca + kn, 2 * ca + kn);
-    var rot = A.place.rot + cur.spin, fx = Math.sin(A.place.rot), fz = Math.cos(A.place.rot), fw = clamp(cur.fwd, 0, 0.75) * s;
-    R.position.set(A.place.x + fx * fw, A.place.y + (cur.hop - dropL) * s, A.place.z + fz * fw); R.rotation.y = rot; R.scale.setScalar(s);
+    var rot = A.place.rot + cur.spin, fx = Math.sin(A.place.rot), fz = Math.cos(A.place.rot), fw = clamp(cur.fwd, 0, 0.75) * s, sw = cur.side * s;
+    // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
+    R.position.set(A.place.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL) * s, A.place.z + fz * fw - fx * sw); R.rotation.y = rot; R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
     var hp = cur.headPitch + (A === mate && mate.seat === 'far' ? -0.5 : 0);   // across the table he looks up at the camera, so his face shows
     m.neck.rotation.set(hp * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
@@ -500,6 +708,7 @@ if (T3 && T3.ctx) (function () {
       var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
       a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);
     }
+    if (T && A.task === T) taskArm(A, T, now);
     var lid = Fc.lid * (1 - blink);
     m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
     // only ask for frames while something is happening; at rest he is still
@@ -511,6 +720,11 @@ if (T3 && T3.ctx) (function () {
   // A grown-up across the table (no creature) asks to be kept in view, like a creature does.
   ctx.hooks.extents.push(function (corners, W, D) {
     needPlace = true;
+    // his seat below the near rim needs a band of room at the bottom of the picture: table.js calls this with the
+    // camera already standing at its first guess, so the seat is worked out from that view
+    if (me.shown && me.model && ctx.layout) {
+      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout); if (b) seatPoints(me, b, corners); } catch (e) {}
+    }
     if (mate.seat === 'far' && mate.shown && mate.model && !creatureHere()) {
       var top = FLOOR_Y + (mate.dims.TOP - mate.dims.FOOT) * FAR.s + 0.2, z = -D / 2 - FAR.front;
       corners.push([-3.4, top, z], [3.4, top, z]);
@@ -520,16 +734,18 @@ if (T3 && T3.ctx) (function () {
   // ---------- public API ----------
   T3.playerMoods = function () { return NAMES.slice(); };
   T3.playerCelebrations = function () { return CELEBS.slice(); };
+  // showing / hiding him or changing who stands there changes the room the camera keeps below the rim: refit
+  function refitFor() { needPlace = true; if (ctx.layout) ctx.refit(); computePlace(); }
   T3.playerShow = function (on) {
-    me.shown = !!on;
-    if (me.shown) { var re = refreshAvatar(me); if (re || needPlace || !me.placedOnce) computePlace(); else applyVis(); }
-    else { me.g = null; applyVis(); }
+    var was = me.shown; me.shown = !!on;
+    if (me.shown) { var re = refreshAvatar(me); if (re || !was || needPlace || !me.placedOnce) refitFor(); else applyVis(); }
+    else { me.g = null; endTask(me, true); applyVis(); if (was && ctx.layout) ctx.refit(); }
     return me.shown && me.fits;
   };
-  T3.playerRefresh = function () { if (me.model && refreshAvatar(me)) computePlace(); };
+  T3.playerRefresh = function () { if (me.model && refreshAvatar(me)) refitFor(); };
   T3.playerSet = function (o) {
     me.over = o ? Object.assign({}, o) : null;
-    if (me.model && refreshAvatar(me)) computePlace();
+    if (me.model && refreshAvatar(me)) { endTask(me, true); refitFor(); }
   };
   T3.playerMood = function (m, opts) { startMood(me, m, opts); };
   T3.playerCelebrate = function (name) {
@@ -538,6 +754,7 @@ if (T3 && T3.ctx) (function () {
   };
   T3.mate = function (o) {
     var wasFar = mate.seat === 'far' && mate.shown;
+    endTask(mate, true);
     if (!o) {
       mate.shown = false; mate.g = null; mate.seat = null; applyVis();
       if (wasFar) ctx.refit();
@@ -550,9 +767,25 @@ if (T3 && T3.ctx) (function () {
     return mate.fits;
   };
   T3.mateMood = function (m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(mate, m, opts); };
+  // Moving a cube (same contract as T3.creatureMove): done() fires exactly once, at the release (~0.6 s), or at once
+  // when he can't do it (3D off, hidden, not on screen, tab hidden, another cube in a hand); 2.5 s safety timeout.
+  // opts.quick: about 20% faster (e.g. several Goal cubes in a row).
+  T3.playerMove = function (id, zone, done, opts) { startTask(me, id, zone, done, opts); };
+  T3.mateMove = function (id, zone, done, opts) { startTask(mate, id, zone, done, opts); };
+  // finish any move right now (the cube lobs to its slot, done() fires); e.g. when the player taps during the reach
+  T3.playerMoveFinish = function () { var b = !!(me.task || mate.task); endTask(me, true); endTask(mate, true); return b; };
+  // tuning / tests: T3.playerMoveTuning({ stretch, lean, fwd, safety }) ; no argument: the values
+  T3.playerMoveTuning = function (o) { if (o) ['stretch', 'lean', 'fwd', 'safety'].forEach(function (k) { if (typeof o[k] === 'number') MOVE[k] = o[k]; }); return JSON.parse(JSON.stringify(MOVE)); };
+  T3.playerMoving = function () { return !!((me.task && !me.task.released) || (mate.task && !mate.task.released)); };
   T3.playerState = function () {
     function st(A) { return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop }; }
     var o = st(me); o.rejected = why; o.quad = quad; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+  };
+  // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
+  T3.playerSeat = function (o) {
+    if (!o) return JSON.parse(JSON.stringify(SEAT));
+    ['into', 'low', 'gap', 'hair'].forEach(function (k) { if (typeof o[k] === 'number') SEAT[k] = o[k]; });
+    refitFor(); return JSON.parse(JSON.stringify(SEAT));
   };
   // debugging / previews: the model objects (read-only use please)
   T3.playerModels = function () { return { me: me.model, mate: mate.model }; };

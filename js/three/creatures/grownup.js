@@ -17,7 +17,10 @@ TATA.TOP = TATA.NECK_Y + TATA.HEAD_UP + TATA.HEAD_R * TATA.head.sy * 1.27;
 TATA.FOOT = TATA.hipY - TATA.thigh - TATA.shin - 0.14;
 TATA.HIP_LOW = TATA.shortsY - TATA.shortsH / 2;
 
-export const TATA_LOOK = { skin: '#e2ae86', hair: '#17130f', streaks: '#6a4a33', hairStyle: 'tousled', eyes: '#3d2614', brows: '#1b1511', cheeks: '#e59a8a', stubble: true, adult: true };
+// Tata: warm light skin, black hair with a few lighter brown strands, dark almond eyes that crinkle a little with his
+// smile, light stubble and a faint moustache, a gentle closed-mouth smile, a V-neck shirt
+export const TATA_LOOK = { skin: '#e4b48e', hair: '#17130f', streaks: '#7a5536', hairStyle: 'tousled', eyes: '#2e1c10', brows: '#1b1511', cheeks: '#e59a8a', stubble: true, adult: true,
+  eyeW: 1.12, eyeH: 0.92, tilt: 0.05, happy: 0.22, vneck: true };
 export const TATA_DEFAULT = { kit: TATA_KIT, name: 'Tata', number: '17' };
 
 export function buildTata(kit, num, name, front, look) {
