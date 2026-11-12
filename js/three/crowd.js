@@ -33,6 +33,9 @@ import * as THREE from 'three';
 var SEAT_Y = 0.17, HIP_Y = 0.25, NECK = 0.34, SH_X = 0.245, SH_Y = 0.29, HAND = 0.3, REST_RAISE = 0.38, REST_ROLL = 0.1;
 export var HEAD_TOP = 0.36; // top of the head above the neck pivot
 var DUR = { clap: 1500, ooh: 1800, gasp: 1300, cheer: 2400, aw: 2000, wave: 1700 };
+// ---- COLLECT (spot the fan) block: one person waves once (see T3.crowdWave below) ----
+DUR.hi = 1900;
+// ---- end COLLECT block ----
 var FRAC = { ooh: 0.8, gasp: 0.85, cheer: 0.85, aw: 0.75 };
 var COLS = 16, ROWS = 8, CELL = 64, PAD = 0.03;
 
@@ -498,6 +501,9 @@ var CHARACTERS = ['astronaut', 1, 'chef', 1, 'knight', 1, 'skeleton', 1, 'robot'
 var MASCOTS = { wolf: ['#8e959c', '#eef0f2'], bear: ['#8d5524', '#e7c39a'], cat: ['#ff922b', '#fff3e0'] };
 
 function hairGear(L, R, t) { return { t: t, a: L.hair, b: pick(R, BRIGHT), c: L.hair, cell: -1 }; }
+// ---- COLLECT (spot the fan) block: the 13 character kinds a fan can be (mascots count by animal) ----
+export var CHAR_KINDS = ['astronaut', 'chef', 'knight', 'skeleton', 'robot', 'hero', 'wolf', 'bear', 'cat', 'wizard', 'fire', 'police', 'builder'];
+// ---- end COLLECT block ----
 function character(L, p, R, T, kind) {
   var h = L.hair;
   L.bare = false; L.held = null;
@@ -514,6 +520,9 @@ function character(L, p, R, T, kind) {
     case 'police': L.shirt = '#3b5bdb'; L.print = 'police'; L.pc = '#ffd43b'; L.pants = L.shins = '#1f2a44'; L.shoes = '#212529'; L.gear = { t: 'police', a: '#1f2a44', b: '#15192b', c: h, cell: 'badge' }; break;
     default: L.shirt = '#ff922b'; L.print = 'hivis'; L.pants = L.shins = '#34507a'; L.gear = { t: 'hardhat', a: '#fcc419', b: '#fcc419', c: h, cell: 'logoStar' }; // builder
   }
+  // ---- COLLECT (spot the fan) block: which character this fan is (mascots count by animal) ----
+  p.charKind = kind === 'mascot' ? L.gear.cell : CHAR_KINDS.indexOf(kind) >= 0 ? kind : 'builder';
+  // ---- end COLLECT block ----
 }
 // style 'fans' (stadium, night) or 'beach'
 function dressPerson(p, R, o, beach) {
@@ -631,6 +640,17 @@ function install() {
   };
 }
 install();
+// ---- COLLECT (spot the fan) block: T3.crowdChars() / T3.crowdPick(ray) / T3.crowdWave(i) on the venue on the table now ----
+(function () {
+  if (typeof window === 'undefined' || !window.T3 || window.T3.crowdPick) return;
+  function live() { return current && !(typeof document !== 'undefined' && document.hidden) && current.attached() ? current : null; }
+  window.T3.crowdChars = function () { try { var c = live(); return c ? c.chars() : []; } catch (e) { return []; } };
+  window.T3.crowdPick = function (ray) { try { var c = live(); return c ? c.pick(ray) : null; } catch (e) { return null; } };
+  window.T3.crowdWhere = function (i) { try { var c = live(); return c ? c.where(i) : null; } catch (e) { return null; } };
+  window.T3.crowdWave = function (i) { try { var c = live(), ok = !!c && c.waveOne(i); if (ok && window.T3.kick) window.T3.kick(); return ok; } catch (e) { return false; } };
+  window.T3.crowdKinds = CHAR_KINDS.slice();
+})();
+// ---- end COLLECT block ----
 // for headless checks and debugging: the crowd T3.crowd drives right now (or null)
 export function currentCrowd() { return current; }
 
@@ -823,6 +843,14 @@ export function makeBlockCrowd(group, pts, o) {
         aLean[i] += 0.1 * e; aHead[i] += 0.22 * e; aTilt[i] += (v < 0.5 ? 0.2 : -0.2) * e; aDy[i] -= 0.03 * e;
         aRa0[i] += (0.2 - b0) * e; aRa1[i] += (0.2 - b1) * e; return;
       }
+      // ---- COLLECT (spot the fan) block: 'hi' = one fan waves once (right arm up, three side-to-side waves, down) ----
+      case 'hi': {
+        e = env(t, 0.3, 0.45, dur); if (!e) return;
+        var wv = Math.sin(6.2832 * 1.7 * Math.max(0, t - 0.3)) * sm((t - 0.25) / 0.2) * sm((dur - 0.45 - t) / 0.25);
+        aRa1[i] += (2.75 - b1 + 0.28 * wv) * e; aYaw[i] += -rYaw[i] * e; aDy[i] += 0.05 * e; aHead[i] -= 0.06 * e; aTilt[i] += 0.12 * wv * e;
+        return;
+      }
+      // ---- end COLLECT block ----
       case 'wave': {
         var f = (s / r.dur) * 1.5 - 0.25, dd = (key[i] - f) / 0.15; if (dd <= -1 || dd >= 1) return;
         var up = 0.5 * (1 + Math.cos(Math.PI * dd));
@@ -885,7 +913,47 @@ export function makeBlockCrowd(group, pts, o) {
       uploadAll(); pending = true;
       return true;
     },
-    reset: function () { reacts = []; nPrev = 0; pending = false; restoreAll(); if (current === api) current = null; }
+    reset: function () { reacts = []; nPrev = 0; pending = false; restoreAll(); if (current === api) current = null; },
+    // ---- COLLECT (spot the fan) block: picking and the one-person wave (additive; nothing above uses it) ----
+    // chars(): [{ i, kind }] the character fans of this crowd (the same ones every time this venue is built at this tier)
+    chars: function () { var out = []; for (var i = 0; i < N; i++) if (pts[i].charKind) out.push({ i: i, kind: pts[i].charKind }); return out; },
+    // pick(ray): the nearest fan whose body sphere the world-space THREE.Ray goes through, or null.
+    // { i, kind (null for an ordinary fan), t (distance along the ray), r (sphere radius), center (world) }.
+    // Every fan is tested (about 1,200 sphere tests, well under a millisecond), so a character hidden behind
+    // the fan in front is not picked through them.
+    pick: function (ray) {
+      if (!N || !ray) return null;
+      group.updateWorldMatrix(true, false);
+      var mw = group.matrixWorld, e = mw.elements, ws = Math.max(Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10]));
+      var c = new THREE.Vector3(), d = new THREE.Vector3(), best = null, bt = Infinity;
+      for (var i = 0; i < N; i++) {
+        var b = i * 12, k = base[b + 5];
+        c.set(base[b + 3], base[b + 7] + 0.55 * k, base[b + 11]).applyMatrix4(mw);
+        var r = 0.45 * k * ws; d.subVectors(c, ray.origin);
+        var along = d.dot(ray.direction); if (along < 0) continue;
+        var q = d.lengthSq() - along * along; if (q > r * r) continue;
+        var t = along - Math.sqrt(r * r - q);
+        if (t < bt) { bt = t; best = { i: i, kind: pts[i].charKind || null, t: t, r: r, center: c.clone() }; }
+      }
+      return best;
+    },
+    // where(i): { center (world), r } of fan i's body sphere (the one pick() uses), or null
+    where: function (i) {
+      if (!(i >= 0 && i < N)) return null;
+      group.updateWorldMatrix(true, false);
+      var e = group.matrixWorld.elements, ws = Math.max(Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10])), b = i * 12, k = base[b + 5];
+      return { center: new THREE.Vector3(base[b + 3], base[b + 7] + 0.55 * k, base[b + 11]).applyMatrix4(group.matrixWorld), r: 0.45 * k * ws };
+    },
+    // waveOne(i): that one fan waves once (1.9 s) and is exactly back at rest afterwards
+    waveOne: function (i) {
+      if (!(i >= 0 && i < N)) return false;
+      var now = performance.now();
+      for (var k = 0; k < reacts.length; k++) if (reacts[k].kind === 'hi' && reacts[k].idx[0] === i && now - reacts[k].t0 < reacts[k].dur) return true;
+      if (reacts.length >= 4) reacts.shift();
+      reacts.push({ kind: 'hi', t0: now, dur: DUR.hi, idx: [i] });
+      return true;
+    }
+    // ---- end COLLECT block ----
   };
   if (!o.detached) current = api; // o.detached: a crowd T3.crowd never drives (the title screen's own stadium)
   install();

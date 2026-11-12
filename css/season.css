@@ -1,0 +1,75 @@
+/* ---------- Season Table (js/season.js) ---------- */
+.sea-panel{display:flex;flex-direction:column;gap:6px}
+.sea-tabs{justify-content:flex-start;margin-bottom:6px}
+.sea-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 8px}
+.sea-head>div:first-child{flex:1;min-width:200px}
+.sea-head small{display:block;color:var(--mute);font-size:14px;font-weight:800}
+.sea-title{font-family:var(--display);font-size:24px;color:var(--ink)}
+.sea-prog{flex:0 0 160px;height:14px;border-radius:8px;background:#e4e8f1;overflow:hidden;box-shadow:inset 0 2px 3px rgba(0,0,0,.12)}
+.sea-prog i{display:block;height:100%;background:linear-gradient(90deg,#5be39b,#1fae6b);border-radius:8px}
+.sea-tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;box-shadow:0 0 0 2px var(--line)}
+.sea-table{width:100%;border-collapse:collapse;font-size:16px;background:#fff}
+.sea-table th{background:#16203c;color:#fff;font-weight:800;font-size:13px;letter-spacing:.4px;padding:8px 6px;text-align:center}
+.sea-table td{padding:6px;text-align:center;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.sea-table .tl{text-align:left}
+.sea-table td.team{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.sea-table td.pos{font-family:var(--display);font-size:18px;color:var(--ink2);width:30px}
+.sea-table td.pts{font-family:var(--display);font-size:20px;color:var(--ink)}
+.sea-table tr.top td.pos{color:var(--gold-d)}
+.sea-table tr.me td{background:#fff6cf}
+.sea-table tr.me td.team{font-weight:900}
+.sea-nm small{color:var(--mute);font-weight:800}
+.sea-me{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:linear-gradient(#ff6b6b,#c9342c);color:#fff;font-family:var(--display);font-size:16px;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.25);flex:0 0 auto}
+.sea-form{display:inline-flex;gap:3px}
+.sea-f{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;font-style:normal;font-size:11px;font-weight:900;color:#fff}
+.sea-f.fW{background:#22b573}
+.sea-f.fD{background:#8aa3c7}
+.sea-f.fL{background:#c9ced8;color:#5b6478}   /* never red: a loss is just a game played */
+.sea-f.f-{background:transparent;box-shadow:inset 0 0 0 2px #e4e8f1}
+.sea-fxs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.sea-fx{background:#fff;border-radius:16px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 4px 0 rgba(0,0,0,.08),0 0 0 2px var(--line);cursor:pointer;text-align:center}
+.sea-fx small{color:var(--mute);font-size:13px;font-weight:800;display:flex;align-items:center;gap:4px}
+.sea-fx small .ico{width:1em;height:1em}
+.sea-fx.lock{opacity:.55;cursor:default}
+.sea-fx.done{cursor:default;background:#f2fbf6}
+.sea-dots{display:flex;gap:5px}
+.sea-dot{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 2px #b8c0cf}
+.sea-dot.on{background:#22b573;box-shadow:none}
+.sea-rules{margin:12px 0 2px;background:#eef4ff;border-radius:16px;padding:10px 14px;font-size:16px}
+.sea-rules summary{cursor:pointer;font-weight:900;color:var(--sky)}
+.sea-rules li{margin:6px 0;line-height:1.35}
+.sea-hists{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.sea-hist{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:8px 10px;box-shadow:0 0 0 2px var(--line)}
+.sea-hist small{display:block;color:var(--mute);font-weight:800;font-size:13px}
+.sea-empty{color:var(--mute);font-size:16px;margin:4px 0 0}
+.sea-pen{flex:0 0 auto;filter:drop-shadow(0 3px 3px rgba(0,0,0,.2))}
+/* the compact line on the match-end pop-up */
+.sea-line{background:#eef4ff;border-radius:16px;padding:10px 12px;margin:10px 0 0;font-size:16px;line-height:1.35;font-weight:800;color:var(--ink)}
+.sea-line .sea-left{color:var(--mute);font-weight:800;white-space:nowrap}
+.sea-line-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.modal .sea-line-btns .btn{min-width:0}
+/* ceremony */
+.sea-podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:8px 0}
+.sea-pod{display:flex;flex-direction:column;align-items:center;gap:4px;width:110px;text-align:center}
+.sea-pod b{font-size:15px;line-height:1.1}
+.sea-pod.me b{color:var(--purple)}
+.sea-step{width:100%;border-radius:12px 12px 0 0;background:linear-gradient(#ffe27a,#ffbd1f);color:#4a2f00;font-family:var(--display);font-size:28px;display:flex;align-items:flex-start;justify-content:center;padding-top:4px}
+.sea-pod.p1 .sea-step{height:84px}
+.sea-pod.p2 .sea-step{height:60px;background:linear-gradient(#f4f7fb,#c7d0dc)}
+.sea-pod.p3 .sea-step{height:44px;background:linear-gradient(#ffd0a3,#d98a4a)}
+.sea-meav{background:linear-gradient(#ff6b6b,#c9342c);color:#fff;font-family:var(--display);font-size:40px}
+@media (max-width:560px){
+  .sea-table{font-size:14px}
+  .sea-table .sea-fa{display:none}
+  .sea-table td,.sea-table th{padding:5px 3px}
+  .sea-table td.team{gap:5px}
+  .sea-table .sea-nm small{display:none}
+  .sea-f{width:15px;height:15px;font-size:9px;border-radius:4px}
+  .sea-form{gap:2px}
+  .sea-prog{flex-basis:100%}
+  .sea-pod{width:92px}
+}
+@media (max-width:400px){
+  .sea-table .sea-p{display:none}
+  .sea-table td.team .avatar{display:none}
+}

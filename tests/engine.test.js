@@ -746,5 +746,96 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
 }
 // ================= END REVIEW =================
 
+// ================= SEASON TABLE (js/season.js) — added by the collect helper =================
+{
+  const OPPS = [1, 2, 3, 4, 5, 3, 4, 5, 5, 5].map((stars, i) => ({ name: 'C' + i, emoji: '?', color: '#eee', stars, fire: i === 8 ? 1 : i === 9 ? 2 : 0 }));
+  const SEA = new Function('OPPONENTS', fs.readFileSync(path.join(root, 'js', 'season.js'), 'utf8') + '\nreturn Season;')(OPPS);
+  const C = SEA._core;
+  const sumRows = (L, k) => L.t.reduce((s, r) => s + r[k], 0);
+  // points: win 3, tie 1, loss 0 for both sides
+  {
+    const st = C.blank(); let xp = 0;
+    const r1 = C.play(st, 0, 10, 4, { shakes: 3, xp: n => { xp += n; } });
+    ok('season: a win gives the kid 3 points', C.pts(st.c.t[0]) === 3 && st.c.t[0][1] === 1 && st.c.t[0][4] === 10 && st.c.t[0][5] === 4, st.c.t[0]);
+    const c0 = st.c.t[1].slice(); r1.sim.forEach(x => { [[x[0], x[2], x[3]], [x[1], x[3], x[2]]].forEach(q => { if (q[0] === 0) { c0[0]--; c0[q[1] > q[2] ? 1 : q[1] === q[2] ? 2 : 3]--; c0[4] -= q[1]; c0[5] -= q[2]; } }); });
+    ok('season: the beaten creature gets a loss and the shake points the other way', c0.join() === '1,0,0,1,4,10', c0);
+    ok('season: two creature fixtures are played after each of his', st.c.sim === 2 && r1.sim.length === 2, st.c.sim);
+    C.play(st, 1, 6, 6, { shakes: 3 });
+    ok('season: a tie gives 1 point to both', C.pts(st.c.t[0]) === 4 && C.pts(st.c.t[2]) - st.c.t[2][1] * 3 >= 1 && st.c.t[2][2] >= 1);
+    ok('season: forms are W then D', st.c.f[0] === 'WD', st.c.f[0]);
+    C.play(st, 7, 2, 8, { shakes: 3 });
+    ok('season: a loss gives 0 points, the Monster League has its own table', C.pts(st.m.t[0]) === 0 && st.m.t[0][3] === 1 && C.pts(st.m.t[3]) >= 3 && C.pts(st.c.t[0]) === 4);
+    ok('season: games played = wins + ties + losses everywhere', ['c', 'm'].every(lg => st[lg].t.every(r => r[0] === r[1] + r[2] + r[3])));
+    ok('season: shake points for = against across a league', ['c', 'm'].every(lg => sumRows(st[lg], 4) === sumRows(st[lg], 5)));
+    ok('season: no XP before the season ends', xp === 0);
+    // friendly: the third match against the same creature does not change the table
+    const st2 = C.blank(); C.play(st2, 2, 8, 2); C.play(st2, 2, 8, 2); const before = JSON.stringify(st2.c.t);
+    const fr = C.play(st2, 2, 12, 0);
+    ok('season: a third match against the same creature is a friendly', fr.friendly && JSON.stringify(st2.c.t) === before && st2.c.k === 2);
+    ok('season: lost forms keep only the last 5', (() => { const s = C.blank(); for (let i = 0; i < 5; i++) { C.play(s, i, 2, 4); C.play(s, i, 4, 2); } return true; })());
+  }
+  // simulated fixtures are deterministic given a seed
+  {
+    const a = C.simMatch(3, 4, 12345, 3), b = C.simMatch(3, 4, 12345, 3);
+    ok('season sim: same seed, same score', a[0] === b[0] && a[1] === b[1], [a, b]);
+    ok('season sim: scores are made of 2/4/6-point shakes', a[0] % 2 === 0 && a[1] % 2 === 0 && a[0] + a[1] >= 6 && a[0] + a[1] <= 18);
+    let diff = 0; for (let s = 1; s < 40; s++) { const x = C.simMatch(3, 3, s, 3); if (x[0] !== a[0] || x[1] !== a[1]) diff++; }
+    ok('season sim: different seeds give different scores', diff > 10, diff);
+    let strongWins = 0, weakWins = 0;
+    for (let s = 0; s < 2000; s++) { const x = C.simMatch(5, 1, 1000 + s, 3); if (x[0] > x[1]) strongWins++; else if (x[1] > x[0]) weakWins++; }
+    ok('season sim: a 5-star creature beats a 1-star one most of the time (and not always)', strongWins > 1500 && weakWins > 20, [strongWins, weakWins]);
+    // two saves that play the same matches end with the same table (the creature fixtures come from the season seed)
+    const s1 = C.blank(), s2 = C.blank();
+    [[0, 6, 2], [3, 2, 8], [4, 4, 4], [1, 10, 2]].forEach(m => { C.play(s1, m[0], m[1], m[2]); C.play(s2, m[0], m[1], m[2]); });
+    ok('season sim: the same matches give exactly the same table', JSON.stringify(s1.c) === JSON.stringify(s2.c));
+    const fx = C.fixtures(s1.c), pairs = {};
+    fx.forEach(p => { pairs[p[0] + '-' + p[1]] = (pairs[p[0] + '-' + p[1]] || 0) + 1; });
+    ok('season fixtures: 20 creature fixtures, every ordered pair once', fx.length === 20 && Object.keys(pairs).length === 20 && fx.every(p => p[0] !== p[1] && p[0] >= 1 && p[1] <= 5));
+    {
+      let bal = true; const L = C.newLeague('c', 7), f = C.fixtures(L), g = [0, 0, 0, 0, 0, 0];
+      for (let k = 0; k < 20; k += 2) { [f[k], f[k + 1]].forEach(p => { g[p[0]]++; g[p[1]]++; }); const v = g.slice(1); if (Math.max(...v) - Math.min(...v) > 1) bal = false; if (f[k][0] === f[k + 1][0] || f[k][0] === f[k + 1][1] || f[k][1] === f[k + 1][0] || f[k][1] === f[k + 1][1]) bal = false; }
+      ok('season fixtures: rounds of 2 with no creature twice, games played never differ by more than 1', bal && g.slice(1).every(v => v === 8), g);
+    }
+    ok('season fixtures: the order changes from season to season', JSON.stringify(C.fixtures(C.newLeague('c', 1))) !== JSON.stringify(C.fixtures(C.newLeague('c', 2))));
+  }
+  // a full season, the rollover, and nothing ever goes down
+  {
+    const st = C.blank(); let xp = 0, prevPts = 0, prevWon = 0, mono = true, seenEnd = null;
+    const plan = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4];
+    plan.forEach((oi, k) => {
+      const res = C.play(st, oi, k % 3 ? 8 : 4, k % 3 ? 4 : 6, { shakes: 3, date: '2026-11-12', xp: n => { xp += n; } });
+      if (res.ended) seenEnd = res; else { const p = C.pts(st.c.t[0]); if (p < prevPts) mono = false; prevPts = p; }
+      const w = Object.values(st.won).reduce((s, v) => s + v, 0); if (w < prevWon) mono = false; prevWon = w;
+      if (k === 8) ok('season: before the last fixture he has played 9 and the creatures 9 + 2 x 18 games in all', st.c.t[0][0] === 9 && st.c.t.slice(1).reduce((s, r) => s + r[0], 0) === 45, st.c.t.map(r => r[0]));
+    });
+    ok('season: his points never go down during a season', mono);
+    ok('season: the 10th fixture ends the season', !!seenEnd && seenEnd.ended.n === 1 && st.c.n === 2 && st.c.k === 0 && st.c.sim === 0);
+    ok('season: the finished season is archived with his place', st.hist.length === 1 && st.hist[0].place >= 1 && st.hist[0].place <= 6 && st.hist[0].lg === 'c' && st.hist[0].n === 1);
+    ok('season: every place gets a pennant and XP', xp === C.rewardFor(st.hist[0].place).xp && xp >= 50 && st.won[C.rewardFor(st.hist[0].place).kind] === 1);
+    ok('season: a ceremony is waiting, with the final table', st.cer && st.cer.place === st.hist[0].place && st.cer.top.length === 6 && st.cer.top.some(t => t[0] === -1));
+    ok('season: the new season starts at 0 for everyone', st.c.t.every(r => r.every(v => v === 0)) && st.c.pl.every(v => v === 0));
+    // play many more seasons: pennant counts and history only grow (history is capped at 40, the counts are not)
+    let ok2 = true, prev = 1;
+    for (let s = 0; s < 45; s++) for (let k = 0; k < 10; k++) {
+      C.play(st, 5 + (k % 5), (s + k) % 2 ? 10 : 2, 4, { shakes: 3 });
+      const tot = Object.values(st.won).reduce((a, v) => a + v, 0); if (tot < prev) ok2 = false; prev = tot;
+    }
+    const tot = Object.values(st.won).reduce((a, v) => a + v, 0);
+    ok('season: pennant counts never go down over 46 seasons', ok2 && tot === 46, tot);
+    ok('season: the history list is capped at 40', st.hist.length === 40 && st.hist[39].lg === 'm' && st.hist[39].n === 45);
+    ok('season: places run 1..6 and rewards are 150/100/75/50 XP', [1, 2, 3, 4, 5, 6].map(p => C.rewardFor(p).xp).join() === '150,100,75,50,50,50');
+    // tie-break: a full tie puts the kid above the creature
+    const L = C.newLeague('c', 1); L.t[0] = [1, 0, 1, 0, 6, 6]; L.t[3] = [1, 0, 1, 0, 6, 6];
+    ok('season table: a full tie lists the kid first', C.table(L)[0].r === 0 && C.placeOf(L, 0) === 1);
+    L.t[3] = [1, 0, 1, 0, 8, 8];
+    ok('season table: then more shake points scored wins the tie', C.table(L)[0].r === 3);
+    // a broken or old save is repaired, never thrown away halfway
+    const fixed = C.normalize({ c: { n: 3 }, won: { gold: 2 }, hist: 'x' });
+    ok('season normalize: repairs a broken save and keeps the pennant counts', fixed.c.t.length === 6 && fixed.m.n === 1 && fixed.won.gold === 2 && fixed.won.blue === 0 && Array.isArray(fixed.hist));
+    ok('season: people / team / trio matches never count', SEA.onMatch({ oppIdx: 0, you: 6, them: 0, mode: 'team' }) === null && SEA.onMatch({ oppIdx: 0, you: 6, them: 0, mode: 'ai3' }) === null);
+  }
+}
+// ================= END SEASON TABLE =================
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

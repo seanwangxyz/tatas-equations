@@ -1,0 +1,48 @@
+/* ---------- Trophy Cabinet (js/cabinet.js, js/three/cabinet.js) ---------- */
+#cabinet{padding-bottom:max(10px,calc(var(--sab) + 6px))}
+#cabinet .hdr{margin-bottom:8px}
+.cab-count{background:rgba(255,255,255,.18);color:#fff;font-family:var(--display);font-size:20px;padding:6px 12px;border-radius:14px;white-space:nowrap}
+.cab-stage{position:relative;width:min(1180px,100%);border-radius:26px;overflow:hidden;box-shadow:0 10px 0 rgba(0,0,0,.15),var(--shadow);background:#1c2440;flex:0 0 auto}
+.cab-stage.three{height:calc(100vh - 150px);height:calc(100dvh - 150px - var(--sat) - var(--sab));min-height:340px}
+.cab-stage.flat{background:var(--paper);padding:14px 16px 18px}
+.cab-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.cab-canvas:active{cursor:grabbing}
+.cab-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:rgba(10,16,34,.62);color:#fff;font-size:15px;font-weight:800;padding:6px 14px;border-radius:14px;pointer-events:none;white-space:nowrap;z-index:2;transition:opacity .6s}
+.cab-hint.off{opacity:0}
+.cab-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ffe9b0;font-family:var(--display);font-size:24px;pointer-events:none}
+.cab-story{position:absolute;left:50%;bottom:14px;transform:translate(-50%,20px);width:min(560px,calc(100% - 24px));background:var(--paper);border-radius:20px;padding:10px 12px;display:flex;align-items:center;gap:12px;
+  box-shadow:0 6px 0 rgba(0,0,0,.12),0 12px 30px rgba(0,0,0,.4);border:3px solid #fff;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;z-index:3}
+.cab-story.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.cab-story.cab-won{border-color:var(--gold)}
+.cab-stage.flat .cab-story{position:fixed;bottom:max(14px,calc(var(--sab) + 10px))}
+.cab-sic{font-size:40px;flex:0 0 auto;width:52px;text-align:center}
+.cab-stx{flex:1;min-width:0}
+.cab-stx b{font-size:17px;display:block}
+.cab-stx p{margin:2px 0 0;font-size:15px;line-height:1.35;color:var(--ink2);font-weight:700}
+.cab-story .btn{flex:0 0 auto}
+.cab-foot{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+/* 2D shelves */
+.cab-h{display:flex;align-items:center;gap:8px;margin:14px 0 8px;font-size:22px}
+.cab-h:first-child{margin-top:0}
+.cab-h small{font-family:var(--font);font-size:14px;color:var(--mute);font-weight:800;margin-left:auto}
+.cab-shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;padding:10px;border-radius:16px;background:linear-gradient(#fff,#f1e6d2);box-shadow:inset 0 -8px 0 #c48a5c}
+.cab-it{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;padding:6px 4px;border-radius:14px}
+.cab-it:hover{background:rgba(255,255,255,.7)}
+.cab-it small{font-size:12px;font-weight:800;color:var(--ink2);line-height:1.2}
+.cab-pic{height:68px;display:flex;align-items:center;justify-content:center}
+.cab-emo{font-size:46px;line-height:1}
+.cab-it.t-medal .cab-pic{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff2a8,#ffc83d 70%,#b07800);box-shadow:inset 0 -4px 0 rgba(0,0,0,.18)}
+.cab-it.t-medal.tier-bronze .cab-pic{background:radial-gradient(circle at 40% 35%,#f0b27a,#b8692c 70%,#7a3f12)}
+.cab-it.t-medal.tier-silver .cab-pic{background:radial-gradient(circle at 40% 35%,#fff,#c3ccd8 70%,#7d8898)}
+.cab-it.t-medal.tier-special .cab-pic{background:radial-gradient(circle at 40% 35%,#f3e6ff,#b38cff 70%,#6a3fc4)}
+.cab-it.t-medal .cab-emo{font-size:32px}
+.cab-it.cab-empty .cab-pic{background:none;box-shadow:none;border:3px dashed rgba(22,32,60,.22);border-radius:16px;width:68px}
+.cab-it.cab-empty.t-medal .cab-pic{border-radius:50%}
+.cab-it.cab-empty .cab-pic>*{filter:grayscale(1) brightness(1.6);opacity:.28}
+.cab-it.cab-empty small{color:var(--mute)}
+@media (max-width:560px){
+  .cab-stage.three{height:calc(100dvh - 170px - var(--sat) - var(--sab))}
+  .cab-hint{font-size:13px;white-space:normal;text-align:center;width:max-content;max-width:86%}
+  .cab-shelf{grid-template-columns:repeat(3,1fr)}
+  .cab-count{font-size:16px;padding:4px 8px}
+}
