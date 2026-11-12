@@ -37,3 +37,10 @@
 | Roots (√) | 6 more | 18 |
 
 A star = one correct Solution or one correct Impossible! call. Settings → Parent corner has a switch for each operation (and "Back to automatic" for the ladder).
+
+## Round 5 (built, not yet published)
+- Blocky cheering crowd, look-around camera + photo, kid face + Tata player + kit designer + celebrations,
+  Puzzle from Tata (codes), Pip's after-match tip, endless puzzles, Three at the table (ai3) with crowns.
+- Still to do: seat both creatures in 3D in Three at the table (only the one who is "up" shows);
+  speech bubbles don't follow the creature after the view is swung; the kid looks sunk from side views;
+  check Tata's face across the table; listen to the crowd sounds; iPad test of two-finger look-around and photo saving.

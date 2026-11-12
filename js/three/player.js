@@ -493,8 +493,9 @@ if (T3 && T3.ctx) (function () {
     var rot = A.place.rot + cur.spin, fx = Math.sin(A.place.rot), fz = Math.cos(A.place.rot), fw = clamp(cur.fwd, 0, 0.75) * s;
     R.position.set(A.place.x + fx * fw, A.place.y + (cur.hop - dropL) * s, A.place.z + fz * fw); R.rotation.y = rot; R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
-    m.neck.rotation.set(cur.headPitch * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
-    m.head.rotation.set(cur.headPitch * 0.55, cur.headYaw * 0.6, cur.headRoll * 0.6);
+    var hp = cur.headPitch + (A === mate && mate.seat === 'far' ? -0.5 : 0);   // across the table he looks up at the camera, so his face shows
+    m.neck.rotation.set(hp * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
+    m.head.rotation.set(hp * 0.55, cur.headYaw * 0.6, cur.headRoll * 0.6);
     for (i = 0; i < 2; i++) {
       var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
       a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);

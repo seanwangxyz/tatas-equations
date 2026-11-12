@@ -88,15 +88,16 @@ function newShake(fixedCubes) {
   say('pip', 'Rolling the cubes…');
   if (T3.active()) {
     renderGame();
+    var g0 = G, c0 = G.cubes;   // (a pour that belongs to a match he already left must not touch the new one)
     T3.pour(G.cubes, function (res) {
-      if (!G) return;
+      if (!G || G !== g0 || G.cubes !== c0) return;
       if (!fixedCubes) res.forEach(function (s, i) { G.cubes[i].s = s; });
       G.rolling = false; renderGame();
       setTimeout(function () {
-        if (!G) return;
+        if (!G || G !== g0 || G.cubes !== c0) return;
         lockOps();
         if (G.cubes.some(function (c) { return c.locked; })) say('pip', '🔒 Operations you haven\'t unlocked yet go to Forbidden. Coming soon!');
-        G.phase = 'goal'; renderGame(); setTimeout(function () { if (G) startGoalPhase(); }, 700);
+        G.phase = 'goal'; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700);
       }, 500);
     });
   } else {
