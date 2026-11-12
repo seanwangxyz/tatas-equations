@@ -44,3 +44,11 @@ A star = one correct Solution or one correct Impossible! call. Settings → Pare
 - Still to do: seat both creatures in 3D in Three at the table (only the one who is "up" shows);
   speech bubbles don't follow the creature after the view is swung; the kid looks sunk from side views;
   check Tata's face across the table; listen to the crowd sounds; iPad test of two-finger look-around and photo saving.
+
+## Round 7 (built, waiting for Tata's OK to publish)
+- 3D title page with sound; shirt front + away/third kits, armband, boots, sleeves, gloves, number styles;
+  goal replay, commentator, fireworks; growing stadium (5 tiers) + weather/time of day; season table,
+  3D trophy cabinet, Spot the Fan; 14 more official variation cards (19 in all); three bonus dice (house rule).
+- Still to do: listen to all new sounds; real iPad test (weather redraws ~19/s, bigger crowd, d20 dice);
+  3D cubes do not turn for Upside-down/Sideways (the Goal banner shows it); online skips the new cards and dice;
+  bases 11/12 not built (Junior level).
