@@ -45,7 +45,7 @@
 // blink too). Everything else is a one-shot in response to an event, and it settles back to rest.
 import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
-import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT } from './creatures/kid.js';
+import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT, savedKit } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
 import { FLOOR_Y } from './environment.js';
 
@@ -94,7 +94,7 @@ if (T3 && T3.ctx) (function () {
         look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role === 'mate' };
     }
     // the kid: his saved kit, with any override on top
-    var sk = Object.assign({}, KIT_DEFAULT, s.kit || {}, over.kit && !over.kit.jersey ? over.kit : {});
+    var sk = Object.assign({}, savedKit(s), over.kit && !over.kit.jersey ? over.kit : {});   // the kit he wears (home / away / third)
     return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.name || ''),
       look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role === 'mate' };
   }

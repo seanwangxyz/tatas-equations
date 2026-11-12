@@ -1,6 +1,8 @@
 // "Tata": a grown-up on the same rig as the kid (kid.js buildHuman), in cartoon proportions: longer legs and body,
 // a smaller head for his height, a slim face with a longer chin, black hair longer on top and tousled, falling to both
-// sides with a few lighter brown strands, a hint of stubble and a warm smile. Default shirt: yellow, number 17.
+// sides with a few lighter brown strands, a hint of stubble and a warm smile. Default kit (TATA_KIT in kid.js): yellow
+// with navy trim, a navy V-neck band with a yellow stripe, navy number 17 (tall & thin), his own crest (the star roundel)
+// and maker's mark (the bolt). Every kit option (collar, sleeves, number style, boots, gloves, armband...) works on him too.
 import { buildHuman, KID, KITS, TATA_KIT, kitFromSave } from './kid.js';
 
 export const TATA = Object.assign({}, KID, {
@@ -18,7 +20,7 @@ TATA.FOOT = TATA.hipY - TATA.thigh - TATA.shin - 0.14;
 TATA.HIP_LOW = TATA.shortsY - TATA.shortsH / 2;
 
 // Tata: warm light skin, black hair with a few lighter brown strands, dark almond eyes that crinkle a little with his
-// smile, light stubble and a faint moustache, a gentle closed-mouth smile, a V-neck shirt
+// smile, light stubble and a faint moustache, a gentle closed-mouth smile (vneck: the collar used when a kit has none)
 export const TATA_LOOK = { skin: '#e4b48e', hair: '#17130f', streaks: '#7a5536', hairStyle: 'tousled', eyes: '#2e1c10', brows: '#1b1511', cheeks: '#e59a8a', stubble: true, adult: true,
   eyeW: 1.12, eyeH: 0.92, tilt: 0.05, happy: 0.22, vneck: true };
 export const TATA_DEFAULT = { kit: TATA_KIT, name: 'Tata', number: '17' };

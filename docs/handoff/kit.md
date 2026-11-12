@@ -4,6 +4,74 @@ Files changed or added (all mine): `js/three/creatures/kid.js` (rewritten), `js/
 new calls), new `js/three/creatures/grownup.js`, new `js/kit.js`, new `css/kit.css`. Nothing else was touched.
 Everything below is for the lead to wire. All calls are guarded, so missing pieces never break anything.
 
+## Update 2: the shirt front, home / away / third kits, and gear
+
+Files: `js/three/creatures/kid.js`, `js/three/creatures/grownup.js` (comments only), `js/kit.js`, `css/kit.css`, this
+file, and **two lines in `js/three/player.js`** (import `savedKit` from kid.js, and in `specOf` the kid's kit is now
+`Object.assign({}, savedKit(s), overrideKit)` instead of `Object.assign({}, KIT_DEFAULT, s.kit, overrideKit)`, so the 3D
+kid wears the kit chosen in `S.kitUse`). Nothing else touched.
+
+**The shirt** (reference: a red national-team shirt; we reproduce the look with our own marks only):
+- **V-neck in geometry:** a raised knitted band (ribbed texture: trim colour, a thin stripe and an inner edge in
+  `trim2`, default the shirt colour) follows the neckline round the back, where it stands up against the neck, and down
+  into a V on the chest. Inside the V the shirt surface is sunk 0.035 units (the opening) and painted skin with a soft
+  shadow under the band. `collar: 'round'` gives a crew neck band instead. Built on both bodies (`torsoProfile(D)`).
+- **Cuffs:** a knitted band (same texture) replaces the plain ring at the end of each short sleeve; with long sleeves the
+  band sits at the wrist.
+- **Texture:** 2048 x 1024, laid out by arc length down the torso profile (canvas y) and angle (canvas x), seam under his
+  right arm, mipmaps + anisotropy 8. Front: tall thin icy-blue number (`#cfe3e6`, `S.jersey`), tone-on-tone waves (about
+  30 rows), darker side panels under the arms. Back: name in an arc over the big number. A small four-pointed compass
+  star just under the back of the collar (outside, not inside: his neck fills the inside of the collar, and from the seat
+  camera the outside is what shows). Sleeves and shoulder balls: the same waves as rings.
+- **Badges as decals** (their own 512 / 256 px textures, laid on the surface so they stay sharp when the orbit camera is
+  ~2 units away): our crest on his left chest, our maker's mark on his right chest and on top of both shoulders.
+- **Shorts:** trim side stripe with a thin shirt-colour line, hem band, small number on his left leg. **Socks:** trim
+  band near the top. **Boots:** his colour, contrasting sole, six studs, laces, heel tab.
+- **Our own designs** (kid.js `CRESTS` / `MARKS`, never a real crest, maker's logo or wordmark):
+  crests `cube` Cube shield (kid's default: gold-edged shield, red chief with 3 stars, teal cube with "="), `roundel`
+  Star roundel (Tata's default: navy ring of gold stars, yellow centre, white cube with "x"), `star` Star stripes,
+  `ribbon` Plus ribbon, `dice` Dice sun, `diamond` Equals diamond. Maker's marks (one colour, the accent):
+  `cube` Speed cube (kid's default), `swift`, `fox`, `rocket`, `bolt` (Tata's default), `pip`.
+- **Number styles** (drawn as canvas strokes, no fonts): `thin` (default, the reference), `block`, `round`, `college`,
+  `outline`; front, back and shorts use the same style.
+
+**Save shape** (all new keys optional; old saves get the defaults, which give the reference look):
+
+```js
+S.kit = { shirt, pattern, trim, shorts, hair, hairStyle, celebrate,            // as before (this is the HOME kit)
+          collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'short', numStyle: 'thin',   // home kit
+          boots: '#1f2430', gloves: false, armband: false, armbandCol: '#ffd43b' }                      // his own, every kit
+S.kits = { away: {...}, third: {...} }   // only the kit keys he changed: shirt pattern trim trim2 shorts collar frontNum crest mark sleeves numStyle
+S.kitUse = 'home' | 'away' | 'third'     // which one he wears
+```
+
+Slot defaults: away = white waves, sea-green trim with a red stripe, midnight shorts, V-neck; third = dark teal waves,
+ice-blue trim, black shorts, round collar, long sleeves, block numbers. Hair, celebration, boots, gloves and the
+armband belong to him (kept in `S.kit`) and are the same in every kit. `Kit.current()` returns the worn kit;
+`savedKit(S)` (kid.js) does the same merge for 3D.
+
+**js/config.js defaults** (optional: `Kit.get()` fills all of this in for any save, and player.js falls back too):
+
+```js
+    kit: { shirt: '#c9342c', pattern: 'waves', trim: '#2f8f7c', shorts: '#1f6b5a', hair: '#3b2314', hairStyle: 'swept', celebrate: 'jump',
+           collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'short', numStyle: 'thin', boots: '#1f2430', gloves: false, armband: false, armbandCol: '#ffd43b' },
+    kits: { away: {}, third: {} }, kitUse: 'home',
+```
+
+(If `merge()` deep-merges `kit`, the new keys arrive by themselves; `kits` / `kitUse` are new top-level keys.)
+Online: send `savedKit`-style data (`Kit.current()`) as `remote.kit`; it is plain colours and ids.
+
+**Kit panel:** Home / Away / Third tabs (with "wearing" and a "Wear the away kit" button), then shirt, pattern, trim,
+shorts, collar, sleeves, number style, front number on/off, crest (picture tiles + None), maker's mark (+ None); under
+"In every kit": number, boots (8), captain's armband (Off + 6 colours, on his left upper arm with a drawn "C"),
+goalkeeper gloves on/off, hair, celebration. Live preview: front (3/4), back, and a chest close-up cropped from the
+front picture (512 px). `window.KitArt` (set by kid.js) gives the panel the crest / mark thumbnails; without 3D the
+panel falls back to a flat SVG front and back.
+
+**Gloves:** the hand turns into the glove (trim colour, a contrasting wrist strap) and grows 1.2x; the shared ArmRig
+poses are unchanged, so grab / carry still work (checked visually with a cube in an open and a closed hand; no
+player.js change was needed for this).
+
 ## What is new
 
 1. **A real face and head.** Cartoon likeness of the kid: straight, fairly thick dark-brown hair with a fringe swept
@@ -21,7 +89,7 @@ Everything below is for the lead to wire. All calls are guarded, so missing piec
 3. **My kit** panel (`js/kit.js`, `css/kit.css`): shirt colour (10), pattern (plain / waves / stripes / hoops / sash),
    trim (8), shorts (8), number 1-99, hair colour (5) and hair style (5: swept fringe, short, spiky, curly, long), and
    the win celebration. Live 3D preview (front and back) through the new `T3.playerPortrait`; a flat drawing when 3D
-   is off. Plain colours and patterns only: no crests, logos or real players.
+   is off. (Update 2 above adds our own crests and maker's marks; still no real crests, logos or players.)
 4. **Win celebrations** (original moves, 2.7-3 s, played once then back to rest):
    - **Rocket Jump** (from the start): crouch, big jump with one arm punched to the sky, land, one "yes!" arm pump.
    - **Spin & Point** (from the start): wind-up, one full turn on the spot with arms out, both arms up to the sky.
@@ -175,8 +243,8 @@ T3.playerState()                   // debugging (includes .mate)
   was (good: people should not jump around while the camera moves). If the camera helper wants them re-placed for a
   new view, calling `T3.ctx.refit()` or pushing a new extents pass is enough.
 - The face only shows when the camera sees his front; from the usual camera you still see his back (name + number).
-- Kit patterns are drawn on his shirt texture (`kidJerseyTexture`); the default red wave kit is byte-for-byte the
-  old drawing. A very light shirt (white) switches the name and number to dark ink.
+- Kit patterns are drawn on his shirt texture (`kidJerseyTexture`, redrawn in Update 2 at 2048 x 1024; no longer the
+  old drawing). A light shirt switches the numbers and marks to the trim colour or navy.
 - Hands are the shared mitten hands (`ArmRig`). The celebrations avoid closed fists with a lone raised digit (it can
   read badly from some angles): fists are half-open, robot hands point forward.
 - README file map rows, if wanted:
