@@ -8,7 +8,9 @@
 //   Social.onEmote(id)                 the creature answers after a short beat
 //   Social.reactionFor(id, opp?)       { line, mood }  mood: nod|laugh|gasp|shrug|wave|clap|gloat|sad
 //   Social.moodHook                    optional function(mood) the lead sets, e.g. maps to T3.creatureMood
-//   Social.bubble(who, text, opts?)    comic bubble over the 3D table ('opp' | 'kid')
+//   Social.bubble(who, text, opts?)    comic bubble over the 3D table ('opp' | 'kid'); follows the speaker's head on screen
+//                                      (opts.anchor: fn -> world point to follow instead; opts.x / opts.y: a fixed spot)
+//   Social.anchor(who, fn)             point the visible bubble at another head (fn -> world point | null)
 //   Social.clearBubbles()              remove bubbles now (call when leaving the game screen)
 //   Social.vsScreen(players, done)     2.2 s broadcast intro, skippable, done() fires exactly once
 //   Social.matchCard(summary?)         HTML for the end-of-match award card
@@ -78,21 +80,50 @@ var Social = (function () {
     var scr = qs('#game'); if (scr && !scr.classList.contains('on')) return null;
     return mat;
   }
+  // Where a bubble sits. Flat fallback (and whenever the speaker's head cannot be found): the creature's bubble at the
+  // top centre of the picture, the kid's at the bottom centre, as before. In 3D the bubble follows the speaker's head
+  // on screen (T3.anchor / T3.project): the creature's hangs just under its head with the tail pointing up at it, the
+  // kid's sits just over his head, tail down. It stays inside the picture; when the head is off the picture or behind
+  // the camera (after the player swung or zoomed the view) the bubble stays readable at its usual spot without a tail.
+  // GAP: distance from the head in world units (the same as the old fixed spot from the seat), clamped in pixels.
+  var GAP = { opp: [2.2, 28, 110], kid: [0.43, 8, 40] };
+  function headAt(rec) {
+    if (!rec.anchor || typeof T3 === 'undefined' || !T3.project) return null;
+    var a = null; try { a = rec.anchor(); } catch (e) { a = null; }
+    var p = a ? T3.project(a) : null;
+    if (!p) return null;            // nobody to point at (no kid shown, creature gone): the usual spot, tail as before
+    if (!p.visible) return { off: true };
+    return p;
+  }
   function place(rec) {
     var mat = qs('#gMat'); if (!mat || !rec.el.isConnected) return;
     var r = mat.getBoundingClientRect(), el = rec.el, o = rec.opts || {};
-    el.style.left = '0px'; el.style.maxWidth = Math.min(300, Math.max(140, r.width - 24)) + 'px';
-    var w = el.offsetWidth, cx = o.x != null ? o.x : r.left + r.width / 2;
-    var left = Math.max(8, Math.min(innerWidth - w - 8, cx - w / 2));
+    if (!rec.w || rec.mw !== r.width) {
+      rec.mw = r.width; el.style.left = '0px'; el.style.maxWidth = Math.min(300, Math.max(140, r.width - 24)) + 'px';
+      rec.w = el.offsetWidth; rec.h = el.offsetHeight;
+    }
+    var w = rec.w, h = rec.h, p = o.x == null && o.y == null ? headAt(rec) : null, off = !!(p && p.off);
+    if (off) p = null;
+    var cx = o.x != null ? o.x : p ? p.x : r.left + r.width / 2, top = null, bottom = null;
+    if (p) {
+      var g = GAP[rec.who === 'opp' ? 'opp' : 'kid'], gap = Math.max(g[1], Math.min(g[2], g[0] * p.ppu));
+      if (rec.who === 'opp') top = Math.max(r.top + 6, Math.min(r.bottom - h - 6, p.y + gap));
+      else bottom = Math.max(innerHeight - r.bottom + 6, Math.min(innerHeight - r.top - h - 6, innerHeight - (p.y - gap)));
+    } else if (rec.who === 'opp') top = o.y != null ? o.y : r.top + Math.max(12, r.height * 0.2);
+    else bottom = innerHeight - r.bottom + Math.max(12, r.height * 0.07);
+    var lo = rec.anchor ? Math.max(8, r.left + 6) : 8, hi = rec.anchor ? Math.min(innerWidth, r.right - 6) : innerWidth - 8;
+    var left = Math.max(lo, Math.min(hi - w, cx - w / 2));
     el.style.left = left + 'px';
-    // tail follows the anchor even when the bubble is pushed sideways at the edges
+    // tail follows the anchor even when the bubble is pushed sideways at the edges; no tail when the head is not on screen
     el.style.setProperty('--tail', Math.max(18, Math.min(w - 18, cx - left)) + 'px');
-    if (rec.who === 'opp') { el.style.top = (o.y != null ? o.y : r.top + Math.max(12, r.height * 0.2)) + 'px'; el.style.bottom = 'auto'; }
-    else { el.style.bottom = (innerHeight - r.bottom + Math.max(12, r.height * 0.07)) + 'px'; el.style.top = 'auto'; }
+    el.classList.toggle('notail', off);
+    if (top != null) { el.style.top = top + 'px'; el.style.bottom = 'auto'; }
+    else { el.style.bottom = bottom + 'px'; el.style.top = 'auto'; }
   }
   function drop(who, fast) {
     var rec = bubbles[who]; if (!rec) return;
     bubbles[who] = null; clearTimeout(rec.t);
+    if (rec.off) { rec.off(); rec.off = null; }
     if (fast || reduce()) { rec.el.remove(); return; }
     rec.el.classList.add('out'); setTimeout(function () { rec.el.remove(); }, 260);
   }
@@ -109,11 +140,24 @@ var Social = (function () {
     document.body.appendChild(el);
     var ms = Math.max(2200, Math.min(6000, 1500 + String(text).length * 60));
     var rec = { el: el, who: who, opts: opts, t: setTimeout(function () { drop(who); }, opts.ms || ms) };
+    // follow the speaker's head: the anchor is taken now, so it stays on this creature even if another one takes over
+    // later (opts.anchor: a function returning a world point, to point at someone else; Social.anchor(who, fn) switches it)
+    if (typeof T3 !== 'undefined' && T3.project && T3.onView) {
+      rec.anchor = typeof opts.anchor === 'function' ? opts.anchor : (T3.anchor ? T3.anchor(who) : null);
+      if (rec.anchor) rec.off = T3.onView(function () { if (bubbles[who] === rec) place(rec); });
+    }
     bubbles[who] = rec; place(rec);
     return el;
   }
+  // point the visible bubble of `who` at another head (fn returns a world point, or null when it is not on screen)
+  function anchor(who, fn) {
+    var rec = bubbles[who === 'opp' || who === 'creature' ? 'opp' : 'kid']; if (!rec) return false;
+    rec.anchor = typeof fn === 'function' ? fn : null;
+    if (rec.anchor && !rec.off && typeof T3 !== 'undefined' && T3.onView) rec.off = T3.onView(function () { if (bubbles[rec.who] === rec) place(rec); });
+    place(rec); return true;
+  }
   function clearBubbles() { drop('opp', true); drop('kid', true); }
-  window.addEventListener('resize', function () { if (bubbles.opp) place(bubbles.opp); if (bubbles.kid) place(bubbles.kid); });
+  window.addEventListener('resize', function () { [bubbles.opp, bubbles.kid].forEach(function (b) { if (b) { b.w = 0; place(b); } }); });
 
   // ---------------------------------------------------------------- 3. VS screen
   var vsActive = null;
@@ -205,7 +249,7 @@ var Social = (function () {
     return '<div class="' + cls + '"><div class="potm-badge">' + E(head) + '</div>' + body + '</div>';
   }
 
-  var api = { emotes: EMOTES, emoteBar: emoteBar, emote: emote, onEmote: onEmote, reactionFor: reactionFor, moodHook: moodHook, bubble: bubble, clearBubbles: clearBubbles, vsScreen: vsScreen, matchCard: matchCard };
+  var api = { emotes: EMOTES, emoteBar: emoteBar, emote: emote, onEmote: onEmote, reactionFor: reactionFor, moodHook: moodHook, bubble: bubble, anchor: anchor, clearBubbles: clearBubbles, vsScreen: vsScreen, matchCard: matchCard };
   return api;
 })();
 
