@@ -1,0 +1,36 @@
+/* My kit panel (js/kit.js) */
+.modal.kit-modal{width:min(820px,98vw)}
+.kit{display:flex;gap:18px;align-items:flex-start}
+.kit-pv{flex:0 0 auto;display:flex;gap:6px;justify-content:center;position:sticky;top:0;background:linear-gradient(#cfe8ff,#eaf6ff);border-radius:22px;padding:10px;border:3px solid #fff;box-shadow:inset 0 -4px 0 rgba(0,0,0,.06)}
+.kit-pv .kit-flat{width:150px;height:auto;display:block}
+.kit-shot{position:relative;width:150px;height:188px}
+.kit-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .25s ease}
+.kit-shot .kit-flat{position:absolute;inset:14px;width:calc(100% - 28px);transition:opacity .25s ease}
+.kit-shot.ready img{opacity:1}
+.kit-shot.ready .kit-flat{opacity:0}
+.kit-opts{flex:1 1 auto;min-width:0}
+.kit-opts h3{font-size:17px;color:var(--ink2);margin:10px 0 6px}
+.kit-opts h3:first-child{margin-top:0}
+.kit-sw{display:flex;flex-wrap:wrap;gap:8px}
+.kit-dot{width:38px;height:38px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(0,0,0,.12);cursor:pointer;padding:0}
+.kit-dot.on{box-shadow:0 0 0 3px var(--sky),0 3px 0 rgba(0,0,0,.12);transform:scale(1.08)}
+.kit-chip{font:800 15px var(--font);color:var(--ink);background:#fff;border:3px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.kit-chip.on{border-color:var(--sky);background:#e7f1ff}
+.kit-dot:focus-visible,.kit-chip:focus-visible,.kit-ce:focus-visible{outline:4px solid var(--sky);outline-offset:2px}
+.kit-num{display:flex;align-items:center;gap:8px}
+.kit-num input{width:76px;font:900 24px var(--font);text-align:center;border:3px solid var(--line);border-radius:14px;padding:4px 6px;color:var(--ink)}
+.kit-cel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.kit-ce{display:flex;flex-direction:column;align-items:center;gap:2px;background:#fff;border:3px solid var(--line);border-radius:18px;padding:8px 6px;cursor:pointer;font:800 15px var(--font);color:var(--ink);text-align:center}
+.kit-ce b{font-size:16px}
+.kit-ce small{font-weight:700;color:var(--mute);font-size:13px;line-height:1.2}
+.kit-ce .kit-ci{font-size:28px;line-height:1.1}
+.kit-ce.on{border-color:var(--good);background:#e8fbf1}
+.kit-ce.lock{opacity:.6;filter:grayscale(.7)}
+.kit-ce .ico{width:13px;height:13px;vertical-align:-2px}
+.kit-note{font-size:14px;color:var(--mute);margin:8px 0 0;text-align:center}
+@media (max-width:620px){
+  .kit{flex-direction:column;align-items:stretch}
+  .kit-pv{position:static}
+  .kit-shot{width:120px;height:150px}
+  .kit-pv .kit-flat{width:120px}
+}

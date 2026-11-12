@@ -1,92 +1,145 @@
-// The kid's own player at the near side of the table, seen from behind (name + number on his back).
-// Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until T3.playerShow(true).
+// The kid's own player at the near side of the table (name + number on his back), plus an optional second human
+// (Tata) at another seat. Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until
+// T3.playerShow(true) / T3.mate({...}).
 //
 //   T3.playerShow(on)            show / hide him (hidden by default). Returns whether he is actually on screen.
 //   T3.playerMood(name, opts)    one-shot reactions that play once and settle; null eases back to rest.
-//                                'think' holds (hand on chin) until the next mood or null (or 60 s).
-//                                'now' takes {kind:'impossible'} for the crossed-arms version.
+//                                'think' holds (hand on head) until the next mood or null (or 60 s).
+//                                'now' takes {kind:'impossible'} for the arms-out version.
 //                                'reach' takes {cube:id} or {x, z} (world) and gestures toward that spot.
+//                                Each mood also changes his face a little (eyes, brows, mouth), once.
+//   T3.playerCelebrate(name)     one of T3.playerCelebrations() ('jump', 'spin', 'robot', 'slide'), 2-3 s, once.
+//                                No name: the one saved in S.kit.celebrate. Returns true if it plays.
 //   T3.playerMoods()             list of mood names
-//   T3.playerRefresh()           re-read S.jersey, S.name and the opponent's kit colour
-//   T3.playerState()             debugging: {shown, fits, visible, mood, scale}
+//   T3.playerSet(o | null)       who stands at his spot and how he looks: { who: 'kid' | 'tata', kit, name, number }.
+//                                Missing fields come from the save (S.kit, S.name, S.jersey) for the kid, or Tata's
+//                                defaults (yellow, 17). kit: the saved shape { shirt, pattern, trim, shorts, hair,
+//                                hairStyle } or a full kit object. null: back to the save.
+//   T3.playerRefresh()           re-read S.kit, S.jersey and S.name (call after the kit panel or a name change)
+//   T3.mate(o | null)            a second human: { who: 'tata' | 'kid', seat: 'left' | 'far', kit, name, number }.
+//                                'left' = beside the left end of the table, on the kid's side (Team-up).
+//                                'far'  = across the table where a creature would stand (2 Players / Online, no
+//                                creature; hidden while a creature is at the table). null removes him.
+//   T3.mateMood(name, opts)      the same moods (and celebrations) for the second human
+//   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' | 'back' |
+//                                'face' | { yaw, close } (any angle; close = head and shoulders).
+//                                For the kit designer's live preview. Drawn offscreen with the main renderer.
+//   T3.playerState()             debugging: {shown, fits, visible, mood, scale, ...}
 //
 // Placement: he stands just off the near-left corner of the table, low at the bottom edge. Every time the camera
 // is fitted (resize, layout change) a small search finds the biggest spot where no part of him overlaps the table
-// (mat, cubes, labels). If nothing fits (tall phones), he stays hidden.
-// Style rule: at rest he only breathes, slowly. Everything else is a one-shot in response to an event.
+// (mat, cubes, labels). If nothing fits (tall phones), he stays hidden. The 'left' mate gets the same kind of search.
+// Style rule (Tata's): at rest a person is completely still, apart from an occasional single blink (the creatures
+// blink too). Everything else is a one-shot in response to an event, and it settles back to rest.
 import * as THREE from 'three';
-import { clamp, lerp, sstep, easeIO, easeOut, TEAM } from './creatures/common.js';
-import { buildKid, KITS, KID } from './creatures/kid.js';
+import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
+import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT } from './creatures/kid.js';
+import { TATA, TATA_LOOK } from './creatures/grownup.js';
 import { FLOOR_Y } from './environment.js';
 
 var T3 = window.T3;
 var NAMES = ['wave', 'cheer', 'clap', 'think', 'aw', 'now', 'reach', 'nod'];
+var CELEBS = ['jump', 'spin', 'robot', 'slide'];
 if (T3 && !T3.ctx) {
   // no 3D: keep the API callable
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
+  T3.playerSet = function () {}; T3.mate = function () { return false; }; T3.mateMood = function () {}; T3.playerCelebrate = function () { return false; };
+  T3.playerCelebrations = function () { return CELEBS.slice(); }; T3.playerPortrait = function () { return Promise.resolve(null); };
 }
 if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
-  var kid = null, shown = false, fits = false, needPlace = true, placedOnce = false, kitKey = '', oppKey = null;
-  var place = { x: 0, y: -0.2, z: 0, s: 1, yaw: 0 };
-  var lastNow = 0, lastDirty = 0, settled = true;
-  // pose: targets written by the gesture each frame, then smoothed into `cur`
-  var P = { lean: 0, twist: 0, hop: 0, headYaw: 0, headPitch: 0, headRoll: 0, shrug: 0, breath: 1 };
-  var cur = { lean: 0, twist: 0, hop: 0, headYaw: 0, headPitch: 0, headRoll: 0, shrug: 0 };
-  var REST = [new THREE.Vector3(-1.0, -0.28, 0.12), new THREE.Vector3(1.0, -0.28, 0.12)];
-  var arm = [mkArm(0), mkArm(1)];
-  function mkArm(i) { return { des: REST[i].clone(), goal: REST[i].clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }
-  var g = null;           // current gesture {n, t0, dur, opts, fade}
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
+  var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd'];
+  var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
+  function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
-  // ---------- kit ----------
-  function oppJersey() {
-    try {
-      if (typeof G === 'undefined' || !G || !G.players) return null;
-      for (var i = 0; i < G.players.length; i++) { var a = G.players[i].ai; if (a) return { key: a.kind + ':' + (a.pack || ''), col: (TEAM[a.kind] || TEAM.pip).jersey }; }
-    } catch (e) {}
-    return null;
+  // ---------- one person (the kid at his spot, or the mate) ----------
+  function makeAvatar(role) {
+    return { role: role, model: null, key: '', who: '', dims: KID, shown: false, fits: false, placedOnce: false,
+      place: { x: 0, y: -0.2, z: 0, s: 1, rot: Math.PI, hd: 0, drop: 0 }, P: zero(POSE), cur: zero(POSE), F: zero(FACE), Fc: zero(FACE, { lid: 0.95 }),
+      arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }),
+      g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null };
   }
-  function rgb(h) { var c = new THREE.Color(h); return [c.r * 255, c.g * 255, c.b * 255]; }
-  function dist(a, b) { var x = rgb(a), y = rgb(b), dr = x[0] - y[0], dg = x[1] - y[1], db = x[2] - y[2]; return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db) / 3; }
-  function pickKit(op) {
-    var order = ['red', 'purple', 'teal'];
-    return 'red'; // he always wears his home kit now (Tata's request), even against another red shirt
-    if (!op) return 'red';
-    for (var i = 0; i < order.length; i++) if (dist(KITS[order[i]].jersey, op.col) > 75) return order[i];
-    return 'teal';
+  var me = makeAvatar('main'), mate = makeAvatar('mate');
+  var needPlace = true, lastLayout = null;
+
+  // ---------- who and which kit ----------
+  function save() { return (typeof S !== 'undefined' && S) ? S : {}; }
+  function normKit(k, base) {
+    if (k && k.jersey) return k;                                   // already a full kit object
+    return kitFromSave(Object.assign({}, base, k || {}));
   }
-  function info() {
-    var s = (typeof S !== 'undefined' && S) ? S : {};
-    return { num: String(s.jersey || '7'), name: String(s.name || '') };
+  function specOf(over, role) {
+    over = over || {};
+    var s = save(), who = over.who === 'tata' ? 'tata' : 'kid';
+    if (who === 'tata') {
+      var tk = Object.assign({}, TATA_KIT, over.kit && !over.kit.jersey ? over.kit : {});
+      return { who: 'tata', dims: TATA, kit: over.kit && over.kit.jersey ? over.kit : normKit(tk, TATA_KIT), num: String(over.number || '17'), name: over.name != null ? String(over.name) : 'Tata',
+        look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role === 'mate' };
+    }
+    // the kid: his saved kit, with any override on top
+    var sk = Object.assign({}, KIT_DEFAULT, s.kit || {}, over.kit && !over.kit.jersey ? over.kit : {});
+    return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.name || ''),
+      look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role === 'mate' };
   }
-  function refresh() {
-    var op = oppJersey(); oppKey = op ? op.key : '';
-    var k = pickKit(op), inf = info(), key = k + '|' + inf.num + '|' + inf.name;
-    if (!kid) { kid = buildKid(KITS[k], inf.num, inf.name); kid.root.visible = false; ctx.scene.add(kid.root); }
-    else if (key !== kitKey) kid.setKit(KITS[k], inf.num, inf.name);
-    kitKey = key; ctx.dirty();
+  function specKey(sp) { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
+  function disposeModel(m) {
+    if (!m) return; if (m.root.parent) m.root.parent.remove(m.root);
+    m.root.traverse(function (o) { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (x) { if (x.map) x.map.dispose(); x.dispose(); }); });
+  }
+  // build or update the model for an avatar; returns true when the body itself changed (placement must be redone)
+  function refreshAvatar(A, parent) {
+    var sp = specOf(A.over, A.role), key = specKey(sp);
+    if (A.model && key === A.key) return false;
+    var rebuilt = false;
+    if (!A.model || sp.who !== A.who) {
+      disposeModel(A.model);
+      A.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front });
+      A.model.root.visible = false; (parent || ctx.scene).add(A.model.root);
+      A.who = sp.who; A.dims = sp.dims; makeSamples(A); rebuilt = true;
+      for (var i = 0; i < 2; i++) { A.arm[i].rest.set(REST0[i][0], REST0[i][1], REST0[i][2]); mapArm(A, A.arm[i].rest); A.arm[i].des.copy(A.arm[i].rest); A.arm[i].goal.copy(A.arm[i].rest); }
+    } else {
+      A.model.setKit(sp.kit, sp.num, sp.name, sp.front);
+      A.model.setHair(sp.look.hair, sp.look.hairStyle);
+    }
+    A.key = key; A.settled = false; ctx.dirty();
+    return rebuilt;
+  }
+
+  // gestures are written for the kid's proportions; a grown-up's arm targets are moved to his shoulders and reach
+  function mapArm(A, v) {
+    var D = A.dims; if (D === KID) return v;
+    var k = (D.L1 + D.L2) / (KID.L1 + KID.L2);
+    v.x = v.x + Math.sign(v.x) * (D.SH_X - KID.SH_X); v.y = D.SH_Y + (v.y - KID.SH_Y) * k; v.z *= k; return v;
   }
 
   // ---------- placement ----------
-  // sample points of his silhouette (local units, built facing +z), including raised hands for the cheer
-  var SAMPLES = [[0, KID.TOP, 0], [-1.05, 3.55, 0.35], [1.05, 3.55, 0.35], [-1.45, 3.25, 0.35], [-1.3, 3.05, 1.2], [-2.05, 1.75, 0.2], [-0.4, 2.3, 1.25], [0, 2.6, 0.8]];
+  // sample points of his silhouette (kid units, built facing +z), including raised hands for the cheer
+  var KID_SAMPLES = [[0, KID.TOP, 0], [-1.05, 3.55, 0.35], [1.05, 3.55, 0.35], [-1.45, 3.25, 0.35], [-1.3, 3.05, 1.2], [-2.05, 1.75, 0.2], [-0.4, 2.3, 1.25], [0, 2.6, 0.8]];
   (function () {
     // outline every 0.25 units from the boots to the top of the head
     for (var h = KID.FOOT; h <= KID.TOP; h += 0.25) {
       var w = h < -0.6 ? 0.6 : h < 0.9 ? 0.92 : h < 1.75 ? 1.08 : h < 1.95 ? 0.4 : 0.84;
-      SAMPLES.push([-w, h, 0], [w, h, 0], [0, h, -0.6], [0, h, 0.6]);
+      KID_SAMPLES.push([-w, h, 0], [w, h, 0], [0, h, -0.6], [0, h, 0.6]);
     }
   })();
-  var HEAD = [[0, KID.TOP, 0], [-0.82, 2.6, 0], [0.82, 2.6, 0], [0, 1.85, 0]];
+  function makeSamples(A) {
+    var D = A.dims, ky = (D.TOP - D.FOOT) / (KID.TOP - KID.FOOT), kx = D.SH_X / KID.SH_X;
+    A.samples = KID_SAMPLES.map(function (c) { return [c[0] * kx, D.FOOT + (c[1] - KID.FOOT) * ky, c[2] * ky]; });
+    var hc = D.NECK_Y + D.HEAD_UP, hw = D.HEAD_R * 1.1 * (D.head ? D.head.sx : 1);
+    A.head = [[0, D.TOP, 0], [-hw, hc, 0], [hw, hc, 0], [0, hc - D.HEAD_R * 1.02 * (D.head ? D.head.sy : 1), 0]];
+  }
+  makeSamples(me); makeSamples(mate);
   var quad = [[0, 0], [0, 0], [0, 0], [0, 0]], aspect = 1;
   var pcam = new THREE.PerspectiveCamera();
   function proj(x, y, z, out) { v3.set(x, y, z).project(pcam); out[0] = v3.x; out[1] = v3.y; out[2] = v3.z; return out; }
   var pp = [0, 0, 0];
-  function worldOf(c, px, pz, s, yaw, out) {
-    // local (facing +z) -> world: turned by PI + yaw so his back faces the camera
-    var a = Math.PI + yaw, ca = Math.cos(a), sa = Math.sin(a), x = c[0] * s, z = c[2] * s;
-    out[0] = px + x * ca + z * sa; out[1] = FLOOR_Y - drop + (c[1] - KID.FOOT) * s; out[2] = pz - x * sa + z * ca; return out;
+  var drop = 0;
+  function worldOf(A, c, px, pz, s, rot, out) {
+    // local (facing +z) -> world, turned by rot (PI + yaw puts the kid's back to the camera)
+    var ca = Math.cos(rot), sa = Math.sin(rot), x = c[0] * s, z = c[2] * s;
+    out[0] = px + x * ca + z * sa; out[1] = FLOOR_Y - drop + (c[1] - A.dims.FOOT) * s; out[2] = pz - x * sa + z * ca; return out;
   }
   function insideQuad(x, y, m) {
     // convex quad (any winding): inside if on the same side of every edge, with a margin m in aspect-corrected NDC
@@ -98,26 +151,28 @@ if (T3 && T3.ctx) (function () {
     }
     return allPos || allNeg;
   }
-  var wp = [0, 0, 0], why = { head: 0, table: 0, sunk: 0 }, drop = 0;
+  var wp = [0, 0, 0], why = { head: 0, table: 0, sunk: 0, near: 0 };
   var tbl = { ow: 10, od: 7 };
-  function fitsAt(px, pz, s, yaw) {
+  function fitsAt(A, px, pz, s, rot) {
+    var D = A.dims;
     // never inside the table itself
     var r = 1.0 * s; if (Math.abs(px) < tbl.ow + r && Math.abs(pz) < tbl.od + r) { why.table++; return 0; }
     // head fully on screen, not cut by the bottom edge, and not hidden behind the table
-    for (var i = 0; i < HEAD.length; i++) {
-      worldOf(HEAD[i], px, pz, s, yaw, wp); proj(wp[0], wp[1], wp[2], pp);
+    for (var i = 0; i < A.head.length; i++) {
+      worldOf(A, A.head[i], px, pz, s, rot, wp); proj(wp[0], wp[1], wp[2], pp);
       if (pp[2] > 1 || pp[2] < -1 || pp[0] < -0.97 || pp[0] > 0.97 || pp[1] > 0.93 || pp[1] < -0.95) { why.head++; return 0; }
       if (wp[1] < 0.5 && insideQuad(pp[0], pp[1], 0.0)) { why.head++; return 0; }
     }
     // most of his outer shoulder on screen too (an over-the-shoulder crop is fine, half a kid is not)
     for (var q = 0; q < 2; q++) {
-      worldOf([q ? 0.75 : -0.75, KID.SH_Y, 0], px, pz, s, yaw, wp); proj(wp[0], wp[1], wp[2], pp);
+      worldOf(A, [(q ? 1 : -1) * D.SH_X * 0.94, D.SH_Y, 0], px, pz, s, rot, wp); proj(wp[0], wp[1], wp[2], pp);
       if (pp[0] < -1.0 || pp[0] > 1.0) { why.head++; return 0; }
     }
     // nothing over the table. A point below the table top that lands inside the table's outline on screen is
     // hidden BY the table (he stands beside it), so only points above the rim count.
-    for (var k = 0; k < SAMPLES.length; k++) {
-      worldOf(SAMPLES[k], px, pz, s, yaw, wp); if (wp[1] < 0.5) continue;
+    var SM = A.samples;
+    for (var k = 0; k < SM.length; k++) {
+      worldOf(A, SM[k], px, pz, s, rot, wp); if (wp[1] < 0.5) continue;
       proj(wp[0], wp[1], wp[2], pp);
       if (pp[2] < 1 && insideQuad(pp[0], pp[1], 0.035)) { why.table++; return 0; }
     }
@@ -125,20 +180,19 @@ if (T3 && T3.ctx) (function () {
     // below the bottom edge of the screen or behind the table
     if (drop > 0) {
       for (var f = 0; f < 2; f++) {
-        var hy = KID.FOOT + drop / s; if (hy > KID.TOP) { why.sunk++; return 0; }
-        worldOf([f ? 0.92 : -0.92, hy, 0], px, pz, s, yaw, wp); proj(wp[0], wp[1], wp[2], pp);
+        var hy = D.FOOT + drop / s; if (hy > D.TOP) { why.sunk++; return 0; }
+        worldOf(A, [(f ? 1 : -1) * 0.92 * D.torsoX, hy, 0], px, pz, s, rot, wp); proj(wp[0], wp[1], wp[2], pp);
         if (pp[1] > -1.02 && !insideQuad(pp[0], pp[1], -0.02)) { why.sunk++; return 0; }
       }
     }
     // size on screen: head height in NDC (2 = full canvas height)
-    worldOf(HEAD[0], px, pz, s, yaw, wp); proj(wp[0], wp[1], wp[2], pp); var top = pp[1];
-    worldOf(HEAD[3], px, pz, s, yaw, wp); proj(wp[0], wp[1], wp[2], pp);
+    worldOf(A, A.head[0], px, pz, s, rot, wp); proj(wp[0], wp[1], wp[2], pp); var top = pp[1];
+    worldOf(A, A.head[3], px, pz, s, rot, wp); proj(wp[0], wp[1], wp[2], pp);
     return top - pp[1];
   }
   function wrap(a) { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; }
-  function computePlace() {
-    needPlace = false;
-    var L = ctx.layout; if (!L) { fits = false; return; }
+  function setupProj() {
+    var L = ctx.layout; if (!L) return null;
     // project with the fitted view: ctx.camBase {pos, look} if table.js offers it, else the camera as it is now
     var cam = ctx.camera; cam.updateMatrixWorld();
     pcam.fov = cam.fov; pcam.aspect = cam.aspect; pcam.near = cam.near; pcam.far = cam.far; pcam.updateProjectionMatrix();
@@ -147,12 +201,16 @@ if (T3 && T3.ctx) (function () {
     pcam.updateMatrixWorld(); aspect = cam.aspect || 1;
     var ow = L.W / 2 + 0.55, od = L.D / 2 + 0.55; tbl.ow = ow; tbl.od = od;
     [[-ow, od], [ow, od], [ow, -od], [-ow, -od]].forEach(function (c, i) { proj(c[0], 0.6, c[1], pp); quad[i][0] = pp[0]; quad[i][1] = pp[1]; });
-    why.head = why.table = why.sunk = 0;
+    return L;
+  }
+  function placeMain() {
+    var A = me, L = ctx.layout, ow = tbl.ow, od = tbl.od;
+    why.head = why.table = why.sunk = why.near = 0;
     // big enough to read: his head at least ~30 CSS px tall (NDC height 2 = the whole canvas)
     var ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
     var best = null, bestScore = -1e9, CAP = 0.34, MIN = Math.max(0.06, 60 / ch);
     var ax = -ow - 1.4, az = od - 0.6;   // the spot he would like best: just off the near-left corner
-    var SIZES = [1.8, 1.6, 1.45, 1.3, 1.15, 1.0];
+    var SIZES = A.dims === KID ? [1.8, 1.6, 1.45, 1.3, 1.15, 1.0] : [1.5, 1.35, 1.2, 1.05, 0.9, 0.8];
     for (var si = 0; si < SIZES.length; si++) {
       var s = SIZES[si];
       for (var di = 0; di < 4; di++) {
@@ -162,167 +220,410 @@ if (T3 && T3.ctx) (function () {
             // mostly back-to-camera (so the name and number read), turned a little toward the middle of the table
             var away = wrap(Math.atan2(x - pcam.position.x, z - pcam.position.z) - Math.PI), toward = wrap(Math.atan2(-x, L.D * 0.1 - z) - Math.PI);
             var yaw = clamp(away * 0.65 + toward * 0.35, -0.6, 0.6);
-            var hd = fitsAt(x, z, s, yaw); if (hd < MIN) continue;
+            var hd = fitsAt(A, x, z, s, Math.PI + yaw); if (hd < MIN) continue;
             var dx = x - ax, dz = z - az;
             var sc = Math.min(hd, CAP) * 10 - Math.max(0, hd - CAP) * 4 - 0.04 * Math.sqrt(dx * dx + dz * dz) + s * 0.3 - drop * 0.03;
-            if (sc > bestScore) { bestScore = sc; best = { x: x, z: z, s: s, yaw: yaw, hd: hd, drop: drop }; }
+            if (sc > bestScore) { bestScore = sc; best = { x: x, z: z, s: s, rot: Math.PI + yaw, hd: hd, drop: drop }; }
           }
         }
       }
     }
-    fits = !!best; placedOnce = true;
-    if (best) { place.y = FLOOR_Y - best.drop - KID.FOOT * best.s; place.drop = best.drop; place.x = best.x; place.z = best.z; place.s = best.s; place.yaw = best.yaw; place.hd = best.hd; }
+    drop = 0;
+    A.fits = !!best; A.placedOnce = true;
+    if (best) setPlace(A, best);
+  }
+  function setPlace(A, b) {
+    A.place.y = FLOOR_Y - b.drop - A.dims.FOOT * b.s; A.place.drop = b.drop; A.place.x = b.x; A.place.z = b.z; A.place.s = b.s; A.place.rot = b.rot; A.place.hd = b.hd;
+  }
+  // Team-up: the grown-up stands beside the left end of the table, on the kid's side of the creature (which is
+  // always behind the far edge), at the same world scale as the kid (so a grown-up is taller), never on top of him.
+  function placeLeft() {
+    var A = mate, ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
+    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = me.fits ? me.place.s : 1.4, kr = me.fits ? me.place.s : 0;
+    drop = 0;
+    [1, 0.9, 0.8].forEach(function (f) {
+      var s = s0 * f;
+      for (var x = -ow - 0.8; x >= -ow - 7; x -= 0.5) {
+        for (var z = od - 0.5; z >= -od + 1.2; z -= 0.5) {
+          // keep clear of the kid (both bodies plus a gap)
+          if (me.fits) { var ddx = x - me.place.x, ddz = z - me.place.z; if (Math.sqrt(ddx * ddx + ddz * ddz) < 1.25 * (s + kr)) { why.near++; continue; } }
+          var rot = Math.atan2(-ow * 0.4 - x, -z * 0.3 - z);                      // turned toward the middle of the table
+          var hd = fitsAt(A, x, z, s, rot); if (hd < MIN) continue;
+          var dx = x - (-ow - 1.6), dz = z;
+          var sc = Math.min(hd, 0.3) * 10 + f * 2 - 0.08 * Math.sqrt(dx * dx + dz * dz);
+          if (sc > bestScore) { bestScore = sc; best = { x: x, z: z, s: s, rot: rot, hd: hd, drop: 0 }; }
+        }
+      }
+    });
+    A.fits = !!best; A.placedOnce = true;
+    if (best) setPlace(A, best);
+  }
+  // 2 Players / Online: across the table where a creature would stand, facing the camera, standing on the pitch
+  var FAR = { s: 1.35, front: 1.95 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
+  function creatureHere() { try { return !!(T3.creatureVisible && T3.creatureVisible()); } catch (e) { return false; } }
+  function placeFar() {
+    var A = mate, L = ctx.layout; if (!L) { A.fits = false; return; }
+    setPlace(A, { x: 0, z: -L.D / 2 - FAR.front, s: FAR.s, rot: 0, hd: 0, drop: 0 });
+    A.fits = !creatureHere(); A.placedOnce = true;
+  }
+  function computePlace() {
+    needPlace = false;
+    if (!setupProj()) { me.fits = false; mate.fits = false; return; }
+    placeMain();
+    if (mate.seat === 'far') placeFar(); else if (mate.seat === 'left') placeLeft();
     applyVis();
   }
-  function applyVis() { if (kid) { kid.root.visible = shown && fits; ctx.dirty(); ctx.startLoop(); } }
+  function applyVis() {
+    if (me.model) me.model.root.visible = me.shown && me.fits;
+    if (mate.model) mate.model.root.visible = mate.shown && mate.fits;
+    ctx.dirty(); ctx.startLoop();
+  }
 
   // ---------- gestures ----------
   function env(u, dur, att, rel) { if (u < 0 || u > dur) return 0; return sstep(u / att) * (1 - sstep((u - (dur - rel)) / rel)); }
   function win(u, a, b, r) { return sstep((u - a) / r) * (1 - sstep((u - b) / r)); }
-  function setArm(i, x, y, z, w, al, op) { if (!(w > 0)) return; v4.set(x, y, z); arm[i].des.lerp(v4, Math.min(1, w)); arm[i].dAl += (al - arm[i].dAl) * w; arm[i].dOp += (op - arm[i].dOp) * w; }
+  function ramp(u, a, b) { return sstep((u - a) / (b - a)); }
+  var tv = new THREE.Vector3();
+  function setArm(A, i, x, y, z, w, al, op, raw) {
+    if (!(w > 0)) return; tv.set(x, y, z); if (!raw) mapArm(A, tv);
+    var R = A.arm[i]; R.des.lerp(tv, Math.min(1, w)); R.dAl += (al - R.dAl) * w; R.dOp += (op - R.dOp) * w;
+  }
+  // add an expression, weighted (lid is a target, the rest are added)
+  function face(A, f, w) { if (!(w > 0)) return; for (var k in f) { if (k === 'lid') A.F.lid += (f.lid - A.F.lid) * Math.min(1, w); else A.F[k] += f[k] * w; } }
   // where a world point is, in his chest space
-  function toChest(wx, wy, wz, out) { kid.chest.updateMatrixWorld(); inv.copy(kid.chest.matrixWorld).invert(); return out.set(wx, wy, wz).applyMatrix4(inv); }
+  function toChest(A, wx, wy, wz, out) { A.model.chest.updateMatrixWorld(); inv.copy(A.model.chest.matrixWorld).invert(); return out.set(wx, wy, wz).applyMatrix4(inv); }
   var GEST = {
-    wave: { dur: 2.6, att: 0.35, rel: 0.6, fn: function (u, e) {
-      var w = win(u, 0.45, 2.0, 0.25), sw = Math.sin((u - 0.45) * TAU * 1.5) * w;
-      setArm(0, -1.2 + 0.28 * sw, 2.95, 0.4, e, 0.0, 1);
+    wave: { dur: 2.6, att: 0.35, rel: 0.6, fn: function (A, u, e) {
+      var P = A.P, w = win(u, 0.45, 2.0, 0.25), sw = Math.sin((u - 0.45) * TAU * 1.5) * w;
+      setArm(A, 0, -1.2 + 0.28 * sw, 2.95, 0.4, e, 0.0, 1);
       P.headPitch += -0.12 * e; P.headRoll += 0.08 * sw * e; P.twist += 0.06 * e;
+      face(A, { big: 0.3, browUp: 0.45, squint: 0.15 }, e);
     } },
-    cheer: { dur: 2.6, att: 0.25, rel: 0.7, fn: function (u, e) {
-      var dip = sstep(u / 0.25) * (1 - sstep((u - 0.25) / 0.15)), up = Math.max(0, Math.sin(clamp((u - 0.32) / 0.55, 0, 1) * Math.PI));
+    cheer: { dur: 2.6, att: 0.25, rel: 0.7, fn: function (A, u, e) {
+      var P = A.P, dip = sstep(u / 0.25) * (1 - sstep((u - 0.25) / 0.15)), up = Math.max(0, Math.sin(clamp((u - 0.32) / 0.55, 0, 1) * Math.PI));
       var up2 = Math.max(0, Math.sin(clamp((u - 1.0) / 0.4, 0, 1) * Math.PI)) * 0.4;
       P.hop += (-0.18 * dip + 0.42 * up + 0.42 * up2) * e;
       var arms = sstep((u - 0.2) / 0.25);
-      setArm(0, -1.0, 3.25, 0.3, e * arms, 0.0, 1); setArm(1, 1.0, 3.25, 0.3, e * arms, 0.0, 1);
+      setArm(A, 0, -1.0, 3.25, 0.3, e * arms, 0.0, 1); setArm(A, 1, 1.0, 3.25, 0.3, e * arms, 0.0, 1);
       P.headPitch += -0.3 * e * arms; P.lean += -0.08 * e * arms;
+      face(A, { big: 1, squint: 0.45, browUp: 0.7 }, e);
     } },
-    clap: { dur: 2.3, att: 0.3, rel: 0.55, fn: function (u, e) {
-      var w = win(u, 0.35, 1.75, 0.12), sep = 1 - w * (0.5 - 0.5 * Math.cos((u - 0.35) * TAU * 2.4));
+    clap: { dur: 2.3, att: 0.3, rel: 0.55, fn: function (A, u, e) {
+      var P = A.P, w = win(u, 0.35, 1.75, 0.12), sep = 1 - w * (0.5 - 0.5 * Math.cos((u - 0.35) * TAU * 2.4));
       // up at face height and a little wide, so the claps still read from behind
       var x = 0.12 + 0.5 * sep;
-      setArm(0, -x, 2.55, 0.75, e, 0.1, 0.9); setArm(1, x, 2.55, 0.75, e, 0.1, 0.9);
+      setArm(A, 0, -x, 2.55, 0.75, e, 0.1, 0.9); setArm(A, 1, x, 2.55, 0.75, e, 0.1, 0.9);
       P.headPitch += (0.06 * (1 - sep) - 0.05) * e; P.lean += 0.03 * e;
+      face(A, { squint: 0.35, browUp: 0.25, smile: 0.2 }, e);
     } },
-    think: { dur: 60, att: 0.5, rel: 0.8, fn: function (u, e) {
+    think: { dur: 60, att: 0.5, rel: 0.8, fn: function (A, u, e) {
       // hand on the back of his head, the other on his hip: a "hmm..." that reads from behind. Held still.
-      setArm(0, -0.62, 2.7, -0.3, e, 0.0, 0.6); setArm(1, 0.98, 0.62, -0.05, e, 0.5, 0.3);
+      var P = A.P;
+      setArm(A, 0, -0.62, 2.7, -0.3, e, 0.0, 0.6); setArm(A, 1, 0.98, 0.62, -0.05, e, 0.5, 0.3);
       P.headRoll += 0.16 * e; P.headPitch += -0.22 * e; P.headYaw += -0.2 * e; P.twist += -0.05 * e;
+      face(A, { hmm: 1, browAsym: 0.55, gazeX: 0.45, gazeY: 0.55, lid: 0.85 }, e);
     } },
-    aw: { dur: 2.6, att: 0.4, rel: 0.9, fn: function (u, e) {
-      var sh = sstep(u / 0.35) * (1 - sstep((u - 0.75) / 0.4));      // a small shrug...
+    aw: { dur: 2.6, att: 0.4, rel: 0.9, fn: function (A, u, e) {
+      var P = A.P, sh = sstep(u / 0.35) * (1 - sstep((u - 0.75) / 0.4));      // a small shrug...
       var sl = sstep((u - 0.6) / 0.5) * (1 - sstep((u - 1.8) / 0.6)); // ...then a soft slump, then back up ("next time")
       P.shrug += 0.13 * sh * e; P.lean += 0.1 * sl * e; P.headPitch += 0.28 * sl * e; P.headRoll += -0.06 * sh * e;
-      setArm(0, -0.8, 0.05 + 0.25 * sh, 0.5, e * sh, 0.0, 0.85); setArm(1, 0.8, 0.05 + 0.25 * sh, 0.5, e * sh, 0.0, 0.85);
-      P.breath = 1 + 1.2 * sl;
+      setArm(A, 0, -0.8, 0.05 + 0.25 * sh, 0.5, e * sh, 0.0, 0.85); setArm(A, 1, 0.8, 0.05 + 0.25 * sh, 0.5, e * sh, 0.0, 0.85);
+      face(A, { o: 0.85, browTilt: 0.7, browUp: 0.15, gazeY: -0.35, lid: 0.8 }, e);
     } },
-    now: { dur: 2.0, att: 0.18, rel: 0.6, fn: function (u, e, o) {
+    now: { dur: 2.0, att: 0.18, rel: 0.6, fn: function (A, u, e, o) {
+      var P = A.P;
+      face(A, { shout: 1, browTilt: -0.75, wide: 0.6 }, e);
       if (o && o.kind === 'impossible') {
         var c = sstep((u - 0.1) / 0.25);
         // both arms straight out to the sides, palms open, like a referee's "no!" (reads from behind)
-        setArm(0, -1.95, 1.75, 0.2, e * c, 0.0, 1); setArm(1, 1.95, 1.75, 0.2, e * c, 0.0, 1);
+        setArm(A, 0, -1.95, 1.75, 0.2, e * c, 0.0, 1); setArm(A, 1, 1.95, 1.75, 0.2, e * c, 0.0, 1);
         P.headPitch += -0.1 * e; P.lean += 0.04 * e;
         return;
       }
       var back = sstep(u / 0.16) * (1 - sstep((u - 0.16) / 0.12)), go = sstep((u - 0.2) / 0.22);
-      setArm(0, lerp(-1.0, -1.15, go), lerp(1.4, 2.95, go), lerp(-0.2, 1.15, go), e, 0.0, 0.55);
-      setArm(1, 0.85, 0.65, 0.55, e * go, 0.4, 0.0);
+      setArm(A, 0, lerp(-1.0, -1.15, go), lerp(1.4, 2.95, go), lerp(-0.2, 1.15, go), e, 0.0, 0.55);
+      setArm(A, 1, 0.85, 0.65, 0.55, e * go, 0.4, 0.0);
       P.lean += (-0.06 * back + 0.12 * go) * e; P.headPitch += -0.12 * go * e;
     } },
-    reach: { dur: 1.5, att: 0.3, rel: 0.65, fn: function (u, e, o) {
+    reach: { dur: 1.5, att: 0.3, rel: 0.65, fn: function (A, u, e, o) {
       if (!o || !o.hand) return;
-      var h = o.hand;
-      setArm(o.arm, h.x, h.y, h.z, e, 0.85, 0.85);
+      var P = A.P, h = o.hand;
+      setArm(A, o.arm, h.x, h.y, h.z, e, 0.85, 0.85, true);
       P.headYaw += clamp(Math.atan2(o.loc.x, o.loc.z), -0.6, 0.6) * e; P.headPitch += 0.2 * e; P.lean += 0.05 * e;
+      face(A, { gazeY: -0.5, browUp: 0.15 }, e);
     } },
-    nod: { dur: 1.1, att: 0.15, rel: 0.3, fn: function (u, e) {
-      P.headPitch += 0.16 * Math.max(0, Math.sin(clamp(u / 0.9, 0, 1) * TAU)) * e;
+    nod: { dur: 1.1, att: 0.15, rel: 0.3, fn: function (A, u, e) {
+      A.P.headPitch += 0.16 * Math.max(0, Math.sin(clamp(u / 0.9, 0, 1) * TAU)) * e;
+      face(A, { smile: 0.6 }, e);
+    } },
+
+    // ----- win celebrations (original moves, about 2.5-3 s each, played once) -----
+    // Rocket jump: crouch, a big jump with one fist punched to the sky, land, then one "yes!" fist pump.
+    jump: { dur: 2.8, att: 0.12, rel: 0.6, fn: function (A, u, e) {
+      var P = A.P, crouch = win(u, 0.02, 0.32, 0.14) * 0.7 + win(u, 0.92, 1.12, 0.08) * 0.55;
+      var air = clamp((u - 0.36) / 0.58, 0, 1), arc = Math.sin(air * Math.PI) * (u > 0.36 && u < 0.94 ? 1 : 0);
+      P.crouch += (crouch + 0.3 * arc) * e; P.hop += 1.0 * arc * e; P.lean += (0.18 * crouch - 0.08 * arc) * e;
+      var up = ramp(u, 0.3, 0.45) * (1 - ramp(u, 1.25, 1.45)), pump = ramp(u, 1.25, 1.45) * (1 - ramp(u, 2.0, 2.3)), back = 1 - ramp(u, 0.25, 0.4);
+      setArm(A, 0, -0.95, 0.4, -0.55, e * back, 0, 0.5); setArm(A, 1, 0.95, 0.4, -0.55, e * back, 0, 0.5);
+      setArm(A, 0, -0.8, 3.5, 0.25, e * up, 0, 0.3); setArm(A, 1, 0.55, 1.55, 0.8, e * up, 0, 0.3);
+      setArm(A, 0, -1.2, 1.0, 0.45, e * pump, 0, 0.3); setArm(A, 1, 0.9, 0.25, 0.3, e * pump, 0, 0.35);
+      P.headPitch += (-0.35 * up + 0.12 * pump) * e; P.lean += 0.1 * pump * e; P.twist += -0.12 * pump * e;
+      face(A, { big: 1 - pump, shout: pump, squint: 0.4, browUp: 0.7 * up - 0.3 * pump }, e);
+    } },
+    // Spin and point: a little wind-up, one full turn on the spot with arms out, then both arms point up to the sky.
+    spin: { dur: 2.7, att: 0.15, rel: 0.6, fn: function (A, u, e) {
+      var P = A.P, wind = win(u, 0.0, 0.3, 0.15), t = clamp((u - 0.28) / 0.85, 0, 1);
+      P.twist += -0.28 * wind * e; P.crouch += 0.3 * wind * e;
+      P.spin = easeIO(t) * TAU;                                            // not weighted: the turn always completes
+      P.hop += 0.3 * Math.sin(t * Math.PI) * e;
+      var out = win(u, 0.3, 1.1, 0.12), point = ramp(u, 1.15, 1.35);
+      setArm(A, 0, -1.75, 1.75, 0.15, e * out, 0, 1); setArm(A, 1, 1.75, 1.75, 0.15, e * out, 0, 1);
+      setArm(A, 0, -1.3, 3.5, 0.6, e * point, 0, 0.3); setArm(A, 1, 1.3, 3.5, 0.6, e * point, 0, 0.3);
+      P.headPitch += -0.32 * point * e;
+      face(A, { big: 0.8, squint: 0.3 * point, browUp: 0.5 }, e);
+    } },
+    // Robot dance: four stiff, stepped poses (a quick snap into each, then held), then back to rest.
+    robot: { dur: 2.9, att: 0.1, rel: 0.5, fn: function (A, u, e) {
+      var P = A.P, B = [0.15, 0.7, 1.25, 1.8], k = -1;
+      for (var i = 0; i < 4; i++) if (u >= B[i]) k = i;
+      if (k < 0) return;
+      var snap = sstep((u - B[k]) / 0.09), prev = k - 1;
+      // [right arm, left arm, twist, headYaw, crouch]: elbows at the sides with forearms straight forward, then arms out
+      var POS = [
+        [[-0.9, 0.85, 1.05], [0.95, -0.2, 0.2], 0.25, 0.45, 0.1],
+        [[-0.95, -0.2, 0.2], [0.9, 0.85, 1.05], -0.25, -0.45, 0.1],
+        [[-0.85, 0.85, 1.05], [0.85, 0.85, 1.05], 0, 0, 0.3],
+        [[-2.05, 1.6, 0.15], [2.05, 1.6, 0.15], 0, 0, 0.05]
+      ];
+      var a = POS[k], b = prev >= 0 ? POS[prev] : null, mix = function (j, c) { return b ? lerp(b[j][c], a[j][c], snap) : a[j][c]; }, mixS = function (j) { return b ? lerp(b[j], a[j], snap) : a[j] * snap; };
+      var w = b ? e : e * snap;
+      setArm(A, 0, mix(0, 0), mix(0, 1), mix(0, 2), w, 0, 0.6); setArm(A, 1, mix(1, 0), mix(1, 1), mix(1, 2), w, 0, 0.6);
+      P.twist += mixS(2) * e; P.headYaw += mixS(3) * e; P.crouch += (mixS(4) + 0.12 * (1 - snap)) * e;
+      face(A, { smile: 0.75, wide: 0.8, browUp: 0.35 }, e);
+    } },
+    // Knee slide: a quick lean-in, down onto both knees sliding a little forward, arms wide up to the sky, then up again.
+    slide: { dur: 3.0, att: 0.15, rel: 0.75, fn: function (A, u, e) {
+      var P = A.P, lean = win(u, 0.0, 0.4, 0.15), knee = ramp(u, 0.3, 0.6) * (1 - ramp(u, 2.0, 2.6));
+      var go = easeOut(clamp((u - 0.32) / 0.9, 0, 1)) * (1 - ramp(u, 2.0, 2.7));
+      P.lean += (0.22 * lean - 0.32 * knee) * e; P.kneel += knee * e; P.fwd += (0.2 * lean + 0.55 * go) * e;
+      var arms = ramp(u, 0.45, 0.7) * (1 - ramp(u, 2.0, 2.4));
+      setArm(A, 0, -0.95, 0.35, -0.5, e * lean, 0, 0.5); setArm(A, 1, 0.95, 0.35, -0.5, e * lean, 0, 0.5);
+      setArm(A, 0, -1.95, 2.9, 0.3, e * arms, 0, 0.8); setArm(A, 1, 1.95, 2.9, 0.3, e * arms, 0, 0.8);
+      P.headPitch += -0.4 * arms * e;
+      face(A, { shout: arms * (1 - ramp(u, 1.3, 1.6)), big: ramp(u, 1.3, 1.6), squint: 0.35, browUp: 0.6 }, e);
     } }
   };
 
   // The hand goes toward the cube but stops short of the table: it must never cover the mat or a cube.
-  function reachHand(o) {
-    var t = o.loc, i = t.x < 0 ? 0 : 1, sx = (i === 0 ? -1 : 1) * KID.SH_X;
-    var dx = t.x - sx, dy = t.y - KID.SH_Y, dz = t.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-    for (var r = 1.6; r >= 0.95; r -= 0.08) {
-      var k = Math.min(d, r) / d, h = new THREE.Vector3(sx + dx * k, Math.max(KID.SH_Y + dy * k + 0.25, 0.9), dz * k);
-      v4.copy(h).applyMatrix4(kid.chest.matrixWorld);
+  function reachHand(A, o) {
+    var D = A.dims, t = o.loc, i = t.x < 0 ? 0 : 1, sx = (i === 0 ? -1 : 1) * D.SH_X, k = (D.L1 + D.L2) / (KID.L1 + KID.L2);
+    var dx = t.x - sx, dy = t.y - D.SH_Y, dz = t.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    for (var r = 1.6 * k; r >= 0.95 * k; r -= 0.08 * k) {
+      var kk = Math.min(d, r) / d, h = new THREE.Vector3(sx + dx * kk, Math.max(D.SH_Y + dy * kk + 0.25, D.SH_Y - 0.65 * k), dz * kk);
+      v4.copy(h).applyMatrix4(A.model.chest.matrixWorld);
       proj(v4.x, v4.y, v4.z, pp);
       if (v4.y < 0.5 || !insideQuad(pp[0], pp[1], 0.03)) { o.hand = h; o.arm = i; return true; }
     }
     return false;
   }
-
-  // ---------- public API ----------
-  T3.playerMoods = function () { return NAMES.slice(); };
-  T3.playerShow = function (on) {
-    shown = !!on;
-    if (shown) { refresh(); if (needPlace || !placedOnce) computePlace(); else applyVis(); }
-    else { g = null; applyVis(); }
-    return shown && fits;
-  };
-  T3.playerRefresh = function () { if (kid) refresh(); };
-  T3.playerMood = function (m, opts) {
-    if (!kid || !shown) return;
+  function startMood(A, m, opts) {
+    if (!A.model || !A.shown) return false;
     var now = performance.now();
-    if (!m) { if (g && !g.fade) g.fade = now; return; }
-    var d = GEST[m]; if (!d) return;
-    if (document.hidden) return;
+    if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
+    var d = GEST[m]; if (!d) return false;
+    if (document.hidden) return false;
     var o = opts ? Object.assign({}, opts) : {};
     if (m === 'reach') {
       var p = null;
       if (o.cube != null && ctx.meshes[o.cube] && ctx.meshes[o.cube].visible) p = ctx.meshes[o.cube].position;
       else if (typeof o.x === 'number' && typeof o.z === 'number') p = { x: o.x, y: o.y || 0.6, z: o.z };
-      if (!p) return;
-      kid.root.updateMatrixWorld(true); o.loc = toChest(p.x, p.y, p.z, new THREE.Vector3());
-      if (!reachHand(o)) return;
+      if (!p) return false;
+      A.model.root.updateMatrixWorld(true); o.loc = toChest(A, p.x, p.y, p.z, new THREE.Vector3());
+      if (!reachHand(A, o)) return false;
     }
-    g = { n: m, t0: now, dur: d.dur, opts: o, fade: 0 };
-    settled = false; ctx.dirty(); ctx.startLoop();
-  };
-  T3.playerState = function () { return { shown: shown, fits: fits, visible: !!(kid && kid.root.visible), mood: g ? g.n : null, scale: place.s, at: [place.x, place.z], headNDC: place.hd, drop: place.drop, rejected: why, quad: quad }; };
+    A.g = { n: m, t0: now, dur: d.dur, opts: o, fade: 0 };
+    A.settled = false; ctx.dirty(); ctx.startLoop();
+    return true;
+  }
 
   // ---------- per frame ----------
+  function rnd(a, b) { return a + Math.random() * (b - a); }
   function update(now) {
     if (needPlace && ctx.layout) computePlace();   // right after a camera fit, even while hidden (the view has no offsets yet)
-    if (!kid || !shown) { lastNow = now; return; }
-    // a new opponent (new match) may need a different shirt colour
-    var op = oppJersey(), ok = op ? op.key : '';
-    if (ok !== oppKey) refresh();
-    if (!kid.root.visible) { lastNow = now; return; }
-    var dt = clamp((now - lastNow) / 1000, 0.001, 0.05); lastNow = now;
-    if (document.hidden && g) g = null;
-
-    P.lean = 0; P.twist = 0; P.hop = 0; P.headYaw = 0; P.headPitch = 0.22; P.headRoll = 0; P.shrug = 0; P.breath = 1;
-    for (var i = 0; i < 2; i++) { arm[i].des.copy(REST[i]); arm[i].dAl = 0.2; arm[i].dOp = 0.35; }
-    if (g) {
-      var d = GEST[g.n], u = (now - g.t0) / 1000, fd = 1;
-      if (g.fade) fd = 1 - sstep((now - g.fade) / 450);
-      if (u > g.dur || fd <= 0) g = null;
-      else d.fn(u, env(u, g.dur, d.att, d.rel) * fd, g.opts);
+    if (mate.seat === 'far' && mate.shown && mate.model) {
+      // a creature arriving or leaving across the table hides / shows him
+      var f = !creatureHere(); if (f !== mate.fits) { mate.fits = f; applyVis(); }
+    }
+    step(me, now); step(mate, now);
+  }
+  function step(A, now) {
+    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; return; }
+    var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
+    if (document.hidden && A.g) A.g = null;
+    var P = A.P, F = A.F, i, k;
+    for (k in P) P[k] = 0; P.headPitch = 0.22;
+    for (k in F) F[k] = 0; F.lid = 0.95;
+    for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; }
+    if (A.g) {
+      var d = GEST[A.g.n], u = (now - A.g.t0) / 1000, fd = 1;
+      if (A.g.fade) fd = 1 - sstep((now - A.g.fade) / 450);
+      if (u > A.g.dur || fd <= 0) A.g = null;
+      else d.fn(A, u, env(u, A.g.dur, d.att, d.rel) * fd, A.g.opts);
     }
     // smooth everything toward the targets (calm follow-through, never a snap)
-    var kb = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-10 * dt), moving = !!g;
-    for (var key in cur) { var df = P[key] - cur[key]; if (Math.abs(df) > 1e-4) moving = true; cur[key] += df * kb; }
+    var kb = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-10 * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g, cur = A.cur, Fc = A.Fc;
+    while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
+    for (k in cur) { var df = P[k] - cur[k]; if (Math.abs(df) > 1e-4) moving = true; cur[k] += df * kb; }
+    for (k in Fc) { var dff = F[k] - Fc[k]; if (Math.abs(dff) > 1e-3) moving = true; Fc[k] += dff * kf; }
     for (i = 0; i < 2; i++) {
-      var A = arm[i]; if (A.goal.distanceToSquared(A.des) > 1e-6) moving = true;
-      A.goal.lerp(A.des, ka); A.al += (A.dAl - A.al) * ka; A.op += (A.dOp - A.op) * ka;
+      var AR = A.arm[i]; if (AR.goal.distanceToSquared(AR.des) > 1e-6) moving = true;
+      AR.goal.lerp(AR.des, ka); AR.al += (AR.dAl - AR.al) * ka; AR.op += (AR.dOp - AR.op) * ka;
     }
+    // an occasional single blink (only when nothing else is going on with his eyes closed)
+    if (!A.nextBlink) A.nextBlink = now + rnd(2500, 6000);
+    if (now >= A.nextBlink) { A.blinkT0 = now; A.nextBlink = now + rnd(3800, 7500); }
+    var bt = (now - A.blinkT0) / 1000, blink = bt < 0 ? 0 : bt < 0.07 ? bt / 0.07 : bt < 0.11 ? 1 : bt < 0.24 ? 1 - (bt - 0.11) / 0.13 : 0;
+    if (blink > 0 || bt < 0.3) moving = true;
     // apply
-    var R = kid.root, br = Math.sin(now / 1000 * TAU / 4.8) * P.breath;
-    R.position.set(place.x, place.y + cur.hop * place.s, place.z); R.rotation.y = Math.PI + place.yaw; R.scale.setScalar(place.s);
-    kid.body.rotation.set(cur.lean, cur.twist, 0);
-    kid.chest.scale.set(1 + 0.006 * br, 1 + 0.008 * br, 1 + 0.006 * br);
-    kid.neck.rotation.set(cur.headPitch * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
-    kid.head.rotation.set(cur.headPitch * 0.55, cur.headYaw * 0.6, cur.headRoll * 0.6);
+    var m = A.model, R = m.root, D = A.dims, s = A.place.s;
+    // legs: a crouch bends hips and knees (feet stay put), a kneel folds the shins back onto the pitch
+    var ca = clamp(cur.crouch, 0, 1) * 0.85, kn = clamp(cur.kneel, 0, 1) * Math.PI / 2;
+    var dropL = (D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn);
+    m.setKnees(-ca, -ca, 2 * ca + kn, 2 * ca + kn);
+    var rot = A.place.rot + cur.spin, fx = Math.sin(A.place.rot), fz = Math.cos(A.place.rot), fw = clamp(cur.fwd, 0, 0.75) * s;
+    R.position.set(A.place.x + fx * fw, A.place.y + (cur.hop - dropL) * s, A.place.z + fz * fw); R.rotation.y = rot; R.scale.setScalar(s);
+    m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
+    m.neck.rotation.set(cur.headPitch * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
+    m.head.rotation.set(cur.headPitch * 0.55, cur.headYaw * 0.6, cur.headRoll * 0.6);
     for (i = 0; i < 2; i++) {
-      var a = kid.arms[i]; a.setShoulderLift(cur.shrug + 0.012 * br); a.open = arm[i].op;
-      a.solve(arm[i].goal.x, arm[i].goal.y, arm[i].goal.z, arm[i].al, 0);
+      var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
+      a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);
     }
-    // only ask for frames while something is happening; at rest his breathing rides along with other renders
-    if (moving) { settled = false; ctx.dirty(); }
-    else if (!settled) { settled = true; ctx.dirty(); }
+    var lid = Fc.lid * (1 - blink);
+    m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
+    // only ask for frames while something is happening; at rest he is still
+    if (moving) { A.settled = false; ctx.dirty(); }
+    else if (!A.settled) { A.settled = true; ctx.dirty(); }
   }
   ctx.hooks.frame.push(update);
-  // the camera was fitted again (resize / layout): find his spot on the next frame, when the camera is in place
-  ctx.hooks.extents.push(function () { needPlace = true; });
+  // the camera was fitted again (resize / layout): find the spots on the next frame, when the camera is in place.
+  // A grown-up across the table (no creature) asks to be kept in view, like a creature does.
+  ctx.hooks.extents.push(function (corners, W, D) {
+    needPlace = true;
+    if (mate.seat === 'far' && mate.shown && mate.model && !creatureHere()) {
+      var top = FLOOR_Y + (mate.dims.TOP - mate.dims.FOOT) * FAR.s + 0.2, z = -D / 2 - FAR.front;
+      corners.push([-3.4, top, z], [3.4, top, z]);
+    }
+  });
+
+  // ---------- public API ----------
+  T3.playerMoods = function () { return NAMES.slice(); };
+  T3.playerCelebrations = function () { return CELEBS.slice(); };
+  T3.playerShow = function (on) {
+    me.shown = !!on;
+    if (me.shown) { var re = refreshAvatar(me); if (re || needPlace || !me.placedOnce) computePlace(); else applyVis(); }
+    else { me.g = null; applyVis(); }
+    return me.shown && me.fits;
+  };
+  T3.playerRefresh = function () { if (me.model && refreshAvatar(me)) computePlace(); };
+  T3.playerSet = function (o) {
+    me.over = o ? Object.assign({}, o) : null;
+    if (me.model && refreshAvatar(me)) computePlace();
+  };
+  T3.playerMood = function (m, opts) { startMood(me, m, opts); };
+  T3.playerCelebrate = function (name) {
+    if (CELEBS.indexOf(name) < 0) { var s = save(); name = (s.kit && CELEBS.indexOf(s.kit.celebrate) >= 0) ? s.kit.celebrate : 'jump'; }
+    return startMood(me, name);
+  };
+  T3.mate = function (o) {
+    var wasFar = mate.seat === 'far' && mate.shown;
+    if (!o) {
+      mate.shown = false; mate.g = null; mate.seat = null; applyVis();
+      if (wasFar) ctx.refit();
+      return false;
+    }
+    mate.over = Object.assign({ who: 'tata' }, o); mate.seat = o.seat === 'far' ? 'far' : 'left'; mate.shown = true;
+    refreshAvatar(mate);
+    if (mate.seat === 'far' || wasFar) ctx.refit();                // the camera keeps his head in view (calls the extents hook)
+    computePlace();
+    return mate.fits;
+  };
+  T3.mateMood = function (m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(mate, m, opts); };
+  T3.playerState = function () {
+    function st(A) { return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop }; }
+    var o = st(me); o.rejected = why; o.quad = quad; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+  };
+  // debugging / previews: the model objects (read-only use please)
+  T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
+
+  // ---------- portraits for the kit designer ----------
+  var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {} };
+  function pvStage() {
+    if (pv.scene) return;
+    pv.scene = new THREE.Scene();
+    pv.scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7f99, 0.8));
+    var k1 = new THREE.DirectionalLight(0xffffff, 1.7); k1.position.set(-3, 6, 9); pv.scene.add(k1);
+    var k2 = new THREE.DirectionalLight(0xffffff, 0.9); k2.position.set(3, 4, -9); pv.scene.add(k2);
+    var rim = new THREE.DirectionalLight(0xfff1d6, 0.6); rim.position.set(6, 3, 2); pv.scene.add(rim);
+    pv.cam = new THREE.PerspectiveCamera(26, 0.8, 0.1, 100);
+  }
+  function pvPose(sp) {
+    if (!pv.model || pv.who !== sp.who) {
+      if (pv.model) { pv.scene.remove(pv.model.root); disposeModel(pv.model); }
+      pv.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front }); pv.scene.add(pv.model.root); pv.who = sp.who;
+    } else { pv.model.setKit(sp.kit, sp.num, sp.name, sp.front); pv.model.setHair(sp.look.hair, sp.look.hairStyle); }
+    var m = pv.model, tmp = new THREE.Vector3(), A = { dims: sp.dims };
+    m.setKnees(0, 0, 0, 0); m.body.rotation.set(0, 0, 0); m.neck.rotation.set(0.04, 0, 0); m.head.rotation.set(0.05, 0, 0);
+    m.root.position.set(0, 0, 0); m.root.scale.setScalar(1); m.root.updateMatrixWorld(true);
+    for (var i = 0; i < 2; i++) { tmp.set(REST0[i][0] * 1.05, REST0[i][1], REST0[i][2] + 0.05); mapArm(A, tmp); m.arms[i].setShoulderLift(0); m.arms[i].open = 0.35; m.arms[i].solve(tmp.x, tmp.y, tmp.z, 0.2, 0); }
+    m.setFace({ lid: 0.95 });
+  }
+  function pvShoot(o, size, view) {
+    pvStage();
+    var sp = specOf(o, 'main'); pvPose(sp);
+    if (o && o.face) pv.model.setFace(o.face);                       // an expression, e.g. { mouth: { big: 1 }, squint: 0.4 }
+    var D = sp.dims, m = pv.model, W = size, H = Math.round(size * 1.25);
+    // view: 'front' (3/4 front, whole body), 'back', 'face' (head and shoulders), or { yaw, close } for any angle
+    var vo = view && typeof view === 'object' ? view : null, close = vo ? !!vo.close : view === 'face';
+    m.root.rotation.y = vo ? (vo.yaw || 0) : view === 'back' ? Math.PI + 0.35 : view === 'face' ? 0.25 : -0.45;
+    m.root.updateMatrixWorld(true);
+    pv.cam.aspect = W / H; pv.cam.updateProjectionMatrix();
+    var top, bot;
+    if (close) { var hc = D.NECK_Y + D.HEAD_UP; top = D.TOP + 0.35; bot = hc - D.HEAD_R * 1.9; }
+    else { top = D.TOP + 0.15; bot = D.FOOT - 0.1; }
+    var h = top - bot, cy = (top + bot) / 2, dist = (h / 2) / Math.tan(pv.cam.fov * Math.PI / 360) * 1.06;
+    pv.cam.position.set(0, cy + dist * (close ? 0.05 : 0.12), dist); pv.cam.lookAt(0, cy, 0); pv.cam.updateMatrixWorld();
+    pv.scene.environment = ctx.scene.environment || null;
+    var r = ctx.renderer, rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.UnsignedByteType });
+    rt.texture.colorSpace = THREE.SRGBColorSpace;
+    var prev = r.getRenderTarget(), cc = new THREE.Color(), ca = r.getClearAlpha(), sh = r.shadowMap.enabled, px = new Uint8Array(W * H * 4), read;
+    r.getClearColor(cc);
+    try {
+      r.shadowMap.enabled = false; r.setRenderTarget(rt); r.setClearColor(0x000000, 0); r.clear(); r.render(pv.scene, pv.cam);
+      read = r.readRenderTargetPixelsAsync ? r.readRenderTargetPixelsAsync(rt, 0, 0, W, H, px) : (r.readRenderTargetPixels(rt, 0, 0, W, H, px), Promise.resolve(px));
+    } catch (e) { read = Promise.reject(e); }
+    finally { r.setRenderTarget(prev); r.setClearColor(cc, ca); r.shadowMap.enabled = sh; ctx.dirty(); }
+    return read.then(function () {
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var g = cv.getContext('2d'), img = g.createImageData(W, H), row = W * 4;
+      for (var y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * row, (H - y) * row), y * row);   // GL rows are bottom-up
+      g.putImageData(img, 0, 0); rt.dispose(); return cv.toDataURL('image/png');
+    }, function (e) { rt.dispose(); throw e; });
+  }
+  // one picture at a time; a newer request for the same view replaces one that is still waiting (it then resolves to null)
+  function pvPump() {
+    var keys = Object.keys(pv.next);
+    if (pv.busy || !keys.length) return;
+    var job = pv.next[keys[0]]; delete pv.next[keys[0]]; pv.busy = true;
+    Promise.resolve().then(function () { return pvShoot(job.o, job.size, job.view); })
+      .catch(function (e) { console.warn('playerPortrait', e); return null; })
+      .then(function (url) { pv.busy = false; job.done(url); setTimeout(pvPump, 16); });
+  }
+  T3.playerPortrait = function (o, size, view) {
+    size = Math.max(64, Math.min(512, size | 0 || 220));
+    return new Promise(function (res) {
+      var k = JSON.stringify([view || 'front', size]);
+      if (pv.next[k]) pv.next[k].done(null);
+      pv.next[k] = { o: o || null, size: size, view: view || 'front', done: res }; setTimeout(pvPump, 0);
+    });
+  };
 })();
