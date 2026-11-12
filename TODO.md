@@ -11,8 +11,8 @@
 
 ## Next
 - **Check on a real iPad**: frame rate with shadows/glow, auto quality step-down, portraits speed, the kid player's size.
-- **Online play** (Houston ↔ Atlanta): room codes, synced dice, private Solution writing,
-  reconnect after a dropped connection. Voice via FaceTime alongside at first.
+- **Online play** (Houston ↔ Atlanta): built (docs/handoff/online.md). Still to do: Tata creates the Firebase
+  project and pastes the config into `js/online-config.js` (steps in the handoff), then a real two-iPad test.
 - **Monster League** (opponents 6-10: Grub, Splosh, Blaze, Hex, Zog) is built from the two free Quaternius models. Not on the live site until Tata says to publish the model files. Still to do: make them bigger at the table; watch every reaction in real time; retune their skill numbers (only one short playtest so far).
 
 - **Playtest with the real kid**: the simulated "beginner" is only a rough stand-in. Retune Snoozy/Penny after watching him play (tests/playtest.js prints the numbers).

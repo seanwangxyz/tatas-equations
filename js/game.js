@@ -42,6 +42,7 @@ function startMatch(mode, oppIdx, cfg) {
     else G.players.push({ name: cfg.n3 || 'Mama', ai: null, score: 0, list: [] });
   }
   else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
+  else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -135,7 +136,7 @@ function renderGame() {
   var el = $('#game'), three = T3.active(), resC = zoneCubes('resources');
   var scores = G.players.map(function (p, i) {
     if (G.team && i === 0) return Team.hudHTML(p, i === G.turn && G.phase === 'move');
-    var face = p.ai ? avatarHTML(p.ai, 'sm') : (i === 0 ? '<span class="jersey">' + esc(S.jersey || '7') + '</span>' : '<span class="jersey j' + (i + 1) + '">' + (i + 1) + '</span>');
+    var face = p.ai ? avatarHTML(p.ai, 'sm') : (i === 0 ? '<span class="jersey">' + esc(S.jersey || '7') + '</span>' : '<span class="jersey j' + (i + 1) + '">' + (p.jersey ? esc(p.jersey) : (i + 1)) + '</span>');
     return '<div class="pl' + (i === G.turn && G.phase === 'move' ? ' turn' + (isAI(i) ? ' opp-turn' : '') : '') + '" data-pi="' + i + '">' + face + '<b>' + esc(p.name) + '</b><span class="pts" data-v="' + p.score + '">' + p.score + '</span></div>';
   }).join('');
   var goalHTML = G.goalTokens.length ? G.goalTokens.map(function (t) { return typeof t === 'string' ? ((t === '(' || t === ')') ? '<span class="paren">' + t + '</span>' : '<div class="cube c-none"><span>' + show(t) + '</span></div>') : cubeHTML(G.cubes[t.id], t.id === G.justMoved ? 'thunk' : ''); }).join('') : '<span class="empty">' + (G.phase === 'goal' ? 'waiting for the Goal…' : '') + '</span>';
@@ -515,7 +516,7 @@ function endShake(r) {
   if (G.players[0].score < best) G.trailed = true;
   if (G.mode !== 'tutorial') {
     S.stats.shakes++;
-    if (G.mode === 'pvp' || G.mode === 'p3') S.stats.pvpShakes++;
+    if (G.mode === 'pvp' || G.mode === 'p3' || G.mode === 'online') S.stats.pvpShakes++;
     if (G.hintUsed) S.stats.noHint = 0; else S.stats.noHint++;
     checkBadges({ type: 'shake' });
     persist();

@@ -126,7 +126,7 @@ var Social = (function () {
         '<div class="vs-row"><span class="vs-jer">' + E(o.num || '0') + '</span>' + stars(o.stars || 0) + '</div>' +
         (o.tip ? '<div class="vs-tip">' + E(o.tip) + '</div>' : '') + '</div></div>';
     }
-    var first = i === 0, sv = (typeof S !== 'undefined') ? S : null, jer = first && sv && sv.jersey ? sv.jersey : ['7', '10', '3'][i % 3];
+    var first = i === 0, sv = (typeof S !== 'undefined') ? S : null, jer = first && sv && sv.jersey ? sv.jersey : (p && p.jersey) || ['7', '10', '3'][i % 3];
     var lv = first && typeof level === 'function' ? level() : 0, st = '';
     if (first && sv && sv.stats) {
       st = '<div class="vs-facts"><span><b>' + (sv.stats.correct || 0) + '</b> Solutions</span><span><b>' + Object.keys(sv.badges || {}).length + '</b> badges</span></div>';
@@ -165,7 +165,7 @@ var Social = (function () {
   // ---------------------------------------------------------------- 4. Player of the Match
   function perShake(p) { return (p && p.list) || []; }
   function nGreat(p) { return perShake(p).filter(function (v) { return v >= 4; }).length; }
-  function jerseyOf(p, i) { if (p.ai) return p.ai.num || '0'; return i === 0 && typeof S !== 'undefined' && S.jersey ? S.jersey : ['7', '10', '3'][i % 3]; }
+  function jerseyOf(p, i) { if (p.ai) return p.ai.num || '0'; return i === 0 && typeof S !== 'undefined' && S.jersey ? S.jersey : p.jersey || ['7', '10', '3'][i % 3]; }
   function who(p, i) {
     var face = p.ai ? (typeof avatarHTML === 'function' ? avatarHTML(p.ai, 'sm') : '') : '<span class="jersey' + (i === 1 ? ' j2' : i === 2 ? ' j3' : '') + '">' + E(jerseyOf(p, i)) + '</span>';
     return '<div class="potm-who">' + face + '<b>' + E(p.name) + '</b></div>';

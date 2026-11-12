@@ -199,5 +199,5 @@ var Vari = (function () {
 
   return { CARDS: CARDS, card: card, unlocked: unlocked, unlockedCount: unlockedCount, offered: offered, hasEffect: hasEffect,
     reset: reset, apply: apply, beforeGoal: beforeGoal, afterGoal: afterGoal, cubeTokens: cubeTokens, builderNote: builderNote,
-    wildNote: wildNote, chip: chip, on: on, STAR_STEP: STAR_STEP, FIRST_STAGE: FIRST_STAGE };
+    wildNote: wildNote, chip: chip, on: on, cardHTML: cardHTML, STAR_STEP: STAR_STEP, FIRST_STAGE: FIRST_STAGE };
 })();
