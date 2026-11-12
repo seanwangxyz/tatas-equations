@@ -344,7 +344,68 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     configShadows(); // the venue may bring its own key light
     if (post) post.tag();
     if (!pour) world = null; // walls depend on the layout
+    else setWalls(world, true); // the layout changed mid-pour (a resize): new walls, and every cube is put back inside them
+    builtTier = tierOf(qual); venueBox = measureVenue(env.group); colliders = null;
     dirty = true;
+  }
+  // The crowd and the venue details are built for the quality level in use when the table is built. When the level has
+  // changed since (the automatic step-down, or the setting), the venue is rebuilt at the start of the next pour, where
+  // a short hitch does not show (the pour runs on its own clock).
+  var builtTier = -1, venueBox = null, colliders = null, collidersT = 0;
+  function tierOf(q) { return q >= 2 ? 2 : q >= 1 ? 1 : 0; }
+  // the box the look-around camera's look-at point stays in: the venue (stands, crowd, props), not the endless floor
+  function measureVenue(g) {
+    var box = new THREE.Box3(), b = new THREE.Box3();
+    g.updateWorldMatrix(true, true);
+    g.traverse(function (o) {
+      if (!o.isMesh || !o.geometry) return;
+      if (o.isInstancedMesh) { if (!o.boundingBox) o.computeBoundingBox(); b.copy(o.boundingBox).applyMatrix4(o.matrixWorld); }
+      else { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); b.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); }
+      var s = b.getSize(camTmpB); if (Math.max(s.x, s.z) > 70 || b.isEmpty()) return; // the ground / sky planes
+      box.union(b);
+    });
+    var W = layout.W, D = layout.D;
+    box.union(new THREE.Box3(new THREE.Vector3(-W / 2 - 3, FLOOR_Y, -D / 2 - 3), new THREE.Vector3(W / 2 + 3, 6, D / 2 + 3)));
+    box.min.x += 0.5; box.max.x -= 0.5; box.min.z += 0.5; box.max.z -= 0.5;
+    box.min.y = FLOOR_Y + 0.3; box.max.y = Math.max(4, Math.min(box.max.y, 14));
+    return box;
+  }
+  var camTmpB = new THREE.Vector3();
+  // what the look-around camera must not pass through: the table, the venue (not the crowd figures themselves: the
+  // stands under them are enough), the creature, the kid, the cubes. Rebuilt at most once a second while looking around.
+  function getColliders() {
+    var now = performance.now();
+    if (colliders && now - collidersT < 1000) return colliders;
+    colliders = []; collidersT = now;
+    scene.traverseVisible(function (o) {
+      if (!o.isMesh || o.isInstancedMesh || o === vignette || blobs.indexOf(o) >= 0) return;
+      var m = o.material; if (!m || Array.isArray(m)) { if (m) colliders.push(o); return; }
+      if (m.depthWrite === false || (m.transparent && m.opacity < 0.5) || m.blending === THREE.AdditiveBlending) return;
+      colliders.push(o);
+    });
+    return colliders;
+  }
+  var clipRay = new THREE.Raycaster(), clipDir = new THREE.Vector3();
+  // keep the camera (pos, looking at look) short of the first solid thing between them, and above the floor
+  function clipCam(look, pos) {
+    clipDir.copy(pos).sub(look); var len = clipDir.length(); if (len < 1e-4) return;
+    clipDir.divideScalar(len);
+    clipRay.set(look, clipDir); clipRay.near = 0.05; clipRay.far = len + 0.7;
+    var hit = clipRay.intersectObjects(getColliders(), false)[0];
+    if (hit) { var d = Math.max(0.35, hit.distance - 0.7); if (d < len) pos.copy(look).addScaledVector(clipDir, d); }
+    var fy = FLOOR_Y + 0.6;
+    if (pos.y < fy) { if (look.y > fy + 0.01 && clipDir.y < -1e-3) pos.copy(look).addScaledVector(clipDir, (fy - look.y) / clipDir.y); else pos.y = fy; }
+  }
+  // the world point under a screen position (for zooming toward the mouse / the fingers), or null
+  function aimAt(cx, cy) {
+    var r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    clipRay.setFromCamera(ndc, camera); clipRay.near = 0.1; clipRay.far = 200;
+    var hit = clipRay.intersectObjects(getColliders(), false)[0];
+    // a little off the surface it hit (on the stands: about head height of the people sitting there)
+    if (hit) { var pt = hit.point.clone(); if (hit.face) pt.addScaledVector(hit.face.normal.clone().transformDirection(hit.object.matrixWorld), 0.5); return pt; }
+    var d = camera.position.distanceTo(camLook); // nothing there (the sky): a point as far away as the look-at point
+    return clipRay.ray.at(d, new THREE.Vector3());
   }
   function chooseLayout() {
     if (!host) return;
@@ -627,6 +688,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       m.visible = true;
       if (dragS && dragS.id === c.id && dragS.on) return;
       if (ctx.held === c.id) return;
+      if (tumble && tumble.ids[c.id] !== undefined) return; // rolling again (T3.reroll): it lands first
       var lift = (G.selected === c.id) ? 0.8 : 0;
       var pos = new THREE.Vector3(t.x, 0.5 * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData;
       m.userData.lock.visible = !!c.locked;
@@ -664,15 +726,25 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var dm = new CANNON.Material('dice'), fm = new CANNON.Material('floor');
     world.addContactMaterial(new CANNON.ContactMaterial(dm, fm, { friction: 0.28, restitution: 0.38 }));
     world.addContactMaterial(new CANNON.ContactMaterial(dm, dm, { friction: 0.12, restitution: 0.3 }));
-    world.diceMat = dm;
+    world.diceMat = dm; world.floorMat = fm;
     var ground = new CANNON.Body({ mass: 0, material: fm }); ground.addShape(new CANNON.Plane()); ground.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); world.addBody(ground);
-    var W = layout.W, D = layout.D;
-    [[0, -D / 2 - 0.5, W + 2, 1], [0, D / 2 + 0.5, W + 2, 1], [-W / 2 - 0.5, 0, 1, D + 2], [W / 2 + 0.5, 0, 1, D + 2]].forEach(function (b) {
-      var wall = new CANNON.Body({ mass: 0, material: fm }); wall.addShape(new CANNON.Box(new CANNON.Vec3(b[2] / 2, 5, b[3] / 2))); wall.position.set(b[0], 5, b[1]); world.addBody(wall);
-    });
+    setWalls(world);
   }
+  // the four rim walls of the current layout (inner faces exactly on the felt's edge), 10 units high
+  function setWalls(w, refit) {
+    if (!w || !layout) return;
+    (w.walls || []).forEach(function (b) { w.removeBody(b); });
+    var W = layout.W, D = layout.D; w.walls = [];
+    [[0, -D / 2 - 0.5, W + 2, 1], [0, D / 2 + 0.5, W + 2, 1], [-W / 2 - 0.5, 0, 1, D + 2], [W / 2 + 0.5, 0, 1, D + 2]].forEach(function (b) {
+      var wall = new CANNON.Body({ mass: 0, material: w.floorMat }); wall.addShape(new CANNON.Box(new CANNON.Vec3(b[2] / 2, 5, b[3] / 2))); wall.position.set(b[0], 5, b[1]); w.addBody(wall); w.walls.push(wall);
+    });
+    if (refit) w.bodies.forEach(function (b) { if (b.mass > 0) { b.position.x = clampIn(b.position.x, W); b.position.z = clampIn(b.position.z, D); b.wakeUp(); } });
+  }
+  function clampIn(v, size) { var h = size / 2 - 0.6; return v < -h ? -h : v > h ? h : v; }
   api.pour = function (cubes, done) {
     if (!layout) { done(cubes.map(function (c) { return c.s; })); return; }
+    if (tumble) endTumble(); // a reroll still in the air lands at once
+    if (builtTier >= 0 && tierOf(qual) !== builtTier && !document.hidden) buildTable(); // the level changed (dropped): a venue and crowd built for it
     ensureCubes(); if (!world) buildWorld();
     meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; });
@@ -713,14 +785,35 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       meshes[i].position.set(p.x, p.y, p.z); meshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
   }
+  // the face of a cube that points most nearly up (index into FACES / Eq.CUBE_FACES[color]) and how well (1 = flat)
+  function upFace(q) {
+    var best = 0, by = -9;
+    for (var k = 0; k < 6; k++) { var y = upTmp.copy(NORMALS[k]).applyQuaternion(q).y; if (y > by) { by = y; best = k; } }
+    return { k: best, up: by };
+  }
+  var upTmp = new THREE.Vector3(), yawQ = new THREE.Quaternion(), YAXIS = new THREE.Vector3(0, 1, 0);
+  // Safety net: a cube outside the felt (or under it, or stuck high up) is put back flat on the felt, inside the rim,
+  // showing face k, before anything reads the result. Returns true if it was moved. (A cube left leaning on another
+  // one stays as it is: the result is its most nearly upright face, and the slot tween lays it flat a moment later.)
+  function settleInside(m, q, k) {
+    var W = layout.W, D = layout.D, s = m.scale.x, p = m.position, inX = Math.abs(p.x) <= W / 2 - 0.45 * s, inZ = Math.abs(p.z) <= D / 2 - 0.45 * s;
+    if (inX && inZ && p.y > 0.2 * s && p.y < 3) return false;
+    p.set(clampIn(p.x, W), 0.5 * s, clampIn(p.z, D));
+    yawQ.setFromAxisAngle(YAXIS, Math.random() * 6.283); m.quaternion.copy(yawQ).multiply(FACEQ[k]);
+    return true;
+  }
   function finishPour() {
+    var fixed = 0, raw = [];
     var results = pour.bodies.map(function (b, i) {
-      var q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), best = 0, by = -9;
-      NORMALS.forEach(function (n, k) { var y = n.clone().applyQuaternion(q).y; if (y > by) { by = y; best = k; } });
+      var q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w), best = upFace(q).k;
+      raw.push([+b.position.x.toFixed(2), +b.position.y.toFixed(2), +b.position.z.toFixed(2), +upFace(q).up.toFixed(3)]);
       world.removeBody(b);
+      meshes[i].position.set(b.position.x, b.position.y, b.position.z); meshes[i].quaternion.copy(q);
+      if (settleInside(meshes[i], q, best)) fixed++;
       meshes[i].userData.fromPour = true;
       return Eq.CUBE_FACES[meshes[i].userData.color][best];
     });
+    api._lastPour = { fixed: fixed, raw: raw, W: layout.W, D: layout.D, at: meshes.map(function (m) { return [+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)]; }) }; // checks / debugging
     cup.visible = false; slow = null;
     var done = pour.done; pour = null; dirty = true;
     done(results);
@@ -750,10 +843,124 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       }
     }
     if (pour.spawned === 24 && !pour.settledAt) {
-      var asleep = pour.bodies.every(function (b) { return b.sleepState === CANNON.Body.SLEEPING || b.velocity.length() < 0.08; });
-      if (asleep || pour.sim > 5.5 || t > 9) pour.settledAt = now;
+      var asleep = pour.bodies.every(function (b) { return b.sleepState === CANNON.Body.SLEEPING || b.velocity.length() < 0.08; }), nud = pour.nudges || 0;
+      if (asleep || pour.sim > (pour.cap || 5.5) || t > 9 + 1.1 * nud) {
+        // a cube left leaning on another one, or lying on top of one, gets a small nudge so it tips over flat (twice at most)
+        var lean = nud < 2 ? pour.bodies.filter(function (b) { return b.position.y > 0.8 || upFace(tq1.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w)).up < 0.96; }) : [];
+        if (lean.length) {
+          lean.forEach(function (b) {
+            var a = Math.random() * 6.283; b.wakeUp();
+            b.velocity.set(Math.cos(a) * 1.6, 3 + Math.random(), Math.sin(a) * 1.6); b.angularVelocity.set((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 9);
+          });
+          pour.nudges = nud + 1; pour.cap = pour.sim + 1.1;
+        } else pour.settledAt = now;
+      }
     }
     if (pour.settledAt && now - pour.settledAt > 650) finishPour();
+  }
+
+  // ----- Rolling some cubes again where they lie (T3.reroll) -----
+  // list: [{ id, s }] (the face each cube must end up showing). Those cubes hop up, tumble with the dice physics and land
+  // in or near their place showing s; the other cubes are solid but never move. The motion is simulated in full first
+  // (about a second), then the result is relabelled: a cube is the same from every side, so turning each frame's
+  // orientation by one fixed cube symmetry gives an equally real tumble that ends on face s. Then it plays back on a
+  // clock that cannot jump. done() fires exactly once: at once when 3D is off or hidden, else when the cubes are down
+  // (or after a 2.5 s safety timeout). The game then re-syncs, which slides each cube into its slot.
+  var tumble = null;
+  api.reroll = function (list, done) {
+    var once = false, fin = function () { if (once) return; once = true; if (typeof done === 'function') done(); };
+    list = (list || []).filter(function (e) { return e && meshes[e.id] && meshes[e.id].visible; });
+    if (!list.length || !layout || !host || document.hidden || current !== 'game' || pour || !document.body.contains(renderer.domElement)) { fin(); return false; }
+    if (tumble) endTumble();
+    try { tumble = simTumble(list); } catch (e) { tumble = null; }
+    if (!tumble) { fin(); return false; }
+    tumble.done = fin;
+    tumble.timer = setTimeout(function () { if (tumble && tumble.done === fin) endTumble(); else fin(); }, 2500);
+    try { if (Snd.clatter) Snd.clatter(); } catch (e) {}
+    dirty = true; startLoop();
+    return true;
+  };
+  api.rerolling = function () { return !!tumble; };
+  function simTumble(list) {
+    var w = new CANNON.World(); w.gravity.set(0, -32, 0); w.broadphase = new CANNON.NaiveBroadphase(); w.solver.iterations = 10; w.allowSleep = true;
+    var dm = new CANNON.Material('dice'), fm = new CANNON.Material('floor');
+    w.addContactMaterial(new CANNON.ContactMaterial(dm, fm, { friction: 0.4, restitution: 0.22 }));
+    w.addContactMaterial(new CANNON.ContactMaterial(dm, dm, { friction: 0.15, restitution: 0.25 }));
+    w.floorMat = fm;
+    var ground = new CANNON.Body({ mass: 0, material: fm }); ground.addShape(new CANNON.Plane()); ground.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); w.addBody(ground);
+    setWalls(w);
+    var ids = {}; list.forEach(function (e) { ids[e.id] = e.s; });
+    // the other cubes: solid, never moving (their slots are not disturbed)
+    meshes.forEach(function (m, i) {
+      if (!m.visible || ids[i] !== undefined || ctx.held === i || (dragS && dragS.on && dragS.id === i)) return;
+      var hs = 0.5 * m.scale.x, b = new CANNON.Body({ mass: 0, material: dm }); b.addShape(new CANNON.Box(new CANNON.Vec3(hs, hs, hs)));
+      b.position.set(m.position.x, m.position.y, m.position.z); b.quaternion.set(m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w); w.addBody(b);
+    });
+    var T = { cubes: [], frames: 0, clock: 0, hits: [], hi: 0 };
+    list.forEach(function (e) {
+      var m = meshes[e.id], s = m.scale.x, hs = 0.5 * s;
+      anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m);
+      var b = new CANNON.Body({ mass: 1, material: dm }); b.addShape(new CANNON.Box(new CANNON.Vec3(hs, hs, hs)));
+      b.position.set(clampIn(m.position.x, layout.W), Math.max(m.position.y, hs) + 0.05, clampIn(m.position.z, layout.D));
+      b.quaternion.set(m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w);
+      // straight up and down (it lands back on its own spot, not on a neighbour), spinning hard
+      var a = Math.random() * 6.283, h = 0.1 + Math.random() * 0.3, sx = Math.random() < 0.5 ? -1 : 1, sz = Math.random() < 0.5 ? -1 : 1;
+      b.velocity.set(Math.cos(a) * h, 7.6 + Math.random() * 1.2, Math.sin(a) * h);
+      b.angularVelocity.set(sx * (14 + Math.random() * 10), (Math.random() - 0.5) * 8, sz * (14 + Math.random() * 10));
+      b.linearDamping = 0.12; b.angularDamping = 0.12; b.allowSleep = true; b.sleepSpeedLimit = 0.25; b.sleepTimeLimit = 0.2;
+      var c = { id: e.id, s: e.s, m: m, b: b, pos: [], q: [], R: null, home: m.position.clone() };
+      b.addEventListener('collide', function (ev) { var v = Math.abs(ev.contact.getImpactVelocityAlongNormal()); if (v > 1.2) T.hits.push([T.frames, Math.min(1, v / 11)]); });
+      w.addBody(b); T.cubes.push(c);
+    });
+    // simulate up to 1.2 s at 60 Hz (or until everything has settled), recording every step
+    var q = new THREE.Quaternion();
+    for (var f = 0; f < 72; f++) {
+      w.step(1 / 60); T.frames = f + 1;
+      var still = true;
+      T.cubes.forEach(function (c) {
+        var b = c.b; c.pos.push(b.position.x, b.position.y, b.position.z); c.q.push(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        if (b.sleepState !== CANNON.Body.SLEEPING && (b.velocity.length() > 0.08 || b.angularVelocity.length() > 0.15)) still = false;
+      });
+      if (still && f > 24) break;
+    }
+    // relabel: R turns the face physics left on top (k) into the wanted face (s): q_shown = q_physics * R, R = FACEQ[k]^-1 * FACEQ[s]
+    T.cubes.forEach(function (c) {
+      var n = T.frames - 1; q.set(c.q[n * 4], c.q[n * 4 + 1], c.q[n * 4 + 2], c.q[n * 4 + 3]);
+      var k = upFace(q).k, ks = Eq.CUBE_FACES[c.m.userData.color].indexOf(c.s); if (ks < 0) ks = k;
+      c.R = FACEQ[k].clone().invert().multiply(FACEQ[ks]);
+      c.m.userData.tpos = null; c.m.userData.lock.visible = false;
+    });
+    T.ids = ids;
+    return T;
+  }
+  var tq1 = new THREE.Quaternion();
+  function poseTumble(T, f) {
+    f = Math.max(0, Math.min(T.frames - 1, f));
+    T.cubes.forEach(function (c) {
+      c.m.position.set(c.pos[f * 3], c.pos[f * 3 + 1], c.pos[f * 3 + 2]);
+      tq1.set(c.q[f * 4], c.q[f * 4 + 1], c.q[f * 4 + 2], c.q[f * 4 + 3]); c.m.quaternion.copy(tq1).multiply(c.R);
+    });
+  }
+  function tickTumble(dt) {
+    var T = tumble;
+    T.clock += Math.min(Math.max(dt, 0), 0.05);
+    var f = Math.floor(T.clock * 60);
+    while (T.hi < T.hits.length && T.hits[T.hi][0] <= f) { var hv = T.hits[T.hi++]; if (hv[0] >= f - 2) { try { Snd.diceHit(hv[1]); } catch (e) {} } }
+    poseTumble(T, f);
+    if (f >= T.frames - 1) endTumble();
+  }
+  // land now (the last recorded frame), make sure every tossed cube is flat inside the felt, then done()
+  function endTumble() {
+    var T = tumble; if (!T) return;
+    tumble = null; clearTimeout(T.timer);
+    poseTumble(T, T.frames - 1);
+    T.cubes.forEach(function (c) {
+      var ks = Eq.CUBE_FACES[c.m.userData.color].indexOf(c.s);
+      settleInside(c.m, c.m.quaternion, ks >= 0 ? ks : upFace(c.m.quaternion).k);
+      c.m.userData.tpos = null; spawnPuff(c.m.position.x, c.m.position.z, c.m.scale.x * 0.8, 0.5);
+    });
+    dirty = true;
+    if (T.done) T.done();
   }
 
   // ----- Animation loop -----
@@ -767,7 +974,37 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       bl.visible = true; bl.position.set(m.position.x, 0.012, m.position.z); bl.scale.set(size, size, 1); bl.material.opacity = 0.34 / (1 + h * 0.9);
     }
     if (post && post.on) post.render(); else renderer.render(scene, camera);
-    dirty = false;
+    dirty = false; amb = false;
+    // listeners that follow things on screen (speech bubbles): after every drawn frame, told whether the camera moved
+    if (viewFns.length) {
+      var me = camera.matrixWorld.elements, moved = false;
+      for (var j = 0; j < 16; j++) if (me[j] !== lastCamM[j]) { moved = true; lastCamM[j] = me[j]; }
+      viewFns.slice().forEach(function (f) { try { f(moved); } catch (e) {} });
+    }
+  }
+  var viewFns = [], lastCamM = new Float32Array(16);
+  // Idle rendering. At rest the creature still breathes and blinks and the kid blinks; their per-frame hooks ask for a
+  // redraw for that. When nothing else needs drawing (no cube, camera, effect or crowd moving, nobody gesturing, talking
+  // or reaching), those "ambient" redraws are drawn at most AMB_FPS times a second instead of every frame.
+  // ctx.ambient(): a module can ask for such a low-rate redraw directly (instead of ctx.dirty()).
+  var amb = false, ambLast = 0, AMB_MS = 1000 / 12, talkUntil = 0;
+  function hooksQuiet(now) {
+    try {
+      if (now < talkUntil) return false;
+      if (api.creatureStage && api.creatureStage() >= 0) return false;
+      var cs = api.creatureStats ? api.creatureStats() : null;
+      if (cs && (cs.gesture || cs.pose > 0.002 || Math.abs(cs.offX) > 0.002 || Math.abs(cs.offZ) > 0.002)) return false;
+      if (api.playerMoving && api.playerMoving()) return false;
+      var ps = api.playerState ? api.playerState() : null;
+      if (ps && (ps.mood || (ps.mate && ps.mate.mood))) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+  // the creature's mouth moves while it talks: no low-rate drawing then (T3.creatureTalk is wrapped once, lazily)
+  function watchTalk() {
+    var f = api.creatureTalk; if (!f || f.__t3wrap) return;
+    var w = function (ms) { talkUntil = ms > 0 ? performance.now() + ms + 400 : 0; return f.apply(this, arguments); };
+    w.__t3wrap = true; api.creatureTalk = w;
   }
   function startLoop() {
     if (looping) return; looping = true; lastFrame = performance.now();
@@ -779,6 +1016,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     now = now || performance.now();
     var dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
     if (pour) { if (document.hidden) { pour.fast = true; finishPourFast(); } else tickPour(now, dt); dirty = true; }
+    if (tumble) { if (document.hidden) endTumble(); else tickTumble(dt); dirty = true; }
     if (anims.length) {
       anims = anims.filter(function (a) {
         var k = Math.min(1, (now - a.t0) / a.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
@@ -830,7 +1068,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (Math.abs(d) < 0.01) zp.material.opacity = tgt; else zp.material.opacity += d * zk;
       zp.visible = zp.material.opacity > 0.004; dirty = true;
     });
+    var busy = dirty;
+    watchTalk();
     hooks.frame.forEach(function (f) { f(now); });
+    // only the per-frame hooks asked for this frame, and nobody is doing anything: an ambient (low-rate) redraw
+    if (dirty && !busy && hooksQuiet(now)) { dirty = false; amb = true; }
+    if (!dirty && amb && now - ambLast >= AMB_MS) dirty = true;
+    if (dirty) ambLast = now;
     var rendered = false;
     if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') { renderNow(); rendered = true; }
     if (Q) Q.sample(now, rendered, fromWatchdog);
@@ -838,7 +1082,45 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (!fromWatchdog) requestAnimationFrame(frame);
   }
   api.kick = function () { dirty = true; startLoop(); };
+  // T3.project(v) -> { x, y, visible, behind }: where a world point (THREE.Vector3 or {x,y,z}) is on the page right now
+  // (client pixels, as drawn), whether it is inside the picture, and whether it is behind the camera. null without a picture.
+  var projV = new THREE.Vector3();
+  api.project = function (p) {
+    if (!host || !layout || !p) return null;
+    camera.updateMatrixWorld(); projV.set(p.x, p.y, p.z).applyMatrix4(camera.matrixWorldInverse);
+    var depth = -projV.z, behind = depth < 0.05; projV.applyMatrix4(camera.projectionMatrix);
+    var r = renderer.domElement.getBoundingClientRect(), x = r.left + (projV.x + 1) / 2 * r.width, y = r.top + (1 - projV.y) / 2 * r.height;
+    // ppu: screen pixels per world unit at that depth (for offsets that scale with the zoom)
+    var ppu = behind ? 0 : r.height / (2 * depth * Math.tan(camera.fov * Math.PI / 360));
+    return { x: x, y: y, visible: !behind && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom, behind: behind, ppu: ppu, rect: r };
+  };
+  // T3.onView(fn) -> off(): fn(cameraMoved) after every drawn frame (the camera or something on screen changed).
+  api.onView = function (fn) {
+    if (typeof fn !== 'function') return function () {};
+    viewFns.push(fn);
+    return function () { var i = viewFns.indexOf(fn); if (i >= 0) viewFns.splice(i, 1); };
+  };
+  // T3.anchor('opp' | 'kid') -> a function returning that head's world position right now (or null when it is not at the
+  // table). 'opp' holds on to the creature in use when it is called (another creature taking over later does not move it).
+  api.anchor = function (who) {
+    if (who === 'kid') {
+      return function () {
+        try { var md = api.playerModels && api.playerModels().me; if (!md || !md.root || !md.root.visible || !md.head) return null; return md.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.6 * (md.root.scale.x || 1), 0)); } catch (e) { return null; }
+      };
+    }
+    var actor = null; try { actor = api._creatureActor ? api._creatureActor() : null; } catch (e) {}
+    if (!actor) return function () { var f = api.creatureFocus ? api.creatureFocus() : null; return f ? f.head : null; };
+    return function () {
+      try {
+        if (!actor.root || !actor.root.visible || !actor.root.parent) return null;
+        actor.root.updateMatrixWorld(true);
+        var h = actor.headC.clone(); if (actor.headObj) actor.headObj.getWorldPosition(h); else h.applyMatrix4(actor.body.matrixWorld);
+        return h;
+      } catch (e) { return null; }
+    };
+  };
   api._frame = function (now) { frame(now, true); }; // test hook: advance one frame with a given clock (used by headless checks)
+  api._relayout = function () { chooseLayout(); if (api.lastG) api.sync(api.lastG, true); }; // test hook: what the ResizeObserver does (background tabs delay it)
   // ----- Taps and drags on the 3D table -----
   function pick(ev, objs) {
     var r = renderer.domElement.getBoundingClientRect();
@@ -872,7 +1154,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       // a second finger: this is a look-around gesture, never a tap or a cube drag
       multi = true; cancelCubeDrag();
       var t = twoTouches();
-      if (t && !pinch && !pour && !(shots && shots.active()) && orbit && orbit.begin()) { pinch = pinchInfo(t); cueG = null; endShake(); }
+      if (t && !pinch && !pour && !(shots && shots.active()) && orbit && orbit.begin()) { pinch = pinchInfo(t); pinch.at = aimAt(pinch.cx, pinch.cy); cueG = null; endShake(); }
       dirty = true; startLoop(); return;
     }
     if (multi) return; // a finger left over from a two-finger gesture
@@ -880,23 +1162,31 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     // a tap during a close-up only skips it (the camera eases home quickly); it doesn't pick a cube seen from the close-up
     if (shots && shots.active()) { shots.skip(); dragS = null; dirty = true; startLoop(); return; }
     cueG = null; endShake(); // a touch ends any camera cue; picking always uses the camera as drawn, so taps stay accurate while it eases home
-    var h = pick(ev, meshes.filter(function (m) { return m.visible; }));
+    // the right (or middle) button, or shift + drag, slides the view (pan) instead; a shift-press without moving is still a tap
+    var panBtn = !touch && (ev.button === 2 || ev.button === 1 || (ev.button === 0 && ev.shiftKey));
+    var h = ev.button === 0 ? pick(ev, meshes.filter(function (m) { return m.visible && !(tumble && tumble.ids[m.userData.id] !== undefined); })) : null;
     dragS = { x: ev.clientX, y: ev.clientY, lx: ev.clientX, ly: ev.clientY, id: h ? h.object.userData.id : null, on: false };
-    if (dragS.id != null && api.handlers.canDrag && api.handlers.canDrag(dragS.id)) { dragS.can = true; renderer.domElement.setPointerCapture(ev.pointerId); }
+    if (panBtn) { if (ev.button !== 0) dragS.id = null; if (orbitOk()) { dragS.look = true; dragS.pan = true; try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {} } }
+    else if (dragS.id != null && api.handlers.canDrag && api.handlers.canDrag(dragS.id)) { dragS.can = true; renderer.domElement.setPointerCapture(ev.pointerId); }
     else if (dragS.id == null && !touch && ev.button === 0 && orbitOk()) { dragS.look = true; try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {} }
   });
+  renderer.domElement.addEventListener('contextmenu', function (ev) { if (layout && current === 'game') ev.preventDefault(); }); // the right button pans
   renderer.domElement.addEventListener('pointermove', function (ev) {
     var p = ptrs[ev.pointerId]; if (p) { p.x = ev.clientX; p.y = ev.clientY; }
     if (pinch) {
       var t = twoTouches(); if (!t) return;
       var q = pinchInfo(t), sz = canvasSize();
-      orbit.rotate((q.cx - pinch.cx) / sz.w, (q.cy - pinch.cy) / sz.h); orbit.zoomBy(pinch.d / q.d);
-      pinch = q; return;
+      orbit.rotate((q.cx - pinch.cx) / sz.w, (q.cy - pinch.cy) / sz.h); orbit.zoomBy(pinch.d / q.d, pinch.at); // zooms toward where the fingers are
+      q.at = pinch.at; pinch = q; return;
     }
     if (multi || !dragS) return;
     if (dragS.look) {
       if (!dragS.orb && Math.hypot(ev.clientX - dragS.x, ev.clientY - dragS.y) > 6) { if (!orbit.begin()) { dragS.look = false; return; } dragS.orb = true; dragS.lx = dragS.x; dragS.ly = dragS.y; }
-      if (dragS.orb) { var s2 = canvasSize(); orbit.rotate((ev.clientX - dragS.lx) / s2.w, (ev.clientY - dragS.ly) / s2.h); dragS.lx = ev.clientX; dragS.ly = ev.clientY; }
+      if (dragS.orb) {
+        var s2 = canvasSize(), fx = (ev.clientX - dragS.lx) / s2.w, fy = (ev.clientY - dragS.ly) / s2.h;
+        if (dragS.pan) orbit.panBy(fx, fy, s2.w / s2.h, camera.fov * Math.PI / 180); else orbit.rotate(fx, fy);
+        dragS.lx = ev.clientX; dragS.ly = ev.clientY;
+      }
       return;
     }
     if (!dragS.can) return;
@@ -912,6 +1202,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (dropPtr(ev)) { dragS = null; return; } // the end of a two-finger gesture: no tap
     var d = dragS; dragS = null; if (!d) return;
     if (d.orb) { orbit.end(); return; }
+    if (d.pan && ev.button !== 0) return; // a right / middle click is never a tap
     if (d.on) { var z = zoneAt(ev); if (api.handlers.drop) api.handlers.drop(d.id, z); return; }
     if (d.id != null) { if (api.handlers.cubeTap) api.handlers.cubeTap(d.id); return; }
     var zz = zoneAt(ev); if (zz && api.handlers.zoneTap) api.handlers.zoneTap(zz);
@@ -927,7 +1218,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (pour || dragS || pinch || (shots && shots.active()) || !orbitOk()) return;
     var dy = ev.deltaY * (ev.deltaMode === 1 ? 33 : ev.deltaMode === 2 ? 400 : 1);
     dy = Math.max(-120, Math.min(120, dy)); // one notch, however the device reports it
-    orbit.zoomBy(Math.exp(dy * (ev.ctrlKey ? 0.006 : 0.0016))); // ctrlKey: a trackpad pinch
+    var f = Math.exp(dy * (ev.ctrlKey ? 0.006 : 0.0016)); // ctrlKey: a trackpad pinch
+    orbit.zoomBy(f, f < 1 ? aimAt(ev.clientX, ev.clientY) : null); // in: toward the mouse; out: back toward the table
   }, { passive: false });
   // iPad Safari's own pinch gesture events: keep them from zooming the page
   ['gesturestart', 'gesturechange'].forEach(function (n) { renderer.domElement.addEventListener(n, function (e) { e.preventDefault(); }); });
@@ -979,6 +1271,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   Object.assign(ctx, {
     scene: scene, camera: camera, renderer: renderer, meshes: meshes, hooks: hooks, camBase: base, // camBase: the fitted seat view {pos, look}, without orbit or cue offsets
     dirty: function () { dirty = true; }, startLoop: startLoop,
+    ambient: function () { amb = true; startLoop(); }, // a gentle redraw (breathing at rest): drawn at most ~12 times a second
     refit: function () { if (layout) { fitCamera(); if (post) post.tag(); dirty = true; } },
     dropAnims: function (m) { anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m); }
   });
@@ -1005,7 +1298,11 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var orbitOn = true;
   function orbitOk() { return !!orbit && orbitOn && !(typeof S !== 'undefined' && S.set && S.set.orbit === false) && !!layout && !!host && current === 'game' && !pour; }
   function orbitBusy() { return !!orbit && (orbit.away() || orbit.dragging()); }
-  orbit = createOrbit({ allowed: orbitOk, changed: function () { applyCam(); dirty = true; startLoop(); } });
+  orbit = createOrbit({
+    allowed: orbitOk, changed: function () { applyCam(); dirty = true; startLoop(); },
+    bounds: function () { return venueBox; }, floor: FLOOR_Y, clip: clipCam,
+    table: function () { return layout ? { hw: layout.W / 2 + 0.7, hd: layout.D / 2 + 0.7, cz: 0 } : null; }
+  });
   orbitUI = createOrbitUI({
     seat: function () { Snd.click(); orbit.reset(0.5); },
     photo: function () { api.photo(); }

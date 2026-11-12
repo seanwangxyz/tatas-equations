@@ -12,7 +12,8 @@
 // heads, arms, each head-gear piece, each held thing, capes), all sharing ONE material (one shader program)
 // and ONE small texture atlas (1024x512). Per-instance attributes carry three colours and an atlas cell, so
 // faces, shirt prints and badges come from the atlas, not from extra meshes. The low quality tier has a third
-// fewer people and plain boxes instead of bevels, no shins/shoes, ears, nose, cuffs or thumbs.
+// fewer people and plain boxes instead of bevels, no shins/shoes, ears, nose, cuffs or thumbs. The medium tier
+// (where tablets start) keeps the bevels but has no shins/shoes, cuffs or thumbs, and a sixth fewer people.
 //
 // HARD RULE: nothing moves at rest. A reaction is a one-shot, 1.3-2.4 s long; while one runs step() returns
 // true (the table keeps rendering), and when the last one ends every instance matrix is copied back from the
@@ -642,6 +643,7 @@ export function makeBlockCrowd(group, pts, o) {
   var quality = o.quality || function () { return 2; }, q0 = quality(), det = q0 >= 2 ? 2 : q0 >= 1 ? 1 : 0, dim = o.dim == null ? 1 : o.dim, style = o.style || 'fans';
   o.teams = o.teams || [{ shirt: '#e03131', alt: '#c92a2a', trim: '#ffffff', seat: '#c73a3a' }, { shirt: '#1c7ed6', alt: '#1864ab', trim: '#ffffff', seat: '#2f66c4' }];
   if (q0 < 1) pts = pts.filter(function (p, i) { return i % 3 !== 2; }); // low tier: a third fewer people
+  else if (q0 < 2) pts = pts.filter(function (p, i) { return i % 6 !== 5; }); // medium (tablets start here): a sixth fewer, a few empty seats
   var N = pts.length, R = rng(o.seed || 4242), mat = crowdMaterial(dim);
   pts.forEach(function (p) { if (style === 'monsters') dressMonster(p, R, o); else dressPerson(p, R, o, style === 'beach'); });
   if (o.redress) pts.forEach(function (p, i) { o.redress(p, i, function (kind) { character(p.L, p, R, o.teams[p.team ? 1 : 0], kind); }); }); // for checks: dress someone up

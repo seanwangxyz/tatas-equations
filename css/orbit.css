@@ -8,6 +8,8 @@
 .orbit-seat{display:inline-flex;align-items:center;gap:6px;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility 0s linear .25s}
 .orbit-seat.on{opacity:1;visibility:visible;transition:opacity .25s ease}
 @media (max-width:520px){ .orbit-seat .lbl{font-size:13px} .orbit-ui{right:6px;bottom:6px;gap:6px} }
+/* a speech bubble whose speaker is off the picture (view swung away): no tail pointing at nothing (js/social.js) */
+.sbub.notail .sb-in::before,.sbub.notail .sb-in::after{display:none}
 /* shutter: one soft white flash */
 .orbit-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:5}
 .orbit-flash.go{animation:orbitFlash .45s ease-out both}
