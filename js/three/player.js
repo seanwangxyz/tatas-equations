@@ -24,12 +24,18 @@
 //   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' | 'back' |
 //                                'face' | { yaw, close } (any angle; close = head and shoulders).
 //                                For the kit designer's live preview. Drawn offscreen with the main renderer.
-//   T3.playerMove(id, zone, done, {quick}?)  he reaches out, picks the cube up and puts it in the zone (a quick lob for
-//                                the far zones); same contract as T3.creatureMove: done() exactly once (at the release,
-//                                ~0.6 s; at once if he can't); 2.5 s safety timeout. T3.mateMove: the same for the mate.
-//   T3.playerMoveFinish()        finish any move now (the cube goes to its slot, done() fires). T3.playerMoving().
-//   T3.playerState()             debugging: {shown, fits, visible, mood, scale, ...}
-//   T3.playerSeat(o) / T3.playerMoveTuning(o)   tuning hooks (see SEAT / MOVE)
+//   T3.playerMove(id, zone, done, {quick}?)  he picks the cube up by hand, runs round the nearest end of the table with
+//                                it and sets it down in its slot (no throwing), then walks back to his seat. Same
+//                                contract as T3.creatureMove: done() exactly once, the moment the cube is down (~1.2-1.6 s;
+//                                at once if he can't); safety timeout. The walk back is free: a new move starts from
+//                                wherever he is. quick (Goal cubes one after another): faster, and he waits a moment
+//                                where he put the cube down instead of walking straight back. T3.mateMove: the same for
+//                                the mate.
+//   T3.playerMoveFinish()        finish any move now (the cube goes into its slot at once, done() fires; he walks back).
+//                                T3.playerMoving(): true until the cube is down.
+//   T3.playerWalkSide(side)      'auto' | 'right' (never round the left side, e.g. a creature sits there) | 'left'
+//   T3.playerState()             debugging: {shown, fits, visible, mood, scale, pos, trip, ...}
+//   T3.playerSeat(o) / T3.playerMoveTuning(o)   tuning hooks (see SEAT / WALK)
 //
 // Placement: his home seat is the middle of the near side, his back to the seat camera, feet on the pitch just
 // outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
@@ -52,13 +58,13 @@ if (T3 && !T3.ctx) {
   T3.playerSet = function () {}; T3.mate = function () { return false; }; T3.mateMood = function () {}; T3.playerCelebrate = function () { return false; };
   T3.playerCelebrations = function () { return CELEBS.slice(); }; T3.playerPortrait = function () { return Promise.resolve(null); };
   T3.playerMove = T3.mateMove = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
-  T3.playerMoveFinish = function () { return false; }; T3.playerMoving = function () { return false; };
+  T3.playerMoveFinish = function () { return false; }; T3.playerMoving = function () { return false; }; T3.playerWalkSide = function () { return 'auto'; };
 }
 if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
   var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
-  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side'];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl'];
   var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
   function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
@@ -67,7 +73,8 @@ if (T3 && T3.ctx) (function () {
     return { role: role, model: null, key: '', who: '', dims: KID, shown: false, fits: false, placedOnce: false,
       place: { x: 0, y: -0.2, z: 0, s: 1, rot: Math.PI, hd: 0, drop: 0 }, P: zero(POSE), cur: zero(POSE), F: zero(FACE), Fc: zero(FACE, { lid: 0.95 }),
       arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }),
-      g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, task: null };
+      g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, trip: null,
+      wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
   var me = makeAvatar('main'), mate = makeAvatar('mate');
   var needPlace = true, lastLayout = null;
@@ -287,7 +294,7 @@ if (T3 && T3.ctx) (function () {
     if (best) setPlace(A, best);
   }
   // 2 Players / Online: across the table where a creature would stand, facing the camera, standing on the pitch
-  var FAR = { s: 1.35, front: 1.95 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
+  var FAR = { s: 1.35, front: 1.95, look: -0.5 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
   function creatureHere() { try { return !!(T3.creatureVisible && T3.creatureVisible()); } catch (e) { return false; } }
   function placeFar() {
     var A = mate, L = ctx.layout; if (!L) { A.fits = false; return; }
@@ -474,16 +481,22 @@ if (T3 && T3.ctx) (function () {
     return true;
   }
 
-  // ---------- picking up a cube and putting it in a zone (T3.playerMove / T3.mateMove) ----------
-  // Like T3.creatureMove, but quick (a person, not a show): reach (lean, and a side step along the table edge if the
-  // cube is off to one side), grab, a small lift, and then either set it down in its slot (if the slot is within
-  // reach) or, much more often, since the zones are far across the table, a gentle underarm lob into the slot. done()
-  // fires at the release (about 0.6 s), the cube lands in its slot (table.js tweens it: `toss` / `dropped`), and he
-  // eases back to rest. The arm stretches at most MOVE.stretch; the body leans at most MOVE.lean. If the cube itself
-  // is out of reach (a deep tall-screen table, or the mate across the table), it hops up into his open hand.
-  var MOVE = { stretch: 1.2, lean: 0.62, fwd: 0.22, hopMax: 3, T: [0.26, 0.34, 0.47, 0.6, 0.78], safety: 2500 };
+  // ---------- picking up a cube and putting it in its slot by hand (T3.playerMove / T3.mateMove) ----------
+  // Like a creature, he picks the cube up with his hand, carries it and sets it down in its slot, no throwing. The zones
+  // are across the table, more than an arm and a lean away from his seat, so he takes the cube, runs round the nearest
+  // end of the table (on a "ring" just outside the rim, at the same belly clearance as his seat, corners rounded), sets
+  // the cube down from the spot nearest to its slot and walks back to his seat. The middle of the table is out of reach
+  // of a standing lean from every edge, so for those slots he hops up onto his tummy on the rim, feet in the air, and
+  // slides in a little (a kid reaching across a big table). done() fires the moment the cube is down in its slot; the
+  // walk back is free (a new move starts from wherever he is then).
+  // The grab spot, the drop spot and the way round are picked by the shortest time (walk + grab + drop, plus a little
+  // for the walk back), never through a creature or the person across the table (hard), round the other person at
+  // the table on the outside (behind him), and never on a side ruled out by T3.playerWalkSide().
+  // v / vBack / stride / fwd / slideMax are in his own units (x his scale); times in seconds.
+  var WALK = { v: 18.5, vBack: 11, stretch: 1.1, lean: 0.85, fwd: 0.3, flopP: 1.2, crawlP: 1.0, slideMax: 3.4, maxTurn: 1.05,
+    tGrab: 0.34, tGrabF: 0.44, tPlace: 0.36, tPlaceF: 0.46, linger: 0.45, quickV: 1.25, quickT: 0.8, safety: 2500, side: 'auto', stride: 4.2, h: 0.6 };
   function slotFor(id, zone) {
-    // where a cube will come to rest in a zone (mirrors table.js gridSlots / the Goal row; an approximation is fine)
+    // where a cube will come to rest in a zone (the same as creatures.js slotFor, which mirrors table.js gridSlots / the Goal row)
     var L = ctx.layout, Gm = (typeof G !== 'undefined') ? G : null, r = L && L.z[zone];
     if (!r) return null;
     var a = { x: r[0] + 0.25, z: r[1] + 1.05, w: r[2] - 0.5, d: r[3] - 1.25 }, i;
@@ -501,154 +514,416 @@ if (T3 && T3.ctx) (function () {
     var used = Math.min(cnt, cols), offx = (a.w - used * s) / 2;
     return { x: a.x + offx + s / 2 + (n % cols) * s, z: a.z + s / 2 + Math.floor(n / cols) * s };
   }
-  var M0 = new THREE.Matrix4(), M0i = new THREE.Matrix4(), q0 = new THREE.Quaternion(), YAX = new THREE.Vector3(0, 1, 0);
-  // his resting frame (hips, facing, scale) as a matrix: world <-> his own kid units
-  function restFrame(A) {
-    q0.setFromAxisAngle(YAX, A.place.rot); M0.compose(v3.set(A.place.x, A.place.y, A.place.z), q0, v4.set(A.place.s, A.place.s, A.place.s)); M0i.copy(M0).invert();
+
+  // ----- the ring round the table -----
+  // u = 0 at the middle of the near side (his seat), increasing toward +x: near-right, right side, far side, left side.
+  function ringOf(A) {
+    var L = ctx.layout, ow = L.W / 2 + 0.55, od = L.D / 2 + 0.55, c = 0.55 + 0.86 * A.dims.torsoX * A.place.s, q = Math.PI * c / 2;
+    var b = [ow, ow + q, ow + q + 2 * od, ow + 2 * q + 2 * od, 3 * ow + 2 * q + 2 * od, 3 * ow + 3 * q + 2 * od, 3 * ow + 3 * q + 4 * od, 3 * ow + 4 * q + 4 * od, 4 * ow + 4 * q + 4 * od];
+    return { ow: ow, od: od, c: c, b: b, L: b[8] };
   }
-  // the lean / forward step / side step that brings a shoulder within reach of a target (his units); null if none does
-  function planReach(A, T, sideMax) {
-    var D = A.dims, R = (D.L1 + D.L2) * 0.985 * MOVE.stretch, i = T.x < 0 ? 0 : 1, sx = (i ? 1 : -1) * D.SH_X;
-    var lat = T.x - sx, sd = clamp((lat < 0 ? -1 : 1) * Math.max(0, Math.abs(lat) - 0.45), -sideMax, sideMax), sh = new THREE.Vector3();
-    for (var a = 0; a <= MOVE.lean + 1e-6; a += 0.04) {
-      for (var f = 0; f <= MOVE.fwd + 1e-6; f += MOVE.fwd / 2) {
-        sh.set(sx + sd, D.SH_Y * Math.cos(a), D.SH_Y * Math.sin(a) + f);
-        if (sh.distanceTo(T) <= R * 0.96) return { arm: i, lean: a, fwd: f, side: sd, sh: sh, R: R, ok: true };
+  function ringPt(R, u) {
+    // {x, z, nx, nz}: n = the inward normal (toward the table)
+    u = ((u % R.L) + R.L) % R.L;
+    var b = R.b, ow = R.ow, od = R.od, c = R.c, t;
+    function st(x, z, nx, nz) { return { x: x, z: z, nx: nx, nz: nz }; }
+    function arc(cx, cz, dx, dz) { return { x: cx + dx * c, z: cz + dz * c, nx: -dx, nz: -dz }; }
+    if (u < b[0]) return st(u, od + c, 0, -1);
+    if (u < b[1]) { t = (u - b[0]) / c; return arc(ow, od, Math.sin(t), Math.cos(t)); }
+    if (u < b[2]) return st(ow + c, od - (u - b[1]), -1, 0);
+    if (u < b[3]) { t = (u - b[2]) / c; return arc(ow, -od, Math.cos(t), -Math.sin(t)); }
+    if (u < b[4]) return st(ow - (u - b[3]), -od - c, 0, 1);
+    if (u < b[5]) { t = (u - b[4]) / c; return arc(-ow, -od, -Math.sin(t), -Math.cos(t)); }
+    if (u < b[6]) return st(-ow - c, -od + (u - b[5]), 1, 0);
+    if (u < b[7]) { t = (u - b[6]) / c; return arc(-ow, od, -Math.cos(t), Math.sin(t)); }
+    return st(-ow + (u - b[7]), od + c, 0, -1);
+  }
+  function ringU(R, x, z) {
+    // the ring position nearest to a point (outside the table)
+    var ow = R.ow, od = R.od, b = R.b, c = R.c;
+    if (Math.abs(x) < ow && Math.abs(z) < od) { if (ow - Math.abs(x) < od - Math.abs(z)) x = (x < 0 ? -1 : 1) * (ow + 0.01); else z = (z < 0 ? -1 : 1) * (od + 0.01); }
+    if (z >= od && Math.abs(x) <= ow) return x >= 0 ? x : R.L + x;
+    if (x >= ow && z >= od) return b[0] + c * Math.atan2(x - ow, z - od);
+    if (x >= ow && Math.abs(z) < od) return b[1] + (od - z);
+    if (x >= ow && z <= -od) return b[2] + c * Math.atan2(-(z + od), x - ow);
+    if (z <= -od && Math.abs(x) <= ow) return b[3] + (ow - x);
+    if (x <= -ow && z <= -od) return b[4] + c * Math.atan2(-(x + ow), -(z + od));
+    if (x <= -ow && Math.abs(z) < od) return b[5] + (z + od);
+    return b[6] + c * Math.atan2(z - od, -(x + ow));
+  }
+  function outlineDist(R, x, z) { var dx = Math.max(0, Math.abs(x) - R.ow), dz = Math.max(0, Math.abs(z) - R.od); return Math.sqrt(dx * dx + dz * dz) * ((Math.abs(x) < R.ow && Math.abs(z) < R.od) ? -1 : 1); }
+  function homeOf(A) { return { x: A.place.x, z: A.place.z, yaw: A.place.rot }; }
+  // running speed (world units / s). The person across the table (smaller, and every Resource is on the near half)
+  // runs a little faster so his moves don't drag.
+  function runSpeed(A, quick) { return WALK.v * A.place.s * (quick ? WALK.quickV : 1) * (A === mate && mate.seat === 'far' ? 1.3 : 1); }
+  function radiusOf(A) { return 1.0 * A.dims.torsoX * A.place.s; }
+  function flopLift(A) {
+    // root (waist) height when he lies on his tummy: the belly clears the cubes on the felt (cube tops at y = 1)
+    var s = A.place.s, yF = 1.15 + 0.86 * A.dims.torsoX * s * Math.sin(WALK.flopP);
+    return (yF - A.place.y) / s;   // his units above his standing height
+  }
+  // what is in his way: a creature across the table and the person standing there are hard (never walk there), the
+  // other person at the table is soft (he goes round the outside, behind him); T3.playerWalkSide rules out one side
+  function obstaclesFor(A) {
+    var L = ctx.layout, out = [], other = A === me ? mate : me, rA = radiusOf(A);
+    var farBusy = (!(A === mate && mate.seat === 'far') && creatureHere()) || (A === me && mate.seat === 'far' && mate.shown && mate.fits);
+    if (farBusy) {
+      // the creature (or the person) across the table: the whole far side is theirs, he only goes as far as its corners
+      out.push({ x: 0, z: -L.D / 2 - 1.95, r: 5.2 + rA, hard: true });
+      out.push({ box: [-L.W / 2 + 0.3, L.W / 2 - 0.3, -1e9, -L.D / 2 - 0.4], hard: true });
+    }
+    if (other.shown && other.model && other.model.root.visible && !(other === mate && mate.seat === 'far')) out.push({ x: other.wk.x, z: other.wk.z, r: 0.88 * (radiusOf(other) + rA) + 0.2, hard: false });
+    return out;
+  }
+  function inObs(o, x, z) { if (o.box) return x > o.box[0] && x < o.box[1] && z > o.box[2] && z < o.box[3]; var ox = x - o.x, oz = z - o.z; return ox * ox + oz * oz < o.r * o.r; }
+  function sideOff(R, x) { return (WALK.side === 'right' && x < -R.ow + 0.01) || (WALK.side === 'left' && x > R.ow - 0.01); }
+
+  // ----- reaching from a spot -----
+  // Can he reach target T (world; the wrist's spot) from a spot on the ring facing it? Standing: a lean (and a small
+  // step in); else on his tummy over the rim, sliding in up to slideMax. null if not.
+  function reachPlan(A, p, T, slideMax) {
+    var D = A.dims, s = A.place.s, dx = T.x - p.x, dz = T.z - p.z, d = Math.sqrt(dx * dx + dz * dz) || 1e-6;
+    var ang = Math.acos(clamp((dx * p.nx + dz * p.nz) / d, -1, 1)); if (ang > WALK.maxTurn) return null;
+    var yaw = Math.atan2(dx, dz), F = d / s, Y = (T.y - A.place.y) / s, R = (D.L1 + D.L2) * WALK.stretch * 0.97, a, f;
+    for (a = 0; a <= WALK.lean + 1e-6; a += 0.05) {
+      for (f = 0; f <= WALK.fwd + 1e-6; f += WALK.fwd / 3) {
+        var sy = D.SH_Y * Math.cos(a), sz = D.SH_Y * Math.sin(a) + f;
+        if ((Y - sy) * (Y - sy) + (F - sz) * (F - sz) + 0.3 * D.SH_X * D.SH_X <= R * R) return { yaw: yaw, mode: 'stand', lean: a, fwd: f, sl: 0, cost: 0.25 * a + 0.15 * ang };
       }
     }
-    sh.set(sx + sd, D.SH_Y * Math.cos(MOVE.lean), D.SH_Y * Math.sin(MOVE.lean) + MOVE.fwd);
-    return { arm: i, lean: MOVE.lean, fwd: MOVE.fwd, side: sd, sh: sh, R: R, ok: false };
+    // how far in (his units) the waist must go to reach it with the body pitched forward by p and lifted by lift
+    function need(p, lift) { var dy = Y - (lift + D.SH_Y * Math.cos(p)); if (Math.abs(dy) >= R) return null; return Math.max(0, F - D.SH_Y * Math.sin(p) - Math.sqrt(R * R - dy * dy)); }
+    var c = (0.55 + 0.86 * D.torsoX * s) / s, hipB = -D.hipY;   // ring -> outer rim; waist -> hip joints (his units)
+    // on his tummy over the rim, hips still outside it, legs hanging down the side of the table
+    var sF = need(WALK.flopP, flopLift(A));
+    if (sF != null && sF - hipB * Math.sin(WALK.flopP) <= c - 0.35) return { yaw: yaw, mode: 'flop', p: WALK.flopP, lift: flopLift(A), lean: 0, fwd: 0, sl: sF, cost: 0.12 + 0.08 * sF + 0.15 * ang };
+    // further: he climbs up onto the table on his knees, one hand on the felt
+    var pC = WALK.crawlP, lC = crawlLift(A, pC), sC = need(pC, lC), short = 0;
+    if (sC == null) return null;
+    sC = Math.max(sC, c + 0.25 + hipB * Math.sin(pC));                          // knees on the felt, just inside the rim
+    if (sC > slideMax) { if (slideMax < 50) return null; short = sC - 6; sC = 6; }
+    // kneeling on the table seen from behind (facing away from the seat camera) reads as standing on the felt, and it
+    // hides the middle of the table: from the side (in profile) it reads as kneeling and only covers the table's edge
+    var away = Math.max(0, -Math.cos(yaw) - 0.7) / 0.3;
+    return { yaw: yaw, mode: 'crawl', p: pC, lift: lC, lean: 0, fwd: 0, sl: sC, cost: 0.28 + 0.06 * sC + 0.15 * ang + short + 3 * away * away };
   }
-  function sideRoom(A) {
-    // how far he may step sideways (his units): along the near edge for the kid's seat, a little for the others
-    var L = ctx.layout; if (A === me) return Math.max(0, (L.W / 2 - 1.2 - Math.abs(A.place.x)) / A.place.s);
-    return (A.seat === 'far' ? 2.4 : 1.0);
+  function crawlLift(A, p) {
+    // root (waist) height kneeling on the felt with the thighs upright and the body pitched forward by p
+    var D = A.dims, s = A.place.s, y = 0.03 + (D.thigh + 0.18 * D.legR) * s + (-D.hipY) * s * Math.cos(p);
+    return (y - A.place.y) / s;
+  }
+
+  // ----- planning: where to grab, where to drop, which way round -----
+  function planTrip(A, S, Tg, Tp, slideMax, quick) {
+    var R = ringOf(A), N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, obs = obstaclesFor(A), s = A.place.s, k, j;
+    var pts = [], blk = new Uint8Array(N), soft = new Uint8Array(N), pb = new Int32Array(2 * N + 1), ps = new Int32Array(2 * N + 1);
+    for (k = 0; k < N; k++) {
+      var p = ringPt(R, k * h); pts.push(p);
+      if (sideOff(R, p.x)) blk[k] = 1;
+      for (j = 0; j < obs.length; j++) { var o = obs[j]; if (inObs(o, p.x, p.z)) { if (o.hard) blk[k] = 1; else soft[k] = 1; } }
+    }
+    for (k = 0; k < 2 * N; k++) { pb[k + 1] = pb[k] + blk[k % N]; ps[k + 1] = ps[k] + soft[k % N]; }
+    // flags strictly after i up to and including j, going +1 (or -1)
+    function cnt(pr, i, j, dir) {
+      if (i === j) return 0;
+      if (dir > 0) { var e = j > i ? j : j + N; return pr[e + 1] - pr[i + 1]; }
+      var e2 = i > j ? i : i + N; return pr[e2] - pr[j];
+    }
+    function rd(i, j) {
+      // the way round from sample i to sample j: { d, dir, soft } or null
+      if (i === j) return { d: 0, dir: 1, soft: 0 };
+      var dp = ((j - i + N) % N) * h, dn = R.L - dp, best = null;
+      [[1, dp], [-1, dn]].forEach(function (c) {
+        if (cnt(pb, i, j, c[0])) return;
+        var sf = cnt(ps, i, j, c[0]), dd = c[1] + sf * h * 1.6 + (sf ? 3 * s : 0);   // going round someone: a detour
+        if (!best || dd < best.d) best = { d: dd, dir: c[0], soft: sf, len: c[1] };
+      });
+      return best;
+    }
+    function nearest(x, z) { return Math.round(ringU(R, x, z) / h) % N; }
+    var iS = nearest(S.x, S.z), offS = Math.hypot(S.x - pts[iS].x, S.z - pts[iS].z), H = homeOf(A), iH = nearest(H.x, H.z), offH = Math.hypot(H.x - pts[iH].x, H.z - pts[iH].z);
+    var vq = runSpeed(A, quick), vb = WALK.vBack * s;
+    function tw(d, v) { return d < 0.05 ? 0 : d / v + 0.15; }
+    var gl = [], pl = [];
+    // grab from right where he stands (e.g. the mate's seat beside the table)
+    if (offS > 0.3) { var g0 = reachPlan(A, { x: S.x, z: S.z, nx: pts[iS].nx, nz: pts[iS].nz }, Tg, slideMax); if (g0) gl.push({ i: -1, p: { x: S.x, z: S.z }, plan: g0 }); }
+    for (k = 0; k < N; k++) {
+      if (blk[k] || soft[k]) continue;
+      var gp = reachPlan(A, pts[k], Tg, slideMax); if (gp) gl.push({ i: k, p: pts[k], plan: gp });
+      var pp = reachPlan(A, pts[k], Tp, slideMax); if (pp) pl.push({ i: k, p: pts[k], plan: pp });
+    }
+    var best = null;
+    for (var a = 0; a < gl.length; a++) {
+      var G1 = gl[a], dSG = G1.i < 0 ? { d: 0, dir: 1, len: 0 } : rd(iS, G1.i); if (!dSG) continue;
+      var t1 = tw(G1.i < 0 ? 0 : offS + dSG.d, vq) + (G1.plan.mode === 'flop' ? WALK.tGrabF : WALK.tGrab) + G1.plan.cost;
+      if (best && t1 >= best.t) continue;
+      for (var b = 0; b < pl.length; b++) {
+        var P1 = pl[b], from = G1.i < 0 ? iS : G1.i, dGP = rd(from, P1.i); if (!dGP) continue;
+        var dBack = rd(P1.i, iH), t = t1 + tw((G1.i < 0 ? offS : 0) + dGP.d, vq) + (P1.plan.mode === 'flop' ? WALK.tPlaceF : WALK.tPlace) * 0.75 + P1.plan.cost + 0.3 * tw(dBack ? dBack.d + offH : 40, vb);
+        if (!best || t < best.t) best = { t: t, G: G1, P: P1, dSG: dSG, dGP: dGP };
+      }
+    }
+    if (!best) return null;
+    best.R = R; best.pts = pts; best.N = N; best.h = h; best.obs = obs; best.iS = iS; best.offS = offS; best.iH = iH; best.offH = offH; best.rd = rd; best.nearest = nearest;
+    return best;
+  }
+  // a walkable polyline along the ring from sample i to sample j (way dir), from / to points off the ring if given,
+  // going round soft obstacles on the outside
+  function ringPath(pl, i, j, dir, from, to) {
+    var R = pl.R, N = pl.N, pts = [], k, it, n = 0;
+    if (from) pts.push([from.x, from.z]);
+    if (i >= 0) { for (k = i; ; k = (k + dir + N) % N) { pts.push([pl.pts[k].x, pl.pts[k].z]); if (k === j || ++n > N) break; } }
+    if (to) pts.push([to.x, to.z]);
+    var soft = pl.obs.filter(function (o) { return !o.hard; });
+    for (var q = 0; q < pts.length; q++) {
+      if ((q === 0 && from) || (q === pts.length - 1 && to)) continue;
+      for (it = 0; it < soft.length; it++) {
+        var o = soft[it], P = pts[q], rp = ringPt(R, ringU(R, P[0], P[1])), ox = o.x - P[0], oz = o.z - P[1];
+        var along = -(ox * rp.nx + oz * rp.nz), perp2 = ox * ox + oz * oz - along * along;   // outward = -n
+        if (perp2 >= o.r * o.r) continue;
+        var t = along + Math.sqrt(o.r * o.r - perp2) + 0.1;
+        if (t > 0) { P[0] -= rp.nx * t; P[1] -= rp.nz * t; }
+      }
+    }
+    // smooth the detours a little, never inside the ring
+    for (it = 0; it < 4 && soft.length; it++) {
+      for (q = 1; q < pts.length - 1; q++) {
+        var a = pts[q - 1], b = pts[q + 1], m2 = [(a[0] + b[0] + 2 * pts[q][0]) / 4, (a[1] + b[1] + 2 * pts[q][1]) / 4];
+        if (outlineDist(R, m2[0], m2[1]) >= R.c - 0.05) { pts[q][0] = m2[0]; pts[q][1] = m2[1]; }
+      }
+    }
+    return mkPath(pts);
+  }
+  function mkPath(pts) {
+    var cum = [0];
+    for (var q = 1; q < pts.length; q++) cum.push(cum[q - 1] + Math.hypot(pts[q][0] - pts[q - 1][0], pts[q][1] - pts[q - 1][1]));
+    return { pts: pts, cum: cum, len: cum[cum.length - 1] };
+  }
+  function pathAt(W, d, out) {
+    var c = W.cum, P = W.pts, q = 1;
+    if (P.length < 2) { out.x = P[0][0]; out.z = P[0][1]; out.tx = 0; out.tz = 0; return out; }
+    d = clamp(d, 0, W.len);
+    while (q < c.length - 1 && c[q] < d) q++;
+    var sg = c[q] - c[q - 1] || 1e-6, k = (d - c[q - 1]) / sg, a = P[q - 1], b = P[q];
+    out.x = a[0] + (b[0] - a[0]) * k; out.z = a[1] + (b[1] - a[1]) * k; out.tx = (b[0] - a[0]) / sg; out.tz = (b[1] - a[1]) / sg; return out;
+  }
+  function walkSeg(path, v, endYaw, s, back) {
+    return { k: 'walk', path: path, T: path.len < 0.05 ? 0 : path.len / v + 0.15, endYaw: endYaw, side: path.len < 1.6 * s, back: !!back };
+  }
+
+  // ----- a move -----
+  function buildTrip(A, id, zone, m, sl, rest, quick, fin) {
+    var s = A.place.s, D = A.dims, cs = m.scale.x, above = 0.5 * cs + 0.26 * D.handS * s;
+    var Tg = new THREE.Vector3(rest.x, rest.y + above, rest.z), slotW = new THREE.Vector3(sl.x, 0.5 * cs, sl.z), Tp = new THREE.Vector3(sl.x, slotW.y + above, sl.z);
+    var S = { x: A.wk.x, z: A.wk.z };
+    var pl = planTrip(A, S, Tg, Tp, WALK.slideMax, quick) || planTrip(A, S, Tg, Tp, WALK.slideMax * 2.2, quick) || planTrip(A, S, Tg, Tp, 99, quick);
+    if (!pl) return null;
+    var q = quick ? WALK.quickT : 1, vq = runSpeed(A, quick), segs = [];
+    var G1 = pl.G, P1 = pl.P;
+    if (G1.i >= 0) { var w1 = ringPath(pl, pl.iS, G1.i, pl.dSG.dir, pl.offS > 0.05 ? S : null, null); if (w1.len > 0.05) segs.push(walkSeg(w1, vq, G1.plan.yaw, s)); }
+    segs.push({ k: 'grab', x: G1.p.x, z: G1.p.z, plan: G1.plan, T: (G1.plan.mode === 'flop' ? WALK.tGrabF : WALK.tGrab) * q, tgt: Tg });
+    var w2 = G1.i < 0 ? ringPath(pl, pl.iS, P1.i, pl.dGP.dir, S, null) : ringPath(pl, G1.i, P1.i, pl.dGP.dir, null, null);
+    if (w2.len > 0.05) segs.push(walkSeg(w2, vq, P1.plan.yaw, s));
+    segs.push({ k: 'place', x: P1.p.x, z: P1.p.z, plan: P1.plan, T: (P1.plan.mode === 'flop' ? WALK.tPlaceF : WALK.tPlace) * q, tgt: Tp });
+    if (w2.len <= 0.05 && (G1.plan.mode === 'stand') === (P1.plan.mode === 'stand')) {
+      // grab and drop from the same spot: he stays down (leaning / on his tummy) in between
+      var gS = segs[segs.length - 2], pS = segs[segs.length - 1]; gS.holdOut = true; pS.holdIn = true; gS.T *= 0.8; pS.T *= 0.85;
+    }
+    if (quick) segs.push({ k: 'wait', x: P1.p.x, z: P1.p.z, T: WALK.linger });
+    var tRel = 0; for (var i = 0; i < segs.length; i++) { if (segs[i].k === 'place') { tRel += segs[i].T * 0.75; break; } tRel += segs[i].T; }
+    return { id: id, m: m, zone: zone, fin: fin, segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'move', arm: 0, above: above, slotW: slotW,
+      picked: false, released: false, qBase: m.quaternion.clone(), cube0: new THREE.Vector3().copy(rest), quick: !!quick, tRel: tRel, plan: pl };
   }
   function startTask(A, id, zone, done, opts) {
     var fired = false;
     function fin() { if (fired) return; fired = true; try { done && done(); } catch (e) { console.warn(e); } }
     try {
-      if (A.task) endTask(A, true);
+      if (A.trip && !A.trip.released) finishNow(A);
       var m = ctx.meshes[id], L = ctx.layout, sl = L && slotFor(id, zone);
       if (!A.model || !A.shown || !A.fits || !A.model.root.visible || document.hidden || !m || !m.visible || !sl || ctx.held != null) { fin(); return; }
-      var now = performance.now(), q = opts && opts.quick ? 0.8 : 1, D = A.dims, s = A.place.s;
+      if (!A.trip) syncHome(A);
       if (A.g) A.g = null;                                                   // a reaction in progress gives way
-      restFrame(A);
-      var cs = m.scale.x, above = 0.5 * cs + 0.26 * D.handS * s;           // wrist height above the cube's centre (world): half a cube + the palm
       // where the cube rests (its slot target: a cube that was lifted as "selected" is just settling back down)
       var rest = m.userData.tpos && ctx.held !== id ? m.userData.tpos : m.position;
-      var cubeL = new THREE.Vector3().copy(rest).applyMatrix4(M0i);           // his units
-      var aboveL = above / s, G0 = cubeL.clone(); G0.y += aboveL;
-      var pk = planReach(A, G0, sideRoom(A)), Gk = G0.clone();
-      if (!pk.ok) { Gk.copy(pk.sh).addScaledVector(v3.copy(G0).sub(pk.sh).normalize(), pk.R * 0.93); }   // as far as he reaches: the cube hops up to it
-      // far out of reach (the mate across the table, the far end of a tall table): he reaches toward it and sends it
-      // straight to its slot (one lob from where it lies) instead of a long hop into his hand
-      var send = !pk.ok && G0.distanceTo(Gk) * s > MOVE.hopMax;
-      var H = Gk.clone(); H.y += 0.45; H.z -= 0.08;
-      // the drop: the slot, in his units
-      var slotW = new THREE.Vector3(sl.x, 0.5 * cs, sl.z), slotL = slotW.clone().applyMatrix4(M0i), SL = slotL.clone(); SL.y += aboveL;
-      var tw = clamp(Math.atan2(slotL.x, slotL.z) * 0.45, -0.4, 0.4);       // turns his shoulders a little toward the zone
-      var pz = planReach(A, SL, 0), place = pz.ok && pz.lean <= 0.4;          // close enough to set it down (not stepping for it)
-      var Wd = Gk.clone(), Rl, Fo;
-      if (send) {
-        H = Gk.clone(); H.y += 0.35; Gk = H.clone(); Wd = H.clone();
-        var dS = v4.set(slotL.x - H.x, 0, slotL.z - H.z).normalize(); Rl = H.clone().addScaledVector(dS, 0.35); Rl.y += 0.25; Fo = Rl.clone();
-        place = false;
-      } else if (place) { Wd.y += 0.6; Wd.z -= 0.2; Rl = SL.clone(); Rl.y += 0.12; Fo = Rl.clone(); Fo.y += 0.45; Fo.z -= 0.2; }
-      else {
-        // underarm lob from where he picked it up: a small lift and draw back, then the hand swings forward and up
-        // toward the zone and lets go (the arm may run out of reach on the way: the cube simply leaves from the hand)
-        var dir = v4.set(slotL.x - Gk.x, 0, slotL.z - Gk.z).normalize();
-        Wd.y += 0.45; Wd.addScaledVector(dir, -0.3);
-        Rl = Gk.clone().addScaledVector(dir, 0.55); Rl.y += 0.85;
-        Fo = Gk.clone().addScaledVector(dir, 0.75); Fo.y += 1.25;
-      }
-      // where the hand is now (chest space -> world -> his units)
-      A.model.root.updateMatrixWorld(true);
-      var S0 = A.arm[pk.arm].goal.clone().applyMatrix4(A.model.chest.matrixWorld).applyMatrix4(M0i);
-      A.task = { id: id, m: m, zone: zone, fin: fin, t0: now, q: q, arm: pk.arm, plan: pk, hop: !pk.ok && !send, send: send, place: place, tw: tw,
-        P: { H: H, G: Gk, W: Wd, R: Rl, F: Fo }, cube0: rest.clone(), above: above, picked: false, released: false, qBase: m.quaternion.clone(),
-        S: S0, cubeL: cubeL, slotL: slotL, tgt: S0.clone() };
-      A.task.timer = setTimeout(function () { if (A.task && A.task.fin === fin) endTask(A, true); else fin(); }, MOVE.safety);
+      var T = buildTrip(A, id, zone, m, sl, rest, opts && opts.quick, fin);
+      if (!T) { fin(); return; }
+      if (A.trip) clearTimeout(A.trip.timer);
+      A.trip = T;
+      T.timer = setTimeout(function () { if (A.trip === T) finishNow(A); else fin(); }, Math.max(WALK.safety, T.tRel * 1000 + 1500));
       A.settled = false; ctx.dirty(); ctx.startLoop();
-    } catch (e) { console.warn('playerMove', e); endTask(A, true); fin(); }
+    } catch (e) { console.warn('playerMove', e); try { finishNow(A); } catch (e2) {} fin(); }
   }
   function pickUp(T) {
     if (T.picked) return; T.picked = true; ctx.dropAnims(T.m); ctx.held = T.id; T.qBase.copy(T.m.quaternion); T.cube0.copy(T.m.position);
-    if (typeof Snd !== 'undefined' && Snd.pickup && !T.hop) Snd.pickup();
+    if (typeof Snd !== 'undefined' && Snd.pickup) Snd.pickup();
   }
-  function letGo(T, mode) {
+  function release(T) {
     if (T.released) return; T.released = true;
+    clearTimeout(T.timer);
     if (ctx.held === T.id) ctx.held = null;
-    T.m.userData[mode === 'place' ? 'dropped' : 'toss'] = true;
+    ctx.dropAnims(T.m); T.m.position.copy(T.slotW); T.m.quaternion.copy(T.qBase);
+    T.m.userData.dropped = true;
     T.fin();
     // if nobody re-synced the table (the game did not place the cube), put it back where the game says it is
-    var m = T.m; setTimeout(function () { if ((m.userData.toss || m.userData.dropped) && T3.sync && T3.lastG && ctx.held !== T.id) { try { T3.sync(T3.lastG); } catch (e) {} } }, 700);
+    var m = T.m; setTimeout(function () { if (m.userData.dropped && T3.sync && T3.lastG && ctx.held !== T.id) { try { T3.sync(T3.lastG); } catch (e) {} } }, 700);
   }
-  // instant: the cube goes to its slot right now (lobbed from wherever it is) and done() fires; he eases back to rest
-  function endTask(A, instant) {
-    var T = A.task; if (!T) return;
-    clearTimeout(T.timer); A.task = null;
-    if (!T.released) letGo(T, T.place && T.picked ? 'place' : 'toss');
+  // finish the move now: the cube goes into its slot at once and done() fires; he then walks back from where he is
+  // (snap: straight home, e.g. hidden)
+  function finishNow(A, snap) {
+    var T = A.trip; if (!T) return false;
+    var had = !T.released;
+    if (had) release(T);
     if (ctx.held === T.id) ctx.held = null;
+    if (snap) { A.trip = null; syncHome(A); A.wk.yaw = A.wk.yawT; A.wk.spd = 0; for (var k in A.cur) A.cur[k] = 0; }
+    else if (T.phase === 'move') toReturn(A, T);
     ctx.dirty(); ctx.startLoop();
+    return had;
   }
-  // the hand's target along the move (his units), and the body's help
-  var HT = new THREE.Vector3();
-  function taskAt(A, T, u) {
-    var K = MOVE.T, t1 = K[0] * T.q, t2 = K[1] * T.q, t3 = K[2] * T.q, t4 = K[3] * T.q, t5 = K[4] * T.q, P = T.P, k;
-    if (u < t1) { k = easeIO(u / t1); HT.lerpVectors(T.S, P.H, k); HT.y += 0.25 * Math.sin(Math.PI * k); }
-    else if (u < t2) HT.lerpVectors(P.H, P.G, easeIO((u - t1) / (t2 - t1)));
-    else if (u < t3) HT.lerpVectors(P.G, P.W, easeOut((u - t2) / (t3 - t2)));
-    else if (u < t4) { k = (u - t3) / (t4 - t3); HT.lerpVectors(P.W, P.R, T.place ? easeIO(k) : k * k * (1.6 - 0.6 * k)); }
-    else HT.lerpVectors(P.R, P.F, easeOut((u - t4) / (t5 - t4)));
-    // body: reach (lean / steps), then a smaller lean into the lob, then back
-    // wH: the reach is held through the lob (he stays leaning over the table until he lets go), then he comes back
-    var pl = T.plan, wH = sstep(u / (t1 * 0.85)) * (1 - sstep((u - t4) / (t5 - t4 + 0.2))), wT = sstep((u - t2) / (t4 - t2)) * wH;
-    var Pp = A.P, sg = T.arm ? 1 : -1;
-    Pp.lean += pl.lean * wH + 0.1 * wT; Pp.fwd += pl.fwd * wH; Pp.side += pl.side * wH;
-    Pp.twist += -sg * 0.16 * (wH - wT) + T.tw * wT;
-    Pp.hop += 0.05 * Math.sin(Math.PI * clamp(u / t1, 0, 1)) * Math.min(1, Math.abs(pl.side) / 1.5);   // one little bob as he steps
-    var look = u < t2 + 0.05 ? T.cubeL : T.slotL;
-    Pp.headYaw += clamp(Math.atan2(look.x, look.z), -0.7, 0.7) * 0.8; Pp.headPitch += (u < t2 + 0.05 ? 0.25 : 0.0) - 0.05;
-    face(A, { gazeY: u < t2 + 0.05 ? -0.55 : -0.2, browUp: 0.2, big: u > t3 && u < t5 ? 0.35 : 0 }, 1);
-    return HT;
+  function syncHome(A) { var H = homeOf(A); A.wk.x = A.wk.px = H.x; A.wk.z = A.wk.pz = H.z; A.wk.yawT = H.yaw; if (!A.wk.ok) { A.wk.yaw = H.yaw; A.wk.ok = true; } }
+  // the walk back to his seat, from wherever he is
+  function toReturn(A, T) {
+    var H = homeOf(A), s = A.place.s, R = ringOf(A), N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N;
+    T.phase = 'back'; T.i = 0; T.t0 = performance.now(); T.home = H;
+    if (Math.hypot(A.wk.x - H.x, A.wk.z - H.z) < 0.05) { T.segs = [{ k: 'wait', x: H.x, z: H.z, T: 0.01 }]; return; }
+    var path;
+    var obs = obstaclesFor(A), pts = [], blk = [], soft = [];
+    var ctxp = { R: R, N: N, h: h, obs: obs, pts: pts };
+    for (var k = 0; k < N; k++) { var p = ringPt(R, k * h); pts.push(p); blk.push(sideOff(R, p.x) || obs.some(function (o) { return o.hard && inObs(o, p.x, p.z); })); }
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iH = Math.round(ringU(R, H.x, H.z) / h) % N, dir = 1, ok = [true, true];
+    [1, -1].forEach(function (d, di) { for (var n = (iS + d + N) % N, c = 0; c < N; n = (n + d + N) % N, c++) { if (blk[n] && n !== iH) { ok[di] = false; break; } if (n === iH) break; } });
+    var dp = ((iH - iS + N) % N), dn = N - dp;
+    dir = ok[0] && (!ok[1] || dp <= dn) ? 1 : ok[1] ? -1 : (dp <= dn ? 1 : -1);
+    var from = { x: A.wk.x, z: A.wk.z }, offH = Math.hypot(H.x - pts[iH].x, H.z - pts[iH].z);
+    path = ringPath(ctxp, iS, iH, dir, from, offH > 0.05 ? { x: H.x, z: H.z } : null);
+    T.segs = [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
   }
-  var CH = new THREE.Vector3(), HW = new THREE.Vector3();
-  // after the body is posed: the busy arm goes straight to its target (no smoothing lag), the cube follows the hand
-  function taskArm(A, T, now) {
-    var u = (now - T.t0) / 1000, K = MOVE.T, m = A.model;
-    if (u >= K[4] * T.q) { endTask(A, false); return false; }
-    var tgt = T.tgt;   // computed in step() before posing
-    m.root.updateMatrixWorld(true);
-    // his units -> world (resting frame; the target is anchored to the table) -> chest
-    HW.copy(tgt).applyMatrix4(M0frame(A));
-    inv.copy(m.chest.matrixWorld).invert(); CH.copy(HW).applyMatrix4(inv);
-    var arm = m.arms[T.arm], R = A.arm[T.arm], t2 = K[1] * T.q, t4 = K[3] * T.q;
-    var open = u < t2 - 0.03 ? lerp(0.35, 1, sstep(u / (t2 * 0.6))) : u < t4 ? lerp(1, 0.1, sstep((u - t2 + 0.03) / 0.06)) : lerp(0.1, 0.8, sstep((u - t4) / 0.1));
-    var align = u < t4 ? lerp(0.4, 1, sstep(u / (t2 * 0.8))) : lerp(1, 0.4, sstep((u - t4) / 0.15));
-    if (T.send) { open = Math.max(open, 0.85); align = Math.min(align, 0.45); }   // an open hand toward the cube
-    arm.open = open; arm.solve(CH.x, CH.y, CH.z, align, 0);
-    R.goal.copy(CH); R.des.copy(CH); R.al = align; R.op = open; R.dAl = align; R.dOp = open;
-    // the cube: hops up to the hand if he can't reach it, rides in the hand, and goes at the release
-    HW.copy(arm.pos).applyMatrix4(m.chest.matrixWorld);
-    var t1 = K[0] * T.q, hopT0 = t1 - 0.1 * T.q;
-    if (T.send) { if (u >= t1 + 0.06 * T.q) letGo(T, 'toss'); return true; }   // the cube goes from where it lies
-    if (!T.picked && (T.hop ? u >= hopT0 : u >= t2)) pickUp(T);
-    if (T.picked && !T.released) {
-      var cy = HW.y - T.above;
-      if (T.hop && u < t2) {
-        var k = clamp((u - hopT0) / (t2 - hopT0), 0, 1), e = easeOut(k);
-        T.m.position.set(lerp(T.cube0.x, HW.x, e), lerp(T.cube0.y, cy, e) + 0.9 * Math.sin(Math.PI * k), lerp(T.cube0.z, HW.z, e));
-      } else T.m.position.set(HW.x, cy, HW.z);
-      T.m.quaternion.copy(T.qBase);
-      if (u >= t4) letGo(T, T.place ? 'place' : 'toss');
+  function tripEnd(A, T) {
+    // all segments done: a move goes on to the walk back; back home (or the seat moved meanwhile: walk on)
+    if (T.phase === 'move') { toReturn(A, T); return; }
+    var H = homeOf(A);
+    if (Math.hypot(H.x - A.wk.x, H.z - A.wk.z) > 0.3) { toReturn(A, T); return; }
+    clearTimeout(T.timer); A.trip = null; syncHome(A);
+  }
+  function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); }
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { finishNow(me, true); finishNow(mate, true); } });
+
+  // the trip's pose for this frame (before smoothing): where he is, which way he faces, lean / tummy, arm targets
+  var PA = { x: 0, z: 0, tx: 0, tz: 0 };
+  function tripPose(A, T, now) {
+    var u = (now - T.t0) / 1000, guard = 0;
+    while (T.segs[T.i] && u >= T.segs[T.i].T && guard++ < 20) {
+      var g0 = T.segs[T.i]; segEnd(A, T, g0); u -= g0.T; T.t0 += g0.T * 1000; T.i++;
+      if (!T.segs[T.i]) { tripEnd(A, T); if (A.trip !== T) return false; u = (now - T.t0) / 1000; }
+    }
+    var g = T.segs[T.i]; if (!g) return false;
+    T.u = u; T.g = g;
+    var W = A.wk, P = A.P, s = A.place.s, k = g.T > 0 ? clamp(u / g.T, 0, 1) : 1;
+    if (g.k === 'walk') {
+      var r = Math.min(0.4, 0.15 / Math.max(g.T, 0.01)), vm = 1 / (1 - r), f;
+      f = k < r ? 0.5 * vm * k * k / r : k > 1 - r ? 1 - 0.5 * vm * (1 - k) * (1 - k) / r : vm * (r / 2 + k - r);
+      var d = f * g.path.len; pathAt(g.path, d, PA);
+      W.x = PA.x; W.z = PA.z;
+      var rem = g.path.len - d, ty = (PA.tx || PA.tz) ? Math.atan2(PA.tx, PA.tz) : W.yawT;
+      if (g.side && g.endYaw != null) W.yawT = g.endYaw;
+      else if (g.endYaw != null && rem < 1.2 * s) W.yawT = ty + wrap(g.endYaw - ty) * (1 - rem / (1.2 * s));
+      else W.yawT = ty;
+      P.headPitch += -0.12;
+      face(A, { smile: 0.3, browUp: 0.15 }, 1);
+    } else {
+      W.x = g.x; W.z = g.z;
+      if (g.plan) {
+        W.yawT = g.plan.yaw;
+        var grab = g.k === 'grab', wb = grab ? sstep(k / 0.45) * (g.holdOut ? 1 : 1 - sstep((k - 0.72) / 0.28)) : (g.holdIn ? 1 : sstep(k / 0.5)) * (1 - sstep((k - 0.78) / 0.22));
+        if (g.plan.mode !== 'stand') {
+          // up first (lift leads), then in over the rim (slide follows), so the hips never dip into the table's edge
+          P.flop += wb; P.pitch += g.plan.p * wb; P.slide += g.plan.sl * wb * wb * wb; P.lift += g.plan.lift * Math.min(1, wb * 1.6); P.headPitch += -0.25 * wb;
+          if (g.plan.mode === 'crawl') P.crawl += wb;
+        }
+        else { P.lean += g.plan.lean * wb; P.fwd += g.plan.fwd * wb; P.headPitch += 0.2 * wb; }
+        face(A, { gazeY: -0.55, browUp: 0.2, big: grab ? 0 : 0.35 * wb }, 1);
+      }
+    }
+    // the arms that are not reaching: swing while he runs, the cube hand holds it at his side
+    var run = clamp(W.spd / (0.5 * WALK.v * s), 0, 1), ai = T.arm, holding = T.picked && !T.released;
+    for (var i = 0; i < 2; i++) {
+      var ph = W.ph + i * Math.PI, AR = A.arm[i];
+      if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
+      else if (!A.g) { tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - 0.65 * run * Math.sin(ph)); AR.des.copy(tv); }
     }
     return true;
   }
-  var MF = new THREE.Matrix4();
-  function M0frame(A) { q0.setFromAxisAngle(YAX, A.place.rot); return MF.compose(v3.set(A.place.x, A.place.y, A.place.z), q0, v4.set(A.place.s, A.place.s, A.place.s)); }
-  document.addEventListener('visibilitychange', function () { if (document.hidden) { endTask(me, true); endTask(mate, true); } });
+  // after the body is posed: the reaching hand goes straight to its target (anchored to the table), the free hand
+  // props him up while he lies on the table, the cube rides in the hand
+  var C1 = new THREE.Vector3(), C2 = new THREE.Vector3(), CH = new THREE.Vector3(), HW = new THREE.Vector3(), CW = new THREE.Vector3();
+  // the cube hand while he walks: low at that hand's side, a little forward (chest space), so the cube is never over
+  // the table while he stands at its edge (while he is still bent forward / getting up, the point is turned back)
+  function carryPose(A, i, out) {
+    var p = Math.max(0, A.cur.pitch) + Math.max(0, A.cur.lean), cp = Math.cos(p), sp = Math.sin(p);
+    out.set(-1.15 * (i ? -1 : 1), 0.85 * cp + 0.45 * sp, -0.85 * sp + 0.45 * cp); return mapArm(A, out);
+  }
+  // a hand (wrist) target over the table stays high enough that the cube under it clears the felt and the rim
+  function aboveTable(T, v) {
+    var L = ctx.layout, cs = T.m.scale.x, mg = 0.5 * cs + 0.1;
+    if (Math.abs(v.x) > L.W / 2 + 0.55 + mg || Math.abs(v.z) > L.D / 2 + 0.55 + mg) return v;
+    var onFelt = Math.abs(v.x) < L.W / 2 - mg && Math.abs(v.z) < L.D / 2 - mg;
+    v.y = Math.max(v.y, (onFelt ? 0.5 * cs : 0.62 + 0.5 * cs) + T.above);
+    return v;
+  }
+  function tripArm(A, T, dt) {
+    var m = A.model, g = T.g, ai = T.arm, R = A.arm[ai], arm = m.arms[ai], s = A.place.s;
+    if (!g) return;
+    m.root.updateMatrixWorld(true); inv.copy(m.chest.matrixWorld).invert();
+    if ((g.k === 'grab' || g.k === 'place') && g.plan) {
+      var k = g.T > 0 ? clamp(T.u / g.T, 0, 1) : 1, grab = g.k === 'grab', k1 = 0.5, k2 = grab ? 0.68 : 0.75, e, eh, open, align, low = g.plan.mode !== 'stand';
+      // the path is worked out in the world (anchored to the table): from where the hand was, up first and then over
+      // to above the cube / slot, down to it, and back up
+      if (!g.startW) { g.startW = R.goal.clone().applyMatrix4(m.chest.matrixWorld); g.op0 = R.op; g.al0 = R.al; }
+      C1.copy(g.tgt); C1.y += 0.3 * s; C2.copy(g.tgt);
+      if (k < k1) {
+        e = easeIO(k / k1); eh = sstep(k / k1 * 1.6);
+        CW.set(lerp(g.startW.x, C1.x, e), lerp(g.startW.y, C1.y, eh) + 0.15 * s * Math.sin(Math.PI * e), lerp(g.startW.z, C1.z, e));
+        open = grab ? lerp(g.op0, 1, e) : 0.1; align = lerp(g.al0, 1, e);
+      } else if (k < k2) { e = easeIO((k - k1) / (k2 - k1)); CW.lerpVectors(C1, C2, e); open = grab ? 1 : 0.1; align = 1; }
+      else {
+        e = easeIO((k - k2) / (1 - k2));
+        if (grab) {
+          // after the grab the cube comes straight up off the felt; standing, he then brings it in to his side
+          if (low) CW.lerpVectors(C2, C1, e);
+          else {
+            carryPose(A, ai, tv); tv.applyMatrix4(m.chest.matrixWorld); var eu = sstep(e / 0.45), eo = sstep((e - 0.3) / 0.7);
+            CW.set(lerp(C2.x, tv.x, eo), lerp(lerp(C2.y, C1.y, eu), tv.y, eo), lerp(C2.z, tv.z, eo));
+          }
+          open = lerp(1, 0.1, sstep((k - k2) / 0.08)); align = lerp(1, 0.6, e);
+        } else { CW.lerpVectors(C2, C1, e); open = lerp(0.1, 0.8, sstep((k - k2) / 0.12)); align = lerp(1, 0.4, e); }
+      }
+      if (T.picked && !T.released) aboveTable(T, CW);
+      if (k >= k2) { if (grab) pickUp(T); else release(T); }
+      CH.copy(CW).applyMatrix4(inv);
+      arm.open = open; arm.solve(CH.x, CH.y, CH.z, align, 0);
+      R.goal.copy(CH); R.des.copy(CH); R.al = R.dAl = align; R.op = R.dOp = open;
+      // the other hand on the felt while he is up on the table (tummy on the rim, or kneeling)
+      var fl = clamp(A.cur.flop, 0, 1);
+      if (low && fl > 0.02) {
+        var fi = 1 - ai, FR = A.arm[fi], fa = m.arms[fi], sg = fi ? 1 : -1, fx = Math.sin(A.wk.yaw), fz = Math.cos(A.wk.yaw), reach = (g.plan.sl + A.dims.SH_Y * Math.sin(g.plan.p) + 0.45) * s;
+        C1.set(A.wk.x + fx * reach + fz * sg * 0.9 * s, 0.05 + 0.26 * A.dims.handS * s, A.wk.z + fz * reach - fx * sg * 0.9 * s).applyMatrix4(inv);
+        FR.goal.lerp(C1, fl); FR.des.copy(FR.goal); fa.open = 1; fa.solve(FR.goal.x, FR.goal.y, FR.goal.z, 0.9, 0);
+      }
+      // the cube: picked up from where it lies, and set down exactly in its slot
+      if (T.picked && !T.released) {
+        HW.copy(arm.pos).applyMatrix4(m.chest.matrixWorld); HW.y -= T.above;
+        if (grab) T.m.position.lerpVectors(T.cube0, HW, sstep((k - k2) / 0.15));
+        else T.m.position.lerpVectors(HW, T.slotW, sstep((k - (k2 - 0.18)) / 0.18));
+        T.m.quaternion.copy(T.qBase);
+      }
+      return;
+    }
+    if (T.picked && !T.released) {
+      // walking with it: the hand follows its carry pose (smoothed); over the table edge it is kept up
+      HW.copy(R.goal).applyMatrix4(m.chest.matrixWorld);
+      if (aboveTable(T, HW.clone()).y !== HW.y) { aboveTable(T, HW); CH.copy(HW).applyMatrix4(inv); R.goal.copy(CH); arm.solve(CH.x, CH.y, CH.z, R.al, 0); }
+      HW.copy(arm.pos).applyMatrix4(m.chest.matrixWorld); HW.y -= T.above; T.m.position.copy(HW); T.m.quaternion.copy(T.qBase);
+    }
+  }
 
   // ---------- per frame ----------
   function rnd(a, b) { return a + Math.random() * (b - a); }
@@ -661,11 +936,11 @@ if (T3 && T3.ctx) (function () {
     step(me, now); step(mate, now);
   }
   function step(A, now) {
-    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; if (A.task) endTask(A, true); return; }
+    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
-    if (document.hidden && A.task) endTask(A, true);
-    var P = A.P, F = A.F, i, k;
+    if (document.hidden && A.trip) finishNow(A, true);
+    var P = A.P, F = A.F, i, k, W = A.wk;
     for (k in P) P[k] = 0; P.headPitch = 0.22;
     for (k in F) F[k] = 0; F.lid = 0.95;
     for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; }
@@ -675,12 +950,21 @@ if (T3 && T3.ctx) (function () {
       if (u > A.g.dur || fd <= 0) A.g = null;
       else d.fn(A, u, env(u, A.g.dur, d.att, d.rel) * fd, A.g.opts);
     }
-    var T = A.task;
-    if (T) T.tgt.copy(taskAt(A, T, (now - T.t0) / 1000));
+    var T = A.trip;
+    if (T && !tripPose(A, T, now)) T = null;
+    if (!A.trip) { T = null; syncHome(A); }
+    if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
+    // how fast he really moves (legs, arm swing) and which way he faces
+    var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
+    W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
+    W.ph += mv / (WALK.stride * A.place.s) * Math.PI;
+    var wy = wrap(W.yawT - W.yaw); W.yaw += wy * (1 - Math.exp(-(T ? 16 : 10) * dt)); if (Math.abs(wy) < 1e-4) W.yaw = W.yawT;
+    var run = clamp(W.spd / (0.5 * WALK.v * A.place.s), 0, 1);
+    P.lean += 0.16 * run; P.twist += 0.1 * run * Math.sin(W.ph); P.hop += 0.09 * run * Math.abs(Math.cos(W.ph));
     // smooth everything toward the targets (calm follow-through, never a snap; quicker while he moves a cube)
-    var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-10 * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T, cur = A.cur, Fc = A.Fc;
+    var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-(T ? 18 : 10) * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T || W.spd > 0 || W.yaw !== W.yawT, cur = A.cur, Fc = A.Fc;
     while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
-    for (k in cur) { var df = P[k] - cur[k]; if (Math.abs(df) > 1e-4) moving = true; cur[k] += df * kb; }
+    for (k in cur) { var df = P[k] - cur[k]; if (Math.abs(df) > 1e-4) { moving = true; cur[k] += df * kb; } else cur[k] = P[k]; }
     for (k in Fc) { var dff = F[k] - Fc[k]; if (Math.abs(dff) > 1e-3) moving = true; Fc[k] += dff * kf; }
     for (i = 0; i < 2; i++) {
       var AR = A.arm[i]; if (AR.goal.distanceToSquared(AR.des) > 1e-6) moving = true;
@@ -692,23 +976,31 @@ if (T3 && T3.ctx) (function () {
     var bt = (now - A.blinkT0) / 1000, blink = bt < 0 ? 0 : bt < 0.07 ? bt / 0.07 : bt < 0.11 ? 1 : bt < 0.24 ? 1 - (bt - 0.11) / 0.13 : 0;
     if (blink > 0 || bt < 0.3) moving = true;
     // apply
-    var m = A.model, R = m.root, D = A.dims, s = A.place.s;
-    // legs: a crouch bends hips and knees (feet stay put), a kneel folds the shins back onto the pitch
+    var m = A.model, R = m.root, D = A.dims, s = A.place.s, fl = clamp(cur.flop, 0, 1);
+    // legs: a crouch bends hips and knees (feet stay put), a kneel folds the shins back onto the pitch; running swings
+    // them (stride matched to the ground speed); lying on the table they fold up behind him, feet in the air
     var ca = clamp(cur.crouch, 0, 1) * 0.85, kn = clamp(cur.kneel, 0, 1) * Math.PI / 2;
     var dropL = (D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn);
-    m.setKnees(-ca, -ca, 2 * ca + kn, 2 * ca + kn);
-    var rot = A.place.rot + cur.spin, fx = Math.sin(A.place.rot), fz = Math.cos(A.place.rot), fw = clamp(cur.fwd, 0, 0.75) * s, sw = cur.side * s;
+    var rl = run * (1 - fl), h0 = -0.75 * rl * Math.sin(W.ph), h1 = -h0, k0 = rl * (0.2 + 1.1 * Math.max(0, Math.cos(W.ph))), k1 = rl * (0.2 + 1.1 * Math.max(0, -Math.cos(W.ph)));
+    // on his tummy: while his hips are still outside the rim his legs hang down the side of the table, feet off the
+    // ground; further in, they lie out behind him with the feet up
+    // thighs stay upright in the world (hanging down the table's side, or kneeling on the felt with the shins flat behind)
+    var cr = clamp(cur.crawl, 0, 1), pit = Math.max(0, cur.pitch);
+    m.setKnees(-ca + h0 - pit + 0.2 * fl, -ca + h1 - pit + 0.3 * fl, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr);
+    var rot = W.yaw + cur.spin, fx = Math.sin(W.yaw), fz = Math.cos(W.yaw), fw = (clamp(cur.fwd, 0, 0.75) + Math.max(0, cur.slide)) * s, sw = cur.side * s;
     // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
-    R.position.set(A.place.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL) * s, A.place.z + fz * fw - fx * sw); R.rotation.y = rot; R.scale.setScalar(s);
+    R.position.set(W.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL * (1 - fl) + Math.max(0, cur.lift)) * s, W.z + fz * fw - fx * sw);
+    if (R.rotation.order !== 'YXZ') R.rotation.order = 'YXZ';
+    R.rotation.set(pit, rot, 0); R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
-    var hp = cur.headPitch + (A === mate && mate.seat === 'far' ? -0.5 : 0);   // across the table he looks up at the camera, so his face shows
+    var hp = cur.headPitch;
     m.neck.rotation.set(hp * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
     m.head.rotation.set(hp * 0.55, cur.headYaw * 0.6, cur.headRoll * 0.6);
     for (i = 0; i < 2; i++) {
       var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
       a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);
     }
-    if (T && A.task === T) taskArm(A, T, now);
+    if (T && A.trip === T) tripArm(A, T, dt);
     var lid = Fc.lid * (1 - blink);
     m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
     // only ask for frames while something is happening; at rest he is still
@@ -739,13 +1031,13 @@ if (T3 && T3.ctx) (function () {
   T3.playerShow = function (on) {
     var was = me.shown; me.shown = !!on;
     if (me.shown) { var re = refreshAvatar(me); if (re || !was || needPlace || !me.placedOnce) refitFor(); else applyVis(); }
-    else { me.g = null; endTask(me, true); applyVis(); if (was && ctx.layout) ctx.refit(); }
+    else { me.g = null; finishNow(me, true); applyVis(); if (was && ctx.layout) ctx.refit(); }
     return me.shown && me.fits;
   };
   T3.playerRefresh = function () { if (me.model && refreshAvatar(me)) refitFor(); };
   T3.playerSet = function (o) {
     me.over = o ? Object.assign({}, o) : null;
-    if (me.model && refreshAvatar(me)) { endTask(me, true); refitFor(); }
+    if (me.model && refreshAvatar(me)) { finishNow(me, true); refitFor(); }
   };
   T3.playerMood = function (m, opts) { startMood(me, m, opts); };
   T3.playerCelebrate = function (name) {
@@ -754,7 +1046,7 @@ if (T3 && T3.ctx) (function () {
   };
   T3.mate = function (o) {
     var wasFar = mate.seat === 'far' && mate.shown;
-    endTask(mate, true);
+    finishNow(mate, true);
     if (!o) {
       mate.shown = false; mate.g = null; mate.seat = null; applyVis();
       if (wasFar) ctx.refit();
@@ -773,12 +1065,19 @@ if (T3 && T3.ctx) (function () {
   T3.playerMove = function (id, zone, done, opts) { startTask(me, id, zone, done, opts); };
   T3.mateMove = function (id, zone, done, opts) { startTask(mate, id, zone, done, opts); };
   // finish any move right now (the cube lobs to its slot, done() fires); e.g. when the player taps during the reach
-  T3.playerMoveFinish = function () { var b = !!(me.task || mate.task); endTask(me, true); endTask(mate, true); return b; };
+  T3.playerMoveFinish = function () { var a = finishNow(me), b = finishNow(mate); return a || b; };
+  // which sides of the table they may walk round: 'auto' (both), 'right' (never the left side, e.g. a second creature
+  // sits there), 'left'. Applies to both people. No argument: the current value.
+  T3.playerWalkSide = function (side) { if (side === 'left' || side === 'right' || side === 'auto') WALK.side = side; return WALK.side; };
   // tuning / tests: T3.playerMoveTuning({ stretch, lean, fwd, safety }) ; no argument: the values
-  T3.playerMoveTuning = function (o) { if (o) ['stretch', 'lean', 'fwd', 'safety'].forEach(function (k) { if (typeof o[k] === 'number') MOVE[k] = o[k]; }); return JSON.parse(JSON.stringify(MOVE)); };
-  T3.playerMoving = function () { return !!((me.task && !me.task.released) || (mate.task && !mate.task.released)); };
+  T3.playerMoveTuning = function (o) { if (o) Object.keys(WALK).forEach(function (k) { if (typeof o[k] === typeof WALK[k]) WALK[k] = o[k]; }); return JSON.parse(JSON.stringify(WALK)); };
+  T3.playerMoving = function () { return !!((me.trip && !me.trip.released) || (mate.trip && !mate.trip.released)); };
   T3.playerState = function () {
-    function st(A) { return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop }; }
+    function st(A) {
+      var T = A.trip, g = T && T.segs[T.i];
+      return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
+        pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null };
+    }
     var o = st(me); o.rejected = why; o.quad = quad; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
   };
   // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
