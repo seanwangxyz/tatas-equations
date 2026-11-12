@@ -140,7 +140,7 @@ export function makeBoard(o) {
   return { group: group, setBoard: function (text) { paintBoard(cv, text, o.pal); tex.needsUpdate = true; } };
 }
 
-// ----- Instanced crowd: block people, see ../crowd.js (makeBlockCrowd) -----
+// ----- Instanced crowd: toy figures, see ../crowd.js (makeBlockCrowd) -----
 export { makeBlockCrowd, HEAD_TOP } from '../crowd.js';
 
 // ----- The venue API that table.js drives (same shape as the stadium's) -----

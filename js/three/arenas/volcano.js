@@ -3,11 +3,10 @@
 // monster banners on the crater wall, puffy clouds on the rim and a stone scoreboard.
 // Warm and fun, never scary. All static at rest; the crowd reactions and the sparkles are one-shot.
 import * as THREE from 'three';
-import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, sweep, uPath, alongPath, makeBoard, makeBlockCrowd, HEAD_TOP, venueApi, keyLight, venueLayout } from './common.js';
+import { rng, cvs, ctex, stdm, softTex, mergeGeos, mtx, sweep, uPath, alongPath, makeBoard, makeBlockCrowd, venueApi, keyLight, venueLayout } from './common.js';
 import { pitchTexture } from '../stadium.js';
 
 var BOARD = { bg0: '#2b1250', bg1: '#170833', rows: 'rgba(255,255,255,.04)', head: '#ff7a1a', headText: '#fff1d6', title: '🌋  MONSTER LEAGUE  🌋', text: '#ffe066', glow: '#ff6a00', edge: '#7a4b2a' };
-var MONSTER = ['#94d82d', '#9775fa', '#ff922b', '#22b8cf', '#f783ac', '#ffd43b', '#4dabf7', '#69db7c', '#e599f7'];
 
 function lavaTexture() {
   var c = cvs(256, 64), g = c.getContext('2d'), R = rng(31), gr = g.createLinearGradient(0, 0, 0, 64);
@@ -49,23 +48,6 @@ function bannerAtlas() {
   }
   return ctex(c, 4);
 }
-// Block-monster face for the cube head (neck pivot at y 0; the head's front face is at z 0.17): two big
-// eyes (white with dark pupils) and a little smile, as flat discs just in front of the face. Vertex coloured,
-// about 40 triangles: hundreds of monsters must stay cheap on an iPad.
-function faceGeometry() {
-  var parts = [], zf = 0.172;
-  [-1, 1].forEach(function (s) {
-    parts.push({ geo: new THREE.CircleGeometry(0.07, 8), color: 0xffffff, m: mtx(s * 0.08, 0.22, zf) });
-    parts.push({ geo: new THREE.CircleGeometry(0.035, 6), color: 0x1b1b2a, m: mtx(s * 0.08, 0.21, zf + 0.004) });
-  });
-  parts.push({ geo: new THREE.RingGeometry(0.035, 0.055, 6, 1, Math.PI * 1.1, Math.PI * 0.8), color: 0x1b1b2a, m: mtx(0, 0.12, zf + 0.002) });
-  return mergeGeos(parts.map(function (p) { p.geo.deleteAttribute('uv'); return p; }));
-}
-// two little horns on top of the cube head
-function hornGeometry() {
-  return mergeGeos([-1, 1].map(function (s) { var gg = new THREE.ConeGeometry(0.055, 0.18, 6); gg.deleteAttribute('uv'); return { geo: gg, color: 0xffffff, m: mtx(s * 0.11, HEAD_TOP + 0.07, 0, 0, 0, -s * 0.35) }; }));
-}
-function lighter(css, k) { return '#' + new THREE.Color(css).lerp(new THREE.Color(0xffffff), k).getHexString(); }
 
 export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
   var g = new THREE.Group(), R = rng(1313), L = venueLayout(W, D, layoutName), tall = L.tall, lineZ = L.lineZ;
@@ -104,7 +86,8 @@ export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
   board.group.position.set(bx, by0 + bh / 2, bzA); board.group.rotation.x = -0.3; g.add(board.group);
   [-1, 1].forEach(function (s) { var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.45, 3.0, 6), rockM); pole.position.set(bx + s * bw * 0.38, FY + 1.0, bzA - 0.5); g.add(pole); });
 
-  // ----- Monster crowd: bodies, faces, and horns on about half of them -----
+  // ----- Monster crowd: the toy figure as friendly monsters (horns, antennae, fins, one to four eyes, fangs),
+  // dressed by crowd.js, sitting on little stone stools -----
   var pts = [];
   for (var r = 0; r < rows; r++) {
     var u = r * rowD + rowD * 0.55, seats = alongPath(path, 0.8, 0.12, R);
@@ -113,15 +96,10 @@ export function buildVolcano(W, D, aniso, layoutName, quality, FY) {
       var x = s.x + s.nx * u, z = s.z + s.nz * u, y = FY + (r + 1) * rise;
       if (z > zf - 1.5) return;
       if (x > bx - bw / 2 - 0.4 && x < bx + bw / 2 + 0.4 && z < bzA + 0.2 && z > zb - TW - 0.5 && y < by0 + bh + 0.4) return; // hidden behind the scoreboard
-      var col = MONSTER[Math.floor(R() * MONSTER.length)];
-      pts.push({ x: x, y: y, z: z, ry: Math.atan2(-s.nx, -s.nz) + (R() - 0.5) * 0.4, sc: 1.0 + R() * 0.3, shirt: col, skin: lighter(col, 0.18), hair: null, face: 1, horn: R() < 0.5 ? (R() < 0.6 ? '#fff4e6' : '#ffd8a8') : null, key: s.t });
+      pts.push({ x: x, y: y, z: z, ry: Math.atan2(-s.nx, -s.nz), key: s.t });
     });
   }
-  // block monsters: a cube head (lighter than the body) with a cartoon face, horns on about half of them
-  var crowd = makeBlockCrowd(g, pts, { quality: quality, eyes: false, armCol: 'shirt', extras: [
-    { geo: faceGeometry(), mat: stdm(0xffffff, 0.5, { vertexColors: true, flatShading: false, side: THREE.DoubleSide }), has: 'face', col: null },
-    { geo: hornGeometry(), mat: stdm(0xffffff, 0.6, { vertexColors: true }), has: 'horn', col: 'horn' }
-  ] });
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, style: 'monsters', seatCol: '#6e5566', seed: 1313 });
   pts = crowd.pts;
 
   // ----- Banners hanging on the crater wall (one merged mesh using the atlas) -----

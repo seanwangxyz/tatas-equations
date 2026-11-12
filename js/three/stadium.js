@@ -1,5 +1,5 @@
 // Stadium theme: the table sits on a striped pitch in a stylised soccer ground.
-// Raked stands with an instanced crowd of block people (crowd.js), floodlights, goals with nets, corner flags,
+// Raked stands with an instanced crowd of toy-figure fans on little seats (crowd.js), floodlights, goals with nets, corner flags,
 // ad boards and a scoreboard. All static: nothing here animates at rest. The crowd reactions (wave, clap,
 // ooh, gasp, cheer, aw) and camera flashbulbs are one-shot effects driven by step(); they finish and stop asking for frames.
 import * as THREE from 'three';
@@ -120,27 +120,28 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   function stand(theta, px, pz, len, team) { // outward = local +x; extruded length = local +z
     var geo = new THREE.ExtrudeGeometry(profile, { depth: len, bevelEnabled: false }), m = new THREE.Mesh(geo, concrete);
     m.rotation.y = theta; m.position.set(px, FY, pz); m.updateMatrix(); g.add(m);
-    seats.push({ m: m.matrix.clone(), len: len, team: team });
+    seats.push({ m: m.matrix.clone(), len: len, team: team, seatRy: Math.atan2(-Math.cos(theta), Math.sin(theta)) });
   }
   stand(Math.PI / 2, -backL / 2, z0, backL, 'back');
   var sideZ0 = z0 + 1, sideZ1 = D / 2 + (tall ? 5 : 7);
   stand(Math.PI, -standX, sideZ1, sideZ1 - sideZ0, 'left');
   stand(0, standX, sideZ0, sideZ1 - sideZ0, 'right');
 
-  // ----- Crowd: blocky people (js/three/crowd.js), facing the table -----
-  var reds = ['#e03131', '#e03131', '#e03131', '#e03131', '#e03131', '#c92a2a', '#ffffff', '#ffffff', '#ffd43b'], blues = ['#1c7ed6', '#1c7ed6', '#1c7ed6', '#1c7ed6', '#1971c2', '#1971c2', '#ffffff', '#ffffff', '#ffd43b'];
-  var skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a9714b'], hairs = ['#2b1d14', '#3b2416', '#1a1a1a', '#6b4423', '#c8a165', '#8a3b1c', '#9a9a9a'];
+  // ----- Crowd: toy-figure fans on little seats (js/three/crowd.js), facing the table -----
+  // team 0 (red) has the left stand and the left half of the back stand, team 1 (blue) the rest; a few
+  // fans sit with the other side. The crowd module dresses everyone (shirts, hair, hats, faces, scarves...).
   var pts = [], v = new THREE.Vector3();
   seats.forEach(function (s) {
     for (var r = 0; r < rows; r++) {
       var step = 0.62, cnt = Math.floor((s.len - 1.2) / step);
       for (var k = 0; k < cnt; k++) {
         if (R() < 0.05) continue;
-        var u = r * rowD + rowD * 0.55 + (R() - 0.5) * 0.12, sv = 0.6 + k * step + (R() - 0.5) * 0.12, y = (r + 1) * rise;
+        var u = r * rowD + rowD * 0.55 + (R() - 0.5) * 0.08, sv = 0.6 + k * step + (R() - 0.5) * 0.08, y = (r + 1) * rise;
         v.set(u, y, sv).applyMatrix4(s.m);
         var left = s.team === 'left' ? true : s.team === 'right' ? false : v.x < 0;
         if (R() < 0.12) left = !left;
-        pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z) + (R() - 0.5) * 0.3, shirt: (left ? reds : blues)[Math.floor(R() * 9)], skin: skins[Math.floor(R() * 6)], hair: R() < 0.12 ? null : hairs[Math.floor(R() * hairs.length)], sc: 0.9 + R() * 0.25 });
+        // people turn toward the table; their seats stay square to the stand
+        pts.push({ x: v.x, y: v.y, z: v.z, ry: Math.atan2(-v.x, -v.z), seatRy: s.seatRy, team: left ? 0 : 1 });
       }
     }
   });
@@ -149,7 +150,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var bx0 = boardX - boardW / 2 - 0.3, bx1 = boardX + boardW / 2 + 0.3, bzA = z0 - 1.0 * rowD, boardY0 = FY + 1.2;
   pts = pts.filter(function (p) { return !(p.x > bx0 && p.x < bx1 && p.z < bzA - 0.2 && p.y < boardY0 + boardH + 0.4); });
   pts.forEach(function (p) { var th = Math.atan2(p.x, -(p.z - D / 2)); p.key = (th + 1.75) / 3.5; }); // 0..1 from the left side, round the back, to the right
-  var crowd = makeBlockCrowd(g, pts, { quality: quality, dim: night ? 0.3 : 1 });
+  var crowd = makeBlockCrowd(g, pts, { quality: quality, dim: night ? 0.34 : 1, style: 'fans', seed: 2024 });
   pts = crowd.pts; var N = pts.length;
 
   // ----- Ad boards along the touchline, trackside -----
