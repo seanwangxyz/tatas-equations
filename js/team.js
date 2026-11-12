@@ -32,7 +32,7 @@ var Team = (function () {
   // ---------- Match start ----------
   function setup(g, oppIdx, cfg) {
     cfg = cfg || {};
-    g.team = { names: [S.name, cfg.mate || 'Tata'], jerseys: [S.jersey || '7', cfg.mjersey || '10'], cur: 0, lastBy: null, caller: null, wrote: null, seen: -1 };
+    g.team = { names: [S.name, cfg.mate || 'Tata'], jerseys: [S.jersey || '7', cfg.mjersey || '17'], cur: 0, lastBy: null, caller: null, wrote: null, seen: -1 };
     g.players[0].name = g.team.names[0] + ' & ' + g.team.names[1];
     var o = OPPONENTS[oppIdx];
     g.players.push({ name: o.name, ai: o, score: 0, list: [] });
@@ -217,7 +217,7 @@ var Team = (function () {
     modal('<h2 class="hero">Team-up vs the boss</h2>' +
       '<div class="setrow"><label>Player 1</label><b>' + esc(S.name) + '</b> <span class="jersey">' + esc(S.jersey || '7') + '</span></div>' +
       '<div class="setrow"><label>Teammate</label><input type="text" id="tmName" maxlength="14" value="' + esc(c.mate || 'Tata') + '"></div>' +
-      '<div class="setrow"><label>Teammate\'s jersey</label><input type="text" id="tmJersey" maxlength="2" style="width:70px" value="' + esc(c.mjersey || '10') + '"></div>' +
+      '<div class="setrow"><label>Teammate\'s jersey</label><input type="text" id="tmJersey" maxlength="2" style="width:70px" value="' + esc(c.mjersey || '17') + '"></div>' +
       '<h3 style="margin:10px 0 6px">The boss</h3><div class="tm-bosses">' + bosses + '</div>' +
       '<ul class="tm-rules"><li>One team, one score: every point is shared.</li><li>You take turns moving for the team.</li><li>Either of you can call <b>Now!</b> or <b>Impossible!</b></li><li>One of you writes the Solution, the other can help.</li></ul>' +
       '<div class="row"><button class="btn green big" data-act="startTeam">' + ico('play') + ' Kick off!</button><button class="btn" data-act="closeModal">Cancel</button></div>');
@@ -229,7 +229,7 @@ var Team = (function () {
   };
   ACT.startTeam = function () {
     var mate = ($('#tmName').value || '').trim().slice(0, 14) || 'Tata';
-    var mj = ($('#tmJersey').value || '').replace(/[^0-9]/g, '').slice(0, 2) || '10';
+    var mj = ($('#tmJersey').value || '').replace(/[^0-9]/g, '').slice(0, 2) || '17';
     S.team = { mate: mate, mjersey: mj, boss: pickBoss }; persist();
     closeModal(); startMatch('team', pickBoss, S.team);
   };
