@@ -46,7 +46,8 @@ var T3 = window.T3;
   function eout(x) { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 3); }
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function save() { return (typeof S !== 'undefined' && S) ? S : { set: {}, cos: {} }; }
-  function reduced() { if (window.Title3D && Title3D._forceMotion) return false; try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
+  function reduced() { if (window.Title3D && Title3D._forceMotion) return false; try { var s0 = save(); if (s0.set && s0.set.titleFx === true) return false; } catch (e0) {}   // the owner asked for the show: the game's own switch decides
+    try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
   function fxOn() { var s = save(); return !(s.set && s.set.titleFx === false) && !reduced(); }
   function sfx() { return window.TitleSfx || null; }
   function qLevel() { var n = T3.quality ? T3.quality() : 'high'; for (var i = 0; i < LEVELS.length; i++) if (LEVELS[i].name === n) return i; return 2; }
