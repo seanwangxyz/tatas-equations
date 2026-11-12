@@ -114,6 +114,7 @@ function startMatch(mode, oppIdx, cfg) {
   if (ais.length > 1 && T3.setCreatures) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }));
   else setCreature(ai ? ai.kind : null, ai && ai.pack);
   playerShow(); seatPeople(mode, cfg);
+  if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' ? 'right' : 'auto');   // the second creature stands at the far left corner
   var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room'); if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
