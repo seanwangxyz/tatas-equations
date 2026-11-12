@@ -39,3 +39,40 @@ button.vari-card:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,
 
 /* flat mat (no 3D): the chip sits in the page flow above the mat, so it never covers the Goal heading */
 #game:not(.three) .vari-chip{position:static;order:-1;align-self:flex-start;margin:0}
+
+/* ---- Middle-division cards (RULES_SUMMARY.md section 6) ---- */
+.vari-card.mid{border-color:#b197fc}
+.vari-card.mid.new{border-color:var(--gold)}
+/* a choice inside a card (Multiple of k, Base m, Exponent colour) */
+.vari-set{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0}
+.vari-set .btn{min-width:64px;font-size:20px}
+.vari-col.vc-red{background:#e03131;color:#fff}.vari-col.vc-blue{background:#1c7ed6;color:#fff}
+.vari-col.vc-green{background:#2f9e44;color:#fff}.vari-col.vc-black{background:#212529;color:#fff}
+
+/* an expression with the card's meanings visible: a turned cube is drawn turned, with a small label underneath */
+.vtok{position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
+.vtok small{font-size:13px;font-weight:900;line-height:1;color:#fff3bf;background:rgba(0,0,0,.35);border-radius:6px;padding:1px 4px;white-space:nowrap}
+.vtok.vt-ud > .cube > span{display:inline-block;transform:rotate(180deg)}
+.vtok.vt-sw > .cube > span{display:inline-block;transform:rotate(90deg)}
+.vtok.vt-exp{align-self:flex-start;margin-left:-2px}
+.vtok.vt-exp > .cube{width:30px;height:30px;font-size:17px;outline:2px solid #fff3bf}
+.vtok .vx{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:#16203c;color:#fff;font-size:11px;line-height:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.vari-expr{align-items:flex-start;row-gap:8px;padding-bottom:8px}
+.vari-goal{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:flex-start}
+.vari-goal .paren{align-self:center}
+.vari-expr .paren{align-self:center}
+.vari-bang{display:inline-flex;align-items:center;justify-content:center;min-width:22px;font-size:calc(var(--mini) * .7);font-weight:900;color:#fff;align-self:center}
+
+/* "How it works" (Vari.lessonHTML) */
+.vari-lesson{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+.vl-row{background:#f6f8fc;border:2px solid var(--line);border-radius:14px;padding:8px 10px}
+.vl-row p{margin:6px 0 0;font-size:15px;line-height:1.35;color:var(--ink2);text-align:left}
+.vl-expr{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;justify-content:center;background:var(--pitch-d);border-radius:12px;padding:6px;--mini:34px}
+.vl-expr .paren{align-self:center;color:#fff;font-weight:900;font-size:22px}
+.vl-val{align-self:center;color:#fff;font-size:20px;margin-left:6px}
+.vl-goal{display:inline-block;font-size:13px;font-weight:900;color:#8a5a00;margin-bottom:4px}
+
+/* Parent corner: one switch per card */
+.vari-switches{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-start;margin-top:6px}
+.vari-switches .btn{font-size:14px}
+.vari-switches .vari-locked{opacity:.65}

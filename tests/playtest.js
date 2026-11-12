@@ -5,9 +5,12 @@
 // Only the turn order, the scoring and the stand-in kids below are written here.
 // Run with:  node tests/playtest.js [shakesPerPairing] [stage 0-4] [notaste] [variation]
 //   notaste = the same creatures with their math tastes switched off (to compare strength and taste rates).
-//   variation = a variation card for EVERY shake (wild0, twodigit, threeops, multiops, remainder), or
-//   'anycard' = a random card each shake. Every Solution a player writes is re-checked under the card;
-//   the summary prints how many were wrong (should be 0).
+//   variation = a variation card for EVERY shake (wild0, twodigit, threeops, multiops, remainder, and the
+//   Middle cards upside, sideways, average, expo, multk, powbase, factorial, nfactors, sprime, lcm, gcf,
+//   percent, decimal, basem), or 'anycard' = a random card each shake, or 'midcard' = a random Middle card.
+//   Cards with a setting get a random one each shake (k 6-11, base 8/9, a colour with digits for Exponent).
+//   Every Solution a player writes is mapped to real cubes (Eq.cubeTokens) and re-checked with
+//   Eq.checkSolution under the card; the summary prints how many were wrong (should be 0).
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
 const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv.slice(4).includes('notaste');
@@ -19,7 +22,7 @@ const el = () => new Proxy(function () {}, { get: (t, k) => k === 'classList' ? 
 const ctx = { console, Math, Date, JSON, setTimeout, clearTimeout, performance,
   localStorage: { getItem: k => store[k] || null, setItem: (k, v) => { store[k] = v; } },
   document: { querySelector: () => el(), querySelectorAll: () => [], addEventListener() {}, createElement: () => el(), body: el() },
-  addEventListener() {}, navigator: {}, innerWidth: 1000, innerHeight: 800 };
+  addEventListener() {}, navigator: {}, location: { search: '', hash: '', href: '' }, innerWidth: 1000, innerHeight: 800 };
 ctx.window = ctx; vm.createContext(ctx);
 ['engine', 'config', 'ai'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f + '.js' }));
 const { Eq, OPPONENTS, STAGES, AI } = vm.runInContext('({Eq:Eq, OPPONENTS:OPPONENTS, STAGES:STAGES, AI:AI})', ctx);
@@ -52,30 +55,32 @@ const usesAll = (tokens, want) => { const t = tokens.slice(); return want.every(
 function solLiked(o, tokens) { const L = LIKES[o.name]; if (!L) return false; if (L.mix) return new Set(tokens.filter(s => '+-*/^r'.includes(s))).size >= 2; return (L.sol || []).some(w => usesAll(tokens, w)); }
 function countSol(o, r) { if (!LIKES[o.name] || !r || !r.found) return; const t = tasteOf(o.name); t.sols++; if (solLiked(o, r.tokens)) t.solsLiked++; }
 // Re-check a solver Solution under the shake's card (0 Wild: the same digit in Goal and Solution).
+// The Solution is mapped to real cubes the way the game does it (Eq.cubeTokens, as in js/variations.js) and
+// checked with the game's own Eq.checkSolution, so a card's cube rules (Required, Forbidden, colours) count too.
 const CHECK = { sols: 0, bad: 0, examples: [] };
-function recheck(G, r) {
+function recheck(G, r, mode) {
   if (!r || !r.found) return;
   CHECK.sols++;
-  const RU = Eq.rulesOf(G.fractions), ev = Eq.evaluate(r.tokens, { fractions: G.fractions, wild: r.wild });
-  const goal = RU.goal && RU.goal.includes('0') ? Eq.goalAt(RU.goal, r.wild, G.fractions) : G.goal;
-  const nOps = r.tokens.filter(s => !Eq.isDigit(s) && s !== '(' && s !== ')').length;
-  if (!ev.ok || !goal || !Eq.eqF(ev.value, goal) || (RU.three && nOps < 3)) { CHECK.bad++; if (CHECK.examples.length < 5) CHECK.examples.push(r.expr + ' vs ' + (goal ? Eq.fmt(goal) : '?')); }
+  const pools = zone(G, 'required').concat(zone(G, 'permitted'), mode === 'last' ? [] : zone(G, 'resources'));
+  const toks = Eq.cubeTokens(r.tokens, pools, G.fractions);
+  const chk = Eq.checkSolution(toks, { goal: G.goal, zone: id => G.cubes[id] ? G.cubes[id].zone : 'forbidden', required: zone(G, 'required').map(c => c.id), mode: mode === 'last' ? 'last' : mode, fractions: G.fractions, label: id => G.cubes[id] ? G.cubes[id].s : '?' });
+  if (!chk.ok) { CHECK.bad++; if (CHECK.examples.length < 5) CHECK.examples.push(r.expr + ' vs ' + Eq.fmt(G.goal) + ' (' + chk.reasons.join(' ') + ')'); }
 }
-const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); recheck(G, r); return r; };
+const write = (G, o, mode) => { const r = AI.write(o, snap(G), G.goal, G.fractions, mode); countSol(o, r); recheck(G, r, mode); return r; };
 
 function setGoal(G, o, opp) {
   const free = zone(G, 'resources');
   if (!o.trick) { // creatures and the ordinary kids: the game's own Goal chooser
     const g = AI.chooseGoal(o, free.map(c => ({ id: c.id, s: c.s })), G.fractions, stage.maxGoal);
     if (!g) return false;
-    g.toks.forEach(t => { G.cubes[t.id].zone = 'goal'; });
+    g.toks.forEach(t => { if (typeof t === 'object') G.cubes[t.id].zone = 'goal'; }); // ('!' is written in, not a cube)
     const L = LIKES[o.name];
     if (L) { // liked = looks tasty, or can be made with a favourite operation (the same test the creature uses)
       const t = tasteOf(o.name), rest = zone(G, 'resources').map(c => c.s), p = { goal: g.value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: AI.goalDigits(o), timeMs: 30 };
-      const yum = AI.goalLooksLiked({ likes: L }, { tokens: g.toks.map(x => x.s), value: g.value }) || AI.reachableWith(L.ops, p);
+      const yum = AI.goalLooksLiked({ likes: L }, { tokens: g.toks.map(x => typeof x === 'string' ? x : x.s), value: g.value }) || AI.reachableWith(L.ops, p);
       t.goals++; if (yum) t.goalsLiked++;
     }
-    G.goal = g.value; G.goalSyms = g.toks.map(x => x.s); return true;
+    G.goal = g.value; G.goalSyms = g.toks.map(x => typeof x === 'string' ? x : x.s); return true;
   }
   // the trick kid prefers Goals that need 3+ numbers against Snoozy
   let ideas = Eq.goalIdeas(free.map(c => c.s), { fractions: G.fractions }).filter(g => g.value.d === 1 && g.value.n >= 1 && g.value.n <= Math.min(o.goalMax, stage.maxGoal) && g.tokens.length <= o.goalCubes);
@@ -83,7 +88,9 @@ function setGoal(G, o, opp) {
   if (o.goalCubes > 1) ideas.sort((a, b) => (b.tokens.length - a.tokens.length) + (Math.random() - 0.5) * 2.2);
   let pick = null;
   for (let i = 0; i < ideas.length && i < 30; i++) {
-    const g = ideas[i], rest = free.map(c => c.s); g.tokens.forEach(s => rest.splice(rest.indexOf(s), 1));
+    const g = ideas[i], gt = Eq.cubeTokens(g.tokens, free, G.fractions), ids = gt.filter(t => typeof t === 'object').map(t => t.id);
+    if (ids.includes(-1)) continue;
+    const rest = free.filter(c => !ids.includes(c.id)).map(c => c.s);
     const test = d => Eq.solve({ goal: g.value, req: [], opt: rest, mode: 'free', fractions: G.fractions, maxDigits: d, timeMs: 60 }).found;
     if (!test(AI.goalDigits(o))) continue;
     if (!pick) pick = g;
@@ -91,7 +98,7 @@ function setGoal(G, o, opp) {
     if (!test(opp.maxDigits) && test(4)) { pick = g; break; } // needs 3+ numbers: Snoozy can't see it
   }
   if (!pick) return false;
-  const used = {}; pick.tokens.forEach(s => { const c = free.find(x => x.s === s && !used[x.id]); used[c.id] = 1; c.zone = 'goal'; });
+  Eq.cubeTokens(pick.tokens, free, G.fractions).forEach(t => { if (typeof t === 'object' && t.id >= 0) G.cubes[t.id].zone = 'goal'; });
   G.goal = pick.value; G.goalSyms = pick.tokens.slice(); return true;
 }
 const chooseMove = (G, o) => AI.chooseMove(o, snap(G), zone(G, 'resources'), G.goal, G.fractions);
@@ -130,8 +137,19 @@ function playShake(A0, B0, setter, stats) {
   const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })), fractions: stage.fractions };
   G.cubes.forEach(c => { if (!Eq.isDigit(c.s) && stage.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
   if (CARD) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
-    const card = CARD === 'anycard' ? Eq.VARIATIONS[Math.floor(Math.random() * Eq.VARIATIONS.length)] : CARD;
-    G.fractions = Eq.mathMode(stage.fractions, [card]); stats.cards[card] = (stats.cards[card] || 0) + 1;
+    const pool = CARD === 'anycard' ? Eq.VARIATIONS : CARD === 'midcard' ? AI.MIDDLE : [CARD];
+    const card = pool[Math.floor(Math.random() * pool.length)], pickOne = a => a[Math.floor(Math.random() * a.length)];
+    let set = null;
+    if (card === 'multk') set = { k: pickOne([6, 7, 8, 9, 10, 11]) };
+    if (card === 'basem') set = { base: pickOne([8, 9]) };
+    if (card === 'expo') { // a colour that has digits in Resources; then the mode is live, like G.fractions in the game
+      const cols = Eq.COLORS.filter(col => G.cubes.some(c => c.color === col && Eq.isDigit(c.s) && c.zone === 'resources'));
+      const ecol = pickOne(cols); set = { ecol, eids: G.cubes.filter(c => c.color === ecol && Eq.isDigit(c.s)).map(c => c.id) };
+    }
+    let kept = Eq.mathMode(stage.fractions, [card], null, set);
+    if (card === 'expo') Object.defineProperty(G, 'fractions', { get: () => Object.assign({}, kept, { ex: Eq.expCounts(G.cubes, kept.ecol) }), set: v => { kept = v; } });
+    else G.fractions = kept;
+    stats.cards[card] = (stats.cards[card] || 0) + 1;
   }
   if (!setGoal(G, P[setter], P[1 - setter])) { stats.noGoal++; return [0, 0]; }
   if (CARD) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
@@ -142,7 +160,7 @@ function playShake(A0, B0, setter, stats) {
     if (last !== turn) {
       const nowOk = s.res.length >= 2 && s.req.length + s.perm.length > 0;
       const d = AI.decideChallenge(o, s, G.goal, G.fractions, nowOk, 1, false);
-      if (d && d.kind === 'now') { countSol(o, d.plan); recheck(G, d.plan); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
+      if (d && d.kind === 'now') { countSol(o, d.plan); recheck(G, d.plan, 'now'); pts[turn] = 6; pts[1 - turn] = 2; return end('Now! (correct)', turn); }
       if (d && d.kind === 'impossible') {
         const mover = P[last], w = write(G, mover, 'impossible');
         const really = !truth(G, 'impossible').found;
@@ -190,7 +208,7 @@ function pairing(A, B) {
 }
 
 console.log(`Playtest at stage ${STAGE} (${stage.name}), ${N} shakes per pairing${NOTASTE ? ', math tastes OFF' : ''}${CARD ? ', variation card: ' + CARD : ''}`);
-if (CARD && CARD !== 'anycard' && Eq.VARIATIONS.indexOf(CARD) < 0) { console.log('Unknown card ' + CARD + '. Cards: ' + Eq.VARIATIONS.join(', ') + ', anycard'); process.exit(1); }
+if (CARD && CARD !== 'anycard' && CARD !== 'midcard' && Eq.VARIATIONS.indexOf(CARD) < 0) { console.log('Unknown card ' + CARD + '. Cards: ' + Eq.VARIATIONS.join(', ') + ', anycard, midcard'); process.exit(1); }
 process.on('exit', () => { if (CARD) console.log(`Variation check (${CARD}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the card` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); });
 for (let i = 0; i < OPPONENTS.length - 1; i++) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
 OPPONENTS.forEach(o => pairing(BEGINNER, o));
