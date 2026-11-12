@@ -8,6 +8,13 @@ function idxs() { return G.players.map(function (p, i) { return i; }); }
 function humans() { return idxs().filter(function (i) { return !isAI(i); }); }
 function multiHuman() { return !!G && humans().length > 1; }
 function firstAI() { for (var i = 0; i < G.players.length; i++) if (G.players[i].ai) return G.players[i].ai; return null; }
+// With two creatures at the table (mode 'ai3') one of them is 'up': it is the one shown in 3D and the one speaking.
+function curAI() { return (G && G.act != null && G.players[G.act] && G.players[G.act].ai) || firstAI(); }
+function focusAI(i) {
+  if (!G || !G.players[i] || !G.players[i].ai || G.act === i) return;
+  var many = G.players.filter(function (p) { return p.ai; }).length > 1, had = G.act != null; G.act = i;
+  if (many && had) { setCreature(G.players[i].ai.kind, G.players[i].ai.pack); if (current === 'game') renderGame(); }
+}
 function zoneCubes(z) { return G.cubes.filter(function (c) { return c.zone === z; }).sort(function (a, b) { return a.order - b.order; }); }
 function syms(z) { return zoneCubes(z).map(function (c) { return c.s; }); }
 function snapshot() { return { req: syms('required'), perm: syms('permitted'), res: syms('resources') }; }
@@ -36,6 +43,7 @@ function startMatch(mode, oppIdx, cfg) {
   G = { mode: mode, oppIdx: oppIdx, cfg: cfg, shakes: shakes, shake: 1, setter: 0, players: [], trailed: false };
   G.players.push({ name: S.name, ai: null, score: 0, list: [] });
   if (mode === 'ai') G.players.push({ name: OPPONENTS[oppIdx].name, ai: OPPONENTS[oppIdx], score: 0, list: [] });
+  else if (mode === 'ai3') [cfg.a, cfg.b].forEach(function (k) { G.players.push({ name: OPPONENTS[k].name, ai: OPPONENTS[k], score: 0, list: [] }); });
   else if (mode === 'p3') {
     G.players.push({ name: cfg.n2 || 'Tata', ai: null, score: 0, list: [] });
     if (cfg.creature >= 0) G.players.push({ name: OPPONENTS[cfg.creature].name, ai: OPPONENTS[cfg.creature], score: 0, list: [] });
@@ -44,6 +52,7 @@ function startMatch(mode, oppIdx, cfg) {
   else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
   else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
+  for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
   setCreature(ai ? ai.kind : null, ai && ai.pack); playerShow();
@@ -88,7 +97,7 @@ function board(text) { if (T3.setBoard) T3.setBoard(text); }
 // Creatures talk in their babble voice (or real speech if 'Read lines aloud' is on) and move their mouth for as long as it lasts.
 // Pip only speaks when 'Read lines aloud' is on, so instructions don't babble constantly.
 function speakLine(who, text) {
-  var ai = who === 'opp' ? firstAI() : null;
+  var ai = who === 'opp' ? curAI() : null;
   if (!ai) { if (S.set.voice === true && Snd.speak) Snd.speak(text, 'pip'); return; }
   var ms = Snd.talk ? Snd.talk(text, ai.kind) : (S.set.voice === true && Snd.speak ? (Snd.speak(text, ai.kind), 1500) : 0);
   if (ms && T3.creatureTalk) T3.creatureTalk(ms);
@@ -97,7 +106,7 @@ function crowdSay(kind) { if (Snd.crowdReact) Snd.crowdReact(kind); }
 function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', text); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
 function speechHTML() {
   var sp = G.speech || { who: 'pip', text: '' }, face;
-  if (sp.who === 'opp' && firstAI()) face = avatarHTML(firstAI());
+  if (sp.who === 'opp' && curAI()) face = avatarHTML(curAI());
   else face = pipHTML(sp.mood, 54, '');
   sp.fresh = false;
   return '<div class="speech" id="speech"><div class="who">' + face + '</div><div class="txt">' + sp.text + '</div></div>';
@@ -184,6 +193,7 @@ function actionsHTML() {
       return '<span>' + esc(G.players[i].name) + ' can challenge too:</span><button class="btn small now" data-act="callNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="callImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
     }).join('') + '</div>';
   }
+  if (G.wait) out += '<button class="btn big green" data-act="goOn">Go on ▶</button>';
   if (window.Social && Social.emoteBar && T3.active() && firstAI() && G.mode !== 'tutorial') out += Social.emoteBar();
   return out;
 }
@@ -263,6 +273,12 @@ function nextTurn() {
   if (G.phase !== 'move') return;
   if (G.team) Team.sync(); // (also catches the Goal the team just set)
   if (aiInterject()) return;
+  // (untimed) with two creatures, the kid gets to look at one creature's move before the other one plays
+  if (isAI(G.turn) && G.mode === 'ai3' && G.lastMover !== null && isAI(G.lastMover)) {
+    G.wait = true; G.busy = false;
+    say('pip', '<b>' + esc(G.players[G.lastMover].name) + '</b> moved. Spot something? Call <b>Now!</b> or <b>Impossible!</b> Or tap <b>Go on</b> to let ' + esc(G.players[G.turn].name) + ' play. Take your time!');
+    renderGame(); return;
+  }
   if (isAI(G.turn)) { setTimeout(aiTurn, 500); return; }
   var last = zoneCubes('resources').length === 1;
   if (G.mode === 'tutorial') { tutPrompt(); renderGame(); return; }
@@ -271,6 +287,7 @@ function nextTurn() {
   else say('pip', name + ' turn! Tap a Resource cube, then tap a section. Or, if you spot something, challenge: <b>Now!</b> or <b>Impossible!</b>');
   renderGame();
 }
+ACT.goOn = function () { if (!G || !G.wait || G.phase !== 'move') return; G.wait = false; Snd.click(); aiTurn(); };
 ACT.buildGoal = function () {
   if (!G || G.phase !== 'goal' || isAI(G.setter)) return;
   openGoalBuilder(G.setter, function (tokens, val) { setGoal(tokens, val); });
@@ -337,9 +354,10 @@ function challenge(kind, who) {
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
   var cname = (G.team && who === 0) ? Team.callerName() : G.players[who].name, mname = (G.team && mover === 0) ? Team.writerName() : G.players[mover].name;
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', cname + ' challenges!');
-  if (isAI(who)) creatureMood('challenge');
+  G.wait = false;
+  if (isAI(who)) { focusAI(who); creatureMood('challenge'); }
   else if (who === 0) playerMood('now', { kind: kind });
-  else if (isAI(mover)) { creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
+  else if (isAI(mover)) { focusAI(mover); creatureMood('nervous'); var kc = talkLine(G.players[mover].ai, 'kidChallenge'); if (kc && window.Social && Social.bubble) Social.bubble('opp', kc); }
   Snd.slam(); Snd.setMood('challenge'); if (!((isAI(who) || isAI(mover)) && shot('challenge'))) cue('challenge'); fx3('shake'); board(kind === 'now' ? 'NOW!' : 'IMPOSSIBLE!'); crowdSay('ooh');
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(cname) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(mname) + ' must try to write a Solution.', 'cheer');
@@ -364,6 +382,7 @@ function passTo(pi, mode, then) {
 // After a challenge in a 3-player game, the Third Party MAY also write a Solution.
 function askThirdParty(tp, kind, cb) {
   if (isAI(tp)) {
+    focusAI(tp);
     var o = G.players[tp].ai, sit = aiSituation();
     say('opp', esc(o.name) + ' is deciding whether to write a Solution too…'); renderGame();
     aiThink('thirdParty', [AI.skill(o), snapshot(), G.goal, G.fractions, kind], 1300).then(function (r) {
@@ -522,7 +541,8 @@ function endShake(r) {
     persist();
   }
   renderGame();
-  var aiI = idxs().filter(isAI)[0];
+  var aiI = idxs().filter(isAI).sort(function (x, y) { return (r.pts[y] || 0) - (r.pts[x] || 0); })[0];
+  if (aiI !== undefined) focusAI(aiI);
   var aiTalk = '';
   if (aiI !== undefined) {
     var ao = G.players[aiI].ai, ap = r.pts[aiI] || 0, hp = r.pts[0] || 0;
@@ -533,10 +553,10 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai' || G.mode === 'team') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
-  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'team' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
+  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div>' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
@@ -581,7 +601,9 @@ function endMatch() {
     var names = winners.map(function (i) { return esc(G.players[i].name); });
     victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); Snd.setMood('win'); cue('win');
     banner('⚽ GOOOAL!', winners.length > 1 ? 'It\'s a tie!' : G.players[winners[0]].name + ' wins!');
-    var aiI = idxs().filter(isAI)[0];
+    var aiI = idxs().filter(isAI).sort(function (x, y) { return G.players[y].score - G.players[x].score; })[0];
+    if (aiI !== undefined) focusAI(aiI);
+    if (G.mode === 'ai3') { var sole = winners.indexOf(0) >= 0 && winners.length === 1; if (window.Trio) Trio.onMatchEnd(sole); playerMood(sole ? 'cheer' : winners.indexOf(0) >= 0 ? 'clap' : 'aw'); if (sole) { fx3('confetti'); fx3('wave'); board('GOOOAL!'); } }
     if (aiI !== undefined) creatureMood(winners.indexOf(aiI) >= 0 ? 'dance' : loseMood(G.players[aiI].ai));
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
@@ -621,6 +643,7 @@ function tasteLine(o, kind, chance) { return o.talk && o.talk[kind] && Math.rand
 function aiTurn() {
   if (!G || G.phase !== 'move' || !isAI(G.turn)) return;
   var me = G.turn, o = G.players[me].ai;
+  G.wait = false; focusAI(me);
   G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
   var pause = 900 + Math.random() * 700;
   if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
@@ -653,7 +676,7 @@ function solCtx(mode, goal, cubes, fractions) {
     mode: mode, fractions: fractions !== undefined ? fractions : (G ? G.fractions : stageInfo().fractions), label: function (id) { return cubes[id] ? show(cubes[id].s) : '?'; } };
 }
 function aiWrite(pi, mode, cb) {
-  var o = G.players[pi].ai;
+  var o = G.players[pi].ai; focusAI(pi);
   say('opp', esc(o.name) + ' is writing a Solution…'); renderGame();
   var sit = aiSituation(), plan = null;
   if (mode === 'now' && G.aiPlan) { plan = G.aiPlan; G.aiPlan = null; }
@@ -669,6 +692,7 @@ function aiWrite(pi, mode, cb) {
 }
 function aiSetGoal() {
   if (!G) return;
+  focusAI(G.setter);
   var o = G.players[G.setter].ai, st = stageInfo(), sit = aiSituation();
   AIThink.run('chooseGoal', [AI.skill(o), aiFree(), G.fractions, st.maxGoal]).then(function (pick) {
     if (!aiStill(sit)) return;

@@ -115,6 +115,7 @@ function renderSetup() {
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
     '<div class="panel"><h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
+    (window.Trio ? Trio.setupHTML() : '') +
     (window.Cup ? Cup.setupHTML() : '') +
     '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
     (window.Online ? Online.setupCardHTML() : '') +
