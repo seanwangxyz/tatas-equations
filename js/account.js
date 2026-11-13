@@ -73,7 +73,8 @@ var AccountMerge = (function () {
   var STAT_LATEST = { streak: 1, noHint: 1, lastWrong: 1 }; // "right now" values, not totals
   var RULES = {
     v: maxNum,
-    name: pickNewer, backName: pickNewer, jersey: pickNewer, oppNames: pickNewer, lastDedication: maxStr,
+    name: pickNewer, backName: pickNewer, jersey: pickNewer, oppNames: pickNewer, lastDedication: maxStr, mmLast: pickNewer,
+    career: function (a, b) { return { seen: maxEach(isObj(a) ? a.seen : {}, isObj(b) ? b.seen : {}) }; }, // signature rules already announced: union
     xp: maxNum,
     badges: unionEarliest,
     stats: function (a, b, c) { return eachKey(a, b, function (x, y, k) { return STAT_LATEST[k] ? pickNewer(x, y, c) : (typeof x === 'boolean' || typeof y === 'boolean') ? pickNewer(x, y, c) : max(x, y); }); },
@@ -269,7 +270,8 @@ var AccountMerge = (function () {
   };
   // How each key is merged, in plain words (also printed in docs/handoff/account.md).
   var DESCRIBE = {
-    v: 'highest', name: 'latest', backName: 'latest', jersey: 'latest', oppNames: 'latest', lastDedication: 'latest date',
+    v: 'highest', name: 'latest', backName: 'latest', jersey: 'latest', oppNames: 'latest', lastDedication: 'latest date', mmLast: 'latest',
+    career: 'signature rules already announced: union',
     xp: 'highest', badges: 'union (earliest date)', stats: 'each total: highest; streak/noHint/lastWrong: latest',
     history: 'union of both, oldest dropped past 600', best: 'fastest time, hardest Goal, most cubes', opsUsed: 'highest per operation',
     ladder: 'highest stage, then stars', unlockAll: 'latest', opsManual: 'latest', beaten: 'beaten on either',
