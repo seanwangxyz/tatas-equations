@@ -1,0 +1,64 @@
+/* ======================= EXPLAIN THIS SOLUTION (js/explain.js) =======================
+   The step-through card sits in its own layer just above the pop-ups (#modal is z-index 60), so the
+   end-of-shake pop-up underneath stays exactly as it was when the card closes.
+   Calm on purpose: one short fade when a step changes, nothing that loops or wiggles. */
+.xp-btn{margin:6px auto 0;display:flex;font-size:14px;min-height:40px;padding:6px 12px}
+.ps-sol .xp-btn,.wy-way .xp-btn{margin:4px 0 0}
+
+.xp-back{position:fixed;inset:0;z-index:65;display:none;align-items:center;justify-content:center;padding:12px;
+  background:rgba(6,16,30,.55)}
+.xp-back.on{display:flex}
+.xp-card{background:var(--paper,#fffdf6);color:var(--ink,#16203c);border-radius:26px;border:4px solid #fff;
+  width:min(560px,96vw);max-height:94vh;max-height:94dvh;display:flex;flex-direction:column;
+  box-shadow:0 10px 0 rgba(0,0,0,.14),0 22px 60px rgba(0,0,0,.5);padding:14px 16px 12px;overflow:hidden}
+.xp-head{display:flex;align-items:center;gap:8px}
+.xp-head h2{flex:1;margin:0;font-size:26px;text-align:left;color:var(--ink,#16203c)}
+.xp-x{min-width:44px;padding:6px 10px}
+.xp-who{font-size:15px;font-weight:900;color:var(--ink2,#3d4768);margin:2px 0 4px}
+.xp-sol{margin:4px 0}
+.xp-goal{text-align:center;font-size:17px;font-weight:800;margin:2px 0 6px}
+.xp-goal small{color:var(--mute,#6b7592)}
+.xp-body{overflow-y:auto;flex:1 1 auto;min-height:0;padding:2px 2px 6px;-webkit-overflow-scrolling:touch}
+.xp-page{animation:xpIn .25s ease-out both}
+@keyframes xpIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.xp-count{text-align:center;font-size:14px;font-weight:900;letter-spacing:.5px;color:var(--mute,#6b7592);text-transform:uppercase;margin:4px 0}
+.xp-run{margin:4px 0}
+.xp-why{font-size:18px;line-height:1.4;font-weight:700;margin:8px 4px;text-align:center}
+.xp-why b{color:var(--purple,#7a3cf0)}
+.xp-arrow{text-align:center;font-size:22px;line-height:1;color:var(--mute,#6b7592);margin:2px 0}
+
+/* the part being worked on: a steady yellow ring, no pulsing */
+.xp-focus{display:inline-flex;flex-wrap:wrap;align-items:flex-start;gap:4px;padding:3px 4px;border-radius:12px;
+  background:rgba(255,224,102,.22);box-shadow:0 0 0 3px #ffe066}
+.xp-focus .paren{align-self:center}
+/* a worked-out number */
+.xp-val{display:inline-flex;align-items:center;justify-content:center;min-width:var(--mini,40px);height:var(--mini,40px);
+  padding:0 8px;border-radius:10px;background:#fff;color:var(--ink,#16203c);font-family:var(--display,inherit);
+  font-size:calc(var(--mini,40px) * .52);box-shadow:0 3px 0 #c5cce0;align-self:center;white-space:nowrap}
+.xp-val.big{font-size:30px;height:54px;min-width:70px;padding:0 14px}
+.xp-frac{display:inline-flex;flex-direction:column;align-items:center;line-height:1;font-size:.72em;margin-left:2px}
+.xp-frac span:first-child{border-bottom:2px solid currentColor;padding:0 2px}
+
+.xp-end{margin:10px 2px 4px;padding:10px 12px;border-radius:16px;font-size:18px;font-weight:800;text-align:center;background:#eef1f7}
+.xp-end.ok{background:#e9fbf2;color:#0f7a4a}
+.xp-end.no{background:#fff4e0;color:#7a4b00}
+.xp-rules{margin:8px 2px;font-size:16px}
+.xp-rules ul{margin:4px 0 0}
+.xp-fix{margin:8px 2px;padding:10px 12px;border-radius:16px;background:#fff9db;border:2px dashed #fcc419;font-size:17px;font-weight:800;line-height:1.35}
+
+.xp-list{margin:6px 0;padding-left:26px}
+.xp-list li{margin:0 0 10px;font-size:16px;line-height:1.35}
+.xp-line{display:block;font-family:var(--display,inherit);font-size:19px;letter-spacing:.3px}
+.xp-line.to{color:#0f7a4a}
+.xp-ltext{display:block;font-weight:700}
+
+.xp-nav{margin-top:8px;flex:0 0 auto;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.xp-nav .btn{min-width:110px}
+
+@media (max-width:480px){
+  .xp-card{padding:12px 10px 10px;border-radius:22px}
+  .xp-head h2{font-size:22px}
+  .xp-why{font-size:17px}
+  .xp-nav .btn{min-width:0;flex:1 1 auto}
+}
+@media (prefers-reduced-motion:reduce){ .xp-page{animation:none} }
