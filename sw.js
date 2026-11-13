@@ -2,7 +2,7 @@
 // See docs/handoff/pwa.md. The file list comes from precache-manifest.js, made by  node tools/build-precache.js
 // (which also stamps its version on the next line, so every publish is a new service worker).
 'use strict';
-importScripts('precache-manifest.js?v=345e6bd6bfa5');
+importScripts('precache-manifest.js?v=bf4b9a9a26ba');
 
 const P = self.PRECACHE || { version: 'none', files: [], cdn: [], warm: [] };
 const PREFIX = 'tata-';
