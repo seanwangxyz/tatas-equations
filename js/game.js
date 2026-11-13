@@ -204,7 +204,7 @@ function speakLine(who, text) {
   if (ms && T3.creatureTalk) T3.creatureTalk(ms);
 }
 function crowdSay(kind, opts) { if (typeof crowdReact === 'function') crowdReact(kind, opts); else if (Snd.crowdReact) Snd.crowdReact(kind); }
-function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', text); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
+function say(who, text, mood) { if (!G) return; if (who === 'opp' && window.Social && Social.bubble && (!G.speech || G.speech.text !== text)) Social.bubble('opp', String(text).replace(/<[^>]+>/g, '')); if (!G.speech || G.speech.text !== text) speakLine(who, text); G.speech = { who: who, text: text, mood: mood || 'happy', fresh: !G.speech || G.speech.text !== text }; if (current === 'game') { var el = $('#speech'); if (el) el.outerHTML = speechHTML(); } }
 function speechHTML() {
   var sp = G.speech || { who: 'pip', text: '' }, face;
   if (sp.who === 'opp' && curAI()) face = avatarHTML(curAI());
