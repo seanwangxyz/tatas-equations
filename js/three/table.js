@@ -150,59 +150,150 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // ---- end ONSETS block ----
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   // All six faces of one colour in a 3 x 2 atlas (face k in cell k % 3, row k / 3), so a cube is one draw call.
-  function atlasTex(color, skin) {
-    var res = texRes || 256, key = 'atlas' + color + skin + res + (window.A11y ? A11y.key() : ''); // (A11Y: the helpers change the faces)
+  // CRAFT: besides the colour map, a skin may bring more layers of the same layout (drawn by faceLayer below):
+  //   'bump'  the symbol pressed into the face (real light and shade on the inset), every skin, medium and high quality
+  //   'glow'  what shines by itself (lava veins, galaxy stars, candy's inner light), added on top of the lighting
+  //   'orm'   gold: where it is metal (the gold) and where it is not (the enamel band and the engraved symbol)
+  function atlasTex(color, skin, layer) {
+    var res = texRes || 256, key = 'atlas' + color + skin + res + (layer || '') + (window.A11y ? A11y.key() : ''); // (A11Y: the helpers change the faces)
     if (texCache[key]) return texCache[key];
-    if (KINDS[color]) return (texCache[key] = KINDS[color].tex(res)); // ONSETS: a registered cube kind brings its own faces
+    if (KINDS[color]) return layer ? null : (texCache[key] = KINDS[color].tex(res)); // ONSETS: a registered cube kind brings its own faces
+    if (layer) res = Math.min(res, 256); // the extra layers are soft: 256 per face is plenty
     var cv = document.createElement('canvas'); cv.width = 3 * res; cv.height = 2 * res; var g = cv.getContext('2d');
     Eq.CUBE_FACES[color].forEach(function (s, k) {
       g.save(); g.translate((k % 3) * res, Math.floor(k / 3) * res); g.beginPath(); g.rect(0, 0, res, res); g.clip(); g.scale(res / 128, res / 128);
-      drawFace(g, color, s, skin); g.restore();
+      if (layer) faceLayer(g, color, s, skin, layer, k); else drawFace(g, color, s, skin, k);
+      g.restore();
     });
     var t = new THREE.CanvasTexture(cv);
-    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    t.colorSpace = layer === 'bump' || layer === 'orm' ? THREE.NoColorSpace : THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     texCache[key] = t;
     return t;
   }
-  function drawFace(g, color, s, skin) {
-    var c = CUBECOL[color], ink = '#fff', shadow = 'rgba(0,0,0,.45)';
+  // ---- CRAFT: the five skins, each with its own character (the symbol is always the clearest thing on the face) ----
+  // classic: glossy toy plastic. candy: boiled-sweet pastel with a soft inner light and DARK symbols (white on pastel was
+  // about 1.5:1; these are 4.6:1 or better on every stripe). lava: dark basalt with glowing veins kept to the edges and a
+  // band in the cube's colour. galaxy: a nebula in the cube's own colour with a few glittering stars. gold: polished metal
+  // with an enamel band in the cube's colour and an engraved symbol. Everything is seeded, so a face is the same each time.
+  var CANDY = { red: ['#ffd0dc', '#ffadc2', '#6e0f2c'], blue: ['#d3ecff', '#a5d6fd', '#0a3d6b'], green: ['#dcfbe1', '#b5f1bf', '#14532d'], black: ['#ded2ff', '#c0aafc', '#2a1260'] };
+  function srnd(seed) { var x = (seed * 9301 + 49297) % 233280; return function () { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+  function colorSeed(color) { return { red: 1, blue: 2, green: 3, black: 4 }[color] || 5; }
+  // lava veins: short wandering cracks from the edge inward, never into the middle where the symbol is
+  function lavaVeins(color, k) {
+    var R = srnd(colorSeed(color) * 31 + k * 7 + 3), out = [];
+    for (var v = 0; v < 5; v++) {
+      var side = Math.floor(R() * 4), t = 14 + R() * 100, x = side === 0 ? t : side === 1 ? 122 : side === 2 ? t : 6, y = side === 0 ? 6 : side === 1 ? t : side === 2 ? 122 : t;
+      var pts = [[x, y]], ang = Math.atan2(64 - y, 64 - x) + (R() - 0.5) * 1.4, len = 16 + R() * 20;
+      for (var s = 0; s < 5; s++) {
+        ang += (R() - 0.5) * 1.1; x += Math.cos(ang) * len / 5; y += Math.sin(ang) * len / 5;
+        if (Math.hypot(x - 64, y - 66) < 42) break;
+        pts.push([x, y]);
+      }
+      out.push({ pts: pts, w: 1.4 + R() * 1.8 });
+    }
+    return out;
+  }
+  function strokeVeins(g, veins, css, wk) {
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = css;
+    veins.forEach(function (v) { if (v.pts.length < 2) return; g.lineWidth = v.w * wk; g.beginPath(); g.moveTo(v.pts[0][0], v.pts[0][1]); for (var i = 1; i < v.pts.length; i++) g.lineTo(v.pts[i][0], v.pts[i][1]); g.stroke(); });
+  }
+  function galaxyStars(color, k) {
+    var R = srnd(colorSeed(color) * 17 + k * 5 + 11), out = [];
+    for (var i = 0; i < 24; i++) { var x = 8 + R() * 112, y = 8 + R() * 112, mid = Math.hypot(x - 64, y - 66) < 40; out.push([x, y, (R() < 0.18 ? 1.7 : 0.95) * (mid ? 0.7 : 1), mid ? 0.3 : 0.55 + R() * 0.45]); }
+    return out;
+  }
+  function symbolInk(color, skin, hcc) {
+    if (skin === 'candy') return { ink: (CANDY[color] || CANDY.black)[2], edge: 'rgba(255,255,255,.75)', drop: 'rgba(255,255,255,.6)', lip: 'rgba(0,0,0,.45)' };
+    if (skin === 'gold') return { ink: '#4a2f00', edge: 'rgba(255,244,210,.7)', drop: 'rgba(255,255,255,.5)', lip: 'rgba(0,0,0,.45)' };
+    if (skin === 'lava') return { ink: '#fff4e2', edge: 'rgba(20,6,0,.8)', drop: 'rgba(0,0,0,.6)', lip: 'rgba(150,80,30,.7)' };
+    if (skin === 'galaxy') return { ink: '#ffffff', edge: 'rgba(8,4,30,.75)', drop: 'rgba(0,0,0,.55)', lip: 'rgba(130,140,210,.7)' };
+    if (hcc && hcc[2] !== '#fff') return { ink: hcc[2], edge: 'rgba(255,255,255,.55)', drop: 'rgba(255,255,255,.5)', lip: 'rgba(0,0,0,.35)' }; // A11Y: the light green takes a dark symbol
+    return { ink: '#fff', edge: 'rgba(0,0,0,.42)', drop: 'rgba(0,0,0,.42)', lip: 'rgba(110,120,140,.8)' };
+  }
+  function symbolFont(s) { return '900 ' + (s === 'r' ? 84 : 80) + 'px "Trebuchet MS", "Segoe UI", sans-serif'; }
+  function drawFace(g, color, s, skin, k) {
+    var c = CUBECOL[color] || CUBECOL.black;
     var hcc = window.A11y && A11y.faceCols(color); if (hcc) c = hcc; // A11Y: high-contrast cube colours (docs/handoff/a11y.md)
+    k = k || 0;
     if (skin === 'candy') {
-      var light = { red: '#ffc2d1', blue: '#c5e6ff', green: '#d3f9d8', black: '#d0bfff' }[color], dark = { red: '#ff8fab', blue: '#74c0fc', green: '#8ce99a', black: '#9775fa' }[color];
-      g.fillStyle = light; g.fillRect(0, 0, 128, 128); g.strokeStyle = dark; g.lineWidth = 12;
-      for (var i = -128; i < 256; i += 28) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 128, 128); g.stroke(); }
+      var cc = CANDY[color] || CANDY.black;
+      g.fillStyle = cc[0]; g.fillRect(0, 0, 128, 128); g.strokeStyle = cc[1]; g.lineWidth = 11;
+      for (var i = -128; i < 256; i += 30) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 128, 128); g.stroke(); }
+      var cg = g.createRadialGradient(46, 40, 6, 64, 64, 96); cg.addColorStop(0, 'rgba(255,255,255,.45)'); cg.addColorStop(0.5, 'rgba(255,255,255,.08)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = cg; g.fillRect(0, 0, 128, 128);
     } else if (skin === 'lava') {
-      var gr = g.createRadialGradient(40, 40, 5, 64, 64, 95); gr.addColorStop(0, '#ffd43b'); gr.addColorStop(0.45, '#f76707'); gr.addColorStop(1, '#4a1500');
-      g.fillStyle = gr; g.fillRect(0, 0, 128, 128); g.strokeStyle = c[0]; g.lineWidth = 12; g.strokeRect(6, 6, 116, 116);
+      var lg0 = g.createRadialGradient(44, 40, 6, 64, 64, 100); lg0.addColorStop(0, '#4a2c22'); lg0.addColorStop(1, '#170c09'); g.fillStyle = lg0; g.fillRect(0, 0, 128, 128);
+      var R0 = srnd(colorSeed(color) * 13 + k); for (var q = 0; q < 160; q++) { g.fillStyle = R0() < 0.5 ? 'rgba(255,190,140,.06)' : 'rgba(0,0,0,.18)'; g.fillRect(R0() * 128, R0() * 128, 2, 2); }
+      var veins = lavaVeins(color, k); strokeVeins(g, veins, 'rgba(255,120,20,.5)', 2.2); strokeVeins(g, veins, '#ffb347', 1);
+      g.strokeStyle = c[0]; g.lineWidth = 9; rr(g, 9, 9, 110, 110, 16); g.stroke();
     } else if (skin === 'galaxy') {
-      var gg = g.createRadialGradient(40, 40, 5, 64, 64, 100); gg.addColorStop(0, '#7048e8'); gg.addColorStop(1, '#14082e');
-      g.fillStyle = gg; g.fillRect(0, 0, 128, 128);
-      for (var k = 0; k < 40; k++) { g.fillStyle = 'rgba(255,255,255,' + (0.3 + Math.random() * 0.7) + ')'; g.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); }
-      g.strokeStyle = c[0]; g.lineWidth = 10; g.strokeRect(5, 5, 118, 118);
+      g.fillStyle = '#0b0820'; g.fillRect(0, 0, 128, 128);
+      var R1 = srnd(colorSeed(color) * 7 + k * 3);
+      for (var n = 0; n < 3; n++) { var nx = 20 + R1() * 88, ny = 20 + R1() * 88, nr = 40 + R1() * 40, ng = g.createRadialGradient(nx, ny, 2, nx, ny, nr); ng.addColorStop(0, c[0] + '99'); ng.addColorStop(1, c[0] + '00'); g.fillStyle = ng; g.fillRect(0, 0, 128, 128); }
+      galaxyStars(color, k).forEach(function (st) { g.fillStyle = 'rgba(255,255,255,' + st[3] + ')'; g.beginPath(); g.arc(st[0], st[1], st[2], 0, 6.283); g.fill(); });
+      g.strokeStyle = c[0]; g.lineWidth = 8; rr(g, 8, 8, 112, 112, 16); g.stroke();
     } else if (skin === 'gold') {
-      var go = g.createLinearGradient(0, 0, 128, 128); go.addColorStop(0, '#fff3bf'); go.addColorStop(0.45, '#fcc419'); go.addColorStop(1, '#d9480f');
-      g.fillStyle = go; g.fillRect(0, 0, 128, 128); g.strokeStyle = c[1]; g.lineWidth = 12; g.strokeRect(6, 6, 116, 116);
-      ink = '#5c3c00'; shadow = 'rgba(255,255,255,.6)';
+      var go = g.createLinearGradient(0, 0, 128, 128); go.addColorStop(0, '#fff1b8'); go.addColorStop(0.4, '#f5c542'); go.addColorStop(0.75, '#e0a72e'); go.addColorStop(1, '#c4851a');
+      g.fillStyle = go; g.fillRect(0, 0, 128, 128);
+      g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1; for (var b = 6; b < 128; b += 5) { g.beginPath(); g.moveTo(0, b); g.lineTo(128, b + 3); g.stroke(); } // fine brushed lines
+      g.strokeStyle = c[0]; g.lineWidth = 13; rr(g, 9, 9, 110, 110, 16); g.stroke(); g.strokeStyle = c[1]; g.lineWidth = 2; rr(g, 15.5, 15.5, 97, 97, 11); g.stroke(); // the enamel band
+      g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 1.5; rr(g, 14.5, 14.5, 99, 99, 12); g.stroke();
     } else {
       var lg = g.createLinearGradient(0, 0, 128, 128); lg.addColorStop(0, c[0]); lg.addColorStop(1, c[1]);
       g.fillStyle = lg; g.fillRect(0, 0, 128, 128);
-      // soft darkening toward the edges so the rounded corners read as rounded, plus a top-left sheen
-      var eg = g.createRadialGradient(54, 50, 40, 64, 64, 98); eg.addColorStop(0, 'rgba(0,0,0,0)'); eg.addColorStop(1, 'rgba(0,0,0,.28)');
+      // soft darkening toward the edges (they fall on the rounded part of the cube), so the faces read as moulded plastic
+      var eg = g.createRadialGradient(56, 52, 44, 64, 64, 96); eg.addColorStop(0, 'rgba(0,0,0,0)'); eg.addColorStop(1, 'rgba(0,0,0,.22)');
       g.fillStyle = eg; g.fillRect(0, 0, 128, 128);
-      g.fillStyle = 'rgba(255,255,255,.16)'; rr(g, 12, 10, 104, 28, 14); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,.24)'; g.lineWidth = 3; rr(g, 3, 3, 122, 122, 14); g.stroke();
-      if (hcc && hcc[2] !== '#fff') { ink = hcc[2]; shadow = 'rgba(255,255,255,.5)'; } // A11Y: the light green takes a dark symbol
     }
     if (window.A11y) A11y.drawFacePattern(g, color, 128, { skin: skin }); // A11Y: a pattern (and letter) per colour, under the symbol
-    var label = Eq.SHOW[s] || s;
-    g.font = '900 ' + (s === 'r' ? 84 : 80) + 'px "Trebuchet MS", "Segoe UI", sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    g.fillStyle = shadow; g.fillText(label, 65.5, 69.5);
-    // a thin dark outline keeps the symbol crisp against every colour and skin
-    g.strokeStyle = ink === '#fff' ? 'rgba(0,0,0,.38)' : 'rgba(255,255,255,.55)'; g.lineWidth = 5; g.strokeText(label, 64, 66);
-    g.fillStyle = ink; g.fillText(label, 64, 66);
-    if (s === '6' || s === '9') { g.strokeRect(44, 104, 40, 7); g.fillRect(44, 104, 40, 7); } // underline so 6 and 9 can't be confused
+    var label = Eq.SHOW[s] || s, si = symbolInk(color, skin, hcc);
+    g.font = symbolFont(s); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.fillStyle = si.drop; g.fillText(label, 65.5, 68.5);
+    // a firm outline keeps the symbol crisp against every colour and skin
+    g.strokeStyle = si.edge; g.lineWidth = 5; g.strokeText(label, 64, 66);
+    g.fillStyle = si.ink; g.fillText(label, 64, 66);
+    inset(g, label, si); // pressed in: a thin shaded lip along the symbol's top-left inner edge (the bump layer adds real light)
+    if (s === '6' || s === '9') { g.fillStyle = si.ink; g.strokeStyle = si.edge; g.lineWidth = 3; g.strokeRect(44, 104, 40, 7); g.fillRect(44, 104, 40, 7); } // underline so 6 and 9 can't be confused
   }
+  var insetCv = null;
+  function inset(g, label, si) {
+    try {
+      if (!insetCv) { insetCv = document.createElement('canvas'); insetCv.width = insetCv.height = 128; }
+      var h = insetCv.getContext('2d'); h.clearRect(0, 0, 128, 128);
+      h.font = g.font; h.textAlign = 'center'; h.textBaseline = 'middle';
+      h.globalCompositeOperation = 'source-over'; h.fillStyle = si.lip; h.fillText(label, 64, 66);
+      h.globalCompositeOperation = 'destination-out'; h.fillText(label, 65.4, 67.6); h.globalCompositeOperation = 'source-over';
+      g.drawImage(insetCv, 0, 0);
+    } catch (e) {}
+  }
+  // the extra layers (same cell layout as drawFace)
+  function faceLayer(g, color, s, skin, layer, k) {
+    var label = Eq.SHOW[s] || s;
+    g.font = symbolFont(s); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    if (layer === 'bump') { // a white face with the symbol pressed in (darker = lower), softened a little
+      g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128);
+      if (skin === 'gold' || skin === 'lava' || skin === 'galaxy') { g.strokeStyle = '#e4e4e4'; g.lineWidth = 9; rr(g, 9, 9, 110, 110, 16); g.stroke(); } // the band sits a hair lower
+      try { g.filter = 'blur(1.1px)'; } catch (e) {}
+      g.fillStyle = '#606060'; g.strokeStyle = '#909090'; g.lineWidth = 4; g.strokeText(label, 64, 66); g.fillText(label, 64, 66);
+      if (s === '6' || s === '9') g.fillRect(44, 104, 40, 7);
+      try { g.filter = 'none'; } catch (e) {}
+      return;
+    }
+    g.fillStyle = '#000'; g.fillRect(0, 0, 128, 128);
+    if (layer === 'glow') {
+      if (skin === 'lava') { var veins = lavaVeins(color, k); strokeVeins(g, veins, 'rgba(255,90,0,.5)', 2.4); strokeVeins(g, veins, '#ff9a3c', 1); }
+      else if (skin === 'galaxy') galaxyStars(color, k).forEach(function (st) { if (st[3] < 0.5) return; g.fillStyle = 'rgba(255,255,255,' + st[3] + ')'; g.beginPath(); g.arc(st[0], st[1], st[2] * 1.1, 0, 6.283); g.fill(); });
+      else if (skin === 'candy') { var cc = CANDY[color] || CANDY.black; g.fillStyle = cc[1]; g.fillRect(0, 0, 128, 128); g.fillStyle = '#000'; g.lineWidth = 8; g.strokeStyle = '#000'; g.strokeText(label, 64, 66); g.fillText(label, 64, 66); } // the sugar glows from inside, the symbol does not
+      return;
+    }
+    if (layer === 'orm') { // three.js reads roughness from green and metalness from blue: gold = metal and smooth, enamel and symbol = not metal
+      g.fillStyle = 'rgb(0,60,200)'; g.fillRect(0, 0, 128, 128);
+      g.strokeStyle = 'rgb(0,90,0)'; g.lineWidth = 13; rr(g, 9, 9, 110, 110, 16); g.stroke();
+      g.fillStyle = 'rgb(0,170,30)'; g.strokeStyle = 'rgb(0,170,30)'; g.lineWidth = 5; g.strokeText(label, 64, 66); g.fillText(label, 64, 66);
+      if (s === '6' || s === '9') g.fillRect(44, 104, 40, 7);
+    }
+  }
+  // ---- end CRAFT skins ----
   function spriteTex(txt, size) {
     var cv = document.createElement('canvas'); cv.width = cv.height = 128; var g = cv.getContext('2d');
     g.font = '900 ' + (size || 100) + 'px "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -212,15 +303,24 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var lockTex = null;
 
   // ----- Rounded cube geometry (BoxGeometry with its corners pushed round) -----
+  // CRAFT: 8 segments per side, spaced so that 3 of them sweep each rounded edge in even 15-degree steps (a smooth,
+  // soft edge that catches a highlight) and the flat middle of the face, where the symbol is, stays flat. The face
+  // texture runs across the rounded band too, so its outer 15% (the darker edge of the paint) wraps round the edge.
+  var CUBE_R = 0.15;
   var cubeGeo = (function () {
-    var g = new THREE.BoxGeometry(1, 1, 1, 6, 6, 6), p = g.attributes.position, n = g.attributes.normal, r = 0.14, h = 0.5 - r, v = new THREE.Vector3(), inner = new THREE.Vector3();
+    var N = 8, g = new THREE.BoxGeometry(1, 1, 1, N, N, N), p = g.attributes.position, n = g.attributes.normal, r = CUBE_R, h = 0.5 - r, v = new THREE.Vector3(), inner = new THREE.Vector3();
+    var T = [0, Math.tan(Math.PI / 12), Math.tan(Math.PI / 6), 1].map(function (t) { return h + r * t; }); // band: 0, 15, 30, 45 degrees
+    var at = [-T[3], -T[2], -T[1], -T[0], 0, T[0], T[1], T[2], T[3]];                                     // grid index -> coordinate
+    function remap(x) { return at[Math.max(0, Math.min(N, Math.round((x + 0.5) * N)))]; }
+    var uv = g.attributes.uv;
     for (var i = 0; i < p.count; i++) {
-      v.fromBufferAttribute(p, i);
+      v.set(remap(p.getX(i)), remap(p.getY(i)), remap(p.getZ(i)));
+      uv.setXY(i, remap(uv.getX(i) - 0.5) + 0.5, remap(uv.getY(i) - 0.5) + 0.5); // the texture follows the new spacing
       inner.set(Math.max(-h, Math.min(h, v.x)), Math.max(-h, Math.min(h, v.y)), Math.max(-h, Math.min(h, v.z)));
-      v.sub(inner).normalize(); n.setXYZ(i, v.x, v.y, v.z); v.multiplyScalar(r).add(inner); p.setXYZ(i, v.x, v.y, v.z);
+      v.sub(inner); if (v.lengthSq() < 1e-12) v.set(0, 1, 0); v.normalize(); n.setXYZ(i, v.x, v.y, v.z); v.multiplyScalar(r).add(inner); p.setXYZ(i, v.x, v.y, v.z);
     }
     // point each face's UVs at its atlas cell (BoxGeometry faces don't share vertices), then drop the groups
-    var uv = g.attributes.uv, idx = g.index, seen = {};
+    var idx = g.index, seen = {};
     g.groups.forEach(function (gr) {
       var k = gr.materialIndex, cx = k % 3, cy = Math.floor(k / 3);
       for (var j = gr.start; j < gr.start + gr.count; j++) {
@@ -311,12 +411,40 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // ---- end BONUS block ----
 
   function skin() { return S.cos.skin || 'classic'; }
+  // CRAFT: one material per cube (each can be tinted on its own), but every cube of a skin shares one shader program and
+  // the per-colour atlases. Per skin: classic = glossy plastic, candy = boiled sweet (clear coat, a soft inner light so
+  // its shaded sides never go muddy), lava = matt rock with glowing veins, galaxy = polished with glittering stars,
+  // gold = real metal where it is gold (metalness map), enamel and engraving not. The low tier keeps the colour map only
+  // (no clear coat, no bump, no extra layers: a cheaper shader).
+  var SKINMAT = {
+    classic: { rough: 0.3, coat: 0.8, coatR: 0.1, env: 1.1 },
+    candy: { rough: 0.18, coat: 1, coatR: 0.04, env: 1.2, glow: 0.22, irid: 0.25 },
+    lava: { rough: 0.78, coat: 0.12, coatR: 0.5, env: 0.7, glow: 2.2 },
+    galaxy: { rough: 0.22, coat: 1, coatR: 0.06, env: 1.0, glow: 1.6 },
+    gold: { rough: 1, metal: 1, coat: 0.25, coatR: 0.2, env: 1.35, orm: true }
+  };
+  function addGlow(mt, glowTex, k) {
+    var uMap = { value: glowTex }, uK = { value: k }; // (kept out of userData: Material.clone() deep-copies that as JSON)
+    mt.onBeforeCompile = function (sh) {
+      sh.uniforms.uGlowMap = uMap; sh.uniforms.uGlowK = uK;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uGlowMap;\nuniform float uGlowK;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_MAP\n\ttotalEmissiveRadiance += texture2D( uGlowMap, vMapUv ).rgb * uGlowK;\n#endif');
+    };
+    mt.customProgramCacheKey = function () { return 'craft-cube-glow'; };
+  }
   function buildMats(m) {
-    var color = m.userData.color, sk = skin();
-    var gold = sk === 'gold', glossy = sk === 'candy' || sk === 'galaxy', rich = qual > 0; // the low tier skips the clear coat (a cheaper shader)
+    var color = m.userData.color, sk = skin(), d20 = !!m.userData.d20, rich = qual > 0, P = SKINMAT[sk] || SKINMAT.classic;
+    if (d20 || KINDS[color]) P = SKINMAT.classic; // the bonus dice and On-Sets cubes bring their own faces: plain glossy plastic
     var old = m.material && m.material.isMaterial ? m.material : null;
-    var mt = new THREE.MeshPhysicalMaterial({ map: m.userData.d20 ? d20Tex(color) : atlasTex(color, sk), // (BONUS: a twenty-sided die has its own atlas) roughness: gold ? 0.28 : glossy ? 0.25 : rich ? 0.36 : 0.3, metalness: gold ? 0.55 : 0.0,
-      clearcoat: rich ? (gold ? 0.2 : glossy ? 1 : 0.7) : 0, clearcoatRoughness: glossy ? 0.12 : 0.16, envMapIntensity: gold ? 1.4 : 1.1 });
+    var mt = new THREE.MeshPhysicalMaterial({ map: d20 ? d20Tex(color) : atlasTex(color, sk), // (BONUS: a twenty-sided die has its own atlas)
+      roughness: P.rough, metalness: P.metal || 0, envMapIntensity: P.env,
+      clearcoat: rich ? P.coat : 0, clearcoatRoughness: P.coatR });
+    if (rich && !d20 && CUBECOL[color]) {
+      mt.bumpMap = atlasTex(color, sk, 'bump'); mt.bumpScale = 1.6;
+      if (P.orm) { var orm = atlasTex(color, sk, 'orm'); mt.roughnessMap = orm; mt.metalnessMap = orm; }
+      if (P.glow) addGlow(mt, atlasTex(color, sk, 'glow'), P.glow);
+      if (P.irid && qual >= 2) { mt.iridescence = P.irid; mt.iridescenceIOR = 1.4; }
+    } else if (P.orm) { mt.metalness = 0.6; mt.roughness = 0.3; }
     if (old) { mt.color.copy(old.color); mt.emissive.copy(old.emissive); old.dispose(); } // keep locked / selected tints
     m.material = mt;
     m.userData.matLevel = rich;
@@ -330,7 +458,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     Eq.COLORS.forEach(function (color) {
       for (var i = 0; i < 6; i++) {
         var m = new THREE.Mesh(cubeGeo, null);
-        m.userData = { id: id, color: color, jit: (Math.random() - 0.5) * 0.12 };
+        m.userData = { id: id, color: color, jit: (Math.random() - 0.5) * 0.05 }; // (CRAFT: a hair of hand-placed turn, tidy rows)
         buildMats(m); m.castShadow = true; m.receiveShadow = true; m.visible = false;
         var lk = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false })); lk.scale.set(0.6, 0.6, 0.6); lk.position.set(0.35, 0.8, 0); lk.visible = false; lk.renderOrder = 5;
         m.add(lk); m.userData.lock = lk;
@@ -395,6 +523,61 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (p && p.width) { w = p.width * bv2.x; h = p.height * bv2.y; } else { var s = box.getSize(new THREE.Vector3()); w = Math.max(s.x, s.z); h = s.y; }
     return { center: center, normal: new THREE.Vector3(0, 0, 1).applyQuaternion(bq).normalize(), w: w, h: h };
   }
+  // ---- CRAFT: the cloth, the sewn zones and the Goal's plinth ----
+  function hexA(hex, a) { var n = parseInt(String(hex).replace('#', ''), 16); if (!isFinite(n)) return 'rgba(255,255,255,' + a + ')'; return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  function feltNap(g, w, h) { // the nap of the cloth: thousands of tiny short strokes, all one way
+    var R = srnd(77);
+    for (var i = 0; i < 3200; i++) { var x = R() * w, y = R() * h, l = 5 + R() * 12; g.strokeStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.045)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + l * 0.12); g.stroke(); }
+  }
+  function zoneBed(g, z, x, y, w, h) {
+    g.save(); rr(g, x, y, w, h, 22); g.clip();
+    g.fillStyle = z === 'resources' ? 'rgba(0,0,0,.13)' : z === 'goal' ? 'rgba(255,255,255,.1)' : hexA(ZCOL[z], 0.08); g.fillRect(x, y, w, h);
+    if (z !== 'goal') { // pressed into the cloth: a soft shadow inside the top edge (deeper for the Resources tray)
+      var tray = z === 'resources';
+      g.shadowColor = 'rgba(0,0,0,' + (tray ? 0.55 : 0.3) + ')'; g.shadowBlur = tray ? 22 : 14; g.shadowOffsetY = tray ? 7 : 4;
+      g.lineWidth = 24; g.strokeStyle = '#000'; rr(g, x - 12, y - 12, w + 24, h + 24, 34); g.stroke();
+    }
+    g.restore();
+  }
+  function satin(og, w, h) { // a satin-stitch texture on the cords only (source-atop keeps every dash exactly as drawn)
+    og.save(); og.globalCompositeOperation = 'source-atop'; og.lineWidth = 1.5;
+    for (var k = -h; k < w; k += 5) { og.strokeStyle = 'rgba(0,0,0,.24)'; og.beginPath(); og.moveTo(k, h); og.lineTo(k + h, 0); og.stroke(); og.strokeStyle = 'rgba(255,255,255,.2)'; og.beginPath(); og.moveTo(k + 2.5, h); og.lineTo(k + 2.5 + h, 0); og.stroke(); }
+    og.restore();
+  }
+  function zonePatch(g, z, text, x, y, w, ppu) {
+    if (!text) return;
+    var fs = Math.round(0.5 * ppu * (window.A11y ? A11y.textScale() : 1)), F = function () { return '800 ' + fs + 'px "Trebuchet MS", sans-serif'; };
+    g.font = F(); while (fs > 18 && g.measureText(text).width > w - 0.75 * ppu) { fs -= 2; g.font = F(); }
+    var tw = g.measureText(text).width, ph = Math.round(fs * 1.5), px = x + 0.2 * ppu, py = y + 0.13 * ppu, pw = tw + fs * 1.1;
+    g.save(); g.shadowColor = 'rgba(0,0,0,.42)'; g.shadowBlur = 6; g.shadowOffsetY = 2; rr(g, px, py, pw, ph, ph / 2); g.fillStyle = 'rgba(10,26,22,.66)'; g.fill(); g.restore();
+    rr(g, px, py, pw, ph, ph / 2); g.fillStyle = hexA(ZCOL[z], 0.2); g.fill();
+    g.lineWidth = 3; g.strokeStyle = hexA(ZCOL[z], 0.95); g.stroke();
+    g.setLineDash([5, 4]); g.lineWidth = 1.6; g.strokeStyle = 'rgba(255,255,255,.55)'; rr(g, px + 5, py + 5, pw - 10, ph - 10, (ph - 10) / 2); g.stroke(); g.setLineDash([]);
+    g.textBaseline = 'middle'; g.textAlign = 'left'; g.lineJoin = 'round';
+    g.lineWidth = Math.max(4, fs * 0.17); g.strokeStyle = 'rgba(0,0,0,.6)'; g.strokeText(text, px + fs * 0.55, py + ph / 2 + 1);
+    g.fillStyle = '#fff'; g.fillText(text, px + fs * 0.55, py + ph / 2 + 1);
+  }
+  // The Goal's plinth: a low brass frame round the Goal area. At rest it is still; when a Goal is set it warms up and
+  // fades back once (plinthFlash), about 1.4 s.
+  var plinth = null, plinthT = 0;
+  function buildPlinth() {
+    plinth = null; var r = layout && layout.z.goal; if (!r) return;
+    var o = 0.1, i = 0.07, sh = new THREE.Shape(); rrp(sh, r[0] - o, -(r[1] + r[3]) - o, r[2] + 2 * o, r[3] + 2 * o, 0.38);
+    var hole = new THREE.Path(); rrp(hole, r[0] + i, -(r[1] + r[3]) + i, r[2] - 2 * i, r[3] - 2 * i, 0.26); sh.holes.push(hole);
+    var geo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 2, curveSegments: 8 });
+    var mat = new THREE.MeshStandardMaterial({ color: 0xe2bd62, metalness: 0.75, roughness: 0.32, emissive: 0xffc44d, emissiveIntensity: 0 });
+    plinth = new THREE.Mesh(geo, mat); plinth.rotation.x = -Math.PI / 2; plinth.position.y = 0.005; plinth.receiveShadow = true; plinth.userData.plinth = true;
+    tableGroup.add(plinth); plinthT = 0;
+  }
+  function plinthFlash() { if (!plinth || document.hidden) return; plinthT = performance.now(); dirty = true; startLoop(); }
+  function stepPlinth(now) {
+    if (!plinthT || !plinth) return false;
+    var k = (now - plinthT) / 1400; if (k >= 1) { plinthT = 0; plinth.material.emissiveIntensity = 0; return true; }
+    var e = k < 0.25 ? k / 0.25 : 1 - (k - 0.25) / 0.75; e = e * e * (3 - 2 * e); // up quickly, down slowly, once
+    plinth.material.emissiveIntensity = e * (calm() ? 0.45 : 0.9); return true;
+  }
+  function calm() { try { return !!(window.A11y && A11y.calm()) || !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
+  // ---- end CRAFT cloth ----
   function buildTable() {
     if (tableGroup) { scene.remove(tableGroup); disposeTree(tableGroup); }
     zonePlanes = {}; zoneGlow = {};
@@ -405,26 +588,38 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     cv.width = Math.round((W + 2 * PAD) * ppu); cv.height = Math.round((D + 2 * PAD) * ppu);
     var g = cv.getContext('2d');
     paintFelt(g, cv.width, cv.height, T, name);
+    feltNap(g, cv.width, cv.height);
     var labels = LABELS[layoutName];
+    // CRAFT: the zones are sewn into the cloth. Each area has a faint tint of its own colour and is pressed in a little
+    // (a soft inner shadow); Resources is a deeper tray. The outlines are raised cords with a satin-stitch texture (the
+    // dash pattern, solid / dashed / dotted for the colour helpers, is kept exactly), and every label sits on a sewn
+    // patch so it reads at seat distance on any felt.
+    var oc = document.createElement('canvas'); oc.width = cv.width; oc.height = cv.height; var og = oc.getContext('2d');
     Object.keys(layout.z).forEach(function (z) {
       var r = layout.z[z], x = (r[0] + W / 2 + PAD) * ppu, y = (r[1] + D / 2 + PAD) * ppu, w = r[2] * ppu, h = r[3] * ppu;
-      g.fillStyle = z === 'goal' ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.07)'; rr(g, x, y, w, h, 22); g.fill();
+      zoneBed(g, z, x, y, w, h);
       // A11Y: with colour helpers on, the edges differ by line too (Required solid, Permitted dashed, Forbidden dotted + hatch); labels follow the text size
-      var zs = window.A11y && A11y.zoneStyle(z), fs = Math.round(0.42 * ppu * (window.A11y ? A11y.textScale() : 1));
+      var zs = window.A11y && A11y.zoneStyle(z);
       if (zs && zs.hatch) A11y.drawHatch(g, x + 8, y + 0.8 * ppu, w - 16, h - 0.8 * ppu - 8);
-      g.setLineDash(zs ? zs.dash : z === 'goal' ? [] : [22, 14]); g.lineCap = zs ? zs.cap : 'butt'; g.lineWidth = zs ? zs.width : 6; g.strokeStyle = ZCOL[z]; g.globalAlpha = zs ? 0.95 : 0.8; rr(g, x, y, w, h, 22); g.stroke(); g.globalAlpha = 1; g.setLineDash([]); g.lineCap = 'butt';
-      g.font = '800 ' + fs + 'px "Trebuchet MS", sans-serif'; g.textBaseline = 'middle';
-      while (fs > 18 && g.measureText(labels[z]).width > w - 0.5 * ppu) { fs -= 2; g.font = '800 ' + fs + 'px "Trebuchet MS", sans-serif'; } // (A11Y: larger text still fits the zone)
-      g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
-      g.fillStyle = '#fff'; g.fillText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
+      og.setLineDash(zs ? zs.dash : z === 'goal' ? [] : [22, 14]); og.lineCap = zs ? zs.cap : 'butt'; og.lineWidth = zs ? zs.width : 6; og.strokeStyle = ZCOL[z]; og.globalAlpha = zs ? 0.95 : 0.85; rr(og, x, y, w, h, 22); og.stroke(); og.globalAlpha = 1; og.setLineDash([]); og.lineCap = 'butt';
+    });
+    satin(og, oc.width, oc.height);
+    g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 4; g.shadowOffsetY = 2; g.drawImage(oc, 0, 0); g.restore(); // the cords stand up off the cloth
+    Object.keys(layout.z).forEach(function (z) {
+      var r = layout.z[z], x = (r[0] + W / 2 + PAD) * ppu, y = (r[1] + D / 2 + PAD) * ppu, w = r[2] * ppu;
+      zonePatch(g, z, labels[z], x, y, w, ppu); // (A11Y: the label size follows the text size setting, and still fits the zone)
+    });
+    Object.keys(layout.z).forEach(function (z) {
+      var r = layout.z[z];
       var zp = new THREE.Mesh(new THREE.PlaneGeometry(r[2], r[3]), new THREE.MeshBasicMaterial({ map: glowTex(r[2], r[3], ZCOL[z] === '#ffffff' ? '#ffe066' : ZCOL[z]), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
       zp.rotation.x = -Math.PI / 2; zp.position.set(r[0] + r[2] / 2, 0.02, r[1] + r[3] / 2); zp.userData.zone = z; zp.visible = false; zp.renderOrder = 2;
       tableGroup.add(zp); zonePlanes[z] = zp; zoneGlow[z] = 0;
     });
     var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
     var bump = feltBumpTile(); bump.repeat.set((W + 2 * PAD) / 1.2, (D + 2 * PAD) / 1.2);
-    felt = new THREE.Mesh(new THREE.PlaneGeometry(W + 2 * PAD, D + 2 * PAD), new THREE.MeshPhysicalMaterial({ map: tex, roughness: 1, bumpMap: bump, bumpScale: 1.2, sheen: 1, sheenRoughness: 0.7, sheenColor: new THREE.Color(T.felt).lerp(new THREE.Color(0xffffff), 0.45) }));
+    felt = new THREE.Mesh(new THREE.PlaneGeometry(W + 2 * PAD, D + 2 * PAD), new THREE.MeshPhysicalMaterial({ map: tex, roughness: 1, bumpMap: bump, bumpScale: 1.2, sheen: 1, sheenRoughness: 0.55, sheenColor: new THREE.Color(T.felt).lerp(new THREE.Color(0xffffff), 0.2) })); // (CRAFT: a deeper cloth; the paler sheen washed it out)
     felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; felt.userData.occ = true; tableGroup.add(felt);
+    buildPlinth(); // CRAFT: the Goal's raised frame
     // wooden rim: one rounded, bevelled frame
     var t = 0.7, hgt = 0.5, ow = W / 2 + t - 0.15, od = D / 2 + t - 0.15;
     var shape = new THREE.Shape(); rrp(shape, -ow, -od, 2 * ow, 2 * od, 0.9);
@@ -704,7 +899,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function tweenTo(m, pos, q, scale, opts) {
     anims = anims.filter(function (a) { return a.m !== m; }); dropSquash(m);
-    anims.push({ m: m, p0: m.position.clone(), p1: pos, q0: m.quaternion.clone(), q1: q, s0: m.scale.x, s1: scale, t0: performance.now(), dur: opts.dur, arc: opts.arc, land: opts.land, lin: !!opts.lin });
+    anims.push({ m: m, p0: m.position.clone(), p1: pos, q0: m.quaternion.clone(), q1: q, s0: m.scale.x, s1: scale, t0: performance.now(), dur: opts.dur, arc: opts.arc, land: opts.land, lin: !!opts.lin, tidy: !!opts.tidy });
     if (opts.land && opts.arc > 1 && !opts.quiet) Snd.pickup();
     dirty = true;
   }
@@ -732,9 +927,127 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function landFx(a, now) {
     var power = a.arc > 1 ? 1 : 0.5;
-    spawnPuff(a.p1.x, a.p1.z, a.s1, power);
-    dropSquash(a.m); squashes.push({ m: a.m, t0: now, s: a.s1, y: a.p1.y, amp: power });
+    // CRAFT: set down = a tiny squash and ONE soft ring on the cloth in the colour of the zone it landed in
+    var z = a.m.userData.zone, col = z && ZCOL[z] ? ZCOL[z] : '#ffffff';
+    if (z === 'goal' || z === 'resources' || !ZCOL[z]) col = '#fff3bf';
+    craftRing(a.p1.x, a.p1.z, col, 1.5 + 0.6 * power * a.s1, 520, 0.55);
+    dropSquash(a.m); squashes.push({ m: a.m, t0: now, s: a.s1, y: a.p1.y, amp: power * 0.75 });
   }
+  // ---- CRAFT: one-shot moments on the cloth. Everything here is a single move that ends at rest (nothing loops):
+  //   craftRing(x, z, css, size, ms, alpha)  a soft ring that opens out and fades (pooled flat sprites)
+  //   hop(m, delay, h)                         a cube rises h and lands back exactly where it was (Now! / Impossible!)
+  //   nope(m)                                  a small "no" wobble (twice side to side, smaller each time), once
+  //   glowCubes(ids)                           the cubes of a correct Solution warm up one by one, left to right, once
+  // With "Reduce flashing" (A11y.calm / prefers-reduced-motion) rings are fainter, nothing hops and the glow is softer. ----
+  var rings = [], ringPool = [], hops = [], nopes = [], glows = [], ringTex = null, ringGeo = new THREE.PlaneGeometry(1, 1);
+  function ringTexture() {
+    if (ringTex) return ringTex;
+    var cv = document.createElement('canvas'); cv.width = cv.height = 128; var g = cv.getContext('2d');
+    var gr = g.createRadialGradient(64, 64, 0, 64, 64, 63); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.62, 'rgba(255,255,255,0)'); gr.addColorStop(0.8, 'rgba(255,255,255,.35)'); gr.addColorStop(0.87, 'rgba(255,255,255,1)'); gr.addColorStop(0.93, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    ringTex = new THREE.CanvasTexture(cv); ringTex.colorSpace = THREE.SRGBColorSpace; return ringTex;
+  }
+  function craftRing(x, z, css, size, ms, alpha) {
+    if (document.hidden || !layout) return;
+    var m = ringPool.pop();
+    if (!m) { if (rings.length > 30) return; m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ map: ringTexture(), transparent: true, depthWrite: false, fog: false, toneMapped: false })); m.rotation.x = -Math.PI / 2; m.renderOrder = 3; scene.add(m); }
+    var u = m.userData; u.t0 = performance.now(); u.ms = ms; u.size = size; u.a = alpha * (calm() ? 0.55 : 1);
+    m.material.color.set(css); m.material.opacity = 0; m.position.set(x, 0.03, z); m.scale.set(size * 0.3, size * 0.3, 1); m.visible = true;
+    rings.push(m); dirty = true; startLoop();
+  }
+  function cubeFree(m) { return m.visible && !anims.some(function (a) { return a.m === m; }) && ctx.held !== m.userData.id && !(dragS && dragS.on && dragS.id === m.userData.id) && !(tumble && tumble.ids[m.userData.id] !== undefined); }
+  function hop(m, delay, h) {
+    if (calm() || !cubeFree(m) || hops.some(function (o) { return o.m === m; })) return;
+    hops.push({ m: m, t0: performance.now() + delay, y0: null, h: h, ms: 260 });
+  }
+  function nope(m) {
+    if (!m || document.hidden) return;
+    nopes = nopes.filter(function (o) { return o.m !== m; });
+    nopes.push({ m: m, t0: performance.now() + 250, q0: null, ms: 460, a: calm() ? 0.09 : 0.17 }); dirty = true; startLoop();
+  }
+  var glowCol = new THREE.Color(0xffd98a), tmpCol = new THREE.Color();
+  function glowCubes(ids) {
+    var t = performance.now() + 350;
+    ids.forEach(function (id, i) { var m = meshes[id]; if (!m || !m.visible) return; glows = glows.filter(function (o) { return o.m !== m; }); glows.push({ m: m, t0: t + i * 190, ms: 720, base: m.material.emissive.getHex() }); });
+    if (glows.length) { dirty = true; startLoop(); }
+  }
+  function stepCraft(now) {
+    var any = false;
+    if (rings.length) {
+      rings = rings.filter(function (m) {
+        var u = m.userData, k = (now - u.t0) / u.ms;
+        if (k >= 1) { m.visible = false; ringPool.push(m); return false; }
+        var e = 1 - Math.pow(1 - k, 3), s = u.size * (0.3 + 0.7 * e); m.scale.set(s, s, 1);
+        m.material.opacity = u.a * Math.min(1, k * 8) * Math.pow(1 - k, 1.5); return true;
+      });
+      any = true;
+    }
+    if (hops.length) {
+      hops = hops.filter(function (o) {
+        var m = o.m, k = (now - o.t0) / o.ms;
+        if (k < 0) return true;
+        if (o.y0 === null) { if (!cubeFree(m)) return false; o.y0 = m.position.y; }
+        else if (anims.some(function (a) { return a.m === m; }) || ctx.held === m.userData.id || (dragS && dragS.on && dragS.id === m.userData.id)) return false; // something else took it: leave it to that
+        if (k >= 1) { m.position.y = o.y0; return false; }
+        m.position.y = o.y0 + o.h * Math.sin(Math.PI * k); return true;
+      });
+      any = true;
+    }
+    if (nopes.length) {
+      nopes = nopes.filter(function (o) {
+        var m = o.m, k = (now - o.t0) / o.ms;
+        if (k < 0) return true;
+        if (o.q0 === null) { if (!cubeFree(m)) return false; o.q0 = m.quaternion.clone(); }
+        else if (anims.some(function (a) { return a.m === m; }) || ctx.held === m.userData.id || (dragS && dragS.on && dragS.id === m.userData.id)) return false;
+        if (k >= 1) { m.quaternion.copy(o.q0); return false; }
+        var ang = o.a * Math.sin(k * Math.PI * 4) * (1 - k); // two swings side to side, each smaller, then still
+        m.quaternion.setFromAxisAngle(YAXIS, ang).multiply(o.q0); return true;
+      });
+      any = true;
+    }
+    if (glows.length) {
+      glows = glows.filter(function (o) {
+        var m = o.m, k = (now - o.t0) / o.ms;
+        if (k < 0) return true;
+        if (k >= 1 || !m.visible) { m.material.emissive.setHex(o.base); return false; }
+        var e = Math.sin(Math.PI * Math.min(1, k)); e = e * e * (calm() ? 0.45 : 0.8);
+        m.material.emissive.copy(tmpCol.setHex(o.base).lerp(glowCol, e)); return true;
+      });
+      any = true;
+    }
+    return any;
+  }
+  // a big soft ring across the cloth from the middle of the table, and every resting cube hops a hair as it passes (once)
+  function shockwave(css) {
+    if (!layout) return;
+    var W = layout.W, D = layout.D, size = Math.hypot(W, D) * 1.15, ms = 1000, cx = 0, cz = (layout.z.required[1] + layout.z.required[3] / 2);
+    craftRing(cx, cz, css, size, ms, 0.8);
+    meshes.forEach(function (m) {
+      if (!m.visible) return;
+      // when the ring's bright edge (radius 0.43 x its size, opening as 0.3 + 0.7 e, e = 1 - (1 - k)^3) passes the cube
+      var d = Math.hypot(m.position.x - cx, m.position.z - cz), e = Math.max(0, Math.min(0.999, (d / (0.43 * size) - 0.3) / 0.7));
+      hop(m, ms * (1 - Math.cbrt(1 - e)), 0.07 * m.scale.x);
+    });
+  }
+  api.nope = function (id) { nope(meshes[id]); }; // CRAFT: other modules may ask for the "no" wobble on a cube
+  api._craft = function (cmd, a) { if (cmd === 'ring') craftRing(a.x, a.z, a.css || '#ffffff', a.size || 2, a.ms || 520, a.alpha || 0.55); if (cmd === 'shock') shockwave(a || '#ffe066'); if (cmd === 'glow') glowCubes(a); if (cmd === 'plinth') plinthFlash(); return { rings: rings.length, pool: ringPool.length, hops: hops.length, nopes: nopes.length, glows: glows.length, plinth: !!plinth }; }; // checks / debugging
+  // read from the game state on every T3.sync: the Goal just set (the plinth warms once), a shake just ended with a
+  // correct Solution (its cubes glow in the order they are read)
+  var lastPhase = null, lastShakeSeen = null;
+  function craftMoments(G) {
+    try {
+      var ph = G.phase;
+      if (lastPhase === 'goal' && ph === 'move' && G.goalTokens && G.goalTokens.length) setTimeout(plinthFlash, 250);
+      if (ph === 'over' && G.lastShake && G.lastShake !== lastShakeSeen) {
+        lastShakeSeen = G.lastShake;
+        var sols = G.lastShake.sols || {}, keys = Object.keys(sols).sort(function (a, b) { return (+a === 0 ? -1 : 0) - (+b === 0 ? -1 : 0); }), pick = null; // the player's own first
+        keys.forEach(function (k) { var s = sols[k]; if (!pick && s && s.ok && s.tokens) pick = s; });
+        if (pick) glowCubes(pick.tokens.filter(function (t) { return t && typeof t === 'object' && t.id != null; }).map(function (t) { return t.id; }));
+      }
+      lastPhase = ph;
+    } catch (e) {}
+  }
+  // ---- end CRAFT moments ----
   // Sparks where two dice smack together hard (additive sprites, pooled, thinned by quality)
   function spawnSparks(x, y, z, power) {
     if (document.hidden || qual < 1) return;
@@ -772,6 +1085,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (!G || !layout) return;
     ensureCubes();
     if (pour) return; // physics is moving the cubes right now
+    craftMoments(G);
     var targets = {};
     ['required', 'permitted', 'forbidden', 'resources'].forEach(function (z) {
       var cs = G.cubes.filter(function (c) { return c.zone === z; }).sort(function (a, b) { return a.order - b.order; }), sl = gridSlots(z, cs.length);
@@ -819,24 +1133,40 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (force && same) { m.position.copy(pos); m.quaternion.copy(q); m.scale.setScalar(t.scale); return; }
       // toss: let go of from a hand short of the slot (the kid's player), a quick lob that lands with the usual thunk
       var td = toss ? m.position.distanceTo(pos) : 0;
-      tweenTo(m, pos, q, t.scale, toss ? { dur: Math.min(560, Math.max(300, 230 + 34 * td)), arc: Math.min(2.6, Math.max(0.6, 0.35 + 0.2 * td)), land: true, lin: true, quiet: true } : dropped ? { dur: 380, arc: 0.3, land: true } : moved ? { dur: 650, arc: 3, land: true } : fromPour ? { dur: 750 + Math.random() * 250, arc: 1.2 } : { dur: 220, arc: 0 });
+      tweenTo(m, pos, q, t.scale, toss ? { dur: Math.min(560, Math.max(300, 230 + 34 * td)), arc: Math.min(2.6, Math.max(0.6, 0.35 + 0.2 * td)), land: true, lin: true, quiet: true } : dropped ? { dur: 380, arc: 0.3, land: true } : moved ? { dur: 650, arc: 3, land: true } : fromPour ? { dur: 750 + Math.random() * 250, arc: 1.2 } : { dur: 320, arc: 0, tidy: true });
     });
     dirty = true;
   };
 
   // ----- Pouring the cubes out of a cup -----
+  // CRAFT: the dice cup: stitched leather (two rows of saddle stitching), a rolled leather lip, a soft dark-red felt
+  // lining (the inside is what you see as it tips), two thin brass bands and a brass "=" medallion facing the seat.
   var cup = (function () {
-    var g = new THREE.Group();
-    var lc = document.createElement('canvas'); lc.width = lc.height = 256; var lg = lc.getContext('2d');
-    lg.fillStyle = '#7a3e1d'; lg.fillRect(0, 0, 256, 256);
-    for (var i = 0; i < 5000; i++) { lg.fillStyle = Math.random() < 0.5 ? 'rgba(255,200,140,.07)' : 'rgba(0,0,0,.10)'; lg.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
-    var lt = new THREE.CanvasTexture(lc); lt.colorSpace = THREE.SRGBColorSpace; lt.wrapS = lt.wrapT = THREE.RepeatWrapping; lt.repeat.set(3, 1.5);
-    var leather = new THREE.MeshPhysicalMaterial({ map: lt, bumpMap: lt, bumpScale: 0.6, color: 0xffffff, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.5, side: THREE.DoubleSide });
-    var prof = [[0, -1.6], [1.15, -1.6], [1.33, -1.52], [1.7, 1.52], [1.74, 1.62], [1.66, 1.7], [1.58, 1.62], [1.3, -1.42], [0, -1.42]].map(function (q) { return new THREE.Vector2(q[0], q[1]); });
-    var body = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), leather); body.castShadow = true; body.receiveShadow = true; g.add(body);
-    var gold = new THREE.MeshPhysicalMaterial({ color: 0xffd43b, metalness: 0.85, roughness: 0.28, clearcoat: 0.3 });
-    var ring = new THREE.Mesh(new THREE.TorusGeometry(1.72, 0.1, 12, 48), gold); ring.rotation.x = Math.PI / 2; ring.position.y = 1.55; g.add(ring);
-    var band = new THREE.Mesh(new THREE.TorusGeometry(1.52, 0.08, 12, 48), gold); band.rotation.x = Math.PI / 2; band.position.y = 0; g.add(band);
+    var g = new THREE.Group(), R = srnd(5);
+    var lc = document.createElement('canvas'); lc.width = 512; lc.height = 256; var lg = lc.getContext('2d');
+    var bgL = lg.createLinearGradient(0, 0, 0, 256); bgL.addColorStop(0, '#8a4722'); bgL.addColorStop(1, '#6a3417'); lg.fillStyle = bgL; lg.fillRect(0, 0, 512, 256);
+    for (var i = 0; i < 9000; i++) { lg.fillStyle = R() < 0.5 ? 'rgba(255,200,140,.07)' : 'rgba(0,0,0,.11)'; lg.fillRect(R() * 512, R() * 256, 2, 2); }
+    // the wall runs from v = 1/3 (canvas y 171) to v = 1 (y 0): stitches near the lip and near the base
+    [16, 156].forEach(function (y) {
+      lg.strokeStyle = 'rgba(0,0,0,.35)'; lg.lineWidth = 3; lg.beginPath(); lg.moveTo(0, y - 6); lg.lineTo(512, y - 6); lg.moveTo(0, y + 6); lg.lineTo(512, y + 6); lg.stroke();
+      for (var x = 2; x < 512; x += 12) { lg.strokeStyle = 'rgba(40,18,6,.6)'; lg.lineWidth = 3; lg.beginPath(); lg.moveTo(x + 1, y + 1); lg.lineTo(x + 8, y + 1); lg.stroke(); lg.strokeStyle = '#f1d9a8'; lg.lineWidth = 2.2; lg.beginPath(); lg.moveTo(x, y); lg.lineTo(x + 7, y); lg.stroke(); }
+    });
+    var lt = new THREE.CanvasTexture(lc); lt.colorSpace = THREE.SRGBColorSpace; lt.wrapS = THREE.RepeatWrapping;
+    var leather = new THREE.MeshPhysicalMaterial({ map: lt, bumpMap: lt, bumpScale: 0.5, roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.5 });
+    var V = function (a) { return a.map(function (q) { return new THREE.Vector2(q[0], q[1]); }); };
+    var body = new THREE.Mesh(new THREE.LatheGeometry(V([[0, -1.6], [1.2, -1.6], [1.36, -1.5], [1.45, -0.75], [1.54, 0], [1.63, 0.75], [1.72, 1.5]]), 56), leather); body.castShadow = true; body.receiveShadow = true; g.add(body);
+    var felt = new THREE.MeshStandardMaterial({ color: 0x5c1420, roughness: 1, side: THREE.DoubleSide });
+    var lining = new THREE.Mesh(new THREE.LatheGeometry(V([[0, -1.42], [1.24, -1.42], [1.32, -1.34], [1.58, 1.52]]), 40), felt); g.add(lining);
+    var lip = new THREE.Mesh(new THREE.TorusGeometry(1.66, 0.11, 12, 56), new THREE.MeshPhysicalMaterial({ map: lt, color: 0xd9b9a0, roughness: 0.5, clearcoat: 0.3 })); lip.rotation.x = Math.PI / 2; lip.position.y = 1.55; lip.castShadow = true; g.add(lip);
+    var brass = new THREE.MeshPhysicalMaterial({ color: 0xe8be55, metalness: 0.85, roughness: 0.3, clearcoat: 0.3 });
+    [[1.36, 1.69, 0.035], [-1.25, 1.39, 0.04]].forEach(function (b) { var r = new THREE.Mesh(new THREE.TorusGeometry(b[1], b[2], 8, 56), brass); r.rotation.x = Math.PI / 2; r.position.y = b[0]; g.add(r); });
+    var mc = document.createElement('canvas'); mc.width = mc.height = 128; var mg = mc.getContext('2d');
+    var mgr = mg.createRadialGradient(48, 44, 6, 64, 64, 64); mgr.addColorStop(0, '#fff2bf'); mgr.addColorStop(0.6, '#e8be55'); mgr.addColorStop(1, '#a77a1e'); mg.fillStyle = mgr; mg.beginPath(); mg.arc(64, 64, 62, 0, 6.283); mg.fill();
+    mg.strokeStyle = 'rgba(90,60,10,.6)'; mg.lineWidth = 4; mg.beginPath(); mg.arc(64, 64, 52, 0, 6.283); mg.stroke();
+    mg.fillStyle = '#5c3c00'; mg.fillRect(36, 44, 56, 13); mg.fillRect(36, 71, 56, 13); mg.fillStyle = 'rgba(255,255,255,.45)'; mg.fillRect(36, 57, 56, 2); mg.fillRect(36, 84, 56, 2);
+    var mt = new THREE.CanvasTexture(mc); mt.colorSpace = THREE.SRGBColorSpace;
+    var med = new THREE.Mesh(new THREE.CircleGeometry(0.42, 32), new THREE.MeshStandardMaterial({ map: mt, metalness: 0.7, roughness: 0.35, transparent: true, alphaTest: 0.5 }));
+    med.position.set(0, 0.25, 1.6); med.rotation.x = -0.12; g.add(med);
     g.visible = false; scene.add(g);
     return g;
   })();
@@ -865,7 +1195,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (tumble) endTumble(); // a reroll still in the air lands at once
     if (builtTier >= 0 && tierOf(qual) !== builtTier && !document.hidden) buildTable(); // the level changed (dropped): a venue and crowd built for it
     ensureCubes(); if (!world) buildWorld();
-    meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
+    // CRAFT: the cubes still on the table from the last shake sweep back into the cup first (nearest first, each on a
+    // little arc), then the cup tips as before. The pour's own timeline simply starts that much later (pour.lag).
+    var gather = [], gat = new THREE.Vector3(layout.W / 2 - (layoutName === 'tall' ? 1.5 : 2.6), 7.7, layoutName === 'tall' ? -3 : -1.5);
+    if (!document.hidden && host && current === 'game') meshes.forEach(function (m) { if (m.visible && ctx.held !== m.userData.id) gather.push({ m: m, p0: m.position.clone(), q0: m.quaternion.clone(), s0: m.scale.x, qs: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)), d: m.position.distanceTo(gat) }); });
+    gather.sort(function (a, b) { return a.d - b.d; });
+    var gEnd = 0; gather.forEach(function (o, i) { o.delay = i * Math.min(0.022, 0.5 / gather.length); o.dur = 0.42 + o.d * 0.012; gEnd = Math.max(gEnd, o.delay + o.dur); });
+    hops = []; nopes = []; glows.forEach(function (o) { o.m.material.emissive.setHex(o.base); }); glows = [];
+    meshes.forEach(function (m) { if (!gather.some(function (o) { return o.m === m; })) m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
     cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); kindRole(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake (ONSETS: kindRole)
     twistPour(); // BONUS: the Twist deck for this shake (its drawn card goes back on the deck)
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; }); vlab.clear(); vplan = null; // (VARI3D)
@@ -873,7 +1210,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var W = layout.W, D = layout.D, side = layoutName === 'tall';
     var ids = cubes.map(function (c) { return c.id; }).filter(function (i) { return !!meshes[i]; }); // (BONUS: the cubes in play, not every mesh)
     pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(ids), n: ids.length, done: done, settledAt: 0, sim: 0,
-      from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5) };
+      from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5),
+      gather: gather, lag: gather.length ? Math.max(0, 0.3 + gEnd - 0.45) : 0 }; // (CRAFT: the sweep)
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0);
     Snd.cupRattle();
     camSnap(); if (orbit) orbit.reset(); pour.cupPos = cup.position; // a new shake: back to the seat (a half-second ease)
@@ -942,8 +1280,23 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var done = pour.done; pour = null; dirty = true;
     done(results);
   }
+  // CRAFT: the sweep: each cube rises on an arc, turns over and drops into the cup's mouth, a little smaller as it goes in
+  var gMouth = new THREE.Vector3(), gLastTick = 0;
+  function stepGather(tc) {
+    gMouth.set(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
+    pour.gather = pour.gather.filter(function (o) {
+      var k = (tc - 0.3 - o.delay) / o.dur, m = o.m;
+      if (k <= 0) return true;
+      if (k >= 1) { m.visible = false; var n = performance.now(); if (n - gLastTick > 55) { gLastTick = n; try { Snd.diceHit(0.16); } catch (e) {} } return false; }
+      var ek = k * k * (3 - 2 * k);
+      m.position.lerpVectors(o.p0, gMouth, ek); m.position.y += 2.4 * Math.sin(Math.PI * ek) * (1 - 0.35 * ek);
+      m.quaternion.copy(o.q0).slerp(o.qs, ek); m.scale.setScalar(o.s0 * (1 - 0.42 * ek));
+      return true;
+    });
+  }
   function finishPourFast() {
-    cup.updateMatrixWorld(); cup.position.copy(pour.at); cup.rotation.z = 2.0; cup.updateMatrixWorld();
+    if (pour.gather) { pour.gather.forEach(function (o) { o.m.visible = false; }); pour.gather = []; }
+    cup.position.copy(pour.at); cup.rotation.z = 2.0; cup.updateMatrixWorld();
     pour.order.forEach(spawnDie);
     for (var k = 0; k < 600; k++) world.step(1 / 60);
     syncBodies(); finishPour();
@@ -952,12 +1305,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     // the pour runs on its own clock that never jumps: after a long frame (the stadium loading) the cup would otherwise
     // already be on its way out and the cubes would fall beside the table
     pour.clock = (pour.clock || 0) + Math.min(Math.max(dt, 0), 0.05);
-    var t = pour.clock, e = function (x) { return x < 0 ? 0 : x > 1 ? 1 : (1 - Math.cos(x * Math.PI)) / 2; };
-    if (t < 0.55) cup.position.lerpVectors(pour.from, pour.at, e(t / 0.55));
+    var tc = pour.clock, t = tc - (pour.lag || 0), e = function (x) { return x < 0 ? 0 : x > 1 ? 1 : (1 - Math.cos(x * Math.PI)) / 2; }; // (CRAFT: tc = the cup coming in; t = the rest, after the sweep)
+    if (tc < 0.55) cup.position.lerpVectors(pour.from, pour.at, e(tc / 0.55)); else if (t <= 1.45) cup.position.copy(pour.at);
     cup.rotation.z = 2.05 * e((t - 0.5) / 0.4) * (1 - e((t - 1.45) / 0.45));
     if (t > 1.45) cup.position.lerpVectors(pour.at, pour.from, e((t - 1.45) / 0.6));
     if (t > 2.1) cup.visible = false;
     cup.updateMatrixWorld();
+    if (pour.gather && pour.gather.length) stepGather(tc);
     if (t > 0.72) { var want = Math.min(pour.n, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); } // (BONUS: pour.n = the cubes in play)
     if (pour.spawned) {
       var ts = slowScale(now); world.step(1 / 60, dt * ts, 5); pour.sim += dt * ts; syncBodies();
@@ -1101,7 +1455,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     for (var i = 0; i < meshes.length; i++) {
       var m = meshes[i], bl = blobs[i]; if (!bl) continue;
       if (!m.visible) { bl.visible = false; continue; }
-      var sc0 = m.scale.x, h = Math.max(0, m.position.y - 0.5 * sc0), size = sc0 * (1.7 + h * 0.45);
+      var sc0 = m.scale.x, h = Math.max(0, m.position.y - 0.5 * sc0), size = sc0 * (1.7 - Math.min(h, 1.6) * 0.3); // (CRAFT: lifted, its shadow draws in and fades)
       bl.visible = true; bl.position.set(m.position.x, 0.012, m.position.z); bl.scale.set(size, size, 1); bl.material.opacity = 0.34 / (1 + h * 0.9);
     }
     if (post && post.on) post.render(); else renderer.render(scene, camera);
@@ -1151,6 +1505,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (anims.length) {
       anims = anims.filter(function (a) {
         var k = Math.min(1, (now - a.t0) / a.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        if (a.tidy) { var k1 = k - 1; e = 1 + 1.9 * k1 * k1 * k1 + 0.9 * k1 * k1; } // CRAFT: sliding into a tidy slot: eases out with a hair of overshoot, then still
         // lin (a toss): the cube already moves as it leaves the hand, so it flies at an even pace along a parabola
         a.m.position.lerpVectors(a.p0, a.p1, a.lin ? k : e); a.m.position.y += a.lin ? 4 * k * (1 - k) * a.arc : Math.sin(k * Math.PI) * a.arc;
         a.m.quaternion.copy(a.q0).slerp(a.q1, e); a.m.scale.setScalar(a.s0 + (a.s1 - a.s0) * e);
@@ -1190,6 +1545,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       applyCam(); dirty = true;
     }
     if (envFx && envFx.step(now)) dirty = true;
+    if (stepPlinth(now)) dirty = true; // CRAFT
+    if (stepCraft(now)) dirty = true;  // CRAFT: rings, hops, the solution glow, the "no" wobble
     if (fx3 && fx3.step(now, dt)) dirty = true;
     stepSparks(now, dt);
     var zk = 1 - Math.exp(-dt * 13);
@@ -1342,9 +1699,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var d = dragS; dragS = null; if (!d) return;
     if (d.orb) { orbit.end(); return; }
     if (d.pan && ev.button !== 0) return; // a right / middle click is never a tap
-    if (d.on) { var z = zoneAt(ev); if (api.handlers.drop) api.handlers.drop(d.id, z); return; }
+    // CRAFT: a cube that cannot go to the zone it was dropped on (or tapped toward) gives one small "no" wobble
+    var tzs = api.handlers.targetZones ? api.handlers.targetZones() : [], playZ = ['required', 'permitted', 'forbidden'];
+    function refused(z) { return z && playZ.indexOf(z) >= 0 && tzs.length > 0 && tzs.indexOf(z) < 0; }
+    if (d.on) { var z = zoneAt(ev); if (api.handlers.drop) api.handlers.drop(d.id, z); if (refused(z)) nope(meshes[d.id]); return; }
     if (d.id != null) { if (api.handlers.cubeTap) api.handlers.cubeTap(d.id); return; }
-    var zz = zoneAt(ev); if (zz && api.handlers.zoneTap) api.handlers.zoneTap(zz);
+    var zz = zoneAt(ev), selId = api.lastG ? api.lastG.selected : null; if (zz && api.handlers.zoneTap) api.handlers.zoneTap(zz);
+    if (selId != null && refused(zz)) nope(meshes[selId]);
     // ---- COLLECT (spot the fan) block: a plain tap (no drag, no cube, no zone) is offered to ctx.hooks.tap ----
     // fn(ray, info): ray = a copy of the world-space THREE.Ray under the pointer; info = { x, y, w, h, camera }
     if (!zz && hooks.tap.length && ev.button === 0) {
@@ -1539,7 +1900,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       else if (name === 'spotlight') ok = !!(fx3 && fx3.spotlight(opts));
       else if (name === 'flash') ok = !!(envFx && envFx.flash());
       else if (name === 'wave') ok = !!(envFx && envFx.wave());
-      else if (name === 'shake') { if (!pour && !dragS) { shake = { t0: performance.now(), dur: 320, amp: (opts && opts.amp) || 0.28 }; ok = true; } }
+      else if (name === 'shake') {
+        // CRAFT: Now! / Impossible!: one shock ring across the cloth (yellow for Now!, rose for Impossible!) and the cubes
+        // hop a hair as it passes; the camera nudge is smaller than before and left out with "Reduce flashing"
+        var gch = (typeof G !== 'undefined' && G && G.ch) || (api.lastG && api.lastG.ch), imp = gch && gch.kind !== 'now';
+        if (!pour) { shockwave(imp ? '#ffb3b3' : '#ffe066'); ok = true; }
+        if (!pour && !dragS && !calm()) { shake = { t0: performance.now(), dur: 300, amp: (opts && opts.amp) || 0.18 }; ok = true; }
+      }
       if (ok) { dirty = true; startLoop(); }
       return ok;
     } catch (e) { return false; }
