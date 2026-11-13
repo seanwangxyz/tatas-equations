@@ -128,8 +128,11 @@ function startMatch(mode, oppIdx, cfg) {
     var stadiumMat = ['stadium', 'night'].indexOf(S.cos.mat) >= 0;
     if (window.WeatherSfx) WeatherSfx.set(stadiumMat && wx ? wx.ambience : 'off');
     var news = stadiumMat && T3.stadiumNews ? T3.stadiumNews() : '';   // once per new stadium tier
-    if (news) { persist(); setTimeout(function () { if (G) say('pip', news, 'cheer'); }, 2400); }
-    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); if (G.tour && window.Tourney) Tourney.firstSetter(function () { newShake(); }); else newShake(); /* TOURNEY: red-cube roll for the first Goal-setter */ if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = (window.Rivals && Rivals.greet(OPPONENTS.indexOf(ai))) || talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+    // MATCHDAY (js/matchday.js): the walk-out and the toss for the first Goal (it sets G.setter), then the match itself
+    var kick = function (md) { if (!G) return;
+      if (news) { persist(); setTimeout(function () { if (G) say('pip', news, 'cheer'); }, 2400); }
+      if (ai && Snd.theme) Snd.theme(ai.kind); if (!(md && md.entered)) creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); if (G.tour && window.Tourney) Tourney.firstSetter(function () { newShake(); }); else newShake(); /* TOURNEY: red-cube roll for the first Goal-setter */ if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = (window.Rivals && Rivals.greet(OPPONENTS.indexOf(ai))) || talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+    if (window.Matchday) Matchday.matchStart(G, kick); else kick(); };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
@@ -788,8 +791,17 @@ function endMatch() {
   html += cupRow || '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
   // FIREWORKS (js/replay.js): a Cup final won, a league boss beaten for the first time, a Three-at-the-table crown
   var bigWin = (G.mode === 'ai' && won && ((first && (idx + 1) % LEAGUE === 0) || /data-act="cupLift"/.test(cupRow))) || (G.mode === 'ai3' && G.trioCrown);
-  var fw = bigWin && window.Fireworks ? Fireworks.show({ rockets: 7 }) : '';
   var showEnd = function () { modal(html, null); if (window.Review) Review.afterMatch(); }; // REVIEW: thinks at most ~1.5 s, in small slices
+  // MATCHDAY: a league boss beaten for the first time, or a new Trio crown: the lift on the podium first (a cup final
+  // keeps its "Lift the trophy!" button: js/cup.js plays the cup's own lift)
+  var mdBoss = G.mode === 'ai' && won && first && (idx + 1) % LEAGUE === 0 && !/data-act="cupLift"/.test(cupRow), mdCrown = G.mode === 'ai3' && G.trioCrown;
+  if (window.Matchday && (mdBoss || mdCrown)) {
+    var mdG = G, mdInfo = mdBoss ? { kind: 'shield', name: (typeof LEAGUE_NAMES !== 'undefined' && LEAGUE_NAMES[leagueOf(idx)]) || 'League', mark: 'No.1', color: '#ffc83d', ribbon: '#1c7ed6', line: 'You beat ' + esc(o.name) + ', the league boss!' }
+      : { kind: 'crown', name: 'Crown: ' + G.players.filter(function (p) { return p.ai; }).map(function (p) { return esc(p.name); }).join(' + '), color: '#ffc83d', ribbon: '#c92a4a', line: 'First at a table of three!' };
+    setTimeout(function () { if (G !== mdG) return; if (!Matchday.trophyLift(mdInfo, function () { if (G === mdG) showEnd(); })) showEnd(); }, 1800);
+    return;
+  }
+  var fw = bigWin && window.Fireworks ? Fireworks.show({ rockets: 7 }) : '';
   if (fw === '3d') setTimeout(function () { if (G) showEnd(); }, 2600); else showEnd();
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };

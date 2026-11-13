@@ -293,6 +293,11 @@ var Cup = (function () {
     ACT.cupBracket = function () { if (has('closeModal')) closeModal(); afterQueue(function () { tidyMatch(); open(); }); };
     ACT.cupLift = function () {
       if (has('closeModal')) closeModal();
+      // MATCHDAY: the lift on a podium on the pitch (3D); Continue goes back to the cups. No 3D: the trophy screen below.
+      var L = lifting, c = L && byId(L.id);
+      if (c && window.Matchday && Matchday.trophyLift({ kind: 'cup', name: c.name, metal: c.metal, ribbon: c.ribbon, xp: L.xp,
+        line: L.first ? 'Your very first ' + E(c.name) + '! It is in your Trophy Room now.' : 'That is your ' + ord(L.count) + ' ' + E(c.name) + '!' },
+        function () { tidyMatch(); lifting = null; snd('setMood', 'menu'); afterQueue(function () { renderList(); goCup(); }); })) { snd('setMood', 'win'); return; }
       tidyMatch(); renderLift(); goCup(); snd('setMood', 'win'); celebrate();
     };
     ACT.cupLiftDone = function () { lifting = null; snd('setMood', 'menu'); afterQueue(function () { renderList(); goCup(); }); };
