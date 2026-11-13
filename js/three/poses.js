@@ -32,7 +32,7 @@ export function installPoses(H) {
     // someone else's turn: chin on his right fist, the left hand on his hip, head tipped a little toward the fist
     wait: { fn(A, w) {
       const P = A.P;
-      setArm(A, 0, -0.14, 1.66, 0.66, w, 0.0, 0.0); curl(A, 0, 1, w, 0.8);
+      setArm(A, 0, -0.26, 1.74, 0.6, w, 0.0, 0.0); curl(A, 0, 1, w, 0.8);
       setArm(A, 1, 0.98, 0.62, -0.05, w, 0.5, 0.3);
       P.headRoll += -0.1 * w; P.headPitch += -0.05 * w; P.twist += 0.06 * w; P.lean += 0.02 * w;
       face(A, { smile: 0.3, browUp: 0.1 }, w);
@@ -145,6 +145,13 @@ export function installPoses(H) {
     setArm(A, 0, -1.2, 3.4, 0.3, e * up, 0, 1); setArm(A, 1, 1.2, 3.4, 0.3, e * up, 0, 1);
     face(A, { big: 1, squint: 0.35, browUp: 0.5 }, e);
   } };
+  // High five, the kid's half: his left hand up and out to the side where Tata comes in, head turned to him. 1.7 s.
+  GEST.five = { dur: 1.7, att: 0.2, rel: 0.5, fn(A, u, e) {
+    const P = A.P, up = ramp(u, 0.0, 0.3) * (1 - ramp(u, 1.0, 1.3)), hit = bump(u, 0.38, 0.22);
+    setArm(A, 1, 1.4 + 0.08 * hit, 2.45 - 0.1 * hit, 0.35, e * up, 0.0, 1);
+    P.headYaw += 0.55 * e; P.twist += 0.18 * up * e; P.hop += 0.12 * hit * e;
+    face(A, { big: 1, squint: 0.45, browUp: 0.5 }, e);
+  } };
   return { stances };
 }
 
@@ -177,6 +184,12 @@ export const TRAVEL = {
     const P = A.P, d = 1 - H.sstep(k); P.kneel += d; P.lean += -0.3 * d + 0.25 * Math.sin(k * Math.PI);
     H.setArm(A, 0, -0.7, 0.2, 0.75, Math.sin(k * Math.PI), 0.8, 0.9);
     H.face(A, { big: 0.8, squint: 0.3 }, 1);
+  },
+  // High five, Tata's half (he has walked up beside the kid, facing him): right hand up and forward, one clap of hands
+  five(A, u, k, H) {
+    const up = H.sstep(u / 0.3) * (1 - H.sstep((u - 0.85) / 0.25)), hit = Math.max(0, Math.sin(H.clamp((u - 0.38) / 0.22, 0, 1) * Math.PI));
+    H.setArm(A, 0, -0.55, 2.45 - 0.12 * hit, 1.05 + 0.1 * hit, up, 0.0, 1);
+    A.P.headPitch += 0.15 * up; H.face(A, { smile: 1, squint: 0.4 }, 1);
   },
   // the end of a run: stop, face the table, both arms up in a V for a moment
   vee(A, u, k, H) {

@@ -729,6 +729,13 @@ if (T3 && T3.ctx) (function () {
   function walkSeg(path, v, endYaw, s, back) {
     return { k: 'walk', path: path, T: path.len < 0.05 ? 0 : path.len / v + 0.15, endYaw: endYaw, side: path.len < 1.6 * s, back: !!back };
   }
+  // before a walk that sets off at an angle to the way he faces: he turns on the spot first (two little steps)
+  function turnSeg(yaw0, path, s, quick) {
+    if (!path || path.len < 1.6 * s || path.pts.length < 2) return null;
+    var P0 = path.pts[0], P1 = path.pts[1], ty = Math.atan2(P1[0] - P0[0], P1[1] - P0[1]), d = Math.abs(wrap(ty - yaw0));
+    if (d < 0.9) return null;
+    return { k: 'turn', x: P0[0], z: P0[1], yaw: ty, T: (quick ? 0.1 : 0.16) + 0.06 * d };
+  }
 
   // ----- a move -----
   function buildTrip(A, id, zone, m, sl, rest, quick, fin) {
@@ -739,7 +746,7 @@ if (T3 && T3.ctx) (function () {
     if (!pl) return null;
     var q = quick ? WALK.quickT : 1, vq = runSpeed(A, quick), segs = [];
     var G1 = pl.G, P1 = pl.P;
-    if (G1.i >= 0) { var w1 = ringPath(pl, pl.iS, G1.i, pl.dSG.dir, pl.offS > 0.05 ? S : null, null); if (w1.len > 0.05) segs.push(walkSeg(w1, vq, G1.plan.yaw, s)); }
+    if (G1.i >= 0) { var w1 = ringPath(pl, pl.iS, G1.i, pl.dSG.dir, pl.offS > 0.05 ? S : null, null); if (w1.len > 0.05) { var t1 = turnSeg(A.wk.yaw, w1, s, quick); if (t1) segs.push(t1); segs.push(walkSeg(w1, vq, G1.plan.yaw, s)); } }
     segs.push({ k: 'grab', x: G1.p.x, z: G1.p.z, plan: G1.plan, T: (G1.plan.mode === 'flop' ? WALK.tGrabF : WALK.tGrab) * q, tgt: Tg });
     var w2 = G1.i < 0 ? ringPath(pl, pl.iS, P1.i, pl.dGP.dir, S, null) : ringPath(pl, G1.i, P1.i, pl.dGP.dir, null, null);
     if (w2.len > 0.05) segs.push(walkSeg(w2, vq, P1.plan.yaw, s));
@@ -815,7 +822,8 @@ if (T3 && T3.ctx) (function () {
     dir = ok[0] && (!ok[1] || dp <= dn) ? 1 : ok[1] ? -1 : (dp <= dn ? 1 : -1);
     var from = { x: A.wk.x, z: A.wk.z }, offH = Math.hypot(H.x - pts[iH].x, H.z - pts[iH].z);
     path = ringPath(ctxp, iS, iH, dir, from, offH > 0.05 ? { x: H.x, z: H.z } : null);
-    T.segs = [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
+    var tb = turnSeg(A.wk.yaw, path, s, false);
+    T.segs = tb ? [tb, walkSeg(path, WALK.vBack * s, H.yaw, s, true)] : [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
   }
   function tripEnd(A, T) {
     if (T.script) { endScript(A); return; }   // MATCHDAY: a scripted walk that ended at his seat
@@ -839,7 +847,17 @@ if (T3 && T3.ctx) (function () {
     var g = T.segs[T.i]; if (!g) return false;
     T.u = u; T.g = g;
     var W = A.wk, P = A.P, s = A.place.s, k = g.T > 0 ? clamp(u / g.T, 0, 1) : 1;
-    if (g.k === 'walk') {
+    A.turnStep = null;
+    if (g.k === 'turn') { W.x = g.x; W.z = g.z; W.yawT = g.yaw; A.turnStep = k; face(A, { smile: 0.3 }, 1); }
+    else if (g.k === 'act') {
+      // a celebration beat: in place, or gliding along a short path (the knee slide, the aeroplane loop)
+      if (g.path) {
+        pathAt(g.path, (g.ease ? g.ease(k) : k) * g.path.len, PA); W.x = PA.x; W.z = PA.z;
+        W.yawT = g.yaw != null ? g.yaw : ((PA.tx || PA.tz) ? Math.atan2(PA.tx, PA.tz) : W.yawT);
+        if (g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);
+      } else { W.x = g.x; W.z = g.z; if (g.yaw != null) W.yawT = g.yaw; }
+    }
+    else if (g.k === 'walk') {
       var r = Math.min(0.4, 0.15 / Math.max(g.T, 0.01)), vm = 1 / (1 - r), f;
       f = k < r ? 0.5 * vm * k * k / r : k > 1 - r ? 1 - 0.5 * vm * (1 - k) * (1 - k) / r : vm * (r / 2 + k - r);
       var d = f * g.path.len; pathAt(g.path, d, PA);
@@ -869,8 +887,10 @@ if (T3 && T3.ctx) (function () {
     for (var i = 0; i < 2; i++) {
       var ph = W.ph + i * Math.PI, AR = A.arm[i];
       if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
-      else if (!A.g) { tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - 0.65 * run * Math.sin(ph)); AR.des.copy(tv); }
+      else if (!A.g) { var sa = A.who === 'tata' ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
     }
+    if (g.k === 'walk' && g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);   // banking into the curve
+    if (g.fn && TRAVEL[g.fn]) TRAVEL[g.fn](A, u, k, PH);   // a celebration beat poses him on top
     return true;
   }
   // after the body is posed: the reaching hand goes straight to its target (anchored to the table), the free hand
@@ -1059,6 +1079,8 @@ if (T3 && T3.ctx) (function () {
       var f = !creatureHere(); if (f !== mate.fits) { mate.fits = f; applyVis(); }
     }
     step(me, now); step(mate, now);
+    // the high five waits until the kid's celebration has finished (and gives up after 12 s)
+    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && !mate.g) highFive(); }
   }
   function step(A, now) {
     if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
@@ -1084,7 +1106,7 @@ if (T3 && T3.ctx) (function () {
       var tg = attention(A, stName); if (tg && A.model) lookAt(A, tg, sk * (1 - me1 * 0.8)); else A.att = null;
     }
     if (d) d.fn(A, u, me1, A.g.opts);
-    var T = A.trip;
+    var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; syncHome(A); }
     if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
@@ -1167,6 +1189,77 @@ if (T3 && T3.ctx) (function () {
     }
   });
 
+  // ---------- celebrations that travel: a run out onto the pitch beside the table, the move there, the walk back ----------
+  // 'slide' (a real knee slide along the side of the table) and 'plane' (arms-out aeroplane loop). Only when the spot
+  // is on screen, nothing is in the way and motion is not reduced; otherwise the in-place version plays (a pose change).
+  function calmMotion() {
+    try { if (window.A11y && A11y.calm && A11y.calm()) return true; } catch (e) {}
+    try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  var celebWhy = '';
+  function celebTrip(A, name) {
+    celebWhy = 'not allowed';
+    if ((name !== 'slide' && name !== 'plane') || calmMotion() || A.trip || !A.model || !A.shown || !A.fits || !ctx.layout || document.hidden) return false;
+    if (A === mate && mate.seat === 'far') return false;
+    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && mate.shown && mate.seat === 'left')) ? 1 : -1;
+    if (A === mate) sd = -1;                                                       // the mate at the left seat uses the left side
+    var zs = R.od * 0.3, out = 0.45 * s, x0 = sd * (R.ow + R.c + out), pz = zs, len = (name === 'slide' ? 4.2 : 6.5) * s;
+    // the spots must be on screen (at head height) and clear of anyone else
+    setupProj();
+    var hy = FLOOR_Y + (A.dims.NECK_Y + A.dims.HEAD_UP - A.dims.FOOT) * s, ok = true;
+    [[x0, pz], [x0 + sd * (name === 'plane' ? 0.9 * s : 0), pz - len * 0.55]].forEach(function (q) { proj(q[0], hy, q[1], pp); if (pp[2] > 1 || Math.abs(pp[0]) > 0.95 || Math.abs(pp[1]) > 0.93) { ok = false; celebWhy = 'off screen ' + pp[0].toFixed(2) + ',' + pp[1].toFixed(2); } });
+    obstaclesFor(A).forEach(function (o) { if (inObs(o, x0, pz) || inObs(o, x0, pz - len)) { ok = false; celebWhy = 'blocked'; } });
+    if (!ok) return false;
+    celebWhy = '';
+    // the way out: along the ring to the side, then a few steps out onto the pitch
+    var N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
+    for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iT = Math.round(ringU(R, sd * (R.ow + R.c), pz) / h) % N;
+    var w = ringPath({ R: R, N: N, h: h, obs: obstaclesFor(A), pts: pts }, iS, iT, sd, { x: A.wk.x, z: A.wk.z }, { x: x0, z: pz });
+    var v = 0.6 * WALK.v * s, segs = [], tn = turnSeg(A.wk.yaw, w, s, false);
+    if (tn) segs.push(tn);
+    var ws = walkSeg(w, v, Math.PI, s); ws.fn = 'run'; segs.push(ws);
+    if (name === 'slide') {
+      segs.push({ k: 'act', path: mkPath([[x0, pz], [x0, pz - len]]), T: 1.0, ease: easeOut, yaw: Math.PI, fn: 'slide', noGait: true });
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: Math.PI, T: 1.0, fn: 'slideHold', noGait: true });
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: Math.PI, T: 0.55, fn: 'rise', noGait: true });
+    } else {
+      var bx = x0 + sd * 0.9 * s, loop = mkPath([[x0, pz], [x0 + sd * 0.6 * s, pz - 0.25 * len], [bx, pz - 0.55 * len], [x0 + sd * 0.5 * s, pz - 0.85 * len], [x0, pz - len]]);
+      var pl = { k: 'walk', path: loop, T: loop.len / (0.42 * WALK.v * s) + 0.15, endYaw: -sd * Math.PI / 2, fn: 'wings', bank: true };
+      segs.push(pl);
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: -sd * Math.PI / 2, T: 1.0, fn: 'vee' });
+    }
+    var T = { celeb: name, segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'move', arm: 0, picked: false, released: true, fin: function () {}, timer: 0 };
+    T.timer = setTimeout(function () { if (A.trip === T) finishNow(A, true); }, 12000);
+    A.g = null; A.trip = T; A.settled = false; ctx.dirty(); ctx.startLoop();
+    return true;
+  }
+
+  // ---------- high five: after the kid's win celebration, Tata (at the left seat, Team-up / 3 players) walks over, they
+  // high-five once, and he walks back. Started from update() once the celebration has finished.
+  var hf = { pend: 0 };
+  function highFiveLater() { hf.pend = mate.shown && mate.seat === 'left' && mate.fits ? performance.now() : 0; }
+  function highFive() {
+    hf.pend = 0;
+    var A = mate; if (!A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
+    var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 0.55;
+    var sx = me.wk.x + side * gap, szz = me.wk.z, N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
+    for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iT = Math.round(ringU(R, sx, szz) / h) % N, dp = (iT - iS + N) % N;
+    var w = ringPath({ R: R, N: N, h: h, obs: [], pts: pts }, iS, iT, dp <= N / 2 ? 1 : -1, { x: A.wk.x, z: A.wk.z }, { x: sx, z: szz });
+    var face0 = Math.atan2(me.wk.x - sx, me.wk.z - szz), segs = [], tn = turnSeg(A.wk.yaw, w, s, false);
+    if (tn) segs.push(tn);
+    var ws = walkSeg(w, 0.42 * WALK.v * s, face0, s); segs.push(ws);
+    segs.push({ k: 'act', x: sx, z: szz, yaw: face0, T: 1.2, fn: 'five' });
+    var T = { segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'move', arm: 0, picked: false, released: true, fin: function () {}, timer: 0 };
+    T.timer = setTimeout(function () { if (A.trip === T) finishNow(A, true); }, 9000);
+    A.g = null; A.trip = T; A.settled = false;
+    var arrive = segs.reduce(function (t, q) { return q.k === 'act' ? t : t + q.T; }, 0);
+    setTimeout(function () { if (A.trip === T) startMood(me, 'five'); }, Math.max(0, arrive * 1000 - 100));
+    ctx.dirty(); ctx.startLoop();
+    return true;
+  }
+
   // ---------- public API ----------
   T3.playerMoods = function () { return NAMES.slice(); };
   T3.playerCelebrations = function () { return CELEBS.slice(); };
@@ -1186,7 +1279,8 @@ if (T3 && T3.ctx) (function () {
   T3.playerMood = function (m, opts) { startMood(me, m, opts); };
   T3.playerCelebrate = function (name) {
     if (CELEBS.indexOf(name) < 0) { var s = save(); name = (s.kit && CELEBS.indexOf(s.kit.celebrate) >= 0) ? s.kit.celebrate : 'jump'; }
-    return startMood(me, name);
+    if (me.model && me.shown && celebTrip(me, name)) { highFiveLater(); return true; }
+    var ok = startMood(me, name); if (ok) highFiveLater(); return ok;
   };
   T3.mate = function (o) {
     var wasFar = mate.seat === 'far' && mate.shown;
@@ -1219,10 +1313,10 @@ if (T3 && T3.ctx) (function () {
   T3.playerState = function () {
     function st(A) {
       var T = A.trip, g = T && T.segs[T.i];
-      return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
+      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
         pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null };
     }
-    var o = st(me); o.rejected = why; o.quad = quad; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
   };
   // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
   T3.playerSeat = function (o) {
