@@ -106,7 +106,7 @@ var TitleSfx = (function () {
   function bass(g, m, t, dur, v) { tone(g, { type: 'triangle', f: mtof(m), t: t, dur: dur, vol: v, a: 0.01, sus: 0.7, rel: 0.1, lp: 600 }); }
   function timp(g, m, t, v) { tone(g, { type: 'sine', f: mtof(m) * 1.5, f2: mtof(m), glide: 0.08, t: t, dur: 0.7, vol: v, a: 0.003 }); noise(g, { t: t, dur: 0.12, vol: v * 0.35, type: 'lowpass', f: 900, q: 0.7 }); }
   function snare(g, t, v) { noise(g, { t: t, dur: 0.09, vol: v, type: 'bandpass', f: 2600, q: 0.8 }); tone(g, { type: 'triangle', f: 210, f2: 150, t: t, dur: 0.06, vol: v * 0.4 }); }
-  function cymbal(g, t, v) { noise(g, { t: t, dur: 2.2, vol: v, type: 'highpass', f: 5200, q: 0.5, a: 0.003, rev: 0.6 }); noise(g, { t: t, dur: 0.5, vol: v * 0.6, type: 'bandpass', f: 9000, q: 0.6 }); }
+  function cymbal(g, t, v) { noise(g, { t: t, dur: 2.2, vol: v * 1.2, type: 'bandpass', f: 4200, q: 0.7, a: 0.003, rev: 0.6 }); noise(g, { t: t, dur: 0.5, vol: v * 0.5, type: 'bandpass', f: 6000, q: 0.8 }); }   // AUDIO2: softer (was 5.2 kHz high-pass + 9 kHz)
 
   // The fanfare (original): C major, eight beats to the big chord, which lands on the pose. o.beat = seconds per beat.
   function fanfare(g, t0, o) {
@@ -162,10 +162,40 @@ var TitleSfx = (function () {
   var VOICES = { fanfare: fanfare, thud: thud, tick: tick, lightsUp: lightsUp, liftoff: liftoff, whoosh: whoosh, sparkle: sparkle, chime: chime, crowd: crowd, confetti: confetti, boing: boing, pat: pat, hi: hi, clack: clack, twinkle: twinkle };
   // play one voice through its level trim: the voice's notes go to a small trim gain in front of the intro bus
   function voice(g, name, t, o) {
+    if ((g.live || g.useBaked) && name === 'fanfare' && playBakedFanfare(g, t, o)) return;
     var keep = g.intro, tg = g.c.createGain(); tg.gain.value = TRIM[name] || 1; tg.connect(keep); g.intro = tg;
     try { VOICES[name](g, t, o || {}); } finally { g.intro = keep; }
     if (g.live) setTimeout(function () { try { tg.disconnect(); } catch (e) {} }, Math.max(0, t - g.c.currentTime + 8) * 1000);
   }
+
+  // AUDIO2 (docs/handoff/audio2.md): the fanfare is the heaviest piece of the opening (~490 nodes, 46 voices at once,
+  // just when the 3D title is loading). It is rendered once, offline, right after this file loads (no tap needed),
+  // for the opening's beat, and then played as one buffer into the opening bus (so skipping still fades it). Until the
+  // render is ready, or for another beat, the live version plays.
+  var bakedF = {}, bakingF = {};
+  function fkey(o) { return (((o && o.beat) || 0.44) * 1000).toFixed(1); }
+  function bakeFanfare(beat) {
+    var k = fkey({ beat: beat }), O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (bakedF[k] || bakingF[k] || !O) return;
+    var sr = 48000; try { if (sharedOK()) { var sc = Snd.context(); if (sc) sr = sc.sampleRate; } } catch (e) {}
+    var len = 0.1 + beat * 8 + 4.2, off; try { off = new O(2, Math.ceil(sr * len), sr); } catch (e) { return; }
+    bakingF[k] = true;
+    try {
+      var g = graph(off, false, null);
+      g.master.disconnect(); g.master.gain.value = 1; g.master.connect(off.destination);   // before the title's compressor: that stays live
+      voice(g, 'fanfare', 0.05, { beat: beat });
+    } catch (e) { bakingF[k] = false; return; }
+    var t = performance.now();
+    off.startRendering().then(function (b) { bakedF[k] = b; bakedF[k]._ms = Math.round(performance.now() - t); bakingF[k] = false; }, function () { bakingF[k] = false; });
+  }
+  function playBakedFanfare(g, t, o) {
+    var b = bakedF[fkey(o)]; if (!b || b.sampleRate !== g.c.sampleRate) return false;
+    var s = g.c.createBufferSource(); s.buffer = b; s.connect(g.intro); track(g, s, [s]);
+    s.start(Math.max(g.c.currentTime, t - 0.05));
+    return true;
+  }
+  // the opening's beat (three/title.js: (4.0 - 0.45) / 8) and the Sound check's
+  setTimeout(function () { try { bakeFanfare((4.0 - 0.45) / 8); } catch (e) {} }, 400);
 
   // ---------------------------------------------------------------- live context
   function ready() { return !!(ac && G); }
@@ -273,13 +303,30 @@ var TitleSfx = (function () {
     });
   }
 
+  // BIRTHDAY (docs/handoff/audio2.md): the show (js/three/birthday.js) only loads the choir 9.6 s in, just before the
+  // song. As soon as the show starts (it puts .bday-on on <body>), load js/birthday-sfx.js here as a plain script so
+  // the whole song is rendered offline while the parade runs (it renders itself when it loads; about 1.5 s on a laptop).
+  (function watchBirthday() {
+    try {
+      if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.body) { if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', watchBirthday); return; }
+      var mo = new MutationObserver(function () {
+        if (!document.body.classList.contains('bday-on')) return;
+        if (window.BirthdaySfx) { try { if (BirthdaySfx.prerender) BirthdaySfx.prerender(); } catch (e) {} return; }
+        if (watchBirthday.loading) return; watchBirthday.loading = true;
+        var s = document.createElement('script'); s.src = 'js/birthday-sfx.js'; s.onerror = function () { watchBirthday.loading = false; }; document.head.appendChild(s);
+      });
+      mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    } catch (e) {}
+  })();
+
   return {
     unlock: unlock, begin: begin, play: play, cancel: cancel, ambience: ambience, ui: ui, stopAll: stopAll,
+    _baked: function () { var o = {}; Object.keys(bakedF).forEach(function (k) { o[k] = bakedF[k]._ms; }); return o; },
     stats: function () { return { ctx: ac ? ac.state : null, live: liveSrc, created: created, ambience: ambOn, level: level(), scheduled: score.length }; },
     score: function () { return score.slice(); },
     _render: _render, _trim: TRIM,
     // offline audit: a score into any context (dests: { sfx, amb, ui } nodes; inside Snd._measure use the shared buses)
-    _into: function (c, dests, sc) { var g = graph(c, false, dests); (sc || []).forEach(function (e) { if (VOICES[e[0]]) voice(g, e[0], 0.06 + Math.max(0, e[1]), e[2] || {}); }); return g; },
+    _into: function (c, dests, sc) { var g = graph(c, false, dests); g.useBaked = true; (sc || []).forEach(function (e) { if (VOICES[e[0]]) voice(g, e[0], 0.06 + Math.max(0, e[1]), e[2] || {}); }); return g; },
     _ambInto: function (c, dests) { var g = graph(c, false, dests), s = c.createBufferSource(), f = c.createBiquadFilter(), f2 = c.createBiquadFilter(); s.buffer = g.pink; s.loop = true; f.type = 'bandpass'; f.frequency.value = 520; f.Q.value = 0.6; f2.type = 'lowpass'; f2.frequency.value = 1400; s.connect(f); f.connect(f2); f2.connect(g.amb); g.amb.gain.value = AMB; s.start(0); return g; },
     _uiInto: function (c, dests, kind) { var g = graph(c, false, dests), t = 0.02; if (kind === 'hover') tone(g, { type: 'sine', f: 1320, t: t, dur: 0.05, vol: 0.022, a: 0.003, dest: g.ui }); else if (kind === 'press') { tone(g, { type: 'sine', f: 560, f2: 300, t: t, dur: 0.08, vol: 0.08, a: 0.002, dest: g.ui }); noise(g, { t: t, dur: 0.02, vol: 0.03, type: 'highpass', f: 3000, dest: g.ui }); } return g; }
   };

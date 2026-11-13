@@ -66,6 +66,13 @@ var Music = (function () {
     if (waves.c !== C() || !waves.cl) { var re = new Float32Array(12), im = new Float32Array(12); for (var h = 1; h < 12; h += 2) im[h] = 1 / h; waves.cl = C().createPeriodicWave(re, im); waves.c = C(); }
     return waves.cl;
   }
+  // AUDIO2: soft instrument bodies (partial amplitudes 1..4), one PeriodicWave per context each
+  var PW = { kal: [1, 0.09, 0.035, 0.012], mar: [1, 0.05, 0.02, 0.03], box: [1, 0, 0.1, 0.02], cel: [1, 0.22, 0.04, 0.08], vib: [1, 0.03, 0.01, 0.035] }, pws = { c: null };
+  function pw(k) {
+    if (pws.c !== C()) pws = { c: C() };
+    if (!pws[k]) { var a = PW[k], re = new Float32Array(a.length + 1), im = new Float32Array(a.length + 1); a.forEach(function (x, i) { im[i + 1] = x; }); pws[k] = C().createPeriodicWave(re, im); }
+    return pws[k];
+  }
   // a soft shaker hit (made once per context, low-passed so it never hisses)
   var shk = { c: null, b: null };
   function shaker() {
@@ -82,12 +89,14 @@ var Music = (function () {
 
   // ---------------------------------------------------------------- instruments (t, midi, beats-dur in seconds, velocity 0..1, dest)
   var INST = {
-    kalimba: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f, t: t, dur: Math.max(1.0, d), vol: 0.1 * v, att: 0.004, dest: o }); osc({ f: f * 4, t: t, dur: 0.14, vol: 0.02 * v, att: 0.003, dest: o }); },
-    marimba: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f, t: t, dur: 0.75, vol: 0.12 * v, att: 0.003, dest: o }); osc({ f: f * 3.9, t: t, dur: 0.07, vol: 0.022 * v, att: 0.002, dest: o }); },
-    musicbox: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f, t: t, dur: 1.5, vol: 0.075 * v, att: 0.003, dest: o }); osc({ f: f * 3, t: t, dur: 0.22, vol: 0.01 * v, att: 0.002, dest: o }); },
-    celesta: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f, t: t, dur: 1.7, vol: 0.08 * v, att: 0.003, dest: o }); osc({ f: f * 2, t: t, dur: 0.5, vol: 0.022 * v, att: 0.003, dest: o }); },
+    // AUDIO2: the struck instruments get a body (a few soft partials in one PeriodicWave, so no extra nodes) instead
+    // of a bare sine; the short bright partial on top is the strike. Still gentle: nothing above the 4th partial.
+    kalimba: function (t, m, d, v, o) { var f = mtof(m); osc({ wave: pw('kal'), f: f, t: t, dur: Math.max(1.0, d), vol: 0.1 * v, att: 0.005, dest: o }); osc({ f: f * 4, t: t, dur: 0.14, vol: 0.02 * v, att: 0.003, dest: o }); },
+    marimba: function (t, m, d, v, o) { var f = mtof(m); osc({ wave: pw('mar'), f: f, t: t, dur: 0.75, vol: 0.12 * v, att: 0.004, dest: o }); osc({ f: f * 3.9, t: t, dur: 0.07, vol: 0.022 * v, att: 0.002, dest: o }); },
+    musicbox: function (t, m, d, v, o) { var f = mtof(m); osc({ wave: pw('box'), f: f, t: t, dur: 1.5, vol: 0.075 * v, att: 0.003, dest: o }); osc({ f: f * 3, t: t, dur: 0.22, vol: 0.01 * v, att: 0.002, dest: o }); },
+    celesta: function (t, m, d, v, o) { var f = mtof(m); osc({ wave: pw('cel'), f: f, t: t, dur: 1.7, vol: 0.08 * v, att: 0.004, dest: o }); osc({ f: f * 2, t: t, dur: 0.5, vol: 0.022 * v, att: 0.003, dest: o }); },
     harp: function (t, m, d, v, o) { osc({ type: 'triangle', f: mtof(m), t: t, dur: 1.6, vol: 0.1 * v, att: 0.003, lp: 2400, lp2: 500, dest: o }); },
-    vibes: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f, t: t, dur: 2.2, vol: 0.08 * v, att: 0.004, dest: o }); osc({ f: f * 4, t: t, dur: 0.25, vol: 0.008 * v, att: 0.003, dest: o }); },
+    vibes: function (t, m, d, v, o) { var f = mtof(m); osc({ wave: pw('vib'), f: f, t: t, dur: 2.2, vol: 0.08 * v, att: 0.005, dest: o }); osc({ f: f * 4, t: t, dur: 0.25, vol: 0.008 * v, att: 0.003, dest: o }); },
     steel: function (t, m, d, v, o) { var f = mtof(m); osc({ f: f * 1.012, f2: f, glide: 0.04, t: t, dur: 0.95, vol: 0.09 * v, att: 0.003, dest: o }); osc({ f: f * 2.02, t: t, dur: 0.32, vol: 0.03 * v, att: 0.003, dest: o }); },
     pizz: function (t, m, d, v, o) { osc({ type: 'sawtooth', f: mtof(m), t: t, dur: 0.3, vol: 0.06 * v, att: 0.003, lp: 2000, lp2: 280, q: 1.2, dest: o }); },
     flute: function (t, m, d, v, o) { var f = mtof(m), dd = Math.max(0.25, d); osc({ f: f, t: t, dur: dd, vol: 0.06 * v, att: 0.07, sus: 1, rel: 0.12, dest: o }); osc({ type: 'triangle', f: f, t: t, dur: dd, vol: 0.012 * v, att: 0.09, sus: 1, rel: 0.12, dest: o }); },
