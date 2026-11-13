@@ -1683,7 +1683,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       var fin2 = function () { list.forEach(function (e) { flatten(meshes[e.id], e.s); }); fin(); };
       if (gameCalm()) { onToss(); turnInPlace(list, fin2); return true; }
       var dl = list.some(function (e) { return isD20(meshes[e.id]); }), g = (!dl && opts.by != null) ? gripOf(opts.by) : null;
-      if (g && list.length === 2 && meshes[list[0].id].position.distanceTo(meshes[list[1].id].position) > 2 * g.reach + 1.2) {
+      if (g && g.walk && list.length <= 2) { if (startWalkToss(g, list, onToss, fin2)) return true; }   // a person walks round to the rim
+      else if (g && list.length === 2 && meshes[list[0].id].position.distanceTo(meshes[list[1].id].position) > 2 * g.reach + 1.2) {
         // too far apart for one in each hand: one toss, then the other
         if (startToss(g, [list[0]], onToss, function () { var g2 = gripOf(opts.by); if (!(g2 && startToss(g2, [list[1]], onToss, fin2))) { if (!api.reroll([list[1]], fin2)) fin2(); } })) return true;
       } else if (g && list.length <= 2) { if (startToss(g, list, onToss, fin2)) return true; }
@@ -1731,6 +1732,67 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     dirty = true; startLoop();
     return true;
   }
+  // CUPTOSS (the kid, Tata): like a move, never on the table. He walks round the outside to the spot on the rim from which
+  // both cubes are in reach (one in each hand), or else to the nearest one first: grabs it, lifts it, walks along the edge
+  // with it in his hand to the other, grabs that one too; then the same scoop and toss, and he walks back to his seat.
+  function startWalkToss(g, list, onToss, fin) {
+    if (toss) endToss(true);
+    var T = { g: g, walk: true, ids: {}, clock: 0, fin: fin, onToss: onToss, w: 0, open: 1, released: false, look: new THREE.Vector3(), cubes: [], stage: 'go', groups: [] };
+    list.forEach(function (e) {
+      var m = meshes[e.id], cs = m.scale.x, off = 0.5 * cs + g.hand * 0.9;
+      anims = anims.filter(function (a) { return a.m !== m; }); m.userData.tpos = null; m.userData.lock.visible = false;
+      T.ids[e.id] = e.s; T.cubes.push({ id: e.id, s: e.s, m: m, p0: m.position.clone(), q0: m.quaternion.clone(), off: off, hand: m.position.clone().setY(m.position.y + off), v: new THREE.Vector3() });
+    });
+    toss = T;
+    var at = g.at(), arrive = function () { if (toss === T) { T.stage = 'reach'; T.clock = 0; holdNow(T); } };
+    T.active = T.cubes.slice(); T.groups = [];
+    if (!(T.cubes.length === 2 && g.walk(T.cubes.map(function (c) { return c.hand; }), arrive))) {
+      T.cubes.sort(function (a, b) { return Math.hypot(a.p0.x - at.x, a.p0.z - at.z) - Math.hypot(b.p0.x - at.x, b.p0.z - at.z); });
+      T.active = [T.cubes[0]]; T.groups = T.cubes.slice(1).map(function (c) { return [c]; });
+      if (!g.walk([T.cubes[0].hand], arrive)) { toss = null; return false; }
+    }
+    T.timer = setTimeout(function () { if (toss === T) endToss(true); }, 12000);
+    dirty = true; startLoop();
+    return true;
+  }
+  // the hands go to the cubes in hand / in reach from here (a cube already held stays in its hand)
+  function holdNow(T) {
+    var g = T.g, act = T.active, held = T.cubes.filter(function (c) { return c.inHand; });
+    var pts = held.concat(act.filter(function (c) { return !c.inHand; }));
+    var far = pts.reduce(function (a, c) { var q = g.at(); return Math.hypot(c.hand.x - q.x, c.hand.z - q.z) > Math.hypot(a.x - q.x, a.z - q.z) ? c.hand : a; }, pts[0].hand).clone();
+    T.pts = pts;
+    var ok = false;
+    try { ok = g.set({ far: far, fn: function (now, out) { out.a = pts[0].hand; out.b = pts[1] ? pts[1].hand : null; out.w = T.w; out.open = T.open; out.look = T.look; out.armA = held.length ? T.carry : null; } }); } catch (e) { ok = false; }
+    if (!ok) endToss(true);
+  }
+  function tickWalkToss(dt) {
+    var T = toss, P = TOSS, g = T.g; T.clock += Math.min(Math.max(dt, 0), 0.05); var u = T.clock;
+    if (T.stage === 'go') {   // walking round (the first spot), or along the edge with a cube in his hand (the second)
+      var hs = T.carry != null ? g.hands() : null;
+      T.cubes.forEach(function (c) { if (c.inHand && hs) { c.m.position.set(hs[T.carry].x, hs[T.carry].y - c.off, hs[T.carry].z); c.m.quaternion.copy(c.q0); } });
+      return;
+    }
+    var more = T.groups.length > 0;
+    T.w = sstep01(u / P.reach); T.open = u < P.reach ? 1 : 1 - 0.85 * sstep01((u - P.reach) / (P.grab - P.reach));
+    var l = u < P.grab ? 0 : Math.min(1, (u - P.grab) / (P.lift - P.grab)), ly = more ? 0.7 * sstep01(l) : 1.4 * l * l;
+    T.look.set(0, 0, 0);
+    T.pts.forEach(function (c) {
+      if (!c.base) c.base = c.inHand ? c.hand.clone() : c.p0.clone().setY(c.p0.y + c.off);
+      c.hand.set(c.base.x, c.base.y + ly, c.base.z);
+      if (u >= P.grab || c.inHand) { c.m.position.set(c.hand.x, c.hand.y - c.off, c.hand.z); c.m.quaternion.copy(c.q0); }
+      T.look.add(c.m.position);
+    });
+    T.look.multiplyScalar(1 / T.pts.length);
+    if (u >= P.grab && !T.picked) { T.picked = true; try { if (Snd.pickup) Snd.pickup(); } catch (e) {} }
+    if (u < P.lift) return;
+    if (!more) { tossRelease(T); return; }
+    // one in his hand: on to the other along the edge
+    var c0 = T.pts[T.pts.length - 1]; c0.inHand = true; c0.base = null; T.carry = g.sideOf(c0.m.position); T.picked = false;
+    T.active = T.groups.shift(); T.stage = 'go'; T.pts = [];
+    try { g.set(null); } catch (e) {}
+    var arrive = function () { if (toss !== T) return; var hs = g.hands(); if (hs) c0.hand.set(hs[T.carry].x, hs[T.carry].y, hs[T.carry].z); T.stage = 'reach'; T.clock = 0; holdNow(T); };
+    if (!g.walk(T.active.map(function (c) { return c.hand; }), arrive, { carry: T.carry })) { T.active = []; arrive(); }
+  }
   // hands down to the cubes (0-0.4 s), the fingers close (-0.52), a quickening scoop up (-0.84) and they let go: the cubes
   // fly up (about 1 unit higher), spin and land (the recorded fall). The hands follow through and ease home (0.34 s).
   function tickToss(dt) {
@@ -1774,7 +1836,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function endToss(force) {
     var T = toss; if (!T) return; toss = null; clearTimeout(T.timer);
-    try { T.g.set(null); } catch (e) {}
+    try { T.g.set(null); if (T.walk) T.g.home(); } catch (e) {}   // (a person walks back to his seat)
     if (!T.released) { T.released = true; T.onToss(); landNow(T); }
     else if (force && tumble && tumble.done === T.fin) endTumble();
     dirty = true;
@@ -1952,7 +2014,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
     if (pour) { if (document.hidden) { pour.fast = true; finishPourFast(); } else tickPour(now, dt); dirty = true; }
     if (tumble) { if (document.hidden) endTumble(); else tickTumble(dt); dirty = true; }
-    if (toss) { if (document.hidden || current !== 'game') endToss(true); else tickToss(dt); dirty = true; } // (CUPTOSS)
+    if (toss) { if (document.hidden || current !== 'game') endToss(true); else if (toss.walk && !toss.released) tickWalkToss(dt); else tickToss(dt); dirty = true; } // (CUPTOSS)
     if (redump) { if (document.hidden || current !== 'game') endRedump(true); else tickRedump(dt); dirty = true; } // (CUPTOSS)
     if (anims.length) {
       anims = anims.filter(function (a) {
