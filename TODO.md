@@ -85,3 +85,7 @@ Every helper's piece is also its own merge commit, so one piece can be undone wi
   camera hooks kickoff/hero/final from docs/handoff/light.md not applied (the walk-out covers kick-off);
   handshake with the creature and Tata on the podium; On-Sets poster on the title; a second figure for three
   humans online in 3D.
+- 13 Nov, later: voice chat switched ON. Rules v4 (docs/handoff/firebase-rules-v4.json) published in Firebase with
+  Tata's OK and the code pushed (cdaf0f7). Checked on the real database: an outsider who knows the code is refused
+  reading and writing rtc/CODE; host and guest read it, exchange notes and connect (fake microphone); notes are gone
+  after hanging up. Still unheard on real devices and real networks (no relay server: some networks will not connect).
