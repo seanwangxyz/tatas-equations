@@ -160,14 +160,30 @@ var SoundCheck = (function () {
   add('sting.card', 'sfx', 'Card earned sparkle', 2, function () { Snd.sting('card'); }, null, 'Snd.sting(card)');
   add('sting.levelup', 'sfx', 'Level up', 2.5, function () { Snd.sting('levelup'); }, null, 'Snd.sting(levelup)');
   add('sting.vs', 'sfx', 'Versus hit', 2, function () { Snd.sting('vs'); }, null, 'Snd.sting(vs)');
-  ['pip', 'sloth', 'penguin', 'fox', 'owl', 'wizard'].forEach(function (w) { add('theme.' + w, 'sfx', 'Entrance tune: ' + w, 3.6, function () { Snd.theme(w); }, null, 'Snd.theme'); });
+  // the 15 creatures' leitmotifs (and Pip's): entrance, plus "won a shake" and "beaten" for one of them
+  var MOTIF_NAMES = { pip: 'Pip', snoozy: 'Snoozy (tuba)', penny: 'Penny (xylophone)', fox: 'Rusty (pizzicato)', owl: 'Ollie (clarinet)', wizard: 'Mondo (celesta)', grub: 'Grub (bassoon)', splosh: 'Splosh (marimba)',
+    blaze: 'Blaze (muted horn)', hex: 'Hex (accordion)', zog: 'King Messy (oom-pah)', bleep: 'Bleep (bleeps)', flip: 'Flip (flute)', squiggle: 'Squiggle (wobble)', nugget: 'Nugget (horn + timpani)', chroma: 'Queen Chroma (harp)' };
+  Object.keys(MOTIF_NAMES).forEach(function (w) { add('motif.' + w, 'sfx', 'Leitmotif: ' + MOTIF_NAMES[w], 4, function () { Snd.motif(w, 'enter'); }, null, 'Snd.theme(kind) on entrance; Snd.motif(id, how)'); });
+  add('motif.fox.win', 'sfx', 'Leitmotif: Rusty won a shake', 3, function () { Snd.motif('fox', 'win'); }, null, 'Snd.motif(id, win): hook in game.js');
+  add('motif.fox.beaten', 'sfx', 'Leitmotif: Rusty is beaten (friendly)', 4, function () { Snd.motif('fox', 'beaten'); }, null, 'Snd.motif(id, beaten): hook in game.js');
+  // table sounds per cube skin, and where a cube lands
+  function withSkin(skin, f) { var c = (typeof S !== 'undefined' && S && S.cos) ? S.cos : null, was = c && c.skin; if (c) c.skin = skin; try { f(); } finally { if (c) c.skin = was; } }
+  [['classic', 'plastic'], ['candy', 'candy'], ['lava', 'stone'], ['galaxy', 'glass'], ['gold', 'metal']].forEach(function (p) {
+    add('thunk.' + p[1], 'sfx', 'Cube lands, ' + p[0] + ' skin (' + p[1] + ')', 0.8, function () { withSkin(p[0], function () { Snd.thunk(); }); }, null, 'Snd.thunk: S.cos.skin = ' + p[0]);
+    add('dice.' + p[1], 'sfx', 'Dice knock, ' + p[0] + ' skin (' + p[1] + ')', 0.8, function () { withSkin(p[0], function () { Snd.diceHit(0.95); }); }, function () { withSkin(p[0], function () { Snd._hit(0.95, 0); Snd._hit(0.7, 0.12); }); }, 'Snd.diceHit: the pour');
+  });
+  ['required', 'permitted', 'forbidden', 'goal', 'resources'].forEach(function (z) { add('thunk.zone.' + z, 'sfx', 'Cube lands in ' + z, 0.8, function () { Snd.thunk(z); }, null, 'Snd.thunk(zone): hook in three/table.js'); });
+  add('slide', 'ui', 'Cube slides on the felt', 0.8, function () { Snd.slide(0.35); }, null, 'Snd.slide(sec): hook in three/table.js drag');
+  ['lift', 'place', 'flip'].forEach(function (k) { add('card.' + k, 'ui', 'On-Sets card ' + k, 0.6, function () { Snd.card(k); }, null, 'Snd.card(' + k + '): hook in onsets'); });
+  add('crowd.chant', 'crowd', 'Crowd chant (theme head, after a great moment)', 2.6, function () { if (window.CrowdSfx) CrowdSfx.play('chant', true); }, null, 'CrowdSfx.play(chant) / crowdReact(chant): hook');
+  add('readout', 'sfx', 'Correct Solution reads out', 3.2, function () { Snd.readout([3, '+', 4, '*', 2], 11); }, null, 'Snd.readout(values, goal): hook in game.js');
   add('fx.boom', 'sfx', 'Firework boom', 2.6, function () { if (window.FxSfx) FxSfx.boom({ size: 0.6 }); }, function (a) { FxSfx._into(a.ctx, a.bus('sfx'), 'boom', { size: 0.6 }); }, 'FxSfx.boom: fireworks.js, replay.js');
   add('fx.launch', 'sfx', 'Firework launch', 1.2, function () { if (window.FxSfx) FxSfx.launch({}); }, function (a) { FxSfx._into(a.ctx, a.bus('sfx'), 'launch', {}); }, 'FxSfx.launch');
   add('fx.swish', 'sfx', 'Replay swish', 0.6, function () { if (window.FxSfx) FxSfx.swish({}); }, function (a) { FxSfx._into(a.ctx, a.bus('sfx'), 'swish', {}); }, 'FxSfx.swish: three/replay.js');
   ['clap', 'ooh', 'gasp', 'cheer', 'aw'].forEach(function (k) { add('crowd.' + k, 'crowd', 'Crowd ' + k + ' (in matches)', 2.6, function () { if (window.CrowdSfx) CrowdSfx.play(k, true); }, null, 'crowdReact(' + k + ') in crowd-sfx.js: game.js crowdSay'); });
   ['ooh', 'aww', 'cheer', 'gasp', 'laugh', 'clap', 'chant'].forEach(function (k) { add('snd.crowd.' + k, 'crowd', 'Crowd ' + k + ' (big crowd)', 2.6, function () { Snd.crowdReact(k); }, null, 'Snd.crowdReact(' + k + '): fallback and older screens'); });
   add('roar', 'crowd', 'Stadium roar (wins)', 7.5, function () { Snd.crowd(); }, null, 'Snd.crowd: half a second after a win fanfare');
-  ['pip', 'sloth', 'penguin', 'fox', 'owl', 'wizard'].forEach(function (w) { add('babble.' + w, 'voice', 'Babble voice: ' + w, 3, function () { Snd.babble(LINE, w); }, null, 'Snd.babble / Snd.talk: creature lines'); });
+  ['pip', 'sloth', 'penguin', 'fox', 'owl', 'wizard', 'grub', 'splosh', 'blaze', 'hex', 'zog', 'bleep', 'flip', 'squiggle', 'nugget', 'chroma'].forEach(function (w) { add('babble.' + w, 'voice', 'Babble voice: ' + (MOTIF_NAMES[w] || MOTIF_NAMES[{ sloth: 'snoozy', penguin: 'penny' }[w]] || w).replace(/ \(.*\)$/, ''), 3, function () { Snd.babble(LINE, w); }, null, 'Snd.babble / Snd.talk: creature lines (Monster League found by the match\'s players)'); });
   add('speech', 'voice', 'Read aloud (device voice)', 0, function () { var v = setg().voice; setg().voice = true; Snd.speak('Hi! I will read the lines out loud.', 'pip'); setg().voice = v; }, false, 'Snd.speak: "Read lines aloud" (speechSynthesis, cannot be measured)');
   add('commentator', 'voice', 'Commentator voice', 0, function () { var v = setg().voice; setg().voice = true; Snd.speak('What a goal! The crowd goes wild!', 'owl'); setg().voice = v; }, false, 'commentary.js -> Snd.speak(owl)');
   add('amb.stadium', 'amb', 'Stadium murmur', 6, function () { Snd.ambience('stadium'); later(8000, function () { Snd.ambience('off'); }); }, function () { Snd.ambience('stadium'); }, 'Snd.ambience(stadium): matches');
@@ -175,7 +191,35 @@ var SoundCheck = (function () {
   add('amb.rain', 'amb', 'Rain', 6, function () { if (window.WeatherSfx) { WeatherSfx.set('rain'); later(8000, function () { WeatherSfx.set('off'); }); } }, function (a) { WeatherSfx._into(a.ctx, 'rain'); }, 'WeatherSfx: rainy stadium matches');
   add('amb.wind', 'amb', 'Wind', 6, function () { if (window.WeatherSfx) { WeatherSfx.set('wind'); later(8000, function () { WeatherSfx.set('off'); }); } }, function (a) { WeatherSfx._into(a.ctx, 'wind'); }, 'WeatherSfx: windy matches');
   add('amb.title', 'amb', 'Title screen murmur', 6, function () { if (window.TitleSfx) { TitleSfx.unlock(); TitleSfx.ambience(true); later(8000, function () { TitleSfx.ambience(false); }); } }, function (a) { TitleSfx._ambInto(a.ctx, dests(a)); }, 'TitleSfx.ambience');
-  ['menu', 'play', 'think', 'challenge', 'win'].forEach(function (m) { add('music.' + m, 'music', 'Music: ' + m, 11, function () { moodFor(10000, m); }, function (a) { for (var i = 0; i < 4; i++) a.bar(i * a.BAR + 0.05, m); }, 'Snd.setMood(' + m + ')'); });
+  // the score (js/music.js): every mood, then each league / venue / late-evening / On-Sets flavour of match music
+  function score() { return sndOK() && Snd.score ? Snd.score() : null; }
+  function bars(a, m, n) { var t = 0.05; for (var i = 0; i < n; i++) t += a.bar(t, m); }
+  var BASEF = { league: 0, venue: 'day', late: false, onsets: false };
+  function flav(o) { var x = {}, k; for (k in BASEF) x[k] = BASEF[k]; for (k in o) x[k] = o[k]; return x; }
+  function musicItem(id, label, mood, fl, where, tens) {
+    add(id, 'music', label, 22, function () {
+      var M = score(); if (M) { M.force(fl); M.tension(tens == null ? null : tens); }
+      moodFor(20000, mood); later(20000, function () { var M2 = score(); if (M2) { M2.force(null); M2.tension(null); } });
+    }, function (a) { var M = score(); if (M) { M.force(fl); M.tension(tens == null ? null : tens); M.reseed(11); } bars(a, mood, 8); if (M) { M.force(null); M.tension(null); } }, where);
+  }
+  musicItem('music.menu', 'Music: menu (the whole theme)', 'menu', flav({ venue: 'home' }), 'Snd.setMood(menu)');
+  musicItem('music.play', 'Music: match, Classic League, stadium by day', 'play', flav({}), 'Snd.setMood(play)');
+  musicItem('music.think', 'Music: thinking (building a Solution)', 'think', flav({}), 'Snd.setMood(think): builder.js');
+  musicItem('music.challenge', 'Music: challenge', 'challenge', flav({}), 'Snd.setMood(challenge)');
+  musicItem('music.win', 'Music: win (theme in full)', 'win', flav({}), 'Snd.setMood(win)');
+  musicItem('music.messy', 'Music: Monster League (Messy)', 'play', flav({ league: 1 }), 'match vs opponents 6-10');
+  musicItem('music.legend', 'Music: Legend League', 'play', flav({ league: 2 }), 'match vs opponents 11-15');
+  musicItem('music.night', 'Music: night stadium', 'play', flav({ venue: 'night' }), 'mat night, or stadium at dusk/night');
+  musicItem('music.beach', 'Music: beach', 'play', flav({ venue: 'beach' }), 'mat beach');
+  musicItem('music.volcano', 'Music: volcano', 'play', flav({ venue: 'volcano' }), 'mat volcano');
+  musicItem('music.room', 'Music: other mats (no drums)', 'play', flav({ venue: 'room' }), 'kitchen table and other mats');
+  musicItem('music.late', 'Music: late evening lullaby', 'play', flav({ late: true }), 'device clock after 19:30 or before 6:30');
+  musicItem('music.onsets', 'Music: On-Sets (waltz)', 'play', flav({ onsets: true }), 'On-Sets screens');
+  musicItem('music.tension', 'Music: match, Resources almost gone', 'play', flav({}), 'play / think with few Resources left', 1);
+  ['win', 'loss', 'shakeGood', 'shakeKind', 'challengeRight', 'challengeWrong'].forEach(function (k) {
+    add('coda.' + k, 'music', 'Coda: ' + k, k === 'win' ? 7 : k === 'loss' ? 7 : 4, function () { var M = score(); if (M) M.coda(k); }, function () { var M = score(); if (M) { M.force(BASEF); M.coda(k); M.force(null); } },
+      { win: 'Snd.setMood(win)', loss: 'after the creature\'s dance when the match is lost', shakeGood: 'end of a shake that went well', shakeKind: 'end of a shake that did not', challengeRight: 'challenge resolved, the kid right', challengeWrong: 'challenge resolved, the kid not right' }[k]);
+  });
   add('music.dance', 'music', 'Victory dance', 7, function () { Snd.danceMusic(6000); }, function () { Snd._danceAll(6000); }, 'Snd.danceMusic: creature dances');
   add('title.intro', 'title', 'Title opening (whole)', 7.5, function () { if (!window.TitleSfx) return; TitleSfx.unlock(); TitleSfx.begin(); introScore().forEach(function (e) { TitleSfx.play(e[0], e[1], e[2]); }); }, function (a) { TitleSfx._into(a.ctx, dests(a), introScore()); }, 'three/title.js scheduleIntroSound');
   ['fanfare', 'thud', 'lightsUp', 'whoosh', 'sparkle', 'chime', 'crowd', 'confetti', 'boing', 'pat', 'hi', 'clack', 'twinkle', 'tick', 'liftoff'].forEach(function (n) {

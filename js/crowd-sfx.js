@@ -10,7 +10,8 @@
 //   and the matching sound plays. Does nothing when S.set.crowd === false. Never throws.
 var CrowdSfx = (function () {
   var ac = null, own = false, out = null, noise = null, last = -1e9, hooked = false, GAP = 950, dst = null;
-  var KTRIM = { clap: 1.0, ooh: 0.78, gasp: 2.7, cheer: 0.95, aw: 1.28 };
+  // clap re-measured with the settled meter (docs/handoff/music.md): -24.8, target -27
+  var KTRIM = { chant: 0.7, clap: 0.78, ooh: 0.78, gasp: 2.7, cheer: 0.95, aw: 1.28 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
   function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
   function level() {
@@ -87,20 +88,34 @@ var CrowdSfx = (function () {
     o.start(t); o.stop(t + dur + 0.05); stopAt(nodes, t + dur);
   }
   function claps(t0, span, n, vol) { for (var i = 0; i < n; i++) { var u = i / n, t = t0 + u * span + rnd(0, 0.05); burst(t, rnd(0.03, 0.06), rnd(1000, 1900), 1.3, vol * (1 - 0.6 * u) * rnd(0.6, 1), rnd(-0.6, 0.6)); } }
+  // The crowd sings in the music's key: each voice starts on a C major chord tone (C E G, A) in its range, a few cents
+  // apart like real people, and glides by a musical interval (ooh up a tone, cheer up a third, aw down a fourth).
+  var KEYHZ = []; (function () { [0, 4, 7, 9].forEach(function (pc) { for (var o = 2; o <= 5; o++) KEYHZ.push(440 * Math.pow(2, (12 * (o + 1) + pc - 69) / 12)); }); })();
+  function keyed(lo, hi) { var c = KEYHZ.filter(function (f) { return f >= lo && f <= hi; }); return c.length ? c[Math.floor(Math.random() * c.length)] * Math.pow(2, rnd(-12, 12) / 1200) : rnd(lo, hi); }
   function crowdOf(n, t0, dur, lo, hi, glide, vow, vol, att) {
-    for (var i = 0; i < n; i++) { var f = rnd(lo, hi), d = t0 + rnd(0, 0.08); voice(d, dur * rnd(0.85, 1.05), f, f * glide * rnd(0.97, 1.03), vow, vol, rnd(-0.7, 0.7), att); }
+    for (var i = 0; i < n; i++) { var f = keyed(lo, hi), d = t0 + rnd(0, 0.08); voice(d, dur * rnd(0.85, 1.05), f, f * glide * Math.pow(2, rnd(-15, 15) / 1200), vow, vol, rnd(-0.7, 0.7), att); }
   }
   var KINDS = {
     clap: function (t) { claps(t, 1.0, 16, 0.45); return 1100; },
-    ooh: function (t) { crowdOf(5, t, 1.0, 170, 260, 1.12, 'oo', 0.06, 0.18); burst(t, 0.9, 500, 0.7, 0.04, 0, 'lowpass'); return 1000; },
-    gasp: function (t) { burst(t, 0.34, 900, 0.8, 0.25, 0, 'bandpass', 2400); crowdOf(3, t + 0.02, 0.3, 230, 320, 1.15, 'ah', 0.06, 0.04); return 400; },
+    ooh: function (t) { crowdOf(5, t, 1.0, 170, 270, 1.1225, 'oo', 0.06, 0.18); burst(t, 0.9, 500, 0.7, 0.04, 0, 'lowpass'); return 1000; },
+    gasp: function (t) { burst(t, 0.34, 900, 0.8, 0.25, 0, 'bandpass', 2400); crowdOf(3, t + 0.02, 0.3, 230, 340, 1.1225, 'ah', 0.06, 0.04); return 400; },
     cheer: function (t) {
       burst(t, 1.5, 1600, 0.6, 0.08, 0, 'lowpass'); // the roar under it, soft
-      crowdOf(6, t, 1.2, 220, 360, 1.25, 'ay', 0.05, 0.1);
+      crowdOf(6, t, 1.2, 220, 360, 1.2599, 'ay', 0.05, 0.1);
       claps(t + 0.25, 1.1, 14, 0.3);
       return 1500;
     },
-    aw: function (t) { crowdOf(5, t, 1.0, 230, 300, 0.72, 'aw', 0.08, 0.12); return 1000; }
+    aw: function (t) { crowdOf(5, t, 1.0, 230, 340, 0.7492, 'aw', 0.08, 0.12); return 1000; },
+    // once after a great moment (hook): the game's theme head, clapped and sung by the stands: clap-clap CLAAP, clap CLAP
+    chant: function (t) {
+      var ts = [0, 0.25, 0.5, 1.25, 1.5], hz = [196, 261.6, 329.6, 293.7, 329.6];
+      ts.forEach(function (x, i) {
+        var long = i === 2 || i === 4;
+        for (var k = 0; k < 4; k++) burst(t + x + rnd(0, 0.025), rnd(0.03, 0.05), rnd(1000, 1800), 1.3, (long ? 0.4 : 0.3) * rnd(0.7, 1), rnd(-0.6, 0.6));
+        for (var v = 0; v < 3; v++) { var f = hz[i] * Math.pow(2, rnd(-10, 10) / 1200) * (v === 2 ? 0.5 : 1); voice(t + x + rnd(0, 0.02), long ? 0.5 : 0.2, f, f, 'oh', 0.05, rnd(-0.7, 0.7), 0.04); }
+      });
+      return 2100;
+    }
   };
   function play(kind, force) {
     try {
