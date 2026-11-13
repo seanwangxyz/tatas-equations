@@ -9,7 +9,8 @@ var Trio = (function () {
   function list() {
     var out = [], L, k;
     for (L = 0; (L + 1) * LEAGUE <= OPPONENTS.length; L++) for (k = 0; k < LEAGUE - 1; k++) out.push([L * LEAGUE + k, L * LEAGUE + k + 1]);
-    if (OPPONENTS.length >= 2 * LEAGUE) out.push([LEAGUE - 1, 2 * LEAGUE - 1]);   // the two league bosses together
+    // the league bosses together: Mondo + King Messy (key '4-9', kept for old saves), then King Messy + Queen Chroma (CAREER)
+    for (L = 1; (L + 1) * LEAGUE <= OPPONENTS.length; L++) out.push([L * LEAGUE - 1, (L + 1) * LEAGUE - 1]);
     return out;
   }
   function key(a, b) { return Math.min(a, b) + '-' + Math.max(a, b); }

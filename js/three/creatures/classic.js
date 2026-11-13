@@ -11,7 +11,14 @@ export const STYLE = {
   fox: { dances: ['plane', 'slide', 'spin'], danceAmp: 1.25, turns: 2, speed: 0.78, anticipate: 0.12, overshoot: 0.9, look: 9, breath: 3.6, blink: { c: 0.07, o: 0.12, g: [2.2, 4.6] }, lid: 0.82, moodScale: 0.85, headGain: 0.55, hand: 1.0 },
   owl: { dances: ['robot', 'sky', 'plane'], danceAmp: 1, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.2, look: 5, breath: 5.0, blink: { c: 0.12, o: 0.2, g: [3.5, 7] }, lid: 0.92, moodScale: 1.1, headGain: 0.85, hand: 1.0 },
   wizard: { dances: ['spin', 'sky', 'shuffle'], danceAmp: 0.9, turns: 1, speed: 1.05, anticipate: 0.3, overshoot: 0.5, look: 4.5, breath: 5.2, blink: { c: 0.11, o: 0.18, g: [3, 6] }, lid: 0.88, moodScale: 1.1, headGain: 0.55, hand: 1.0, flourish: true },
-  pip: { dances: ['robot', 'plane', 'slide'], danceAmp: 1.1, turns: 1, speed: 0.95, anticipate: 0.2, overshoot: 0.6, look: 6.5, breath: 4.0, blink: { c: 0.08, o: 0.13, g: [2.4, 5] }, lid: 0.92, moodScale: 0.95, headGain: 0.55, hand: 1.0 }
+  pip: { dances: ['robot', 'plane', 'slide'], danceAmp: 1.1, turns: 1, speed: 0.95, anticipate: 0.2, overshoot: 0.6, look: 6.5, breath: 4.0, blink: { c: 0.08, o: 0.13, g: [2.4, 5] }, lid: 0.92, moodScale: 0.95, headGain: 0.55, hand: 1.0 },
+  // CAREER: Legend League. robot = precise and a touch mechanical; bat = quick glances; octopus = soft and floaty;
+  // dragon = slow, heavy, deliberate; chameleon = calm queen, slow eyes, a little sparkle when she dances.
+  robot: { dances: ['robot', 'shuffle', 'sky'], danceAmp: 0.9, turns: 1, speed: 0.9, anticipate: 0.18, overshoot: 0.1, look: 7, breath: 4.6, blink: { c: 0.06, o: 0.08, g: [3.5, 6.5] }, lid: 0.95, moodScale: 0.95, headGain: 0.6, hand: 1.0 },
+  bat: { dances: ['plane', 'spin', 'sky'], danceAmp: 1.15, turns: 2, speed: 0.85, anticipate: 0.15, overshoot: 0.6, look: 8, breath: 3.8, blink: { c: 0.08, o: 0.12, g: [2.4, 5] }, lid: 0.9, moodScale: 0.9, headGain: 0.6, hand: 1.0 },
+  octopus: { dances: ['shuffle', 'spin', 'slide'], danceAmp: 1, turns: 1, speed: 1.05, anticipate: 0.28, overshoot: 0.45, look: 4.8, breath: 5.4, blink: { c: 0.12, o: 0.18, g: [2.8, 5.8] }, lid: 0.9, moodScale: 1.05, headGain: 0.55, hand: 1.0 },
+  dragon: { dances: ['sky', 'slide', 'plane'], danceAmp: 0.95, turns: 1, speed: 1.15, anticipate: 0.38, overshoot: 0.25, look: 4, breath: 5.8, blink: { c: 0.12, o: 0.2, g: [3.4, 6.8] }, lid: 0.86, moodScale: 1.1, headGain: 0.55, hand: 1.0 },
+  chameleon: { dances: ['spin', 'robot', 'sky'], danceAmp: 0.85, turns: 1, speed: 1.0, anticipate: 0.3, overshoot: 0.3, look: 3.6, breath: 5.2, blink: { c: 0.14, o: 0.22, g: [3.5, 7] }, lid: 0.88, moodScale: 1.1, headGain: 0.5, hand: 1.0, flourish: true }
 };
 
 const SPEC = {
@@ -20,7 +27,13 @@ const SPEC = {
   fox: { color: 0xf08c3a, head: [1.04, 0.9, 0.95], torsoW: 0.95, top: 4.1, L1: 1.3, L2: 1.4 },
   owl: { color: 0x7d5ba6, head: [1.14, 0.95, 0.95], torsoW: 1.0, top: 3.9, L1: 1.3, L2: 1.4 },
   wizard: { color: 0xf1c9a5, head: [0.98, 1.0, 0.95], torsoW: 1.0, top: 5.3, L1: 1.3, L2: 1.4 },
-  pip: { color: 0xffd43b, head: [0.93, 0.88, 0.88], torsoW: 0.9, top: 3.4, L1: 1.25, L2: 1.35 }
+  pip: { color: 0xffd43b, head: [0.93, 0.88, 0.88], torsoW: 0.9, top: 3.4, L1: 1.25, L2: 1.35 },
+  // CAREER (metal / rough: the robot's shiny head)
+  robot: { color: 0xc3ced8, head: [1.08, 0.9, 0.88], torsoW: 1.0, top: 4.35, L1: 1.3, L2: 1.4, metal: 0.45, rough: 0.35 },
+  bat: { color: 0x6c5a7c, head: [1.0, 0.92, 0.92], torsoW: 0.95, top: 4.55, L1: 1.3, L2: 1.4 },
+  octopus: { color: 0xf783ac, head: [1.08, 1.28, 1.0], torsoW: 1.0, top: 4.0, L1: 1.35, L2: 1.45 },
+  dragon: { color: 0x9775fa, head: [1.04, 0.92, 0.95], torsoW: 1.05, top: 4.1, L1: 1.3, L2: 1.4 },
+  chameleon: { color: 0x69db7c, head: [1.0, 0.92, 1.0], torsoW: 0.95, top: 4.4, L1: 1.3, L2: 1.4 }
 };
 
 // the opponents are seen from above across the table: a bigger, taller shirt number reads clearly there
@@ -34,7 +47,7 @@ export function buildClassic(kind) {
   if (!SPEC[kind]) kind = 'pip';
   const sp = SPEC[kind], team = Object.assign({}, TEAM[kind], NUM_BIG), H = sp.head, root = new THREE.Group(), body = new THREE.Group();
   root.add(body);
-  const fur = std(sp.color, { vertexColors: true }), furP = std(sp.color), black = std(0x15161a, { roughness: 0.35 }), white = std(0xffffff, { roughness: 0.3 });
+  const fur = std(sp.color, { vertexColors: true, metalness: sp.metal || 0, roughness: sp.rough || 0.62 }), furP = std(sp.color, { metalness: sp.metal || 0, roughness: sp.rough || 0.62 }), black = std(0x15161a, { roughness: 0.35 }), white = std(0xffffff, { roughness: 0.3 });
   const jerseyM = std(hex(team.jersey)), trimM = std(hex(team.trim));
   const ex = []; // per-frame extras: functions (P, now)
   const mesh = (geo, mat, parent, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); if (sx) m.scale.set(sx, sy === undefined ? sx : sy, sz === undefined ? sx : sz); parent.add(m); return m; };
@@ -50,6 +63,7 @@ export function buildClassic(kind) {
   const head = new THREE.Group(); head.position.set(0, 0.66, 0.08); neck.add(head);
   let hg;
   if (kind === 'pip') hg = shade(roundedBox(H[0] * 2, H[1] * 2, H[2] * 2, 0.5, 10), 1, 0.86);
+  else if (kind === 'robot') hg = shade(roundedBox(H[0] * 2, H[1] * 2, H[2] * 2, 0.48, 10), 1, 0.8);
   else { hg = new THREE.SphereGeometry(1, 40, 28); hg.scale(H[0], H[1], H[2]); shade(hg, 1, 0.82); }
   const headMesh = new THREE.Mesh(hg, fur); head.add(headMesh);
   // put an object on the head surface, facing outward
@@ -69,6 +83,12 @@ export function buildClassic(kind) {
     case 'fox': Object.assign(E, { er: 0.23, yaw: 0.5, pitch: 0.2, sclera: 0xfffaf0, iris: 0xd97706, irisR: 0.66, pupilR: 0.4, lid: 0.82 }); Object.assign(B, { color: 0x9a4a0b, len: 0.46, th: 0.075, pitch: 0.58, yaw: 0.5, tilt0: 0.16 }); Object.assign(M, { pitch: -0.18, depth: 0, R: 0.14, col: 0x2b1b12 }); M.snout = true; break;
     case 'owl': Object.assign(E, { er: 0.32, yaw: 0.47, pitch: 0.1, depth: 0.04, sclera: 0xffd23f, iris: 0x111111, irisR: 0.01, pupilR: 0.5, lid: 0.92 }); Object.assign(B, { color: 0x4a3470, len: 0.56, th: 0.12, pitch: 0.62, yaw: 0.5, tilt0: 0.12 }); M.mode = 'beak'; break;
     case 'wizard': Object.assign(E, { er: 0.2, yaw: 0.38, pitch: 0.16, sclera: 0xffffff, iris: 0x3d6ad9, irisR: 0.75, pupilR: 0.4, lid: 0.88 }); Object.assign(B, { color: 0xf8f9fa, len: 0.62, th: 0.17, pitch: 0.46, yaw: 0.38, tilt0: 0.1, depth: 0.04 }); Object.assign(M, { pitch: -0.5, depth: 0.1, R: 0.17, col: 0x5a2a2a }); M.mode = 'hidden'; break;
+    // CAREER
+    case 'robot': Object.assign(E, { er: 0.27, yaw: 0.4, pitch: 0.12, depth: 0.02, sclera: 0xe3fafc, iris: 0x15aabf, irisR: 0.72, pupilR: 0.36, lidC: 0x8a99a6, lid: 0.95 }); Object.assign(B, { color: 0x495057, len: 0.44, th: 0.06, pitch: 0.55, yaw: 0.4, depth: 0.08 }); Object.assign(M, { pitch: -0.4, depth: 0.08, R: 0.2, col: 0x343a40, t: 0.045, base: 0.25 }); break;
+    case 'bat': Object.assign(E, { er: 0.29, yaw: 0.42, pitch: 0.14, depth: 0.03, sclera: 0xffffff, iris: 0x7b2cbf, irisR: 0.78, pupilR: 0.5, lid: 0.9 }); Object.assign(B, { color: 0x3b2e47, len: 0.4, th: 0.065, pitch: 0.6, yaw: 0.42, tilt0: 0.12 }); Object.assign(M, { pitch: -0.46, depth: 0.08, R: 0.16, col: 0x3b1e2e, base: 0.3 }); break;
+    case 'octopus': Object.assign(E, { er: 0.3, yaw: 0.36, pitch: -0.08, depth: 0.03, sclera: 0xffffff, iris: 0x1864ab, irisR: 0.74, pupilR: 0.46, lidC: 0xf06595, lid: 0.9 }); Object.assign(B, { color: 0xc2255c, len: 0.36, th: 0.06, pitch: 0.28, yaw: 0.38, tilt0: -0.1 }); Object.assign(M, { pitch: -0.4, depth: 0.04, R: 0.15, col: 0x9c1a4a, base: 0.4 }); break;
+    case 'dragon': Object.assign(E, { er: 0.25, yaw: 0.46, pitch: 0.22, depth: 0.02, sclera: 0xfff9db, iris: 0xf08c00, irisR: 0.7, pupilR: 0.32, lid: 0.86 }); Object.assign(B, { color: 0x5f3dc4, len: 0.48, th: 0.08, pitch: 0.6, yaw: 0.46, tilt0: 0.14 }); Object.assign(M, { pitch: -0.18, depth: 0, R: 0.17, col: 0x3b2a8a }); M.snout = true; M.snoutPos = [0, -0.42, 1.52]; break;
+    case 'chameleon': Object.assign(E, { er: 0.27, yaw: 0.62, pitch: 0.12, depth: 0.1, sclera: 0xffffff, iris: 0x2b8a3e, irisR: 0.66, pupilR: 0.42, lidC: 0x51cf66, lid: 0.88 }); Object.assign(B, { color: 0x2b8a3e, len: 0.34, th: 0.06, pitch: 0.5, yaw: 0.56, tilt0: 0.08, depth: 0.12 }); Object.assign(M, { pitch: -0.36, depth: 0.02, R: 0.24, col: 0x2b5a33, t: 0.04, base: 0.35 }); break;
     case 'pip': Object.assign(E, { er: 0.24, yaw: 0.44, pitch: 0.12, depth: 0.02, sclera: 0x1b1b1f, iris: 0x1b1b1f, irisR: 0.01, pupilR: 0.7, lid: 0.92 }); Object.assign(B, { color: 0x6a3d00, len: 0.4, th: 0.07, pitch: 0.55, yaw: 0.44, depth: 0.06 }); Object.assign(M, { pitch: -0.42, depth: 0.06, R: 0.26, col: 0x5a2a1a, t: 0.05, base: 0.3 }); break;
   }
   const scleraM = std(E.sclera, { roughness: 0.2 }), irisM = std(E.iris, { roughness: 0.25 }), pupilM = std(0x050505, { roughness: 0.2 }), glintM = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -98,7 +118,7 @@ export function buildClassic(kind) {
   let mouth = null, jaw = null, beakTop = null;
   if (M.mode === 'arc' || M.mode === 'hidden') {
     const g = new THREE.Group();
-    if (M.snout) { g.position.set(0, -0.4, 1.485); g.rotation.x = 0.45; head.add(g); } else if (M.mode === 'hidden') { g.position.set(0, -0.5, 1.14); head.add(g); } else on(g, M.yaw, M.pitch, M.depth);
+    if (M.snout) { const sp0 = M.snoutPos || [0, -0.4, 1.485]; g.position.set(sp0[0], sp0[1], sp0[2]); g.rotation.x = 0.45; head.add(g); } else if (M.mode === 'hidden') { g.position.set(0, -0.5, 1.14); head.add(g); } else on(g, M.yaw, M.pitch, M.depth);
     const lip = mesh(new THREE.TorusGeometry(M.R, M.t, 8, 22, Math.PI), std(M.col, { roughness: 0.5 }), g, 0, 0, 0.01);
     const fill = mesh(new THREE.CircleGeometry(M.R * 0.97, 24, Math.PI, Math.PI), std(0x4a0f18, { roughness: 0.6, side: THREE.DoubleSide }), g, 0, 0, 0.005);
     const tongue = sph(M.R * 0.5, std(M.tongue), fill, 0, -M.R * 0.55, 0.01, 1, 0.6, 0.3);
@@ -182,6 +202,101 @@ export function buildClassic(kind) {
     const ball = sph(0.17, std(0xff5a5a, { emissive: 0x4a0000, roughness: 0.3 }), ant, 0, 0.68, 0);
     ex.push((P, now) => { ant.rotation.z = Math.sin(now / 1900) * 0.05 - P.headRoll * 0.6 + P.hatTilt; ant.rotation.x = P.headPitch * -0.3 + Math.sin(now / 2300) * 0.03; });
   }
+  // ----- CAREER: Legend League details -----
+  // a tapered tube along a curve (tentacles, tails): radius r at the root, r * tip at the end
+  const taper = (pts, r, tip, mat, parent) => {
+    const curve = new THREE.CatmullRomCurve3(pts.map((q) => new THREE.Vector3(q[0], q[1], q[2]))), TS = 28, RS = 10;
+    const geo = new THREE.TubeGeometry(curve, TS, r, RS, false), pos = geo.attributes.position, c = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let i = 0; i <= TS; i++) {
+      curve.getPointAt(i / TS, c); const k = 1 - (1 - tip) * (i / TS);
+      for (let j = 0; j <= RS; j++) { const n = i * (RS + 1) + j; v.fromBufferAttribute(pos, n).sub(c).multiplyScalar(k).add(c); pos.setXYZ(n, v.x, v.y, v.z); }
+    }
+    geo.computeVertexNormals();
+    const last = pts[pts.length - 1], m = mesh(geo, mat, parent, 0, 0, 0); sph(r * tip * 1.02, mat, parent, last[0], last[1], last[2]); return m;
+  };
+  if (kind === 'robot') {
+    const metal = std(0x868e96, { metalness: 0.65, roughness: 0.3 }), led = std(0x66d9e8, { emissive: 0x1098ad, roughness: 0.3 });
+    [-1, 1].forEach((s) => { const b = new THREE.Group(); on(b, s * Math.PI / 2, 0.05, 0.02); mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.16, 20), metal, b, 0, 0, 0.04).rotation.x = Math.PI / 2; mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 6), std(0xffd43b, { metalness: 0.5, roughness: 0.3 }), b, 0, 0, 0.14).rotation.x = Math.PI / 2; });
+    [-1, 1].forEach((s) => { on(mesh(new THREE.CircleGeometry(0.07, 16), led, head, 0, 0, 0), s * 0.72, -0.22, 0.09); });
+    const ant = new THREE.Group(); ant.position.set(0, H[1] * 0.95, 0); head.add(ant);
+    mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.12, 16), metal, ant, 0, 0.04, 0);
+    mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.62, 8), metal, ant, 0, 0.38, 0);
+    const bulb = sph(0.16, std(0xff6b6b, { emissive: 0x5c0000, roughness: 0.25 }), ant, 0, 0.74, 0);
+    ex.push((P) => { ant.rotation.z = -P.headRoll * 0.7 + P.hatTilt; ant.rotation.x = -P.headPitch * 0.3 - 0.1 * P.earUp; bulb.material.emissive.setRGB(0.36 + 0.5 * P.happyAmt + 0.4 * P.angry, 0.02 * P.happyAmt, 0.3 * P.sadAmt); });
+  }
+  if (kind === 'bat') {
+    const pink = std(0xf3a6c8), dk = std(0x4a3b58), wingM = std(0x4a3b58, { side: THREE.DoubleSide, roughness: 0.8 });
+    on(sph(1, std(0xcbb3d6), head, 0, 0, 0, 0.5, 0.34, 0.2), 0, -0.25, -0.06);
+    on(sph(1, std(0x3b2232), head, 0, 0, 0, 0.14, 0.08, 0.08), 0, -0.08, 0.12);
+    [-1, 1].forEach((s) => { on(cone(0.045, 0.14, white, head, 0, 0, 0, 8), s * 0.1, -0.56, 0.06, Math.PI); });
+    [-1, 1].forEach((s) => { on(sph(1, pink, head, 0, 0, 0, 0.15, 0.1, 0.05), s * 0.78, -0.24, 0.08); });
+    [-1, 1].forEach((s) => {
+      const ear = new THREE.Group(); ear.position.set(s * 0.52, 0.66, -0.05); ear.rotation.z = -s * 0.42; head.add(ear); ears.push({ g: ear, s: s, z: -s * 0.42, x: 0 });
+      cone(0.42, 1.25, furP, ear, 0, 0.56, 0, 16); cone(0.26, 0.92, pink, ear, 0, 0.5, 0.15, 16);
+    });
+    const tuft = cone(0.12, 0.32, dk, head, 0.05, 0.95, 0.2, 10); tuft.rotation.z = -0.4;
+    ex.push((P) => { for (let i = 0; i < 2; i++) { const e = ears[i], f = e.s < 0 ? P.earL : P.earR; e.g.rotation.z = e.z - e.s * (f - 0.18 * P.earUp + 0.45 * P.sadAmt); e.g.rotation.x = -0.25 * P.sadAmt + 0.1 * P.earUp; } });
+    // folded wings behind the shoulders: they open a little when it is happy and droop when sad
+    const wsh = new THREE.Shape(); wsh.moveTo(0, 0.2); wsh.lineTo(1.0, 0.8); wsh.lineTo(2.1, 1.0); wsh.quadraticCurveTo(1.8, 0.3, 1.95, -0.3); wsh.quadraticCurveTo(1.55, -0.1, 1.3, -0.75); wsh.quadraticCurveTo(0.95, -0.45, 0.6, -1.05); wsh.quadraticCurveTo(0.35, -0.6, 0, -0.9); wsh.closePath();
+    const wgeo = new THREE.ShapeGeometry(wsh, 10), wings = [-1, 1].map((s) => {
+      const g = new THREE.Group(); g.position.set(s * 0.62, 1.35, -0.6); body.add(g);
+      const m = new THREE.Mesh(wgeo, wingM); m.scale.set(s, 1, 1); g.add(m);
+      const bone = mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3, 6), dk, g, s * 1.05, 0.6, 0.01); bone.rotation.z = -s * 1.19;
+      return { g: g, s: s };
+    });
+    ex.push((P) => { for (let i = 0; i < 2; i++) { const w = wings[i]; w.g.rotation.y = w.s * (0.75 - 0.35 * P.happyAmt + 0.1 * P.sadAmt) + 0.02 * P.breath; w.g.rotation.z = w.s * (0.08 * P.shrug - 0.3 * P.sadAmt); } });
+  }
+  if (kind === 'octopus') {
+    const spot = std(0xe64980), lite = std(0xfcc2d7);
+    [[0.35, 0.62, 0.16], [-0.45, 0.5, 0.12], [0.1, 0.85, 0.1], [-0.15, 0.3, 0.09], [0.6, 0.28, 0.1]].forEach((q) => { on(sph(1, spot, head, 0, 0, 0, q[2], q[2], q[2] * 0.3), q[0], q[1], -0.02); });
+    [-1, 1].forEach((s) => { on(sph(1, std(0xff8fab), head, 0, 0, 0, 0.16, 0.1, 0.05), s * 0.66, -0.32, 0.06); });
+    // six more arms (with the two in the sleeves that makes eight): curling out from its sides and back
+    const tents = [];
+    [-1, 1].forEach((s) => {
+      [[[0.95, 0.95, -0.25], [1.45, 0.62, -0.35], [1.9, 0.85, -0.3], [1.95, 1.3, -0.15], [1.68, 1.42, -0.05]],
+        [[0.8, 0.35, -0.4], [1.35, 0.12, -0.6], [1.85, 0.3, -0.75], [1.85, 0.68, -0.75], [1.6, 0.74, -0.65]],
+        [[0.4, 0.5, -0.85], [0.6, 0.25, -1.4], [1.0, 0.45, -1.75], [1.05, 0.85, -1.6], [0.85, 0.9, -1.45]]].forEach((pts, k) => {
+        const g = new THREE.Group(); body.add(g);
+        taper(pts.map((q) => [q[0] * s, q[1], q[2]]), 0.2 - k * 0.02, 0.32, furP, g);
+        for (let j = 1; j < 3; j++) { const q = pts[j]; sph(0.06, lite, g, q[0] * s, q[1] - 0.16, q[2] + 0.05); }
+        tents.push({ g: g, s: s, k: k });
+      });
+    });
+    ex.push((P) => { for (let i = 0; i < tents.length; i++) { const t = tents[i]; t.g.rotation.z = t.s * (0.035 * P.breath + 0.18 * P.happyAmt - 0.16 * P.sadAmt) * (1 - 0.25 * t.k); t.g.rotation.x = 0.02 * P.breath * (t.k - 1); } });
+  }
+  if (kind === 'dragon') {
+    const cream = std(0xffe066, { metalness: 0.3, roughness: 0.35 }), belly = std(0xffec99), gold = std(0xfab005, { metalness: 0.35, roughness: 0.35 }), nost = std(0x3b2a8a);
+    sph(1, furP, head, 0, -0.26, 0.8, 0.62, 0.46, 0.74);
+    sph(1, belly, head, 0, -0.44, 0.84, 0.5, 0.26, 0.62);
+    [-1, 1].forEach((s) => { sph(0.06, nost, head, s * 0.17, -0.12, 1.5); on(sph(1, std(0xffa8a8), head, 0, 0, 0, 0.15, 0.1, 0.05), s * 0.86, -0.18, 0.08); });
+    [-1, 1].forEach((s) => {
+      const h = new THREE.Group(); h.position.set(s * 0.5, 0.72, -0.25); h.rotation.set(-0.55, 0, -s * 0.35); head.add(h);
+      cone(0.21, 0.62, cream, h, 0, 0.31, 0, 14); const t2 = cone(0.12, 0.44, cream, h, 0, 0.76, -0.1, 12); t2.rotation.x = -0.45;
+    });
+    [1.25, 0.9, 0.55, 0.2].forEach((pt, k) => { on(cone(0.13 - k * 0.015, 0.34 - k * 0.03, gold, head, 0, 0, 0, 10), Math.PI, pt, -0.02); });
+    [[1.5, 0.95], [1.1, 1.06], [0.7, 1.1]].forEach((q, k) => { const c = cone(0.15 - 0.02 * k, 0.36, gold, body, 0, q[0], -q[1], 10); c.rotation.x = -Math.PI / 2 - 0.25; });
+    const tail = new THREE.Group(); body.add(tail);
+    taper([[0, 0.45, -0.75], [0.4, 0.15, -1.5], [1.15, 0.12, -1.95], [1.85, 0.4, -1.75]], 0.34, 0.25, furP, tail);
+    const spade = cone(0.24, 0.5, gold, tail, 2.05, 0.5, -1.68, 4); spade.rotation.set(0, 0, -1.25); spade.scale.set(1, 1, 0.35);
+    ex.push((P) => { tail.rotation.y = 0.08 * P.happyAmt + 0.015 * P.breath; tail.rotation.x = -0.12 * P.happyAmt + 0.1 * P.sadAmt; });
+  }
+  if (kind === 'chameleon') {
+    const gold = std(0xffd43b, { metalness: 0.55, roughness: 0.3 }), gem = std(0xe64980, { roughness: 0.1 }), dkG = std(0x40c057);
+    const csh = new THREE.Shape(); csh.moveTo(-0.75, 0); csh.quadraticCurveTo(-0.55, 0.85, 0.3, 0.75); csh.quadraticCurveTo(0.75, 0.6, 0.85, 0); csh.closePath();
+    const casque = mesh(new THREE.ExtrudeGeometry(csh, { depth: 0.3, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 3 }), dkG, head, -0.15, 0.5, 0.05); casque.rotation.y = Math.PI / 2;
+    // her crown sits on the front of the casque
+    const crown = new THREE.Group(); crown.position.set(0, 1.3, 0.05); crown.rotation.x = -0.1; head.add(crown);
+    mesh(new THREE.CylinderGeometry(0.26, 0.29, 0.16, 18, 1, true), std(0xffd43b, { metalness: 0.55, roughness: 0.3, side: THREE.DoubleSide }), crown, 0, 0, 0);
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; cone(0.06, 0.17, gold, crown, Math.sin(a) * 0.26, 0.16, Math.cos(a) * 0.26, 8); sph(0.03, gold, crown, Math.sin(a) * 0.26, 0.26, Math.cos(a) * 0.26); }
+    sph(0.06, gem, crown, 0, 0.02, 0.29);
+    eyes.forEach((e) => { const r = new THREE.Mesh(new THREE.TorusGeometry(E.er * 1.0, E.er * 0.32, 10, 24), furP); r.position.z = E.er * 0.12; e.g.add(r); });
+    const tail = new THREE.Group(), tp = [[0.2, 0.35, -0.85], [0.9, 0.2, -1.1]]; body.add(tail);
+    for (let k = 0; k <= 10; k++) { const a = k / 10 * Math.PI * 2.4, rr = 0.55 * (1 - k / 13); tp.push([1.5 + Math.sin(a) * rr, 0.75 - Math.cos(a) * rr, -1.15]); }
+    taper(tp, 0.26, 0.3, furP, tail);
+    // her colours change with her mood (one-shots only, never on a loop): warmer when happy, cooler when sad, paler when nervous
+    const base = new THREE.Color(sp.color), warm = new THREE.Color(0xffd43b), cool = new THREE.Color(0x74c0fc), pale = new THREE.Color(0xd3f9d8), cc = new THREE.Color();
+    ex.push((P) => { cc.copy(base).lerp(warm, 0.55 * P.happyAmt).lerp(cool, 0.5 * P.sadAmt).lerp(pale, 0.6 * Math.min(1, P.sweat * 1.5)); fur.color.copy(cc); furP.color.copy(cc); tail.rotation.z = -0.05 * P.happyAmt + 0.01 * P.breath; });
+  }
   const steamM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), puffGeo = new THREE.SphereGeometry(1, 12, 10);
   const puffs = [];
   [-1, 1].forEach((s) => { for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(puffGeo, steamM); m.visible = false; head.add(m); puffs.push({ m, s, k }); } });
@@ -189,7 +304,7 @@ export function buildClassic(kind) {
   const sweat = new THREE.Group(); head.add(sweat); sweat.visible = false;
   { const bead = mesh(new THREE.SphereGeometry(1, 12, 10), tearM, sweat, 0, 0, 0, 0.13, 0.16, 0.12), tip = cone(0.1, 0.22, tearM, sweat, 0, 0.17, 0, 10); tip.scale.set(1, 1, 0.9); on(sweat, 0.78, 0.45, 0.04); }
   // ----- arms -----
-  const armColor = { sloth: 0x9a7b57, penguin: 0x262b36, fox: 0xf08c3a, owl: 0x7d5ba6, wizard: 0xf1c9a5, pip: 0xffd43b }[kind];
+  const armColor = { sloth: 0x9a7b57, penguin: 0x262b36, fox: 0xf08c3a, owl: 0x7d5ba6, wizard: 0xf1c9a5, pip: 0xffd43b, robot: 0xadb5bd, bat: 0x6c5a7c, octopus: 0xf783ac, dragon: 0x9775fa, chameleon: 0x69db7c }[kind];
   const foreC = armColor;
   const hand = {
     sloth: { mat: std(0xa3e635, { roughness: 0.5 }), scale: 1.12, stripe: std(0xffffff) },
@@ -197,7 +312,12 @@ export function buildClassic(kind) {
     fox: { mat: std(0x24262c), scale: 1.0 },
     owl: { mat: std(0x7d5ba6), scale: 1.0, tip: std(0xf4e8c8) },
     wizard: { mat: std(0xf1c9a5), scale: 1.0 },
-    pip: { mat: std(0xe8590c), scale: 1.05 }
+    pip: { mat: std(0xe8590c), scale: 1.05 },
+    robot: { mat: std(0x5c677d, { metalness: 0.55, roughness: 0.35 }), scale: 1.05, tip: std(0xffd43b, { metalness: 0.4, roughness: 0.35 }) },
+    bat: { mat: std(0x4a3b58), scale: 0.95 },
+    octopus: { mat: std(0xf783ac), scale: 1.05, tip: std(0xfcc2d7) },
+    dragon: { mat: std(0x7950f2), scale: 1.05, tip: std(0xffe066) },
+    chameleon: { mat: std(0x51cf66), scale: 0.95, tip: std(0x40c057) }
   }[kind];
   const arms = [-1, 1].map((s) => {
     const a = new ArmRig(body, s, {

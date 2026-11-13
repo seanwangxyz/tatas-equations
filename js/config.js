@@ -84,10 +84,43 @@ var OPPONENTS = [
   { id: 'splosh', name: 'Splosh', title: 'the Careful Puglin', emoji: '🐷', color: '#d0ebff', stars: 4, style: 'careful', maxDigits: 5, timeMs: 500, seeNow: 0.8, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 60, tip: 'Splosh checks everything twice. Her weak spot: a Now! she is not expecting.', taste: 'Loves even numbers and neat, tidy answers.', likes: { syms: ['2', '4', '6', '8'], goal: 'even', sol: [['2'], ['4'], ['6']] }, think: ['Carefully, carefully…', 'Let me check twice…', 'Hmm, is that safe?'], now: 'Oh! Oh! NOW!', imp: 'I checked twice: IMPOSSIBLE!', goal: 'A careful little Goal!', lose: 'Oh my! You were too good!', win: 'Careful wins the cup!' },
   { id: 'blaze', name: 'Blaze', title: 'the Fiery Imp', emoji: '👹', color: '#ffc9c9', stars: 5, style: 'pouncer', maxDigits: 5, timeMs: 600, seeNow: 1, seeImp: 0.9, smart: 0.95, goalCubes: 3, goalMax: 80, tip: 'Blaze never misses a Now! Do not leave him one.', taste: 'Loves doubles and square numbers: 4, 9, 16, 25…', likes: { syms: ['2', '^', '*'], goal: 'square', sol: [['^', '2'], ['*', '2'], ['+']] }, think: ['Quick, quick, quick!', 'Fire it up…', 'Fast feet, fast brain!'], now: 'Sizzle! NOW!', imp: 'Smoke and ash… IMPOSSIBLE!', goal: 'A red-hot Goal!', lose: 'Whoa! You put my fire out!', win: 'Too hot to handle!' },
   { id: 'hex', name: 'Hex', title: 'the Tricky Imp', emoji: '👺', color: '#d3f9d8', stars: 5, fire: 1, style: 'trickster', maxDigits: 5, timeMs: 700, seeNow: 1, seeImp: 0.95, smart: 1, goalCubes: 4, goalMax: 99, tip: 'Hex is as strong as Mondo and sets longer, sneakier Goals.', taste: 'Loves ÷, and fractions once you unlock them.', likes: { syms: ['/'], goal: 'div', ops: ['/'], sol: [['/']], frac: true }, think: ['Hee hee… a trick…', 'Let me twist this…', 'Sneaky, sneaky…'], now: 'Hee hee! NOW!', imp: 'Tricked you… IMPOSSIBLE!', goal: 'A twisty Goal for you!', lose: 'Out-tricked! How did you do that?', win: 'Tricks win the match!' },
-  { id: 'zog', name: 'Messy', title: 'the Messy Imp King', emoji: '😈', color: '#e5dbff', stars: 5, fire: 2, style: 'boss', maxDigits: 6, timeMs: 900, seeNow: 1, seeImp: 1, smart: 1, goalCubes: 5, goalMax: 99, tip: 'King Messy looks like a mess but misses nothing and sets the hardest Goals in the game.', taste: 'A bit of everything, and the longest Goals.', likes: { syms: ['+', '-', '*', '/', '^', 'r'], goal: 'long', mix: true }, think: ['The King considers…', 'Royal thinking…', 'Silence! I am counting.'], now: 'By my crown… NOW!', imp: 'The King declares: IMPOSSIBLE!', goal: 'A Goal fit for a king!', lose: 'I bow to you. Take the crown!', win: 'Long live the King!' }
+  { id: 'zog', name: 'Messy', title: 'the Messy Imp King', emoji: '😈', color: '#e5dbff', stars: 5, fire: 2, style: 'boss', maxDigits: 6, timeMs: 900, seeNow: 1, seeImp: 1, smart: 1, goalCubes: 5, goalMax: 99, tip: 'King Messy looks like a mess but misses nothing and sets the hardest Goals in the game.', taste: 'A bit of everything, and the longest Goals.', likes: { syms: ['+', '-', '*', '/', '^', 'r'], goal: 'long', mix: true }, think: ['The King considers…', 'Royal thinking…', 'Silence! I am counting.'], now: 'By my crown… NOW!', imp: 'The King declares: IMPOSSIBLE!', goal: 'A Goal fit for a king!', lose: 'I bow to you. Take the crown!', win: 'Long live the King!' },
+  // ---- CAREER: Legend League (opponents 11-15), code-built creatures (js/three/creatures/classic.js) ----
+  // Every one plays like King Messy (sees everything) and adds the new skills read by js/ai.js:
+  //   sure = 1: never guesses Impossible!; when its quick search is not finished it thinks longer first.
+  //   wide = 1: looks at every cube for its move, not just a few.
+  //   trap = chance per move to look one move further: "after my move, can my opponent still make a safe move?"
+  //          and prefer the move that leaves the fewest safe answers (only near the end of a shake; trapMs = how long).
+  //   moveMs = how long it checks each move for "does this hand my opponent a Now!?" (the others use 90 ms).
+  //   timeMs is also a little higher than King Messy's: it searches longer for a Now! or a Solution.
+  // sig = its SIGNATURE RULE (js/career.js): announced before the match, shown on its card. Built only from rules
+  //   the engine already has (a variation card, a bonus die). light = only on shakes where it sets the Goal.
+  { id: 'bleep', name: 'Bleep', title: 'the Busy Robot', emoji: '🤖', color: '#c5f6fa', stars: 5, fire: 2, style: 'robot', maxDigits: 6, timeMs: 1000, seeNow: 1, seeImp: 1, smart: 1, sure: 1, wide: 1, trap: 0.3, trapMs: 600, moveMs: 150, goalCubes: 5, goalMax: 99,
+    sig: { kind: 'card', card: 'multiops' }, tip: 'Bleep never guesses. Every match with Bleep uses the Use It Again card.', taste: 'Loves doing the same thing again and again: + + +.', likes: { syms: ['+', '*', '1'], ops: ['+', '*'], sol: [['+', '+'], ['*', '*'], ['+']] },
+    think: ['Bleep. Computing…', 'Whirr, whirr…', 'Loading clever move…'], now: 'Bleep bloop: NOW!', imp: 'Error 404: IMPOSSIBLE!', goal: 'Goal printed! Bleep!', lose: 'Bleep… you win! Rebooting.', win: 'Task complete. Bleep!' },
+  { id: 'flip', name: 'Flip', title: 'the Upside-down Bat', emoji: '🦇', color: '#e5dbff', stars: 5, fire: 2, style: 'bat', maxDigits: 6, timeMs: 1050, seeNow: 1, seeImp: 1, smart: 1, sure: 1, wide: 1, trap: 0.5, trapMs: 700, moveMs: 200, goalCubes: 5, goalMax: 99,
+    sig: { kind: 'card', card: 'upside' }, tip: 'Flip sees the world upside-down: every match with Flip uses the Upside-down card.', taste: 'Loves taking away, and numbers below zero.', likes: { syms: ['-', '9', '6'], ops: ['-'], sol: [['-', '-'], ['-']] },
+    think: ['Hanging around… thinking…', 'Let me look at it upside-down…', 'Flap… flap… hmm.'], now: 'Swoop! NOW!', imp: 'Topsy-turvy… IMPOSSIBLE!', goal: 'A Goal from the ceiling!', lose: 'You turned me right side up! Well played!', win: 'Upside-down and on top!' },
+  { id: 'squiggle', name: 'Squiggle', title: 'the Eight-Armed Octopus', emoji: '🐙', color: '#ffd8e8', stars: 5, fire: 3, style: 'octopus', maxDigits: 6, timeMs: 1100, seeNow: 1, seeImp: 1, smart: 1, sure: 1, wide: 1, trap: 0.7, trapMs: 800, moveMs: 250, goalCubes: 5, goalMax: 99,
+    sig: { kind: 'card', card: 'basem', set: { base: 8 } }, tip: 'Squiggle has eight arms, so Squiggle counts in eights: every match uses Base 8.', taste: 'Loves eights, and two-cube numbers.', likes: { syms: ['8', '4', '2', '*'], ops: ['*'], sol: [['*'], ['2']] },
+    think: ['Eight arms, eight thoughts…', 'Blub… thinking…', 'Squiggle, squiggle…'], now: 'All eight arms up: NOW!', imp: 'Blub blub… IMPOSSIBLE!', goal: 'A wiggly Goal for you!', lose: 'Eight cheers for you! You win!', win: 'Eight arms beat two!' },
+  { id: 'nugget', name: 'Nugget', title: 'the Treasure Dragon', emoji: '🐉', color: '#fff3bf', stars: 5, fire: 3, style: 'dragon', maxDigits: 6, timeMs: 1200, seeNow: 1, seeImp: 1, smart: 1, sure: 1, wide: 1, trap: 0.85, trapMs: 900, moveMs: 300, goalCubes: 5, goalMax: 99,
+    sig: { kind: 'bonus', die: 'power' }, tip: 'Nugget guards a golden treasure: every match with Nugget has the gold Power die in it.', taste: 'Loves gold: the Power die, and powers ^.', likes: { syms: ['^', '*'], goal: 'pow', ops: ['^'], sol: [['^'], ['*']] },
+    think: ['Counting my treasure…', 'Hmm, shiny thoughts…', 'A dragon never rushes.'], now: 'ROAR! NOW!', imp: 'Smoke rings say… IMPOSSIBLE!', goal: 'A golden Goal!', lose: 'You may keep a gold coin. You won it!', win: 'My treasure stays with me!' },
+  { id: 'chroma', name: 'Chroma', title: 'the Chameleon Queen', emoji: '🦎', color: '#d3f9d8', stars: 5, fire: 4, style: 'chameleon', maxDigits: 6, timeMs: 1300, seeNow: 1, seeImp: 1, smart: 1, sure: 1, wide: 1, trap: 1, trapMs: 1000, moveMs: 350, goalCubes: 5, goalMax: 99,
+    sig: { kind: 'shuffle' }, tip: 'Queen Chroma changes colour AND rules: a different variation card every shake. The final boss!', taste: 'Loves change: a bit of everything, and long Goals.', likes: { syms: ['+', '-', '*', '/', '^', 'r'], goal: 'long', mix: true },
+    think: ['The Queen changes her mind…', 'New colour, new idea…', 'Shh. Blending in. Thinking.'], now: 'Colour change… NOW!', imp: 'In every colour: IMPOSSIBLE!', goal: 'A Goal in a new colour!', lose: 'You saw through all my colours! You win!', win: 'The Queen keeps her crown… and her colours!' }
 ];
-var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99', '2', '5', '11', '13', '10'];
-var LEAGUE = 5; // creatures per league: 0-4 classic, 5-9 monsters
+// CAREER: light signatures for the two older league bosses (only on shakes where they set the Goal).
+OPPONENTS[4].sig = { kind: 'card', card: 'twodigit', light: true };
+OPPONENTS[9].sig = { kind: 'card', card: 'threeops', light: true };
+var CREATURE_KINDS = ['sloth', 'penguin', 'fox', 'owl', 'wizard'], JERSEYS = ['1', '4', '9', '8', '99', '2', '5', '11', '13', '10', '3', '6', '88', '12', '21'];
+// CAREER: the Legend League's own code-built kinds (opponents 11-15; js/three/creatures/classic.js builds them).
+var CAREER_KINDS = ['robot', 'bat', 'octopus', 'dragon', 'chameleon'];
+var LEAGUE = 5; // creatures per league: 0-4 classic, 5-9 monsters, 10-14 Legend League (CAREER)
+var LEAGUE_NAMES = ['Classic League', 'Monster League', 'Legend League']; // CAREER
+function leagueOf(i) { return Math.floor(i / LEAGUE); }                   // CAREER: 0, 1 or 2
+function isLeagueBoss(i) { return (i + 1) % LEAGUE === 0; }               // CAREER: 4, 9, 14
 // An opponent is open if it starts a league or the one before it has been beaten.
 function oppOpen(i) { return i % LEAGUE === 0 || !!S.beaten[i - 1]; }
 function oppStars(o) { return '★'.repeat(o.stars) + '<span style="opacity:.3">' + '★'.repeat(5 - o.stars) + '</span>' + (o.fire ? ' ' + '🔥'.repeat(o.fire) : ''); }
@@ -282,9 +315,91 @@ var TALK = {
     tasteMove: ['The King uses every kind of cube.', 'A royal cube for the royal mat.', 'Every operation serves the King!'],
     tasteSol: ['A bit of everything. Royal math!', 'Many operations, one King!', 'The King mixed them all. Done!'],
     reply: { friendly: ['The King thanks you.', 'A noble gesture. I approve.', 'You have royal manners.'], cheeky: ['Ha! Cheek! To a KING!', 'Bold words, challenger!', 'Ooh. The court gasps.'], think: ['Think well. The King can wait.', 'A wise ruler thinks first.', 'Take your time. I shall polish my crown.'] }
+  },
+  // ---- CAREER: Legend League ----
+  bleep: {
+    gloat: ['Bleep! Win detected.', 'Calculation correct. Point to Bleep!', 'Number 3 scores. Beep beep!', 'My gears are doing a happy dance.', 'Task: win the shake. Status: done!'],
+    sore: ['Bleep… unexpected result.', 'Does not compute! Well played.', 'My circuits say: you were better.', 'Error! Error! Nice move, though.', 'Saving your move to my memory. Bleep.'],
+    trash: ['Bleep. I have checked this move 1,000 times.', 'My battery is full. Is yours?', 'Repeat after me: Bleep wins.', 'Processing… processing… still winning.', 'I never guess. I compute.'],
+    bluff: ['Bleep. My scanner sees a Now! coming.', 'Calculating… this Goal may be impossible.', 'I have a Solution stored. Maybe.', 'Warning: Bleep is about to say something.'],
+    greet: ['Bleep bloop! Hello, human friend!', 'System ready. Let\'s play!', 'Welcome to the Legend League! Bleep!', 'Number 3, powered up. Kick-off!', 'Hello! I brought spare batteries.'],
+    kidGoodMove: ['Bleep! That was a clever move.', 'Impressive. Adding you to my hero list.', 'Whoa. My lights just blinked.', 'Excellent move. Very efficient!', 'Bleep! I did not predict that.'],
+    kidChallenge: ['Bleep?! Checking… checking…', 'Uh oh. My fan is spinning fast.', 'A challenge! Running all my tests…', 'Gulp. Do robots gulp? I just did.', 'Recalculating!'],
+    kidWrong: ['No problem! Even robots need updates.', 'Close! Try again, friend.', 'Good try. Retry button pressed!', 'That one was tricky. Have another go.', 'Mistakes are how we learn. Bleep says so.'],
+    close: ['Bleep! The numbers are very close!', 'Score check: too close to call!', 'My lights are flashing. Exciting!', 'Neck and neck. Bleep bloop!', 'Tight game! My gears are warm.'],
+    lastCube: ['Last cube! Final countdown: 3, 2, 1…', 'One cube left. Bleep!', 'The final cube. Saving the game…', 'Last one! All systems go!', 'Final cube! My antenna is tingling.'],
+    tasteGoal: ['A Goal I can make again and again!', 'Repeat-friendly Goal. Bleep!', 'Plus, plus, plus. Bleep likes it.'],
+    tasteMove: ['Another one! And another! Bleep!', 'Repeat cube, ready.', 'Plus and times: my favourite tools.'],
+    tasteSol: ['Done, by doing it twice. Bleep!', 'Repeat, repeat, finished!', 'Same sign twice. Efficient!'],
+    reply: { friendly: ['Bleep! Thank you, friend!', 'Friendship detected. Bleep bloop!', 'You make my lights glow.'], cheeky: ['Bleep! Sassy human!', 'Ha. Ha. Ha. That is robot laughing.', 'Challenge accepted. Bleep!'], think: ['Thinking is good. I do it all day.', 'Take your time. My battery is full.', 'Hmm. A human computing. Nice.'] }
+  },
+  flip: {
+    gloat: ['Upside-down and on top!', 'Swoop! That shake is mine!', 'Number 6 scores! Or is it 9?', 'I saw that coming. From the ceiling.', 'Flap flap, point for the bat!'],
+    sore: ['Whoa, you turned me the right way up!', 'Flap… nice one!', 'I didn\'t see that. And I see a lot.', 'You flipped it on me! Well played.', 'Okay, okay. You win that one.'],
+    trash: ['Everything looks different from up here.', 'Try thinking upside-down. It helps!', 'A 6 is just a 9 standing on its head.', 'I hang around until the right move.', 'Flip it and see!'],
+    bluff: ['From up here, I see a Now! coming.', 'Upside-down, this Goal looks impossible.', 'I have a Solution. It\'s hanging right there.', 'Careful… I\'m about to swoop.'],
+    greet: ['Hi! Excuse me while I hang here.', 'Welcome! The world looks better upside-down.', 'Number 6 says hello! Or 9. Hello!', 'Let\'s play! Flap flap!', 'Ready? I\'ve been hanging around for ages.'],
+    kidGoodMove: ['Whoa! A move worth flipping for!', 'Nice! I saw it from up here.', 'Clever! That turned things around.', 'Wow, smooth move!', 'Flap! That was a good one.'],
+    kidChallenge: ['Eek! Let me turn around and check…', 'Uh oh! My wings are wobbly.', 'A challenge? Flap flap flap!', 'Gulp! Hang on…', 'Oh! Let me look again.'],
+    kidWrong: ['No worries! Turn it around and try again.', 'Close! Have another go.', 'Upside-down numbers are tricky. You\'ve got this.', 'Good try! The next one is yours.', 'It happens! Even bats bump into things.'],
+    close: ['So close! My ears are tingling!', 'Neck and neck! Flap flap!', 'This could flip either way!', 'What a match! I\'m all upside-down.', 'Too close! I can\'t look. I\'ll look upside-down.'],
+    lastCube: ['Last cube! Flip it good!', 'One cube left. Hold on tight!', 'The last cube! Swoop time!', 'Final cube! Ears up!', 'Last one! Hanging on every move.'],
+    tasteGoal: ['A Goal for taking away. Swoop!', 'Minus makes it upside-down. I love it.', 'Here is a Goal with a little minus in it.'],
+    tasteMove: ['Minus! The upside-down sign!', 'A 6 or a 9? Both, if you flip it!', 'Take-away cube, my favourite.'],
+    tasteSol: ['Took away, flipped around, done!', 'Minus magic!', 'Upside-down and correct!'],
+    reply: { friendly: ['Aww! You\'re nice, the right way up.', 'Thanks! Flap flap!', 'You\'re a great player!'], cheeky: ['Ha! Cheeky! I like it!', 'Ooh, sassy from down there!', 'Bring it on!'], think: ['Take your time. I\'ll just hang here.', 'Thinking? Try it upside-down!', 'Good idea. Look from every side.'] }
+  },
+  squiggle: {
+    gloat: ['Eight arms, one win! Blub!', 'Number 88 scores! Twice!', 'Wiggle wiggle, I win!', 'That shake was eight times fun!', 'Ink-credible! Point to me!'],
+    sore: ['Blub… you got me!', 'Eight arms and I still missed it!', 'Wow! Well played, two-arms!', 'You out-wiggled me!', 'I\'m tied in a knot. Nice one!'],
+    trash: ['I can hold eight cubes at once!', 'Count in eights. It\'s easy… for me.', 'Blub. Watch my arms, not the cubes.', 'In base 8, 10 means eight. Tricky, huh?', 'I\'ve got an arm on every cube.'],
+    bluff: ['Blub! I see a Now! with all eight eyes. I have two eyes.', 'This Goal looks impossible. In base 8. Maybe.', 'One of my arms has a Solution.', 'Careful, I\'m about to squirt some ink!'],
+    greet: ['Blub blub! Hello there!', 'Welcome! Shake my hand. Any of them.', 'Number 88 is ready to wiggle!', 'Let\'s count in eights today!', 'Hi! Eight hellos for you!'],
+    kidGoodMove: ['Ooh! Eight thumbs up!', 'Blub! That was clever!', 'Whoa, smooth move!', 'Nice one! I\'m clapping eight times.', 'Wiggle-wow!'],
+    kidChallenge: ['Blub?! Let me check with all my arms!', 'Uh oh! I\'m tangled!', 'Eek! A challenge!', 'Gulp! I might squirt ink!', 'Wait, wait, I\'m counting!'],
+    kidWrong: ['That\'s okay! Base 8 is tricky.', 'Close! Try again, friend.', 'Good try! Count in eights and look again.', 'No worries! I mix up my arms all the time.', 'Have another go. You\'re learning fast!'],
+    close: ['Blub! So close!', 'Neck and neck! Or tentacle and neck!', 'This is a wiggly one!', 'Too close! My arms are shaking!', 'What a match!'],
+    lastCube: ['Last cube! All eight arms ready!', 'One cube left. Blub!', 'Final cube! Wiggle time!', 'The last one! Hold on tight!', 'Last cube! Here we go!'],
+    tasteGoal: ['A Goal full of eights!', 'Eights are my favourite numbers.', 'Here is a wiggly eight-ish Goal.'],
+    tasteMove: ['An 8! One for each arm!', 'Groups of eight. Blub!', 'Times! Like counting arms.'],
+    tasteSol: ['Done, the octopus way!', 'Eights and times. Blub!', 'Counted it with my arms!'],
+    reply: { friendly: ['Blub! Eight hugs for you!', 'You\'re very kind!', 'Thank you, friend!'], cheeky: ['Ha! Cheeky! Blub!', 'Ooh, you wiggler!', 'Bring it, two-arms!'], think: ['Take your time. I\'m tidying my arms.', 'Thinking is great. I think with all eight.', 'Blub. Good thinking.'] }
+  },
+  nugget: {
+    gloat: ['ROAR! Another gold coin for me!', 'Number 12 scores! Shiny!', 'That shake goes in my treasure pile.', 'A dragon always wins. Usually.', 'Gold, gold, gold!'],
+    sore: ['Hmm! You found my treasure.', 'Puff… well played!', 'A clever knight! Take a coin.', 'You beat a dragon! Nice one.', 'My fire went out. Good move!'],
+    trash: ['My treasure is safe from you!', 'Dragons have been doing math for a thousand years.', 'Puff puff. Is that your best move?', 'I see gold in these cubes.', 'A dragon never rushes. Never.'],
+    bluff: ['I smell a Now! Like smoke.', 'This Goal is impossible. Probably. Puff.', 'There is a golden Solution here somewhere.', 'Careful, I\'m warming up my fire.'],
+    greet: ['Welcome to my cave, little knight!', 'ROAR! Just saying hello.', 'Number 12 guards the gold. Let\'s play!', 'I brought my treasure. Want to see?', 'Hello! Mind the smoke.'],
+    kidGoodMove: ['Ooh! A golden move!', 'Clever! You\'d make a fine dragon.', 'Puff! That surprised me!', 'Shiny thinking!', 'That move is worth a gold coin.'],
+    kidChallenge: ['A challenge? To a DRAGON?', 'Puff! Let me count my coins…', 'Uh oh! Hold on…', 'Gulp. Smoke is coming out of my ears.', 'Brave knight! Let\'s see!'],
+    kidWrong: ['No worries! Even dragons drop coins.', 'Close! Try again.', 'Good try! The gold is still there.', 'That one was tricky. Have another go!', 'Chin up, knight! You\'ve got this.'],
+    close: ['ROAR! This is so close!', 'My treasure is in danger!', 'Neck and neck! Puff puff!', 'What a match! My scales are tingling.', 'Too close to call!'],
+    lastCube: ['Last cube! The final treasure!', 'One cube left. Roar!', 'The last cube! Shiny moment!', 'Final cube! Here comes the fire!', 'Last one! Guard the gold!'],
+    tasteGoal: ['A Goal with POWER! Golden!', 'Powers are a dragon\'s treasure.', 'A shiny power Goal for you.'],
+    tasteMove: ['Gold cube! Mine, mine, mine!', 'A power! Shiny!', 'Into the treasure pile it goes.'],
+    tasteSol: ['A golden Solution!', 'Powered up, dragon style!', 'Done, with a shiny power!'],
+    reply: { friendly: ['Puff! That\'s very kind.', 'You may hold one coin. One!', 'A friendly knight! Hello!'], cheeky: ['ROAR! Cheeky!', 'Ha! Brave words!', 'Ooh, spicy. Like my breath.'], think: ['Take your time. I\'ll polish my coins.', 'A thinking knight. Clever.', 'Hmm. Good. Think it through.'] }
+  },
+  chroma: {
+    gloat: ['The Queen wins, in every colour!', 'Number 21 scores! Bow!', 'A royal shake. Naturally.', 'Green, blue, gold: all mine!', 'I changed the rules and still won!'],
+    sore: ['What?! You saw through my colours!', 'Well played. The Queen admits it.', 'Hmm. My colours went pale.', 'You out-shuffled the Queen!', 'Bravo, challenger. Bravo.'],
+    trash: ['New shake, new rule, new colour!', 'Can you keep up with the Queen?', 'I blend in. Then I win.', 'Every card is my favourite card.', 'The Queen changes. The Queen wins.'],
+    bluff: ['The Queen already sees a Now!', 'This Goal is impossible. Or is it?', 'I have a Solution. In a secret colour.', 'Careful. I am about to change.'],
+    greet: ['Welcome to my court, challenger!', 'The Legend League final! Begin!', 'Ready for a new rule every shake?', 'Number 21 greets you. Let\'s play!', 'So, you want to face the Queen.'],
+    kidGoodMove: ['A move fit for a queen!', 'Impressive, challenger!', 'Hmm! My colours just changed.', 'Royal applause for that one!', 'The Queen did not expect that.'],
+    kidChallenge: ['You challenge the QUEEN?', 'Oh! Bold. Very bold.', 'Hmm! Let me check… in every colour.', 'Gulp. I mean… proceed.', 'The court holds its breath!'],
+    kidWrong: ['Even queens slip. Try again.', 'Close, challenger! Go once more.', 'New rules are tricky. You\'ve got this.', 'No shame in that. It was a hard one.', 'Chin up! A champion keeps going.'],
+    close: ['So close! My colours keep changing!', 'A match fit for a queen!', 'Neck and neck. The court is silent.', 'One point decides the crown!', 'What a final!'],
+    lastCube: ['The last cube! All rise!', 'Final cube. The crown is at stake.', 'One cube left, challenger.', 'The last cube! Trumpets, please!', 'Final cube! Watch my colours.'],
+    tasteGoal: ['A long Goal, in many colours!', 'The Queen likes her Goals long.', 'Behold, a royal Goal!'],
+    tasteMove: ['Every operation serves the Queen.', 'A royal cube for the royal mat.', 'This colour suits me.'],
+    tasteSol: ['A bit of everything. Royal math!', 'Many operations, one Queen!', 'Mixed them all. Done!'],
+    reply: { friendly: ['The Queen thanks you!', 'Lovely manners, challenger.', 'You are welcome at my court.'], cheeky: ['Ha! Cheek! To a QUEEN!', 'Bold words!', 'Ooh. The court gasps.'], think: ['Think well. The Queen can wait.', 'Take your time. I\'ll change colour meanwhile.', 'A wise player thinks first.'] }
   }
 };
-OPPONENTS.forEach(function (o, i) { o.kind = CREATURE_KINDS[i % LEAGUE]; o.pack = i < LEAGUE ? 'classic' : 'monsters'; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
+// (CAREER: the Legend League uses its own classic-built kinds, not the monster models)
+OPPONENTS.forEach(function (o, i) { var lg = leagueOf(i); o.kind = lg < 2 ? CREATURE_KINDS[i % LEAGUE] : CAREER_KINDS[i % LEAGUE]; o.pack = lg === 1 ? 'monsters' : 'classic'; o.num = JERSEYS[i]; o.talk = TALK[o.id]; });
 var DEFAULT_OPP_NAMES = OPPONENTS.map(function (o) { return o.name; });
 function applyOppNames() { OPPONENTS.forEach(function (o, i) { var n = (S.oppNames && S.oppNames[i] || '').trim(); o.name = n || DEFAULT_OPP_NAMES[i]; }); }
 var PIP = { id: 'pip', kind: 'pip', name: 'Pip', title: 'the Cube', emoji: '🟨', color: '#ffe066', stars: 0, maxDigits: 5, timeMs: 400, think: ['My turn!'] };

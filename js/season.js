@@ -1,6 +1,6 @@
 'use strict';
 // ======================= SEASON TABLE =======================
-// A friendly league table for each league (Classic: creatures 0-4, Monster League: creatures 5-9).
+// A friendly league table for each league (Classic: creatures 0-4, Monster League: creatures 5-9, CAREER: Legend League 10-14).
 // Skill-based and never punishing:
 //   - A one-on-one match against a creature (also a Cup round) is a FIXTURE: win 3 points, tie 1, loss 0, for both
 //     sides. Goals are shake points: "For" = his shake points, "Against" = the creature's.
@@ -16,7 +16,7 @@
 //   Season.onMatch({oppIdx, you, them, won, tie, mode})  call from endMatch (mode 'ai' or 'cup'); returns a result
 //                                                        object (or null if it did not count) and gives season XP
 //   Season.lineHTML(res)      a compact "table moved" line for the match-end pop-up (res from onMatch; default: last)
-//   Season.open(lg)           show the Season screen (#season); lg 'c' | 'm' (default: the league played last)
+//   Season.open(lg)           show the Season screen (#season); lg 'c' | 'm' | 'l' (default: the league played last)
 //   Season.buttonHTML()       a menu button that opens it (for the title / Trophy Room)
 //   Season.pennants()         [{lg, n, place, pts, kind, date}] newest first (for the trophy cabinet)
 //   Season.pennantSVG(kind, label, px)
@@ -27,7 +27,7 @@
 //
 // Save shape (S.season), small and capped:
 //   { v: 1, last: 'c',
-//     c: League, m: League,                       // the season in progress of each league
+//     c: League, m: League, l: League,            // the season in progress of each league (l = Legend League, CAREER)
 //     hist: [{lg, n, place, pts, w, d, l, f, a, date}],   // finished seasons, newest last, at most 40 kept
 //     won: {gold, silver, bronze, blue},          // pennant counts for life: these only ever go up
 //     cer: null | {lg, n, place, pts, xp, kind, top: [[row, pts], ...]} }   // a ceremony waiting to be shown
@@ -36,7 +36,11 @@
 //   Row 0 is the kid, rows 1..5 are the league's creatures in OPPONENTS order.
 var Season = (function () {
   var TEAMS = 5, GAMES_EACH = 2, MY_GAMES = TEAMS * GAMES_EACH, SIM_GAMES = TEAMS * (TEAMS - 1), FORM_N = 5, HIST_CAP = 40;
-  var LEAGUES = { c: { id: 'c', name: 'Classic League', first: 0, icon: '⚽' }, m: { id: 'm', name: 'Monster League', first: 5, icon: '👹' } };
+  var LEAGUES = { c: { id: 'c', name: 'Classic League', first: 0, icon: '⚽' }, m: { id: 'm', name: 'Monster League', first: 5, icon: '👹' }, l: { id: 'l', name: 'Legend League', first: 10, icon: '🌟' } };
+  // CAREER: the leagues that exist in this game (the Legend League only when OPPONENTS has its five creatures)
+  function ids() { return ['c', 'm', 'l'].filter(function (k) { return k !== 'l' || opps().length >= LEAGUES.l.first + TEAMS; }); }
+  function lgOf(oppIdx) { return oppIdx >= LEAGUES.l.first ? 'l' : oppIdx >= LEAGUES.m.first ? 'm' : 'c'; }
+  function okId(lg) { return lg === 'c' || lg === 'm' || lg === 'l'; }
   // reward by final place (index 0 = 1st). Every place gets a pennant.
   var REWARDS = [
     { kind: 'gold', xp: 150, title: 'Champions!', line: 'You won the league!' },
@@ -106,22 +110,22 @@ var Season = (function () {
   }
   function placeOf(L, r) { var tb = table(L); for (var i = 0; i < tb.length; i++) if (tb[i].r === (r || 0)) return i + 1; return tb.length; }
   function rewardFor(place) { return REWARDS[Math.min(place, 4) - 1]; }
-  function blank() { return { v: 1, last: 'c', c: newLeague('c', 1), m: newLeague('m', 1), hist: [], won: { gold: 0, silver: 0, bronze: 0, blue: 0 }, cer: null }; }
+  function blank() { return { v: 1, last: 'c', c: newLeague('c', 1), m: newLeague('m', 1), l: newLeague('l', 1), hist: [], won: { gold: 0, silver: 0, bronze: 0, blue: 0 }, cer: null }; }
   function okLeague(L) { return L && typeof L === 'object' && Array.isArray(L.t) && L.t.length === TEAMS + 1 && Array.isArray(L.f) && Array.isArray(L.pl) && L.pl.length === TEAMS && L.n >= 1; }
   function normalize(st) {
     if (!st || typeof st !== 'object' || Array.isArray(st)) st = blank();
-    ['c', 'm'].forEach(function (lg) { if (!okLeague(st[lg])) st[lg] = newLeague(lg, 1); });
+    ['c', 'm', 'l'].forEach(function (lg) { if (!okLeague(st[lg])) st[lg] = newLeague(lg, 1); }); // (CAREER: an older save gets a fresh Legend League)
     if (!Array.isArray(st.hist)) st.hist = [];
     if (!st.won || typeof st.won !== 'object') st.won = {};
     ['gold', 'silver', 'bronze', 'blue'].forEach(function (k) { st.won[k] = Math.max(0, st.won[k] | 0); });
-    if (st.last !== 'm') st.last = 'c';
+    if (!okId(st.last)) st.last = 'c';
     st.v = 1;
     return st;
   }
   // His match. opts: {shakes, date, xp(n, why)}. Pure apart from opts.xp. Returns the result (also kept in L.last).
   function play(st, oppIdx, you, them, opts) {
     opts = opts || {};
-    var lg = oppIdx < LEAGUES.m.first ? 'c' : 'm', L = st[lg], c = oppIdx - LEAGUES[lg].first, r = c + 1;
+    var lg = lgOf(oppIdx), L = st[lg], c = oppIdx - LEAGUES[lg].first, r = c + 1;
     if (c < 0 || c >= TEAMS) return null;
     st.last = lg;
     var name = opp(oppIdx).name;
@@ -243,9 +247,9 @@ var Season = (function () {
     return out;
   }
   function render(lg) {
-    var st = state(); lg = lg === 'm' || lg === 'c' ? lg : (tab || st.last || 'c'); tab = lg;
+    var st = state(); lg = okId(lg) && ids().indexOf(lg) >= 0 ? lg : (tab || st.last || 'c'); tab = lg;
     var L = st[lg], pl = placeOf(L, 0);
-    var tabs = ['c', 'm'].map(function (k) { return '<button class="btn small' + (k === lg ? ' green' : '') + '" data-act="seasonTab" data-arg="' + k + '">' + LEAGUES[k].icon + ' ' + LEAGUES[k].name + '</button>'; }).join('');
+    var tabs = ids().map(function (k) { return '<button class="btn small' + (k === lg ? ' green' : '') + '" data-act="seasonTab" data-arg="' + k + '">' + LEAGUES[k].icon + ' ' + LEAGUES[k].name + '</button>'; }).join('');
     var won = st.won, wonN = won.gold + won.silver + won.bronze + won.blue;
     var hist = st.hist.slice().reverse().slice(0, 12).map(function (h) {
       var rw = rewardFor(h.place);
@@ -284,7 +288,7 @@ var Season = (function () {
   function restore(prev) { if (prev && typeof modal === 'function') modal(prev.replace(/<button[^>]*data-act="seasonCeremony"[^>]*>[\s\S]*?<\/button>/g, ''), null); }
   function peek(lg) {
     if (typeof modal !== 'function') return;
-    var prev = prevModal(), st = state(); lg = lg === 'm' ? 'm' : lg === 'c' ? 'c' : st.last;
+    var prev = prevModal(), st = state(); lg = okId(lg) ? lg : st.last;
     var L = st[lg];
     modal('<h2>' + LEAGUES[lg].icon + ' ' + LEAGUES[lg].name + '</h2><p style="text-align:center;margin:0 0 8px">Season ' + L.n + ' · fixture ' + Math.min(L.k + 1, MY_GAMES) + ' of ' + MY_GAMES + '</p>' + tableHTML(lg) +
       '<div class="row" style="margin-top:12px"><button class="btn green" data-act="closeModal">OK</button></div>', prev ? function () { restore(prev); } : null);
@@ -317,7 +321,7 @@ var Season = (function () {
   }
   return {
     onMatch: onMatch, lineHTML: lineHTML, open: open, render: render, buttonHTML: buttonHTML, pennants: pennants, pennantSVG: pennantSVG,
-    state: state, table: function (lg) { return table(state()[lg || 'c']); }, LEAGUES: LEAGUES, GAMES_EACH: GAMES_EACH, MY_GAMES: MY_GAMES,
+    state: state, table: function (lg) { return table(state()[lg || 'c']); }, LEAGUES: LEAGUES, GAMES_EACH: GAMES_EACH, MY_GAMES: MY_GAMES, ids: ids, lgOf: lgOf,
     _core: { newLeague: newLeague, fixtures: fixtures, simMatch: simMatch, play: play, table: table, placeOf: placeOf, normalize: normalize, blank: blank, pts: pts, rewardFor: rewardFor, strength: strength, hash: hash, REWARDS: REWARDS }
   };
 })();

@@ -1,0 +1,50 @@
+/* ======================= CAREER (js/career.js) ======================= */
+/* The overview: three leagues as paths, creatures as stops. Calm: no looping animation anywhere. */
+.car { text-align: left; }
+.car-top { display: flex; align-items: center; gap: 12px; justify-content: center; margin: 2px 0 10px; }
+.car-top b { display: block; font-size: 18px; }
+.car-top small { display: block; opacity: .75; font-weight: 700; }
+.car-big { font-family: var(--display, 'Lilita One', sans-serif); font-size: 44px; line-height: 1; color: #5f3dc4; }
+.car-big small { font-size: 20px; opacity: .6; margin-left: 2px; }
+.car-next { display: flex; align-items: center; gap: 10px; background: #fff8db; border: 2px solid #ffd43b; border-radius: 16px; padding: 8px 10px; margin: 0 0 12px; }
+.car-next > div { flex: 1; min-width: 0; }
+.car-next small { display: block; font-size: 12px; opacity: .75; font-weight: 800; }
+.car-next b { display: block; font-size: 16px; line-height: 1.15; }
+.car-next.all { justify-content: center; font-size: 17px; }
+.car-league { background: #f4f6fb; border-radius: 18px; padding: 10px 10px 8px; margin: 0 0 10px; border: 2px solid transparent; }
+.car-league.done { border-color: #ffd43b; background: linear-gradient(#fffbea, #f4f6fb); }
+.car-lhead { display: flex; align-items: center; gap: 8px; font-size: 17px; margin-bottom: 6px; }
+.car-licon { font-size: 22px; }
+.car-champ { margin-left: auto; font-size: 13px; font-weight: 900; color: #b07800; background: #fff3bf; border-radius: 999px; padding: 2px 10px; }
+.car-path { display: flex; align-items: center; justify-content: space-between; gap: 2px; overflow-x: auto; padding: 4px 2px 6px; }
+.car-link { flex: 1 1 8px; min-width: 6px; height: 4px; border-radius: 2px; background: #d0d6e2; margin-bottom: 22px; }
+.car-link.on { background: #51cf66; }
+.car-stop { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; padding: 2px; cursor: pointer; font: inherit; color: inherit; min-width: 54px; }
+.car-stop b { font-size: 12px; line-height: 1.1; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.car-stop small.car-sig { font-size: 11px; font-weight: 900; color: #5f3dc4; line-height: 1; }
+.car-face { position: relative; display: inline-flex; }
+.car-stop.lock .car-face .avatar { filter: grayscale(1); opacity: .45; }
+.car-stop.open .car-face .avatar { box-shadow: 0 0 0 3px #51cf66; }
+.car-stop.boss .car-face .avatar { box-shadow: 0 0 0 3px #ffd43b; }
+.car-stop.boss.lock .car-face .avatar { box-shadow: 0 0 0 3px #d0d6e2; }
+.car-mark { position: absolute; right: -4px; bottom: -4px; font-style: normal; font-size: 15px; background: #fff; border-radius: 999px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); color: #f08c00; }
+.car-mark.lk { color: #868e96; font-size: 12px; }
+.car-mark.lk svg { width: 13px; height: 13px; }
+.car-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; font-weight: 800; opacity: .8; padding: 0 2px; }
+.car-small { font-size: 14px; line-height: 1.35; opacity: .85; text-align: center; margin: 8px 4px; }
+/* the signature announcement */
+.car-who { align-items: center; }
+.car-rule { display: flex; gap: 10px; align-items: flex-start; background: #fff8db; border: 2px solid #ffd43b; border-radius: 16px; padding: 10px 12px; margin: 8px 0; text-align: left; }
+.car-rule b { font-size: 17px; }
+.car-rule p { margin: 4px 0 0; font-size: 14px; line-height: 1.35; }
+.car-ricon { font-size: 34px; line-height: 1; }
+/* a tag on the opponent card (renderSetup) */
+.car-tag { margin-top: 6px; font-size: 12px; font-weight: 900; line-height: 1.2; color: #5f3dc4; background: #f3f0ff; border-radius: 10px; padding: 3px 8px; display: inline-block; }
+.car-tag.off { color: #868e96; background: #f1f3f5; }
+/* the match-end line when a league boss is beaten */
+.car-line { text-align: center; background: #fff3bf; border-radius: 14px; padding: 8px 10px; margin: 8px 0; font-size: 15px; line-height: 1.35; }
+@media (max-width: 420px) {
+  .car-stop { min-width: 46px; }
+  .car-stop b { font-size: 11px; max-width: 54px; }
+  .car-big { font-size: 36px; }
+}
