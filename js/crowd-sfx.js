@@ -2,15 +2,19 @@
 // ======================= CROWD SOUNDS + crowdReact() (classic script) =======================
 // CrowdSfx.play(kind)   kind: 'clap' | 'ooh' | 'gasp' | 'cheer' | 'aw' ('aww' accepted). Returns ms, 0 if nothing played.
 //   Small, soft, synthesised with the Web Audio API (no audio files). At most one crowd sound about every
-//   second (CrowdSfx.GAP ms); honours S.set.mute and the S.set.sfx volume (0..1, default 0.8).
-//   Uses the game's audio context if js/sound.js exposes one (Snd.context() / Snd.ctx), otherwise makes its
-//   own, unlocked by the first tap or key press (iPad Safari needs a gesture).
+//   second (CrowdSfx.GAP ms). Plays on the game's shared context through Snd.bus('crowd') (js/sound.js), so Mute,
+//   the Effects volume and the Crowd balance (S.set.mix.crowd) apply, and the shared limiter guards it. Without
+//   js/sound.js it makes its own context (S.set.mute / S.set.sfx honoured), unlocked by the first tap.
+//   Levels: audited offline (docs/handoff/sound.md), each kind trimmed to about -24 LUFS (clap -27: it is frequent).
 // crowdReact(kind, opts) one call for game code: the 3D crowd reacts (T3.crowd, when the 3D table is on)
 //   and the matching sound plays. Does nothing when S.set.crowd === false. Never throws.
 var CrowdSfx = (function () {
-  var ac = null, own = false, out = null, noise = null, last = -1e9, hooked = false, GAP = 950;
+  var ac = null, own = false, out = null, noise = null, last = -1e9, hooked = false, GAP = 950, dst = null;
+  var KTRIM = { clap: 1.0, ooh: 0.78, gasp: 2.7, cheer: 0.95, aw: 1.28 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
+  function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
   function level() {
+    if (sharedOK()) return Snd.level('crowd');
     var st = setg(); if (st.mute) return 0;
     var v = st.sfx; v = (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.8;
     return v;
@@ -44,12 +48,13 @@ var CrowdSfx = (function () {
   hook();
   // output chain: gain -> gentle lowpass (nothing harsh) -> soft compressor -> speakers
   function bus() {
-    if (out && out.ctx === ac) return out;
+    var dest = (!own && sharedOK()) ? Snd.bus('crowd') : ac.destination;
+    if (out && out.ctx === ac && out.dest === dest) return out;
     var g = ac.createGain(), lp = ac.createBiquadFilter(), cp = ac.createDynamicsCompressor();
     lp.type = 'lowpass'; lp.frequency.value = 4200; lp.Q.value = 0.5;
     cp.threshold.value = -20; cp.knee.value = 12; cp.ratio.value = 4; cp.attack.value = 0.01; cp.release.value = 0.25;
-    g.connect(lp); lp.connect(cp); cp.connect(ac.destination);
-    out = { ctx: ac, g: g }; return out;
+    g.connect(lp); lp.connect(cp); cp.connect(dest);
+    out = { ctx: ac, g: g, dest: dest }; return out;
   }
   function noiseBuf() {
     if (noise && noise.ctx === ac) return noise.b;
@@ -66,7 +71,7 @@ var CrowdSfx = (function () {
     s.buffer = noiseBuf(); fl.type = type || 'bandpass'; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
     if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.006, dur / 4) + (type === 'lowpass' ? dur * 0.3 : 0)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(fl); fl.connect(g); pan(g, p).connect(bus().g);
+    s.connect(fl); fl.connect(g); pan(g, p).connect(dst || bus().g);
     s.start(t, Math.random() * Math.max(0, 1.9 - dur), dur + 0.05); stopAt([s, fl, g], t + dur);
   }
   // one soft voice: a triangle wave through two vowel formants, gliding from f0 to f1
@@ -78,7 +83,7 @@ var CrowdSfx = (function () {
     for (var k = 0; k < 2; k++) { var b = ac.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = fm[k] * rnd(0.94, 1.06); b.Q.value = 4; g.connect(b); b.connect(mix); nodes.push(b); }
     var a = att || 0.08;
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + a); g.gain.setValueAtTime(vol, t + Math.max(a, dur - 0.25)); g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); pan(mix, p).connect(bus().g);
+    o.connect(g); pan(mix, p).connect(dst || bus().g);
     o.start(t); o.stop(t + dur + 0.05); stopAt(nodes, t + dur);
   }
   function claps(t0, span, n, vol) { for (var i = 0; i < n; i++) { var u = i / n, t = t0 + u * span + rnd(0, 0.05); burst(t, rnd(0.03, 0.06), rnd(1000, 1900), 1.3, vol * (1 - 0.6 * u) * rnd(0.6, 1), rnd(-0.6, 0.6)); } }
@@ -97,18 +102,23 @@ var CrowdSfx = (function () {
     },
     aw: function (t) { crowdOf(5, t, 1.0, 230, 300, 0.72, 'aw', 0.08, 0.12); return 1000; }
   };
-  function play(kind) {
+  function play(kind, force) {
     try {
       kind = kind === 'aww' ? 'aw' : String(kind || '');
       var f = KINDS[kind], v = level(); if (!f || v <= 0) return 0;
-      var now = Date.now(); if (now - last < GAP) return 0; // rate limit: about one crowd sound a second
+      var now = Date.now(); if (!force && now - last < GAP) return 0; // rate limit: about one crowd sound a second
       var c = ctx(); if (!c || c.state === 'closed') return 0;
+      if (!force && c.state !== 'running' && !own) return 0;          // a suspended context would play it late, in a heap
       last = now;
-      var b = bus(); b.g.gain.setValueAtTime(1.1 * v, c.currentTime); // about half as loud as the game's own crowd sounds
-      return f(c.currentTime + 0.02);
-    } catch (e) { return 0; }
+      var b = bus(); b.g.gain.setValueAtTime(own ? 1.1 * v : 1, c.currentTime); // shared: the bus applies the volume
+      // a per-sound trim node, so overlapping kinds keep their own level
+      var tg = c.createGain(); tg.gain.value = KTRIM[kind] || 1; tg.connect(b.g); dst = tg;
+      var ms; try { ms = f(c.currentTime + 0.02); } finally { dst = null; }
+      setTimeout(function () { try { tg.disconnect(); } catch (e) {} }, ms + 1500);
+      return ms;
+    } catch (e) { dst = null; return 0; }
   }
-  return { play: play, kinds: Object.keys(KINDS), GAP: GAP, _ctx: function () { return ac; } };
+  return { play: play, kinds: Object.keys(KINDS), GAP: GAP, _ctx: function () { return ac; }, _trim: KTRIM };
 })();
 
 // Game code calls this: the crowd reacts in 3D (if the 3D table is on) and makes the matching sound.

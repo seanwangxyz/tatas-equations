@@ -2,10 +2,12 @@
 // ======================= TITLE SOUNDS (Web Audio, synthesized; no audio files) =======================
 // The title screen's own sounds: a short original fanfare, cube thuds synced to the landings, floodlights coming up,
 // a whoosh and a sparkle for the title, a crowd swell, little hops and pats, soft UI sounds, and a very low stadium
-// ambience while the title rests. js/sound.js keeps the game's music and sounds; its AudioContext is private, so this
-// file makes its own after the first tap (a browser only allows sound after one), and follows the same settings:
-// S.set.mute silences everything, S.set.sfx is the volume. No melody loops here: the game's own menu music (if
-// S.set.music is on) is started by ui.js once the opening is over.
+// ambience while the title rests. It plays on the game's shared context (Snd.context(), js/sound.js): the opening
+// through Snd.bus('sfx'), the resting murmur through Snd.bus('amb'), the button sounds through Snd.bus('ui'), so Mute,
+// the volumes and the shared limiter apply and one tap unlocks everything. (Without js/sound.js it makes its own
+// context after the first tap, honouring S.set.mute / S.set.sfx.) No melody loops here: the game's own menu music (if
+// S.set.music is on) is started by ui.js once the opening is over. Every voice has a level trim from the offline
+// audit (docs/handoff/sound.md): the fanfare peaks about -17 LUFS, the little hops and pats about -34.
 //
 //   TitleSfx.unlock()            call from a tap (creates / resumes the context)
 //   TitleSfx.begin()             starts a new "score": the times given to play() count from here
@@ -15,28 +17,36 @@
 //   TitleSfx.ui('hover'|'press'|'step', v)   soft UI sounds
 //   TitleSfx.stopAll()           leaving the title: everything stops, the context is suspended
 //   TitleSfx.stats() / _render(score, seconds) checks: live nodes; an offline render of a score (peak, RMS, clipping)
+//   TitleSfx._into(c, dests, score)  schedules a score into any context (the offline audit, inside Snd._measure)
 var TitleSfx = (function () {
-  var ac = null, G = null, base = 0, score = [], liveSrc = 0, created = 0, ambOn = false, suspendT = 0;
+  var ac = null, own = false, G = null, base = 0, score = [], liveSrc = 0, created = 0, ambOn = false, suspendT = 0;
+  var AMB = 0.034;   // the resting murmur, about -45 LUFS like the match ambience
+  var TRIM = { fanfare: 0.53, thud: 1.1, tick: 2.55, lightsUp: 0.77, liftoff: 1.15, whoosh: 1.47, sparkle: 0.78, chime: 0.68, crowd: 1.77, confetti: 1.39, boing: 1.82, pat: 1.74, hi: 1.8, clack: 2.15, twinkle: 0.85 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
   function vol(k, d) { var v = setg()[k]; return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : d; }
-  function level() { return setg().mute ? 0 : vol('sfx', 0.8) * 0.8; }
+  function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
+  // shared: the buses apply the volume, so the title's own master stays at the level its sounds were made for
+  function level() { if (!own && sharedOK()) return Snd.level('sfx') > 0 ? 0.8 : 0; return setg().mute ? 0 : vol('sfx', 0.8) * 0.8; }
   function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
   function rnd(a, b) { return a + Math.random() * (b - a); }
 
   // ---------------------------------------------------------------- the graph (also built inside an OfflineAudioContext)
-  function graph(c, live) {
-    var g = { c: c, live: live, srcs: [] };
-    g.master = c.createGain(); g.master.gain.value = live ? level() : 0.64;
+  // dests: { sfx, amb, ui } nodes to end in (the shared buses), or nothing for c.destination
+  function graph(c, live, dests) {
+    var g = { c: c, live: live, srcs: [], dests: dests || null };
+    g.master = c.createGain(); g.master.gain.value = live ? level() : (dests ? 0.8 : 0.64);
     var comp = c.createDynamicsCompressor(); comp.threshold.value = -10; comp.knee.value = 8; comp.ratio.value = 10; comp.attack.value = 0.003; comp.release.value = 0.25;
     var ceil = c.createGain(); ceil.gain.value = 0.9;
-    g.master.connect(comp); comp.connect(ceil); ceil.connect(c.destination);
+    g.master.connect(comp); comp.connect(ceil); ceil.connect(dests ? dests.sfx : c.destination);
     // a small generated room (the stadium is open: short and bright)
     var sr = c.sampleRate, len = Math.floor(sr * 1.4), ir = c.createBuffer(2, len, sr);
     for (var ch = 0; ch < 2; ch++) { var d = ir.getChannelData(ch), lp = 0; for (var k = 0; k < len; k++) { var t = k / len; lp += ((Math.random() * 2 - 1) - lp) * (0.5 + 0.4 * t); d[k] = lp * Math.pow(1 - t, 3) * 1.6; } }
     g.conv = c.createConvolver(); g.conv.buffer = ir; g.rev = c.createGain(); g.rev.gain.value = 0.5; g.rev.connect(g.conv); g.conv.connect(g.master);
     g.intro = c.createGain(); g.intro.connect(g.master);        // the opening (cancel() fades this one)
-    g.amb = c.createGain(); g.amb.gain.value = 0; g.amb.connect(g.master);
-    g.ui = c.createGain(); g.ui.gain.value = 0.9; g.ui.connect(g.master);
+    g.amb = c.createGain(); g.amb.gain.value = 0;
+    g.ui = c.createGain(); g.ui.gain.value = 5;   // audited: the hover tick and the press were far below the game's clicks
+    if (dests) { var am = c.createGain(); am.gain.value = 0.8; g.amb.connect(am); am.connect(dests.amb); var um = c.createGain(); um.gain.value = 0.8; g.ui.connect(um); um.connect(dests.ui); }
+    else { g.amb.connect(g.master); g.ui.connect(g.master); }
     // noise sources
     var nb = c.createBuffer(1, sr * 2, sr), nd = nb.getChannelData(0); for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     var pb = c.createBuffer(1, sr * 4, sr), pd = pb.getChannelData(0), b0 = 0, b1 = 0, b2 = 0, pk = 0;
@@ -150,16 +160,29 @@ var TitleSfx = (function () {
   function clack(g, t) { tone(g, { type: 'sine', f: 210, f2: 120, t: t, dur: 0.12, vol: 0.11 }); tone(g, { type: 'triangle', f: 1300, t: t, dur: 0.03, vol: 0.03 }); }
   function twinkle(g, t) { sparkle(g, t, { d: 0.11 }); }
   var VOICES = { fanfare: fanfare, thud: thud, tick: tick, lightsUp: lightsUp, liftoff: liftoff, whoosh: whoosh, sparkle: sparkle, chime: chime, crowd: crowd, confetti: confetti, boing: boing, pat: pat, hi: hi, clack: clack, twinkle: twinkle };
+  // play one voice through its level trim: the voice's notes go to a small trim gain in front of the intro bus
+  function voice(g, name, t, o) {
+    var keep = g.intro, tg = g.c.createGain(); tg.gain.value = TRIM[name] || 1; tg.connect(keep); g.intro = tg;
+    try { VOICES[name](g, t, o || {}); } finally { g.intro = keep; }
+    if (g.live) setTimeout(function () { try { tg.disconnect(); } catch (e) {} }, Math.max(0, t - g.c.currentTime + 8) * 1000);
+  }
 
   // ---------------------------------------------------------------- live context
   function ready() { return !!(ac && G); }
+  function sharedDests() { return { sfx: Snd.bus('sfx'), amb: Snd.bus('amb'), ui: Snd.bus('ui') }; }
   function unlock() {
     try {
+      if (sharedOK()) {
+        try { Snd.unlock(); } catch (e) {}
+        var sc = Snd.context(), d = sc ? sharedDests() : null;
+        // (re)build on the shared context, also when the shared mix was rebuilt
+        if (sc && (!G || G.c !== sc || !G.dests || G.dests.sfx !== d.sfx)) { if (ambNodes) { try { ambNodes[0].stop(); } catch (e) {} ambNodes = null; liveSrc--; } ac = sc; own = false; G = graph(ac, true, d); }
+      }
       if (!ac) {
         var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-        ac = new AC(); G = graph(ac, true);
+        ac = new AC(); own = true; G = graph(ac, true);
       }
-      if (ac.state === 'suspended' && ac.resume) { var p = ac.resume(); if (p && p.catch) p.catch(function () {}); }
+      if (own && ac.state === 'suspended' && ac.resume) { var p = ac.resume(); if (p && p.catch) p.catch(function () {}); }
       clearTimeout(suspendT);
       G.master.gain.setTargetAtTime(level(), ac.currentTime, 0.02);
     } catch (e) { ac = null; G = null; }
@@ -177,7 +200,7 @@ var TitleSfx = (function () {
       score.push([name, now ? -1 : t, o || {}]);
       if (!ready() || level() <= 0 || ac.state !== 'running') return;
       var when = now ? ac.currentTime + 0.01 + (t || 0) : Math.max(ac.currentTime, base + (t || 0));
-      VOICES[name](G, when, o || {});
+      voice(G, name, when, o || {});
     } catch (e) {}
   }
   function cancel() {
@@ -199,7 +222,7 @@ var TitleSfx = (function () {
         f.type = 'bandpass'; f.frequency.value = 520; f.Q.value = 0.6; f2.type = 'lowpass'; f2.frequency.value = 1400;
         s.connect(f); f.connect(f2); f2.connect(G.amb); s.start(n, Math.random() * 3); ambNodes = [s, f, f2]; liveSrc++; created++;
       }
-      G.amb.gain.cancelScheduledValues(n); G.amb.gain.setTargetAtTime(0.05, n, 0.9); ambOn = true;
+      G.amb.gain.cancelScheduledValues(n); G.amb.gain.setTargetAtTime(AMB, n, 0.9); ambOn = true;
     } else if (ambNodes) {
       G.amb.gain.cancelScheduledValues(n); G.amb.gain.setTargetAtTime(0, n, 0.08);
       var nodes = ambNodes; ambNodes = null; ambOn = false;
@@ -224,20 +247,21 @@ var TitleSfx = (function () {
     clearTimeout(suspendT);
     suspendT = setTimeout(function () {
       G.srcs.slice().forEach(function (s) { try { s.stop(); } catch (e) {} });
-      try { if (ac.state === 'running' && ac.suspend) ac.suspend().catch(function () {}); } catch (e) {}
+      // only our own context is suspended: the shared one keeps the game's music and sounds going
+      try { if (own && ac.state === 'running' && ac.suspend) ac.suspend().catch(function () {}); } catch (e) {}
     }, 450);
   }
   document.addEventListener('visibilitychange', function () {
-    try { if (!ac) return; if (document.hidden) { if (ac.suspend) ac.suspend().catch(function () {}); } else if (document.body.classList.contains('t3on') && ac.resume) ac.resume().catch(function () {}); } catch (e) {}
+    try { if (!ac || !own) return; if (document.hidden) { if (ac.suspend) ac.suspend().catch(function () {}); } else if (document.body.classList.contains('t3on') && ac.resume) ac.resume().catch(function () {}); } catch (e) {}
   });
   // every tap resumes the context if a browser suspended it (iPad), while the title is up
-  ['pointerdown', 'touchend', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (ac && ac.state !== 'running' && document.body.classList.contains('t3on')) unlock(); }, true); });
+  ['pointerdown', 'touchend', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (ac && own && ac.state !== 'running' && document.body.classList.contains('t3on')) unlock(); }, true); });
 
   // ---------------------------------------------------------------- checks: render a score offline and measure it
   function _render(sc, seconds) {
     var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OAC) return Promise.resolve(null);
     var sr = 44100, len = Math.ceil(sr * (seconds || 7.5)), oc = new OAC(2, len, sr), g = graph(oc, false);
-    (sc || score).forEach(function (e) { if (VOICES[e[0]]) VOICES[e[0]](g, 0.06 + Math.max(0, e[1]), e[2] || {}); });
+    (sc || score).forEach(function (e) { if (VOICES[e[0]]) voice(g, e[0], 0.06 + Math.max(0, e[1]), e[2] || {}); });
     return oc.startRendering().then(function (buf) {
       var L = buf.getChannelData(0), R = buf.getChannelData(1), peak = 0, clip = 0, sum = 0, win = Math.floor(sr * 0.5), wins = [], ws = 0, wp = 0;
       for (var i = 0; i < L.length; i++) {
@@ -253,6 +277,10 @@ var TitleSfx = (function () {
     unlock: unlock, begin: begin, play: play, cancel: cancel, ambience: ambience, ui: ui, stopAll: stopAll,
     stats: function () { return { ctx: ac ? ac.state : null, live: liveSrc, created: created, ambience: ambOn, level: level(), scheduled: score.length }; },
     score: function () { return score.slice(); },
-    _render: _render
+    _render: _render, _trim: TRIM,
+    // offline audit: a score into any context (dests: { sfx, amb, ui } nodes; inside Snd._measure use the shared buses)
+    _into: function (c, dests, sc) { var g = graph(c, false, dests); (sc || []).forEach(function (e) { if (VOICES[e[0]]) voice(g, e[0], 0.06 + Math.max(0, e[1]), e[2] || {}); }); return g; },
+    _ambInto: function (c, dests) { var g = graph(c, false, dests), s = c.createBufferSource(), f = c.createBiquadFilter(), f2 = c.createBiquadFilter(); s.buffer = g.pink; s.loop = true; f.type = 'bandpass'; f.frequency.value = 520; f.Q.value = 0.6; f2.type = 'lowpass'; f2.frequency.value = 1400; s.connect(f); f.connect(f2); f2.connect(g.amb); g.amb.gain.value = AMB; s.start(0); return g; },
+    _uiInto: function (c, dests, kind) { var g = graph(c, false, dests), t = 0.02; if (kind === 'hover') tone(g, { type: 'sine', f: 1320, t: t, dur: 0.05, vol: 0.022, a: 0.003, dest: g.ui }); else if (kind === 'press') { tone(g, { type: 'sine', f: 560, f2: 300, t: t, dur: 0.08, vol: 0.08, a: 0.002, dest: g.ui }); noise(g, { t: t, dur: 0.02, vol: 0.03, type: 'highpass', f: 3000, dest: g.ui }); } return g; }
   };
 })();

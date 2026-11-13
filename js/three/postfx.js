@@ -13,7 +13,10 @@
 // Rendering stays on demand: render() is only called when the table has something new to draw, and when glow
 // is off the table renders directly, so the low tier pays nothing.
 //
-// createPostFx(renderer, scene, camera) -> { on, enable(bool), setSize(w, h), tag(), render(), tune({strength}), dispose() }
+// When the quality drops below 'high', enable(false) also frees the two small render targets (iPad memory).
+// Older iPads without half-float render targets (WebGL1 without EXT_color_buffer_half_float) get 8-bit targets.
+//
+// createPostFx(renderer, scene, camera) -> { on, enable(bool), setSize(w, h), tag(), render(), tune({strength}), info(), dispose() }
 import * as THREE from 'three';
 
 var LAYER = 5, OCC = 6;
@@ -40,8 +43,9 @@ export function createPostFx(renderer, scene, camera) {
   var blurMat = null, addMat = null, glowCount = 0, clr = new THREE.Color();
   function build() {
     if (quad) return;
-    var opt = { type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false };
-    rtA = new THREE.WebGLRenderTarget(4, 4, opt); rtB = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
+    var half = true; try { half = renderer.capabilities.isWebGL2 || renderer.extensions.has('EXT_color_buffer_half_float'); } catch (e) {}
+    var type = half ? THREE.HalfFloatType : THREE.UnsignedByteType, opt = { type: type, depthBuffer: true, stencilBuffer: false };
+    rtA = new THREE.WebGLRenderTarget(4, 4, opt); rtB = new THREE.WebGLRenderTarget(4, 4, { type: type, depthBuffer: false });
     blurMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: BLUR, uniforms: { tex: { value: null }, dir: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
     addMat = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: ADD, uniforms: { tex: { value: null }, strength: { value: GLOW.strength } }, depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending });
     quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMat); quad.frustumCulled = false;
@@ -58,7 +62,7 @@ export function createPostFx(renderer, scene, camera) {
   }
   var P = {
     get on() { return want && glowCount > 0; },
-    enable: function (v) { want = !!v; if (want) { build(); P.tag(); } },
+    enable: function (v) { want = !!v; if (want) { build(); P.tag(); } else if (quad) P.dispose(); },
     setSize: function (W, H) { w = W || w; h = H || h; size(); },
     // (re)find the glow objects and the lights; call after the venue or the creature changes
     // isOccluder(mesh) picks the solid things that should hide a glow behind them (the table, a creature);
@@ -103,6 +107,7 @@ export function createPostFx(renderer, scene, camera) {
       }
     },
     count: function () { return glowCount; },
+    info: function () { return { on: want && glowCount > 0, glowObjects: glowCount, target: rtA ? rtA.width + 'x' + rtA.height : 'none' }; },
     tune: function (o) { if (o.strength != null) GLOW.strength = o.strength; if (o.scale != null) { GLOW.scale = o.scale; size(); } },
     dispose: function () { if (rtA) { rtA.dispose(); rtB.dispose(); blurMat.dispose(); addMat.dispose(); quad.geometry.dispose(); } rtA = rtB = quad = null; }
   };
