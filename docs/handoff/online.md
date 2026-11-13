@@ -1,283 +1,305 @@
-# Handoff: Online play (agent `online`)
+# Handoff: Online play (agents `online`, `online2`)
 
-Tata (Houston) and the kid (Atlanta) each play on their own device, with FaceTime running alongside for
-voice. One device **hosts** (it shows a code like **FROG 47**), the other **joins** by typing that code.
+Tata (Houston) and the kid (Atlanta) each play on their own device, with FaceTime running alongside for voice. One
+device **hosts** (it shows a code like **FROG 47**), the others **join** by typing that code. Since round 8: **two or
+three players** (a host and up to two guests; the third seat can also be a creature the host picks, so "Tata + Tyson +
+a creature" works on two devices), **all 19 variation cards and the bonus dice** online, **Play again** for everyone
+in the room, each player's own **3D look** at the other devices' tables, a "you're offline" line, a share button.
 
 ## Files
 
-- New: `js/online-config.js` (the Firebase settings; `null` until the user pastes them), `js/online-net.js`
-  (transport, two back ends), `js/online.js` (game sync, menus, reconnect), `css/online.css`,
-  `docs/handoff/firebase-rules.json` (the security rules, ready to paste).
-- `index.html`: loads `css/online.css` and the three scripts (after `js/tutorial.js`, before `js/main.js`).
-- `js/game.js`, three one-line changes:
-  - `startMatch`: `else if (mode === 'online') Online.setup(G, cfg);`
-  - `renderGame`: a human player who isn't player 0 shows their own jersey (`p.jersey`) instead of their seat number
-    (no other mode sets `p.jersey`, so nothing else changes).
-  - `endShake`: `'online'` counts as a 2-player shake (`S.stats.pvpShakes`, the "Good Sport" badge).
-- `js/screens.js`: one line adds the **Online** card at the start of "Play with people".
-- `js/variations.js`: exports `cardHTML` (the guest draws the same card buttons).
-- `js/social.js`: the vs screen and Player of the Match card show a player's own jersey (`p.jersey`) if there is one.
-- `js/config.js`: one line: with `?onlinetest=1&p=b` in the address the save key gets a `.test.b` suffix, so two test
-  tabs in one browser are two different players. Without that flag nothing changes.
+- `js/online-config.js` (the Firebase settings; `null` until the user pastes them), `js/online-net.js` (transport, two
+  back ends), `js/online.js` (game sync, lobby, reconnect, rematch, avatars), `css/online.css`.
+- `docs/handoff/firebase-rules.json` is owned by the accounts helper now: the **new `rooms` rules are below**, to be
+  merged into it (round 8 changed the room layout, so the old rules refuse the new rooms).
+- Unchanged hooks from round 6: `index.html` loads the files; `js/game.js` has `startMatch → Online.setup`, the jersey
+  in `renderGame`, and `'online'` counting as a pass-and-play shake in `endShake`; `js/screens.js` has the Online card;
+  `js/config.js` gives each `?onlinetest=1&p=X` tab its own save.
 - Everything else is done from `js/online.js` by wrapping existing functions. **Every wrapper calls the original
-  unchanged unless an online match is on** (`G.mode === 'online'`). I re-checked 'pvp' (the "Pass to…" pop-ups
-  still appear) and 'ai' after the change; `node tests/engine.test.js` still passes 320/320.
+  unchanged unless an online match is on** (`G.mode === 'online'`); the Bonus wrappers also only act for the host of
+  an online match. I re-checked 'pvp' and 'ai' start and play as before; `node tests/engine.test.js` 822/822.
 
 ## The design
 
-**Host-authoritative.** The host device is the referee. It runs the real game (`G`, all of `js/game.js`) exactly
-like a pass-and-play match in a new mode `'online'`: player 0 = the host's player, player 1 = the guest's player.
+**Host-authoritative.** The host device is the referee. It runs the real game (`G`, all of `js/game.js`) like a
+pass-and-play match in mode `'online'`: player 0 = the host's player, then the guests' players, then the creature (if
+any). `G.slots[i]` says which room seat plays player `i` (0 = host, 1 / 2 = guests, −1 = creature).
 
-1. **State, host → guest.** After every change (every `renderGame()` on the host, debounced) the host publishes the
-   whole game as one JSON string at `rooms/CODE/state` (about 5–10 KB). It also saves the same thing to its own
-   localStorage, so it survives a reload.
-2. **Mirror, on the guest.** The guest never runs game rules. It checks the state (24 real cubes, real symbols,
-   names cut to 14 characters, result lines stripped to plain text + bold) and builds a "mirror" `G` **seen from
-   its own seat**: its own player becomes player 0, so the HUD, the "your turn" lines, the 3D table and the 3D kid
-   are all "me". Then it calls the normal `renderGame()`.
-3. **Actions, guest → host.** The guest's taps become small messages at `rooms/CODE/acts/N`: `move`, `ch` (Now! /
-   Impossible!), `goal`, `nogoal`, `ans` (an answer to a question), `ready`, `rematch`, `emote`, `leave`. The host
-   checks each one (is it really that player's turn? is that cube really in Resources?) and applies it with the
-   game's own functions (`doMove`, `ACT.callNow`, `setGoal`, …), then deletes the message.
-4. **Questions (prompts).** When the game needs the guest's own private input, the host puts a prompt for that seat
-   into the state; the guest opens its builder or pop-up on its own device and sends the answer back:
-   - a Solution after Now! / Impossible! / the last cube / a "No Goal" challenge (`sol`),
-   - a Goal for a "No Goal" challenge (`goal`),
-   - a variation card when the guest sets the Goal (`vari`),
-   - "Impossible! or Let's write?" after the host played the last cube (`last`),
-   - agree or challenge the host's "No Goal" call (`nogoal`).
-   The host does this by wrapping `openSolutionBuilder`, `openGoalBuilder`, `askNoGoal`, `lastCubePlayed` and the
-   card pick in `startGoalPhase`: for player 0 they run as before; for the remote player they ask.
-5. **Private writing, revealed together.** Nothing the guest writes is shown on the host until the shake's results
-   (and the host's own Solution never travels until then either). After the last cube **both write at the same
-   time**: `startLastWrite` sends the guest its question first, then opens the host's own builder.
-   The results pop-up (the same lines, Solutions and scores) appears on both devices.
-6. **Prompt ids come from the game position** (match, roll number, kind, move counter, seat). After a host reload the
-   same question gets the same id, so an answer that already arrived (saved by the host) is used again.
-7. **The next shake starts when BOTH players have closed the results** (`nextShake` waits for the guest's `ready`).
-   Nobody can be hurried: there are no timers anywhere.
-8. **"Waiting for Tata…"** replaces every "Pass the device to…" pop-up (`multiHuman()` returns false online, so
-   every pop-up on a device is for that device's own player).
-9. **Dice.** The host's pour (physics) decides the faces. The guest plays its own pour animation at the same moment
-   (after the vs screen on the first shake); when the host's faces arrive, the guest's cubes glide into their slots
-   showing the host's faces. Both devices always show the same cubes.
-10. **Sounds and moments** on the guest (the Goal chime, the NOW!/IMPOSSIBLE! banner, the cube thunk, the variation
-    card chip, the end-of-match fireworks) are triggered by comparing the old and new state, so a reconnect never
-    replays them.
-11. **Emotes** (the fixed phrases and 🤝 / 😎) are relayed both ways and appear as the other player's bubble.
-    No free text exists anywhere.
+1. **State, host → guests.** After every change the host publishes the whole game as one JSON string at
+   `rooms/CODE/state` (about 5–15 KB) and saves it to its own localStorage (survives a reload).
+2. **Mirror, on each guest.** A guest never runs game rules. It checks the state (24 official cubes + up to 8 bonus
+   cubes, real faces, names cut to 14 characters, card settings and the Twist reduced to plain checked values, result
+   lines stripped to text + bold) and builds a "mirror" `G` **seen from its own seat** (its player becomes player 0;
+   the seating order is kept, so "play passes to the left" is the same on every device). Then the normal `renderGame()`.
+3. **Actions, guests → host** at `rooms/CODE/acts/SEAT/N` (SEAT = 1 or 2, so the database rules can tell who sent it):
+   `move`, `ch` (Now! / Impossible!, also out of turn with three players), `goal`, `nogoal`, `ans` (an answer to a
+   question), `ready` (closed the results), `emote`, `leave`. The host **checks each one with its own game and the
+   engine** (is it that player's turn / were they allowed to challenge? is that cube in Resources? does every symbol
+   use the face that cube really shows: `Eq.cubeOf(sym) === cube.s`? `Eq.checkGoal` / `Eq.checkSolution` with the
+   host's own math mode) and applies it with the game's own functions, then deletes the message.
+4. **Questions (prompts)** for one guest's private input: a Solution (`sol`), a Goal for a "No Goal" challenge
+   (`goal`), a variation card (`vari`, with the k / base / colour choice), "Impossible! or write?" after the last cube
+   (`last`), Third Party "write one too?" (`tp`), agree/challenge a "No Goal" call (`nogoal`).
+5. **Private writing, revealed together.** Nothing anybody writes is shown until the shake's results. After the last
+   cube **everybody writes at the same time** (the guests are asked first, then the host's own builder opens).
+6. **Three players** use the official rules already in the game: challenger / mover / Third Party (`Eq.scoreChallenge`).
+   The Third Party decides **on their own device** after the writer has written (same order as pass-and-play). After
+   the last cube and after a "No Goal" call, every other person answers on their own device: the **first**
+   Impossible! / Challenge! wins (the other questions are withdrawn), all "Let's write!" / "I agree" continues.
+   A creature in the third seat thinks first, as in a normal match. With three players everybody gets
+   "You can challenge too: Now! Impossible!" when it isn't their turn and they didn't make the last move.
+7. **Prompt ids come from the game position**, so after a host reload the same question gets the same id and an answer
+   that already arrived is used again.
+8. **The next shake starts when everybody has closed the results.** No timers anywhere.
+9. **Dice.** The host's pour decides the faces; each guest plays its own pour animation and the cubes glide to the
+   host's faces. In 3D a guest also sees the other person / the creature carry each moved cube over (and its own
+   player carries its own cube) before it lands.
 
-### Who the host is doesn't matter
+### Cards online (round 8)
 
-Either device can host. The host's **Shakes per match** setting is used. In the lobby, if the two devices have
-different operations unlocked, the host picks **whose cubes** to play with (for example the kid's unlocks, so
-Tata doesn't get roots the kid hasn't learned yet). Variation cards: whoever sets the Goal picks from the cards
-unlocked on **their own** device.
+- All 19 cards. `symOK` accepts every symbol the engine has a cube for (`Eq.cubeOf(s) !== null`) plus `'!'`;
+  `safeTokens` keeps `'!'`; `cubeTokens` checks `Eq.cubeOf(t.s) === cube.s` (an upside-down 3 must be on a 3 cube, a
+  `²` exponent on a red 2 under Red Exponent, a gold `F` on the Power die …). `G.vari`, `G.variSet` (`k`, `base`,
+  `ecol`, `eids`) and the math mode (including Exponent Colour's live zone counts `ex`, which the host re-publishes
+  after every move) travel in the state. The host's own `G.fractions` stays live (and is made live again after a host
+  reload).
+- **Which cards may be offered (judgment call): the Goal-setter's own device decides.** When a guest sets the Goal, the
+  host offers the cards **earned on that guest's device and left switched on in that device's Parent corner** (sent in
+  the seat info as `vc`), filtered by the host with `Vari.hasEffect` for this shake. When the host sets the Goal, the
+  normal picker runs with the host's cards; a creature uses the host's cards. Why: a card is a player's own reward (it
+  unlocks with that player's skill points), the kid's device still respects Tata's switches for the kid, and nobody is
+  handed a card they haven't learned. The union would give the kid Tata's Middle cards; "host's only" would hide the
+  kid's own cards when Tata hosts.
+- A guest's card answer is checked: a card that was offered, k 6–11, base 8 or 9, a colour that has a digit in
+  Resources.
+
+### Bonus dice online (round 8)
+
+- **The host's dice** (earned on the host device and switched on in its Parent corner) join the roll, with a
+  **"Bonus dice … On / Off" switch in the lobby** (only shown when the host has dice). Why the host's: the dice belong to
+  the table, not to one player, like "Shakes per match" (the host's). Tata can "Unlock now" a die in the Parent corner
+  of the device he hosts on.
+- `js/bonus.js` only rolls dice for `'ai'` / `'pvp'` matches, so for the host's own `Bonus.onShake` /
+  `Bonus.beforeGoal` calls the match briefly counts as `'pvp'` (or as a mode without dice when the switch is off).
+  Only the public `Bonus` API is used. **If `Bonus.activeFor({mode:'online'})` ever returns true** (snippet 2 below)
+  the trick switches itself off. Nothing reads the Twist **die mesh**: `G.twist` is published as plain data (whatever
+  keys it has, short strings / numbers only), so the Twist **deck** being built in `js/bonus.js` should travel as long
+  as it keeps producing `G.twist`.
+- Bonus cubes (ids 24+) travel with the cubes; the guests' chip, banner and Bonus +2 / Golden Goal results come from
+  the host (`Bonus.adjust` runs inside the host's `endShake`, the published points include it). A new-die celebration
+  and a Power-op lesson appear on the **host** device only (a guest sees "Getting ready…").
+
+### Seats, lobby, Play again, leaving
+
+- Room: `{ v: 2, host, created, locked, guests: {1: uid, 2: uid}, seats: {0,1,2: info}, state, acts: {1: {...}, 2:
+  {...}}, here: {0,1,2} }`. Seat info: name, jersey, `who` (kid / tata from Settings "My player looks like"), `back`
+  (name on the shirt), `kit` (JSON of the kit he wears: colours `#rrggbb`, a few words, on/off flags; empty for a
+  grown-up, who wears Tata's yellow), `vc` (cards), `stage` (unlocked operations), `rdy` (ready for match number).
+- **Lobby (host):** the code, **Share the code** (share sheet on a phone/tablet, else copied), who has joined (✔ / not
+  connected), the third seat (nobody / a creature, when only one guest is in), whose cubes (when the players' unlocked
+  operations differ), the bonus switch, Kick off (needs one guest). **Lobby (guest):** who is in, "Waiting for Tata…".
+- The room is **locked** while a match is on (a new code-typer gets "That game has already started…"), and unlocked
+  after it, so a third player can join for the next match. A guest who was in the match can always come back.
+- **Play again:** everybody gets "Play again / Leave". A guest's tap = ready ("Waiting for Tata to start…", with who is
+  ready); the host's tap opens the lobby again (who is ready, creature, cubes, dice) and "Start the next match!" uses
+  everybody who is ready (someone still deciding watches and plays next time). **The first Goal-setter moves round**
+  (match k starts with player k mod n).
+- **A guest leaves** (Menu → Leave): in the lobby or after a match their seat is freed. **During a match** the seat
+  stays theirs (the same code brings them back) and every device shows "**Mama** left the game…". The host's line has
+  **"🦥 Snoozy plays for Mama"**, **Keep waiting**, **End the match**. A creature playing for someone answers the open
+  question the creature's way (writes the Solution, decides as Third Party, …) and plays on; when the person is back,
+  they get their seat back **at the next shake** ("Mama is back! They play again from the next shake.").
+- **A guest drops** (Wi-Fi, locked iPad): after 3 calm seconds the same line says "lost connection: waiting…" (the host
+  can again let a creature play for them). The game naturally waits only when it needs them.
+- **The host drops:** guests see "Tata lost connection: waiting…" with Keep waiting / Leave the game. **The host
+  leaves:** the room is deleted and everybody gets "The game has ended" (as before).
+- **This device offline:** "📶 You're offline: reconnecting… Your moves are kept and sent when the Wi-Fi is back."
+- **Reload / closed tab** (within 24 h), any seat: the splash button says **Back to my online game**.
+- **Abandoned rooms:** the host deletes the room when it goes back to the menu (Leave, the end-of-match Menu, End the
+  match), and a room this device hosted and never closed is deleted when it hosts a new game.
 
 ### Progress (each device records only its own player)
 
-Online counts like a 2-player pass-and-play match (`'pvp'`), seen from each device:
-- Your own correct Solutions: the normal XP, skill star, stats, badges (recorded by the builder on your device).
-- Your own Now!/Impossible! calls and "clever move" bonus: the same XP rules as `'pvp'` (the guest applies the
-  same rules to the shared result, for its own seat only).
-- Goals you set, shakes played, "Good Sport" shakes, the no-hint streak, and a match win badge ("Comeback Kid",
-  "Perfect Match") if you win.
-- No creature is beaten, nothing unlocks a creature, no "Tata's Record". Exactly like `'pvp'` today.
+As before, plus "Smart Third Party play" XP for a guest. No creature is beaten, no "Tata's Record".
 
-### Reconnecting
+### The people at the table (3D)
 
-- **The other player drops** (Wi-Fi, locked iPad, closed tab): after 3 calm seconds a banner says
-  "**Tata** lost connection: waiting…" with **Keep waiting** (hides the buttons, the line stays) and
-  **End the match** (asks once, then ends it; nobody loses anything). When they come back: "Tata is back!".
-  Nothing is ever timed out.
-- **Coming back after a reload / closed tab / restart** (within 24 hours): the splash button says
-  **Back to my online game** and goes straight back into the same match.
-  - Guest: re-reads the state; an unanswered question re-opens (a half-built Solution has to be built again).
-  - Host: restores its saved game and continues from the same position. Whatever was half-way on the host itself
-    (its own builder, a pop-up) is simply asked again. The guest's answers that already arrived are kept.
-- **While a device is offline** Firebase keeps its moves in a queue and sends them when it reconnects.
-- **Leaving on purpose** (Menu → Leave, the Menu button at the end): the host deletes the room; the guest frees its
-  seat. The other device gets a friendly "left the game / the game has ended" pop-up with a Menu button.
+Each device: its own player at the near side (`T3.playerSet`, kid / grown-up from its own Settings). A creature
+(third seat, or playing for someone) across the table (`setCreature` / `T3.setCreatures`). The other human from their
+seat info (`who`, `back`, `jersey`, `kit`): `'far'` when no creature is there, `'left'` when a creature is across.
+**The 3D table has one mate (`T3.mate`)**, so with three humans each device shows the next player in turn order at
+`'far'`; the third human is in the HUD only (a second mate would need a 3D change, see below).
 
-## What the user has to do in the Firebase console (plain English)
+## Please paste (I edited none of these files)
 
-You need a free Google Firebase project with a **Realtime Database** and **Anonymous sign-in** switched on. About
-15 minutes. Nothing here costs money: the free "Spark" plan is plenty (each match moves well under 1 MB).
+**1. `js/game.js`, `avatarMoveFn` (optional, recommended).** Lets the host's own player and the guest shown as the
+mate carry their cubes in 3D **on the host's device** (guests already animate on their side). Replace the line
 
-1. Go to **https://console.firebase.google.com** and sign in with your Google account.
-2. **Create a project**: click **Create a project** (or **Add project**). Name it e.g. `tatas-equations`.
-   Google Analytics: you can switch it **off** (not needed). Click **Create project**, then **Continue**.
-3. **Make the database**: in the left menu open **Build → Realtime Database** and click **Create Database**.
-   - Location: **United States (us-central1)** is fine.
-   - Security rules: choose **Start in locked mode**. Click **Enable**.
-4. **Paste the security rules**: still in Realtime Database, open the **Rules** tab. Delete everything in the box,
-   paste the whole contents of `docs/handoff/firebase-rules.json` (also printed below), and click **Publish**.
-5. **Switch on anonymous sign-in** (needed: the rules use it to tell the host and the guest apart; nobody types an
-   email or password, and the kid has no account):
-   left menu **Build → Authentication** → **Get started** → **Sign-in method** tab → click **Anonymous** →
-   switch **Enable** on → **Save**.
-6. To be safe, also add the website's address there: **Authentication → Settings → Authorized domains → Add domain**
-   → type `profsean.wang` → **Add**. (`localhost` is already in the list.)
-7. **Register the website and copy its settings**: click the gear ⚙ next to **Project Overview** →
-   **Project settings** → in **Your apps** click the **</>** (Web) button. Nickname: `tatas-equations-web`.
-   Leave "Firebase Hosting" **unticked**. Click **Register app**. Google shows a block of code containing
-   `const firebaseConfig = { apiKey: "...", authDomain: "...", databaseURL: "...", projectId: "...", ... };`
-   Copy just the part from `{` to `}` and send it to the lead (or paste it yourself, step 8).
-   - **Check that it contains `databaseURL`.** If it doesn't, copy the database address from the top of the
-     **Realtime Database → Data** page (it looks like `https://tatas-equations-default-rtdb.firebaseio.com`) and add
-     `databaseURL: "that address",` inside the braces.
-8. **Paste it into the game**: open `js/online-config.js` and change the last line to
-   `window.FIREBASE_CONFIG = { apiKey: "…", authDomain: "…", databaseURL: "…", projectId: "…", storageBucket: "…", messagingSenderId: "…", appId: "…" };`
-   then publish the site as usual. (This "web config" is not a password: every Firebase website sends it to every
-   visitor. The security rules are what protect the data. It will be visible in the public GitHub repo, and that's
-   normal for Firebase websites.)
-9. **Optional, recommended: a spending cap you can't exceed.** Stay on the free **Spark** plan (don't upgrade to
-   Blaze). On Spark, Google can never charge you; if the free limits were ever hit the database just pauses.
+```js
+  if (!T3.active() || !T3.playerMove || G.mode === 'online' || G.mode === 'tutorial') return null;
+```
+with
+```js
+  if (!T3.active() || !T3.playerMove || G.mode === 'tutorial') return null;
+  if (G.mode === 'online') return window.Online && Online.moveFn ? Online.moveFn(who) : null; // host: its player / the mate carry the cube
+```
+and update the comment above it to "(Online: js/online.js says who carries a cube.)". A remote move then runs through
+`humanPlace` (busy while carried); `js/online.js` already refuses moves while `G.busy` / `G.carrying`.
 
-### The rules to paste (same as `docs/handoff/firebase-rules.json`)
+**2. `js/bonus.js` (for the Twist-deck helper):** in `activeFor` allow online for the host's match, and fix the
+Parent-corner wording:
+
+```js
+  function activeFor(g) { return !!g && (g.mode === 'ai' || g.mode === 'pvp' || (g.mode === 'online' && !!(window.Online && Online.isHost()))); }
+```
+`' Bonus dice play in matches against creatures and in pass-and-play (not online).'` → `' Bonus dice play in matches
+against creatures, in pass-and-play and online (the host\'s dice, switch in the online lobby).'`, and the header
+comment line "Online play: never …" → "Online play: the host's dice (js/online.js)". `js/online.js` works with or
+without this snippet (it then stops using its temporary 'pvp' trick by itself), and it still respects the lobby's Off
+switch either way.
+
+**3. `js/three/player.js` (only if wanted):** a second mate (`T3.mate2`, seat `'right'`) would let a device show
+both other humans in a three-human game; `avatars()` in `js/online.js` would then call it for the second human.
+
+## Proposed database rules for `rooms` (merge into `docs/handoff/firebase-rules.json`)
+
+Replace the whole `"rooms"` block with this (the rest of the file, for accounts, stays as the accounts helper has it):
 
 ```json
-{
-  "rules": {
-    "rooms": {
-      "$code": {
-        ".read": "auth != null",
-        ".write": "auth != null && ((!data.exists() && newData.child('host').val() === auth.uid) || (data.exists() && !newData.exists() && (data.child('host').val() === auth.uid || data.child('created').val() < now - 172800000)))",
-        ".validate": "$code.matches(/^[A-Z]{3,6}[0-9]{2}$/) && newData.hasChildren(['v', 'host', 'created'])",
-        "v": { ".validate": "newData.val() === 1" },
-        "host": { ".validate": "newData.isString() && newData.val().length <= 128 && (!data.exists() || newData.val() === data.val())" },
-        "created": { ".validate": "newData.isNumber() && ((data.exists() && newData.val() === data.val()) || (!data.exists() && newData.val() <= now && newData.val() > now - 600000))" },
-        "guest": {
-          ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid && root.child('rooms/' + $code + '/created').val() > now - 86400000) || (data.val() === auth.uid && !newData.exists()) || (root.child('rooms/' + $code + '/host').val() === auth.uid && !newData.exists()))",
-          ".validate": "newData.isString() && newData.val().length <= 128"
-        },
-        "seats": {
-          "$s": {
-            ".write": "auth != null && (($s === '0' && root.child('rooms/' + $code + '/host').val() === auth.uid) || ($s === '1' && root.child('rooms/' + $code + '/guest').val() === auth.uid))",
-            ".validate": "($s === '0' || $s === '1') && newData.hasChildren(['name', 'jersey'])",
-            "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 14" },
-            "jersey": { ".validate": "newData.isString() && newData.val().length <= 2" },
-            "cards": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9" },
-            "stage": { ".validate": "newData.isString() && newData.val().length <= 600" },
-            "$other": { ".validate": false }
-          }
-        },
-        "state": {
-          ".write": "auth != null && root.child('rooms/' + $code + '/host').val() === auth.uid",
-          ".validate": "newData.hasChildren(['seq', 'g'])",
-          "seq": { ".validate": "newData.isNumber()" },
-          "g": { ".validate": "newData.isString() && newData.val().length <= 100000" },
-          "$other": { ".validate": false }
-        },
-        "acts": {
-          "$n": {
-            ".write": "auth != null && ((!data.exists() && root.child('rooms/' + $code + '/guest').val() === auth.uid) || (!newData.exists() && root.child('rooms/' + $code + '/host').val() === auth.uid))",
-            ".validate": "$n.matches(/^[0-9]{1,6}$/) && newData.isString() && newData.val().length <= 4000"
-          }
-        },
-        "here": {
-          "$s": {
-            ".write": "auth != null && (($s === '0' && root.child('rooms/' + $code + '/host').val() === auth.uid) || ($s === '1' && root.child('rooms/' + $code + '/guest').val() === auth.uid))",
-            ".validate": "newData.isBoolean()"
-          }
-        },
+"rooms": {
+  "$code": {
+    ".read": "auth != null",
+    ".write": "auth != null && ((!data.exists() && newData.child('host').val() === auth.uid) || (data.exists() && !newData.exists() && (data.child('host').val() === auth.uid || data.child('created').val() < now - 172800000)))",
+    ".validate": "$code.matches(/^[A-Z]{3,6}[0-9]{2}$/) && newData.hasChildren(['v', 'host', 'created'])",
+    "v": { ".validate": "newData.val() === 2" },
+    "host": { ".validate": "newData.isString() && newData.val().length <= 128 && (!data.exists() || newData.val() === data.val())" },
+    "created": { ".validate": "newData.isNumber() && ((data.exists() && newData.val() === data.val()) || (!data.exists() && newData.val() <= now && newData.val() > now - 600000))" },
+    "locked": {
+      ".write": "auth != null && root.child('rooms/' + $code + '/host').val() === auth.uid",
+      ".validate": "newData.isBoolean()"
+    },
+    "guests": {
+      "1": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid && root.child('rooms/' + $code + '/locked').val() !== true && root.child('rooms/' + $code + '/created').val() > now - 86400000 && root.child('rooms/' + $code + '/host').val() !== auth.uid && root.child('rooms/' + $code + '/guests/2').val() !== auth.uid) || (data.val() === auth.uid && (!newData.exists() || newData.val() === auth.uid)) || (root.child('rooms/' + $code + '/host').val() === auth.uid && !newData.exists()))",
+        ".validate": "newData.isString() && newData.val().length <= 128"
+      },
+      "2": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid && root.child('rooms/' + $code + '/locked').val() !== true && root.child('rooms/' + $code + '/created').val() > now - 86400000 && root.child('rooms/' + $code + '/host').val() !== auth.uid && root.child('rooms/' + $code + '/guests/1').val() !== auth.uid) || (data.val() === auth.uid && (!newData.exists() || newData.val() === auth.uid)) || (root.child('rooms/' + $code + '/host').val() === auth.uid && !newData.exists()))",
+        ".validate": "newData.isString() && newData.val().length <= 128"
+      },
+      "$other": { ".validate": false }
+    },
+    "seats": {
+      "$s": {
+        ".write": "auth != null && (($s === '0' && root.child('rooms/' + $code + '/host').val() === auth.uid) || (($s === '1' || $s === '2') && (root.child('rooms/' + $code + '/guests/' + $s).val() === auth.uid || (!newData.exists() && root.child('rooms/' + $code + '/host').val() === auth.uid))))",
+        ".validate": "($s === '0' || $s === '1' || $s === '2') && newData.hasChildren(['name', 'jersey'])",
+        "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 14" },
+        "jersey": { ".validate": "newData.isString() && newData.val().length <= 2" },
+        "who": { ".validate": "newData.val() === 'kid' || newData.val() === 'tata'" },
+        "back": { ".validate": "newData.isString() && newData.val().length <= 12" },
+        "kit": { ".validate": "newData.isString() && newData.val().length <= 600" },
+        "vc": { ".validate": "newData.isString() && newData.val().length <= 300" },
+        "stage": { ".validate": "newData.isString() && newData.val().length <= 600" },
+        "rdy": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
         "$other": { ".validate": false }
       }
-    }
+    },
+    "state": {
+      ".write": "auth != null && root.child('rooms/' + $code + '/host').val() === auth.uid",
+      ".validate": "newData.hasChildren(['seq', 'g'])",
+      "seq": { ".validate": "newData.isNumber()" },
+      "g": { ".validate": "newData.isString() && newData.val().length <= 150000" },
+      "$other": { ".validate": false }
+    },
+    "acts": {
+      "$s": {
+        "$n": {
+          ".write": "auth != null && ($s === '1' || $s === '2') && ((!data.exists() && root.child('rooms/' + $code + '/guests/' + $s).val() === auth.uid) || (!newData.exists() && root.child('rooms/' + $code + '/host').val() === auth.uid))",
+          ".validate": "$n.matches(/^[0-9]{1,7}$/) && newData.isString() && newData.val().length <= 4000"
+        }
+      }
+    },
+    "here": {
+      "$s": {
+        ".write": "auth != null && (($s === '0' && root.child('rooms/' + $code + '/host').val() === auth.uid) || (($s === '1' || $s === '2') && root.child('rooms/' + $code + '/guests/' + $s).val() === auth.uid))",
+        ".validate": "newData.isBoolean()"
+      }
+    },
+    "$other": { ".validate": false }
   }
 }
 ```
 
-What they say, in plain words:
-- Only **rooms** exist. Nothing outside `rooms/` can be read or written. Nobody can list the rooms: you can only
-  open a room whose code you know.
-- A new room can only be created by the person who becomes its host, and an existing room can't be overwritten.
-- Only the **host** can write the game state. Only the **guest** (the first person to join) can send moves.
-  Each player can only write their own seat and their own "I'm here" flag.
-- **Size caps:** the game state is at most 100,000 characters (a real one is about 5–10 thousand), each move
-  message at most 4,000, names 14 characters, jerseys 2 digits. Unknown fields are refused.
-- A room can't be joined once it is more than 1 day old, and anyone may delete a room older than 2 days.
+In plain words: only the host creates, locks/unlocks and deletes a room and writes the game state (≤ 150,000
+characters); a guest can take a free guest seat only while the room is unlocked and less than a day old, can't take
+both seats, and can't be the host; each player writes only their own seat info (fixed fields with size caps), their
+own "I'm here" flag and their own move messages (`acts/<their seat>`, ≤ 4,000 characters each, never overwriting one);
+the host may delete move messages and free a guest seat; anyone may delete a room older than 2 days; nothing else exists.
+**Not run through Firebase's rules simulator** (please do that once when pasting).
 
-### Cleaning up old rooms
+## What the user has to do in the Firebase console
 
-- The host deletes the room when a match is left from the menu or the end-of-match **Menu** button.
-- The "I'm here" flags are removed automatically by Firebase when a device disconnects (`onDisconnect`).
-- The room itself is deliberately **not** deleted on disconnect (it must survive a reload or a Wi-Fi drop).
-  So a room can be left behind if both players just close the app. They are tiny (about 10 KB) and harmless.
-- Once in a while (every few months is plenty): **Realtime Database → Data**, hover over **rooms**, click the
-  trash can, confirm. Do it when nobody is playing. There is no automatic console setting for this on the free plan.
+Unchanged from round 6 (project, Realtime Database in locked mode, Anonymous sign-in, authorized domain, paste the web
+config into `js/online-config.js`, stay on the free Spark plan), except: **publish the merged rules above**. The round-6
+console steps are kept in git history (`git show eeac812:docs/handoff/online.md`).
 
-### What a stranger who guesses a code could and could not do
+## How to test with two or three "devices" on one computer (no Firebase)
 
-Codes are a word from a list of 60 and a number 10–99 (about 5,400 codes), only exist while you play, and
-the room is deleted when you leave. A stranger would need this website, the exact code, and the exact minutes
-when the host is waiting for the other player.
-- **Could:** if they get in **before** the real guest joins, take the guest seat (the host would see a strange
-  name in "… joined!"; just tap Cancel and host again for a new code). Or, while the room exists, **read** it:
-  the two first names, jersey numbers and the moves.
-- **Could not:** join once the real guest is in, change the game state, send moves as either player, see
-  anything outside that one room, find other rooms, learn anything about the devices or accounts (there are none),
-  or send any free text: the only words that ever travel are first names, jersey numbers, game moves and the
-  fixed emote phrases.
+1. `python -m http.server 3515 --bind 127.0.0.1` in the project folder.
+2. All "devices" must share **one origin** (the pretend database is that origin's localStorage). Tabs:
+   `http://127.0.0.1:3515/?onlinetest=1&p=a`, `…&p=b`, `…&p=c` (`p=` = its own save and device id).
+   Background tabs slow timers down a lot; what worked best: one visible page on the same origin (e.g. the server's
+   404 page) with three `<iframe src="/?onlinetest=1&p=a|b|c">` side by side, driven from the console
+   (`frames[0].ACT.olHost()` …). Switching 3D off (Settings) makes it faster.
+3. Console helpers in each frame: `TataOnline.O()` (session), `TataOnline.drop(true/false)` (Wi-Fi off / on),
+   `TataOnline.sub(i)` (host: a creature plays for player i), `TataGame.move(id, zone)`.
+4. Remove the test data afterwards: `Object.keys(localStorage).filter(k => /^tataNet|\.test\.|tataOnline/.test(k)).forEach(k => localStorage.removeItem(k))`.
 
-## How to test with two tabs (no Firebase needed)
+## What I verified (round 8, local back end, three iframes on 127.0.0.1:3515) and what I didn't
 
-1. In a terminal in the project folder: `python -m http.server 3491 --bind 127.0.0.1`
-2. Open two tabs: `http://localhost:3491/?onlinetest=1&p=a` and `http://localhost:3491/?onlinetest=1&p=b`.
-   `p=a` / `p=b` makes each tab its own player (own save, own device id). The "database" lives in this browser's
-   localStorage under keys starting with `tataNet:`; the tabs hear each other through `storage` events.
-3. Tab A: Play → Online → name/jersey → **Host a game**. Tab B: Play → Online → **Join a game** → type the code.
-4. Tab A: **Kick off!** Play in both tabs.
-5. Useful console helpers: `TataOnline.drop(true)` in a tab = "this device's Wi-Fi went off" (the other tab shows
-   the banner after 3 s; moves made meanwhile are sent on `TataOnline.drop(false)`). `TataOnline.O()` = the session.
-   `TataGame.move(id, zone)` works on both sides (on the guest it sends the move to the host).
-6. Reload either tab mid-match: the splash button says **Back to my online game**.
-7. Tip: background tabs slow animation down. For automated testing set
-   `window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 16)` after load, or switch 3D off.
-8. Afterwards you can remove the test data: `Object.keys(localStorage).filter(k => /^tataNet|\.test\./.test(k)).forEach(k => localStorage.removeItem(k))`.
+Verified by playing (real action handlers, builder submit / give-up, the guests' real pop-up buttons):
+- Lobby with 3 humans (Tata, Tyson, Mama), "joined" list on host and guests; kick-off; rotation of every view
+  (each device is player 0, order kept).
+- 3 humans, all phases: Now! out of turn by a guest (Mama) → her private Solution → Third Party guest (Tyson) "I'll
+  write one" → wrong Solution → correct 6 / 2 / 2 scoring on all devices; host Impossible! out of turn → guest mover's
+  correct Solution using the **gold ½× Power cube** under the **Base 9** card (from the **Twist**) → 6 / 2 / 2; the
+  "No Goal" call by a guest with the host's local "I agree" and the other guest's Challenge → their Goal and free
+  Solution; the last cube with all three: one guest's Impossible! closed the host's own pop-up and started the challenge;
+  all "Let's write!" → everybody writing at once (a guest's answer arriving before the host's kept) → 2 / 2 / 2.
+- Two humans + creature (Snoozy): the creature setting Goals, moving, calling Now! / Impossible!, the guest as Third
+  Party; a guest picking **Exponent Colour** (red) in the online picker and setting the Goal `2²` with the red cube as an
+  exponent (mode, `eids`, `ex` identical on both devices); **Multiple of 7** (host) with a guest's Third Party Solution
+  `9 ÷ 1` (= 2 + 7) accepted by the host; an **upside-down** Solution `−6 ÷ −3` from a guest under Upside-down;
+  **Factorial** Goal `4!` built by a guest (the `'!'` travels); **Base 8** picked by a guest (setting chooser).
+- Bonus dice: Big-number + Power cubes rolled and mirrored (26 cubes), the Twist read on the host and shown on the
+  guests (chip, banner) as Bonus +2, Base 9, Base 8; the lobby switch Off → 24 cubes.
+- Forged guest messages refused: a move out of turn, a Goal outside the Goal phase, an unknown answer id, a garbage id,
+  and a Solution whose symbol doesn't match the cube's face ("could not be read", scored as no Solution).
+- Rematch: Play again from a guest + host lobby (ready marks), a guest leaving at the end (seat freed), the rotating
+  first setter, a creature added for the rematch, a third player joining the unlocked room for the next match.
+- A guest leaving mid-match (seat kept, "left the game" line on the host with "Snoozy plays for Mama"), a creature
+  taking over and the game moving on, the guest re-typing the code and getting the seat back at the next shake.
+  A guest's Wi-Fi off (`drop`): own "You're offline" line, host's "lost connection" line after the calm wait,
+  "Grub plays for Tyson" (Grub wrote his Solution), back online → seat back at the next shake.
+- Reload: guest (Back to my online game, same position) and host (move phase; the guest saw "Tata lost connection"
+  and then nothing). 3D on two devices with a creature: the right mate spec on each side (`who`, back name, number,
+  kit) and the guest's carried-cube animations converging to the host's state. 2-player online (no creature) still
+  plays (guest Impossible!, host's Solution). `'pvp'` and `'ai'` still start. Host leaving → both guests "The game
+  has ended", room data gone. `node tests/engine.test.js`: 822 passed.
 
-## How to test for real (two devices) once the config is in
-
-1. Publish the site with `js/online-config.js` filled in.
-2. On device 1 (e.g. Tata's iPad): Play → Online → **Host a game**. Read the code aloud.
-3. On device 2 (the kid's iPad): Play → Online → **Join a game**, type the code → **Join!** → on device 1 **Kick off!**
-4. Try: lock one iPad for a minute (the other shows "lost connection: waiting…"), unlock it; close one tab and reopen
-   the site (**Back to my online game**); play to the last cube; call Now! and Impossible! from each side.
-5. If "Couldn't connect" appears: check the Wi-Fi, that **Anonymous** sign-in is enabled, that the rules were
-   **published**, and that the config contains `databaseURL`. The browser console (`[online]` lines) shows the
-   exact Firebase error.
-
-## What I verified (two tabs, local back end) and what I didn't
-
-Verified by actually playing in two tabs (details in the lead's report): a whole 3-shake match to the end-of-match
-screens and a rematch requested from the guest; host and guest lobby, wrong code, a third player refused from a
-full room; moves both ways (real taps on the flat mat); guest Now! with a wrong Solution; guest Impossible! after
-the host's last cube (host gave up); host Impossible! with the guest proving it wasn't (correct Solution); the
-last-cube flow with both writing at the same time and a joint reveal; the guest's "No Goal" call challenged by the
-host; the guest picking a variation card (offered from the guest's own unlocks; chip shown on both); the guest's
-two-digit Goal; the "both ready" wait in both orders; guest reload mid-writing (builder re-opens); host reload during
-a move turn, during simultaneous writing (guest's answer kept), during the guest's card pick (same question kept),
-during the guest's challenge writing, and on the results screen; the disconnect banner and "is back" toast with a
-move made while offline; emotes both ways; the guest leaving mid-match and the host leaving mid-match; 3D on both
-(the guest's pour plays; both show identical faces); the lobby's "whose cubes" choice; each device's own XP,
-stats and badges; room data removed after leaving; 'pvp' and 'ai' still start and behave as before.
-
-**Not verified:** the Firebase back end itself (no project/config yet). I did load the pinned SDK (10.12.2) from
-gstatic in the browser with a fake config: it loads, initialises, and the sign-in failure shows the calm
-"Couldn't connect" pop-up. The rules have **not** been run through Firebase's rules simulator.
+Not verified: the real Firebase back end and the proposed rules (no project yet; rules not simulated), real devices /
+phones (touch, the share sheet), Safari. A reload of the **third** seat specifically (same code path as the second).
+In my narrow test frames the guest's `'left'` mate reported "doesn't fit" (the 3D module's own placement for a small
+window); the host's did fit. One `isReady` error appeared in a host frame when I quit a 3D match during its pour
+(not online code; from the 3D side).
 
 ## Known limits / rough edges
 
-- Two players only (one per device). The state, seats and prompts are keyed by seat number so a third seat or a
-  creature could be added later, but the mirror's waiting lines and the rules assume seats 0 and 1.
-- A device doesn't tell its **own** player when it is offline (only the other side sees the banner). Firebase queues
-  its moves meanwhile.
-- If the host reloads while the **guest** has a half-built Goal for a "No Goal" challenge, or while the host was
-  answering a "No Goal" call, that step starts over (the Goal phase restarts). Rare.
-- On the guest, the dice of its own pour turn to the host's faces as they glide into place (the same thing the
-  tutorial's fixed rolls do).
-- If a celebration (level up, new card) is showing on one device when the other taps "Next shake", the next shake
-  waits for it: that is intended, but it means the other player sees "Waiting for … to finish reading the results".
-- Reconnecting relies on the browser keeping its storage (Safari private browsing, or clearing website data, loses
-  the anonymous sign-in, so the device can't reclaim its seat; just host a new game).
-- A room left behind by two closed apps is only cleaned up by hand (see above).
+- Three humans: each device shows only the next player in 3D (one mate in the 3D API).
+- A celebration / Power-op lesson / "creature picked a card" pop-up on the **host** pauses everybody until the host
+  taps it.
+- A guest who **re-types the code** (instead of reloading) while a results pop-up is open may get that shake's XP twice
+  (a reload is fine: the session remembers).
+- If the host reloads while a guest has a half-built Goal for a "No Goal" challenge, that step starts over.
+- A room left behind by apps that were just closed is cleaned when that host hosts again, or by anyone after 2 days
+  (rules); otherwise by hand in the console.
