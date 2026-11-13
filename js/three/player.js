@@ -309,8 +309,8 @@ if (T3 && T3.ctx) (function () {
     applyVis();
   }
   function applyVis() {
-    if (me.model) me.model.root.visible = me.shown && me.fits;
-    if (mate.model) mate.model.root.visible = mate.shown && mate.fits;
+    if (me.model) me.model.root.visible = (me.shown && me.fits) || !!me.forced;          // (MATCHDAY: forced = a scripted walk shows him anyway)
+    if (mate.model) mate.model.root.visible = (mate.shown && mate.fits) || !!mate.forced;
     ctx.dirty(); ctx.startLoop();
   }
 
@@ -448,6 +448,15 @@ if (T3 && T3.ctx) (function () {
       face(A, { shout: arms * (1 - ramp(u, 1.3, 1.6)), big: ramp(u, 1.3, 1.6), squint: 0.35, browUp: 0.6 }, e);
     } }
   };
+  // MATCHDAY (js/three/matchday.js): the trophy lift. Both hands come up together over his head (where the cup is held)
+  // with one small hop as it goes up, then the pose is HELD still (like 'think') until the next mood or null.
+  GEST.lift = { dur: 60, att: 0.2, rel: 0.6, fn: function (A, u, e) {
+    var P = A.P, up = sstep((u - 0.75) / 0.6), hop = Math.max(0, Math.sin(clamp((u - 1.05) / 0.45, 0, 1) * Math.PI));   // up over his head at ~1.35 s
+    setArm(A, 0, -0.95, 0.9, 0.85, e * (1 - up), 0.1, 0.4); setArm(A, 1, 0.95, 0.9, 0.85, e * (1 - up), 0.1, 0.4);   // holding it at his chest first
+    setArm(A, 0, -0.42, 3.55, 0.35, e * up, 0.0, 0.25); setArm(A, 1, 0.42, 3.55, 0.35, e * up, 0.0, 0.25);
+    P.hop += 0.3 * hop * e; P.headPitch += -0.34 * up * e; P.lean += -0.06 * up * e;
+    face(A, { big: 0.4 + 0.6 * up, squint: 0.4 * up, browUp: 0.3 + 0.4 * up }, e);
+  } };
 
   // The hand goes toward the cube but stops short of the table: it must never cover the mat or a cube.
   function reachHand(A, o) {
@@ -462,7 +471,7 @@ if (T3 && T3.ctx) (function () {
     return false;
   }
   function startMood(A, m, opts) {
-    if (!A.model || !A.shown) return false;
+    if (!A.model || !(A.shown || A.forced)) return false;   // (MATCHDAY: forced)
     var now = performance.now();
     if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
     var d = GEST[m]; if (!d) return false;
@@ -771,6 +780,7 @@ if (T3 && T3.ctx) (function () {
   // (snap: straight home, e.g. hidden)
   function finishNow(A, snap) {
     var T = A.trip; if (!T) return false;
+    if (T.script) { endScript(A); return false; }   // MATCHDAY: a scripted walk ends at his seat
     var had = !T.released;
     if (had) release(T);
     if (ctx.held === T.id) ctx.held = null;
@@ -798,13 +808,14 @@ if (T3 && T3.ctx) (function () {
     T.segs = [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
   }
   function tripEnd(A, T) {
+    if (T.script) { endScript(A); return; }   // MATCHDAY: a scripted walk that ended at his seat
     // all segments done: a move goes on to the walk back; back home (or the seat moved meanwhile: walk on)
     if (T.phase === 'move') { toReturn(A, T); return; }
     var H = homeOf(A);
     if (Math.hypot(H.x - A.wk.x, H.z - A.wk.z) > 0.3) { toReturn(A, T); return; }
     clearTimeout(T.timer); A.trip = null; syncHome(A);
   }
-  function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); }
+  function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); else if (g.k === 'walk' && T.script) T.fin(); }   // (MATCHDAY: a scripted walk has arrived)
   document.addEventListener('visibilitychange', function () { if (document.hidden) { finishNow(me, true); finishNow(mate, true); } });
 
   // the trip's pose for this frame (before smoothing): where he is, which way he faces, lean / tummy, arm targets
@@ -936,7 +947,7 @@ if (T3 && T3.ctx) (function () {
     step(me, now); step(mate, now);
   }
   function step(A, now) {
-    if (!A.model || !A.shown || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); return; }
+    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
     if (document.hidden && A.trip) finishNow(A, true);
@@ -989,7 +1000,7 @@ if (T3 && T3.ctx) (function () {
     m.setKnees(-ca + h0 - pit + 0.2 * fl, -ca + h1 - pit + 0.3 * fl, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr);
     var rot = W.yaw + cur.spin, fx = Math.sin(W.yaw), fz = Math.cos(W.yaw), fw = (clamp(cur.fwd, 0, 0.75) + Math.max(0, cur.slide)) * s, sw = cur.side * s;
     // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
-    R.position.set(W.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL * (1 - fl) + Math.max(0, cur.lift)) * s, W.z + fz * fw - fx * sw);
+    R.position.set(W.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL * (1 - fl) + Math.max(0, cur.lift)) * s + (A.trip && A.trip.script ? A.trip.up || 0 : 0), W.z + fz * fw - fx * sw);   // (MATCHDAY: up = standing on the podium)
     if (R.rotation.order !== 'YXZ') R.rotation.order = 'YXZ';
     R.rotation.set(pit, rot, 0); R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
@@ -1090,6 +1101,49 @@ if (T3 && T3.ctx) (function () {
   T3.playerSpec = function (o) { return specOf(o, 'main'); };
   // debugging / previews: the model objects (read-only use please)
   T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
+
+  // ---------- MATCHDAY (js/three/matchday.js): a scripted walk along a path (the walk-out, the trophy podium) ----------
+  // T3.playerScript(who, o, done) / T3.playerScript(who, null)
+  //   who: 'me' (this device's player) | 'mate'. o: { path: [[x, z], ...] (world, on the pitch), v: world units / s,
+  //   yaw: the way he faces at the end (default: his seat's), startYaw, stay: true = he stays at the end of the path
+  //   (until T3.playerScript(who, null)); otherwise the path ends at his seat and the walk is over there.
+  //   force: show him even if his seat does not fit / the avatar is switched off (he is hidden again afterwards),
+  //   up: world units he stands higher than the pitch (on a podium) while the script lasts }
+  // done() fires once, when he arrives (or at once if he can't walk). Same walking legs, lean and arm swing as a move.
+  // null: the script ends now and he is back at his seat at once (no walk). Returns true if the walk started.
+  function endScript(A) {
+    var T = A.trip; if (T && T.script) { clearTimeout(T.timer); try { T.fin(); } catch (e) {} }
+    A.trip = null; A.forced = false; syncHome(A); A.wk.yaw = A.wk.yawT; A.wk.spd = 0; applyVis();
+  }
+  function scriptTrip(A, o, done) {
+    var fired = false;
+    function fin() { if (fired) return; fired = true; try { if (done) done(); } catch (e) { console.warn(e); } }
+    try {
+      if (A.trip) finishNow(A, true);
+      if (!o) { if (A.g) A.g = null; endScript(A); fin(); return false; }
+      var pts = (o.path || []).filter(function (p) { return p && isFinite(p[0]) && isFinite(p[1]); }).map(function (p) { return [p[0], p[1]]; });
+      if (!A.model || !pts.length || document.hidden) { fin(); return false; }
+      A.forced = !!o.force; applyVis();
+      if (!A.model.root.visible) { A.forced = false; fin(); return false; }
+      var H = homeOf(A), s = A.place.s;
+      if (!o.stay) pts.push([H.x, H.z]);
+      var path = mkPath(pts), endYaw = o.yaw != null ? o.yaw : H.yaw, last = pts[pts.length - 1];
+      var y0 = o.startYaw != null ? o.startYaw : pts.length > 1 ? Math.atan2(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) : endYaw;
+      A.g = null; for (var ck in A.cur) A.cur[ck] = 0;                       // a fresh start (no half-finished celebration turn)
+      A.wk.x = A.wk.px = pts[0][0]; A.wk.z = A.wk.pz = pts[0][1]; A.wk.yaw = A.wk.yawT = path.len < 0.05 ? endYaw : y0; A.wk.ok = true; A.wk.spd = 0;
+      var v = o.v > 0 ? o.v : 0.35 * WALK.v * s, w = walkSeg(path, v, endYaw, s, false);
+      var segs = [w];
+      if (o.stay) segs.push({ k: 'wait', x: last[0], z: last[1], T: 1e7 });
+      var T = { script: true, up: o.up > 0 ? o.up : 0, fin: fin, segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'script', arm: 0, picked: false, released: true, timer: 0 };
+      A.trip = T;
+      if (w.T <= 0) { fin(); if (!o.stay) endScript(A); }
+      A.settled = false; ctx.dirty(); ctx.startLoop();
+      return true;
+    } catch (e) { console.warn('playerScript', e); try { endScript(A); } catch (e2) {} fin(); return false; }
+  }
+  T3.playerScript = function (who, o, done) { return scriptTrip(who === 'mate' ? mate : me, o, done); };
+  T3.playerScripted = function (who) { var A = who === 'mate' ? mate : me; return !!(A.trip && A.trip.script); };
+  // ---------- end MATCHDAY ----------
 
   // ---------- portraits for the kit designer ----------
   var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {} };
