@@ -140,7 +140,7 @@ export function createOrbit(c) {
 var SEAT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11.5 12 5l7 6.5M7 10v8.5h10V10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var CAM_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3.2l1.6-2.3h6.4l1.6 2.3H20v10H4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="13.3" r="3.3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>';
 export function createOrbitUI(h) {
-  var box = null, seatB = null, camB = null, fl = null, st = { away: null, photo: null };
+  var box = null, seatB = null, camB = null, fl = null, menu = null, st = { away: null, photo: null };
   function build() {
     box = document.createElement('div'); box.className = 'orbit-ui';
     seatB = document.createElement('button'); seatB.type = 'button'; seatB.className = 'btn small ghost orbit-seat';
@@ -148,8 +148,15 @@ export function createOrbitUI(h) {
     camB = document.createElement('button'); camB.type = 'button'; camB.className = 'btn small ghost orbit-photo';
     camB.innerHTML = CAM_SVG; camB.setAttribute('aria-label', 'Take a photo'); camB.title = 'Take a photo';
     seatB.addEventListener('click', function (e) { e.stopPropagation(); h.seat(); });
-    camB.addEventListener('click', function (e) { e.stopPropagation(); h.photo(); });
-    box.appendChild(seatB); box.appendChild(camB);
+    // the camera button opens a small row of frames; picking one takes the photo in that style
+    menu = document.createElement('div'); menu.className = 'orbit-styles'; menu.setAttribute('role', 'menu');
+    STYLES.forEach(function (st2) {
+      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'btn small ghost os-' + st2.id; b2.textContent = st2.label; b2.setAttribute('role', 'menuitem');
+      b2.addEventListener('click', function (e) { e.stopPropagation(); photoStyle = st2.id; menu.classList.remove('on'); h.photo(); });
+      menu.appendChild(b2);
+    });
+    camB.addEventListener('click', function (e) { e.stopPropagation(); menu.classList.toggle('on'); });
+    box.appendChild(menu); box.appendChild(seatB); box.appendChild(camB);
     fl = document.createElement('div'); fl.className = 'orbit-flash';
     st = { away: null, photo: null };
   }
@@ -161,7 +168,7 @@ export function createOrbitUI(h) {
     update: function (away, photoOn) {
       if (!box) return;
       if (st.away !== away) { st.away = away; seatB.classList.toggle('on', !!away); seatB.tabIndex = away ? 0 : -1; seatB.setAttribute('aria-hidden', away ? 'false' : 'true'); }
-      if (st.photo !== photoOn) { st.photo = photoOn; camB.classList.toggle('on', !!photoOn); camB.tabIndex = photoOn ? 0 : -1; }
+      if (st.photo !== photoOn) { st.photo = photoOn; camB.classList.toggle('on', !!photoOn); camB.tabIndex = photoOn ? 0 : -1; if (!photoOn) menu.classList.remove('on'); }
     },
     // a short, soft white flash over the picture (one-shot)
     flash: function () {
@@ -172,20 +179,61 @@ export function createOrbitUI(h) {
 }
 
 // ----- Photo -----
-// Copy the WebGL canvas (call right after rendering, in the same tick) and add a caption strip at the bottom.
-export function photoCanvas(src) {
+var STYLES = [{ id: 'classic', label: 'Classic' }, { id: 'polaroid', label: 'Snapshot' }, { id: 'poster', label: 'Poster' }, { id: 'sunny', label: 'Sunny' }];
+var photoStyle = 'classic';
+export function setPhotoStyle(id) { if (STYLES.some(function (s) { return s.id === id; })) photoStyle = id; return photoStyle; }
+var DISPLAY = '"Lilita One", "Trebuchet MS", "Segoe UI", sans-serif';
+function dateText() { try { return new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return new Date().toDateString(); } }
+function scoreText() { // "CHAMP 2 • SNOOZY 1" from the match in progress, or ''
+  try { var G = window.G; if (!G || !G.players || G.players.length < 2) return ''; return G.players.map(function (p) { return String(p.name || '').toUpperCase() + ' ' + (p.score || 0); }).join('  •  '); } catch (e) { return ''; }
+}
+function fitFont(g, text, size, maxW) { for (;;) { g.font = size + 'px ' + DISPLAY; if (g.measureText(text).width <= maxW || size < 10) return size; size -= 2; } }
+// Copy the WebGL canvas (call right after rendering, in the same tick) and frame it in the chosen style:
+// classic (a caption strip), snapshot (a white instant-photo frame with the date), poster (title, score and date),
+// sunny (a warm golden grade with a soft vignette: on the saved photo only, never on the live game).
+export function photoCanvas(src, style) {
   var w = src.width, h = src.height; if (!w || !h) return null;
+  style = style || photoStyle;
+  var cv = document.createElement('canvas'), g = cv.getContext('2d'), u = Math.max(w, h) / 1000;
+  if (style === 'polaroid') {
+    var m = Math.round(28 * u), mb = Math.round(110 * u); cv.width = w + 2 * m; cv.height = h + m + mb;
+    g.fillStyle = '#fbfaf5'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(src, m, m, w, h);
+    g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 2; g.strokeRect(m, m, w, h);
+    g.fillStyle = '#2b2f3a'; g.textAlign = 'left'; g.textBaseline = 'middle'; fitFont(g, "Tata's Equations", Math.round(44 * u), w * 0.55); g.fillText("Tata's Equations", m, h + m + mb * 0.48);
+    g.textAlign = 'right'; g.fillStyle = '#6b7080'; fitFont(g, dateText(), Math.round(30 * u), w * 0.4); g.fillText(dateText(), m + w, h + m + mb * 0.5);
+    return cv;
+  }
+  if (style === 'poster') {
+    var bt = Math.round(120 * u), bb = Math.round(150 * u), side = Math.round(24 * u); cv.width = w + 2 * side; cv.height = h + bt + bb;
+    var gr = g.createLinearGradient(0, 0, 0, cv.height); gr.addColorStop(0, '#0f2a66'); gr.addColorStop(1, '#060d24'); g.fillStyle = gr; g.fillRect(0, 0, cv.width, cv.height);
+    g.drawImage(src, side, bt, w, h); g.strokeStyle = '#ffd43b'; g.lineWidth = Math.max(3, 5 * u); g.strokeRect(side, bt, w, h);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#ffd43b'; fitFont(g, "TATA'S EQUATIONS", Math.round(70 * u), cv.width * 0.9); g.fillText("TATA'S EQUATIONS", cv.width / 2, bt * 0.52);
+    var sc = scoreText() || 'MATCH DAY';
+    g.fillStyle = '#ffffff'; fitFont(g, sc, Math.round(56 * u), cv.width * 0.9); g.fillText(sc, cv.width / 2, bt + h + bb * 0.38);
+    g.fillStyle = '#8fd3ff'; fitFont(g, dateText(), Math.round(32 * u), cv.width * 0.8); g.fillText(dateText(), cv.width / 2, bt + h + bb * 0.75);
+    return cv;
+  }
+  if (style === 'sunny') {
+    var bd = Math.round(18 * u); cv.width = w + 2 * bd; cv.height = h + 2 * bd;
+    g.fillStyle = '#fffaf0'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(src, bd, bd, w, h);
+    g.save(); g.beginPath(); g.rect(bd, bd, w, h); g.clip();
+    g.globalCompositeOperation = 'soft-light'; var wg = g.createLinearGradient(bd, bd, bd + w, bd + h); wg.addColorStop(0, 'rgba(255,190,110,.75)'); wg.addColorStop(1, 'rgba(255,140,90,.45)'); g.fillStyle = wg; g.fillRect(bd, bd, w, h);
+    g.globalCompositeOperation = 'source-over'; var vg = g.createRadialGradient(bd + w / 2, bd + h / 2, Math.min(w, h) * 0.35, bd + w / 2, bd + h / 2, Math.max(w, h) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(40,20,0,.35)'); g.fillStyle = vg; g.fillRect(bd, bd, w, h);
+    g.restore();
+    g.textAlign = 'right'; g.textBaseline = 'alphabetic'; g.fillStyle = 'rgba(255,255,255,.9)'; fitFont(g, "Tata's Equations", Math.round(30 * u), w * 0.5); g.fillText("Tata's Equations", bd + w - 14 * u, bd + h - 14 * u);
+    return cv;
+  }
   var strip = Math.round(Math.max(30, Math.min(90, h * 0.075)));
-  var cv = document.createElement('canvas'); cv.width = w; cv.height = h + strip;
-  var g = cv.getContext('2d');
+  cv.width = w; cv.height = h + strip;
   g.fillStyle = '#0c1630'; g.fillRect(0, 0, w, h + strip);
   g.drawImage(src, 0, 0, w, h);
   // the strip: a dark band with the name in the game's display font, a thin gold line on top
-  var gr = g.createLinearGradient(0, h, 0, h + strip); gr.addColorStop(0, '#1b2a55'); gr.addColorStop(1, '#0c1630');
-  g.fillStyle = gr; g.fillRect(0, h, w, strip);
+  var gr2 = g.createLinearGradient(0, h, 0, h + strip); gr2.addColorStop(0, '#1b2a55'); gr2.addColorStop(1, '#0c1630');
+  g.fillStyle = gr2; g.fillRect(0, h, w, strip);
   g.fillStyle = '#ffd43b'; g.fillRect(0, h, w, Math.max(2, Math.round(strip * 0.06)));
   var fs = Math.round(strip * 0.52);
-  g.font = fs + 'px "Lilita One", "Trebuchet MS", "Segoe UI", sans-serif';
+  g.font = fs + 'px ' + DISPLAY;
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = 'rgba(0,0,0,.35)'; g.fillText("Tata's Equations", w / 2 + 1.5, h + strip * 0.55 + 2);
   g.fillStyle = '#ffffff'; g.fillText("Tata's Equations", w / 2, h + strip * 0.55);
