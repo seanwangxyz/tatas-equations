@@ -447,9 +447,9 @@ function osCtx(mode) {
 }
 function osOpenSolution(pi, mode, cb) {
   var ids = function (z) { return osCubes(z).map(function (c) { return c.id; }); };
-  var pools = [{ label: '✅ Required (use them ALL)', ids: ids('required'), req: true }, { label: '👍 Permitted (use any)', ids: ids('permitted') }];
-  if (mode === 'now') pools.push({ label: '🎲 Resources (you may add ONE)', ids: ids('resources'), max: 1 });
-  if (mode === 'impossible') pools.push({ label: '🎲 Resources (count as Permitted now)', ids: ids('resources') });
+  var pools = [{ label: 'Required (use them ALL)', ids: ids('required'), req: true }, { label: 'Permitted (use any)', ids: ids('permitted') }];
+  if (mode === 'now') pools.push({ label: 'Resources (you may add ONE)', ids: ids('resources'), max: 1 });
+  if (mode === 'impossible') pools.push({ label: 'Resources (count as Permitted now)', ids: ids('resources') });
   pools.push({ label: '⛔ Forbidden (can\'t use)', ids: ids('forbidden').filter(function (id) { return OG.cubes[id].kind !== 'digit'; }), forb: true });
   var titles = { now: 'Now! Write your Solution', impossible: 'Prove it! Write a Solution', last: 'Last cube: write a Solution' };
   var ctx = osCtx(mode);
@@ -611,7 +611,7 @@ function osAskNoGoal(setter, hs) {
       onDone: function (g, v) {
         OG.goal = g; OG.goalValue = v; g.digits.forEach(function (d) { OG.cubes[d.id].zone = 'goal'; OG.cubes[d.id].neg = d.neg; }); osRender();
         var ctx = osCtx('impossible'), ids = osCubes('resources').filter(function (c) { return c.kind !== 'digit'; }).map(function (c) { return c.id; });
-        OSUI.openSetBuilder({ title: osName(other) + ': now a Solution', universe: OG.universe, goal: v, pools: [{ label: '🎲 Resources (use any)', ids: ids }], cubes: OG.cubes, mode: 'impossible',
+        OSUI.openSetBuilder({ title: osName(other) + ': now a Solution', universe: OG.universe, goal: v, pools: [{ label: 'Resources (use any)', ids: ids }], cubes: OG.cubes, mode: 'impossible',
           dock: os3d(), onLive: os3d() ? function (set, label) { OS3D.highlight(set, label); } : null,
           check: function (t) { return OSE.checkSolution(t, ctx); },
           onDone: function (t) { var chk = t ? OSE.checkSolution(t, ctx) : null, ok = !!(chk && chk.ok), sols = {}; sols[other] = { ok: ok, tokens: t, chk: chk };

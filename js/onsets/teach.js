@@ -67,7 +67,7 @@ ACT.osTutBuild = function () {
   if (!OT) return;
   var syms = ['B', 'R', 'G', 'U', 'I', '-', "'", 'V', 'N'], cubes = syms.map(function (s, i) { return { id: i, kind: OSE.kindOf(s), s: s }; });
   var ctx = { universe: OT_UNI, goal: 2, mode: 'free', zone: function () { return 'permitted'; }, required: [] };
-  OSUI.openSetBuilder({ title: 'Build a set with 2 cards', universe: OT_UNI, goal: 2, pools: [{ label: '🎲 Your cubes (use any)', ids: cubes.map(function (c) { return c.id; }) }], cubes: cubes, mode: 'free',
+  OSUI.openSetBuilder({ title: 'Build a set with 2 cards', universe: OT_UNI, goal: 2, pools: [{ label: 'Your cubes (use any)', ids: cubes.map(function (c) { return c.id; }) }], cubes: cubes, mode: 'free',
     check: function (t) { return OSE.checkSolution(t, ctx); }, giveUpLabel: 'Help me', submitLabel: 'Check my set!',
     onDone: function (tokens) {
       if (!OT) return;

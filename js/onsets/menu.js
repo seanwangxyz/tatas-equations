@@ -11,44 +11,72 @@ var Onsets = (function () {
     return '<div class="playercard os-pc"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + ' · ' + esc(cur.name) + '</div>' +
       '<div class="xpbar"><i style="width:' + pct + '%"></i><span>' + ico('star') + ' ' + st.stars + ' On-Sets star' + (st.stars === 1 ? '' : 's') + (nxt ? ' · next level at ' + nxt.at : ' · top level!') + '</span></div></div></div>';
   }
+  // the creature the big Play button plays: the first open one he has not beaten yet, else the one he played last
+  function nextOpp() {
+    var st = osState();
+    for (var i = 0; i < OPPONENTS.length; i++) if (osOpen(i) && !st.beaten[i]) return i;
+    return st.last != null && osOpen(st.last) ? st.last : 0;
+  }
+  function tile(cls, act, icon, label, sub, extra) {
+    return '<button class="btn mm-tile ' + cls + '" data-act="' + act + '"><span class="bi">' + ico(icon) + '</span><span class="bl">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</span>' + (extra || '') + '</button>';
+  }
   function open() {
     OSUI.closeAll(); OT = null; ODR = null;
     if (window.OS3D) OS3D.end(); // (a 3D match hands the table back to Equations)
     api.view = 'menu'; go('onsets'); Snd.setMood('menu');
-    var st = osState();
-    var greet = st.tutorialDone ? pick(['Ready to count some cards?', 'Sets, sets, sets! Let\'s play.', 'Which creature will you beat at On-Sets today?']) : 'On-Sets is the sister game of Equations. Instead of numbers you name groups of cards. Start with <b>How to Play</b>!';
+    var st = osState(), nx = OPPONENTS[nextOpp()], fresh = !st.tutorialDone;
+    var greet = fresh ? 'On-Sets is the sister game of Equations. Instead of numbers you name groups of cards. Start with <b>How to Play</b>!' : pick(['Ready to count some cards?', 'Sets, sets, sets! Let\'s play.', 'Which creature will you beat at On-Sets today?']);
     $('#onsets').innerHTML =
       '<div class="title-top"><h1 class="logo os-logo">Tata\'s<span class="eq">On-Sets</span></h1></div>' +
-      '<div class="os-greet">' + pipHTML('happy', 90, '') + '<div class="bubble">' + greet + '</div></div>' +
+      '<div class="os-wrap">' +
+      '<div class="os-greet">' + pipHTML('happy', 84, '') + '<div class="bubble">' + greet + '</div></div>' +
       starsBar() +
-      '<nav class="menu os-menu" aria-label="On-Sets menu">' +
-      '<button class="btn big green hero" data-act="osPick"><span class="bi">' + ico('play') + '</span><span class="bl">Play</span></button>' +
-      '<button class="btn big orange" data-act="osTutorial"><span class="bi">' + ico('cap') + '</span><span class="bl">How to Play</span></button>' +
-      '<button class="btn big yellow" data-act="osDrills"><span class="bi">' + ico('star') + '</span><span class="bl">Set Drills</span></button>' +
-      '<button class="btn big blue" data-act="osPvp"><span class="bi">' + ico('play') + '</span><span class="bl">Two Players</span></button>' +
-      '<button class="btn big pink" data-act="os3p"><span class="bi">' + ico('people') + '</span><span class="bl">Three Players</span></button>' +
-      '<button class="btn big purple" data-act="osRules"><span class="bi">' + ico('bulb') + '</span><span class="bl">The Rules</span></button>' +
+      '<nav class="os-mm' + (fresh ? ' os-new' : '') + '" aria-label="On-Sets menu">' +
+      '<div class="os-grp g-learn"><h2 class="os-h">Learn</h2><div class="os-modes">' +
+      tile('orange' + (fresh ? ' startme' : ''), 'osTutorial', 'cap', 'How to Play', fresh ? '<b class="os-start">START HERE</b> two minutes' : 'Two minutes, any time', fresh ? '' : '<span class="tick">' + ico('check') + '</span>') +
+      tile('purple', 'osRules', 'bulb', 'The Rules', 'On-Sets in a nutshell') +
+      '</div></div>' +
+      '<div class="os-grp g-prac"><h2 class="os-h">Practise</h2>' +
+      tile('yellow', 'osDrills', 'star', 'Set Drills', 'Count, name, make a set, spot a Now! No timers.') +
+      '</div>' +
+      '<div class="os-grp g-play"><h2 class="os-h">Play</h2>' +
+      '<div class="os-hero"><button class="btn big green hero mm-play" data-act="osPlayNext"><span class="bi">' + ico('play') + '</span><span class="bl">Play<small>against ' + esc(nx.name) + '</small></span></button>' +
+      '<button class="btn mm-pick" data-act="osPick">' + ico('paw') + '<span>Pick who</span></button></div>' +
+      '<div class="os-modes">' + tile('blue', 'osPvp', 'people', '2 Players', 'Pass and play') + tile('pink', 'os3p', 'people', '3 Players', 'With a grown-up or creatures') + '</div>' +
+      '</div>' +
       '</nav>' +
-      '<div class="menu-sub"><button class="btn ghost" data-act="osBackToEq">' + ico('home') + ' Back to Equations</button></div>';
+      '<div class="os-foot"><button class="btn ghost" data-act="osBackToEq">' + ico('home') + ' Back to Equations</button></div>' +
+      '</div>';
+  }
+  // The creature cards: the same trading cards as the Equations Play screen (league colour band, portrait, name, dots, icon lines)
+  var SEES = ['', 'Sees short sets only', 'Sees medium sets', 'Sees long sets, and is careful', 'Sees every set'];
+  function oppCard(o, i) {
+    var st = osState(), openO = osOpen(i), L = OSAI.level(o);
+    return '<div class="opp' + (openO ? '' : ' lock') + '" data-act="' + (openO ? 'osPlayAI' : 'osLocked') + '" data-arg="' + i + '" role="button" tabindex="0" aria-label="' + esc(o.name) + (openO ? '' : ', locked') + '">' +
+      (st.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') +
+      '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div>' +
+      '<div class="stars os-dots" role="img" aria-label="On-Sets strength ' + L + ' of 4">' + '<b class="on">●</b>'.repeat(L) + '<b>●</b>'.repeat(4 - L) + '</div>' +
+      '<div class="o-line">' + ico('bulb') + '<span>' + SEES[L] + '</span></div>' +
+      (st.beaten[i] ? '<div class="o-line taste">' + ico('star') + '<span>You beat ' + esc(o.name) + ' at On-Sets!</span></div>' : '') +
+      (openO ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   }
   function pickHTML() {
-    var st = osState();
-    var cards = OPPONENTS.map(function (o, i) {
-      var openO = osOpen(i), L = OSAI.level(o);
-      return '<div class="opp' + (openO ? '' : ' lock') + '" ' + (openO ? 'data-act="osPlayAI" data-arg="' + i + '"' : '') + ' role="button" tabindex="0">' +
-        (st.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') + '<h3>' + esc(o.name) + '</h3><div class="otitle">' + esc(o.title) + '</div>' +
-        '<div class="stars" aria-label="On-Sets strength ' + L + ' of 4">' + '●'.repeat(L) + '<span style="opacity:.3">' + '●'.repeat(4 - L) + '</span></div>' +
-        '<small class="os-otip">' + ['', 'Sees short sets only', 'Sees medium sets', 'Sees long sets, careful', 'Sees every set'][L] + '</small>' +
-        (openO ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' first</div>') + '</div>';
-    }).join('');
-    return '<div class="hdr os-hdr"><button class="btn small ghost" data-act="osHome" aria-label="Back">' + ico('back') + '<span class="lbl">Back</span></button><h2>Pick an opponent</h2></div>' +
+    var st = osState(), cards = OPPONENTS.map(oppCard), sh = S.set.shakes || 3;
+    return '<div class="hdr os-hdr"><button class="btn small" data-act="osHome" aria-label="Back">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
       '<div class="panel os-panel">' + (st.tutorialDone ? '' : '<p class="os-note">New to On-Sets? Try <b>How to Play</b> first: it takes two minutes.</p>') +
-      '<div class="opps">' + cards + '</div><p class="os-note" style="margin-top:12px">● = how far the creature can see in On-Sets (4 levels). Beat a creature to open the next one. Each match is ' + (S.set.shakes || 3) + ' shakes; there are no timers.</p></div>';
+      '<h3 class="tierh lg-1" style="margin-top:0"><span class="lg-dot"></span> Play the creatures</h3><div class="opps lg-1">' + cards.slice(0, LEAGUE).join('') + '</div>' +
+      '<h3 class="tierh lg-2"><span class="lg-dot"></span> Monster League <span class="tsub">(the tough ones)</span></h3><div class="opps lg-2">' + cards.slice(LEAGUE, 2 * LEAGUE).join('') + '</div>' +
+      '<h3 class="tierh lg-3"><span class="lg-dot"></span> Legend League</h3><div class="opps lg-3">' + cards.slice(2 * LEAGUE).join('') + '</div>' +
+      '<p class="os-note" style="margin-top:12px">The dots show how far a creature can see in On-Sets. Beat a creature to open the next one.</p></div>' +
+      '<div class="setup-foot"><b>Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (sh === n ? 'on' : '') + '" data-act="osShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div>';
   }
   ACT.osOpen = function () { open(); };
   ACT.osHome = function () { open(); };
   ACT.osPick = function () { api.view = 'pick'; go('onsets'); $('#onsets').innerHTML = pickHTML(); };
-  ACT.osPlayAI = function (el) { var i = +el.dataset.arg; if (!osOpen(i)) return; osStartMatch('ai', i, {}); };
+  ACT.osShakes = function (el) { S.set.shakes = +el.dataset.arg; persist(); Snd.click(); $('#onsets').innerHTML = pickHTML(); };
+  ACT.osLocked = function (el) { var i = +el.dataset.arg; Snd.boop(); modal('<h2 class="hero">Locked</h2><p style="text-align:center">Win an On-Sets match against <b>' + esc(OPPONENTS[i - 1].name) + '</b> to unlock ' + esc(OPPONENTS[i].name) + '!</p><div class="row"><button class="btn" data-act="closeModal">OK</button></div>'); };
+  ACT.osPlayNext = function () { var i = nextOpp(); osStartMatch('ai', i, {}); };
+  ACT.osPlayAI = function (el) { var i = +el.dataset.arg; if (!osOpen(i)) return; var st = osState(); st.last = i; persist(); osStartMatch('ai', i, {}); };
   ACT.osPvp = function () {
     var st = osState();
     modal('<h2 class="hero">Two players</h2><p style="text-align:center">Pass and play on this device. ' + esc(S.name) + ' plays first. Who is the second player?</p>' +
@@ -124,7 +152,7 @@ var Onsets = (function () {
   // A big tile for the Equations title / Play menu.
   api.tileHTML = function () {
     var st = osState();
-    return '<button class="btn big os-tile" data-act="osOpen" aria-label="Play Tata\'s On-Sets"><span class="os-tilecards"><i class="d-B"></i><i class="d-R"></i><i class="d-G"></i><i class="d-Y"></i></span><span class="bl">On-Sets<small>' + (st.tutorialDone ? ico('star') + ' ' + st.stars + ' · the set game' : 'NEW: the set game') + '</small></span></button>';
+    return '<button class="btn os-tile" data-act="osOpen" aria-label="Play Tata\'s On-Sets"><span class="os-tilecards"><i class="d-B"></i><i class="d-R"></i><i class="d-G"></i><i class="d-Y"></i></span><span class="bl">On-Sets<small>' + (st.tutorialDone ? ico('star') + ' ' + st.stars + ' · the set game' : 'NEW: the set game') + '</small></span><span class="os-tgo">' + ico('play') + '</span></button>';
   };
   api.open = open;
   return api;
