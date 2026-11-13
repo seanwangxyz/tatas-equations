@@ -265,8 +265,61 @@ const EXIT = {
     P.ry += -6 * s * s; P.hop += 0.12 * bump(u / 0.7); P.turn += 0.5 * Math.sin(Math.PI * s);
   }
 };
-const ENTER_DUR = { sloth: 4.5, penguin: 3.3, fox: 2.3, owl: 3.2, wizard: 3.0, pip: 2.6 };
-const EXIT_DUR = { sloth: 3.8, penguin: 2.6, fox: 1.6, owl: 2.8, wizard: 2.2, pip: 1.8 };
+// ---------- CAREER: the Legend League's entrances and exits ----------
+Object.assign(ENTER, {
+  robot(C) {                                   // rolls in smoothly (no steps), stops with a stiff little bounce, beeps, waves
+    const P = C.P, u = C.u, s = clamp(u / 1.5, 0, 1), st = bump((u - 1.45) / 0.35), tl = pulse(u, 1.8, 2.5, 0.15);
+    P.rx += C.side * C.out * Math.pow(1 - s, 2.2); P.lean += 0.12 * (1 - s) * (1 - s) - 0.08 * st; P.hop += 0.06 * st; P.turn += -C.side * 0.5 * (1 - sstep((u - 1.2) / 0.3));
+    P.headRoll += 0.22 * tl * C.side; P.browRaise += 0.4 * tl; P.earUp += tl;
+    const w = pulse(u, 2.4, 3.1, 0.2); P.smile += 0.7 * w + 0.3 * tl; P.open += 0.3 * w; waveR(C, w, u);
+  },
+  bat(C) { ENTER.owl(C); C.P.earUp += 0.5 * bump((C.u - 1.9) / 0.5); },          // glides down from above, flapping
+  octopus(C) {                                 // rises up from behind the table edge, a happy wobble, waves
+    const P = C.P, u = C.u, s = clamp((u - 0.1) / 1.0, 0, 1), wb = bump((u - 1.1) / 0.8);
+    P.ry += -5.8 * (1 - easeBack(s, 0.6)); P.sway += 0.08 * Math.sin(u * 7) * wb; P.happyAmt = Math.max(P.happyAmt, 0.6 * wb);
+    const w = pulse(u, 1.6, 2.7, 0.25); P.smile += 0.7 * w + 0.3 * wb; P.open += 0.3 * w; waveR(C, w, u);
+  },
+  dragon(C) {                                  // stomps in, heavy and slow, then a friendly (silent) roar
+    const P = C.P, u = C.u, s = clamp(u / 2.4, 0, 1), we = 1 - sstep((u - 2.1) / 0.4), ph = u * TAU / 0.9, rr = pulse(u, 2.6, 3.4, 0.25);
+    P.rx += C.side * C.out * Math.pow(1 - s, 1.5); P.hop += 0.08 * Math.abs(Math.sin(ph)) * we; P.sway += 0.08 * Math.sin(ph) * we; P.turn += -C.side * 0.7 * we;
+    for (let i = 0; i < 2; i++) C.arm(i, ys(i) * 1.8, 0.5, 1.4 + 0.3 * Math.sin(ph + i * Math.PI), we, 0.55, 0.3);
+    P.open += 0.9 * rr; P.pitchAdd -= 0.25 * rr; P.browRaise += 0.4 * rr; P.happyAmt = Math.max(P.happyAmt, rr);
+    for (let i = 0; i < 2; i++) C.arm(i, ys(i) * 2.2, 2.9, 0.8, rr * 0.9, 0.2, 1);
+  },
+  chameleon(C) {                               // the Queen appears with a sparkle (blending in from nothing), then a royal bow
+    const P = C.P, u = C.u, sp = clamp((u - 0.15) / 0.9, 0, 1), bw = bump((u - 1.5) / 1.0);
+    P.rScale = u < 0.12 ? 0.001 : Math.max(0.001, easeBack(sp, 0.3)); P.happyAmt = Math.max(P.happyAmt, 1 - sp);
+    if (C.once(1, u > 0.15)) C.fx(14, 3.6);
+    P.pitchAdd += 0.3 * bw; P.lean += 0.1 * bw; P.smile += 0.6 * bw;
+    C.arm(1, 1.2, 1.6, 1.6, bw, 0.3, 0.6);
+  }
+});
+Object.assign(EXIT, {
+  robot(C) {
+    const P = C.P, u = C.u, s = clamp((u - 0.8) / 1.2, 0, 1);
+    const w = pulse(u, 0.0, 0.7, 0.15); P.smile += 0.7 * w; waveR(C, w, u);
+    P.rx += C.side * C.out * Math.pow(s, 2.2); P.turn += C.side * 0.5 * sstep((u - 0.7) / 0.2); P.lean += 0.1 * s;
+  },
+  bat(C) { EXIT.owl(C); },
+  octopus(C) {
+    const P = C.P, u = C.u, s = clamp((u - 0.7) / 0.8, 0, 1);
+    const w = pulse(u, 0.0, 0.7, 0.15); P.smile += 0.7 * w; waveR(C, w, u);
+    P.ry += -6 * s * s; P.sway += 0.06 * Math.sin(u * 7) * s;
+  },
+  dragon(C) {
+    const P = C.P, u = C.u, s = clamp((u - 0.9) / 2.2, 0, 1), we = sstep((u - 0.9) / 0.3), ph = u * TAU / 0.9;
+    const w = pulse(u, 0.0, 0.9, 0.2); P.smile += 0.6 * w; waveR(C, w, u * 0.7);
+    P.rx += C.side * C.out * Math.pow(s, 1.5); P.hop += 0.08 * Math.abs(Math.sin(ph)) * we; P.sway += 0.08 * Math.sin(ph) * we; P.turn += C.side * 0.7 * we;
+  },
+  chameleon(C) {
+    const P = C.P, u = C.u, s = clamp((u - 0.9) / 0.7, 0, 1);
+    const w = pulse(u, 0.0, 0.8, 0.2); P.smile += 0.6 * w; waveR(C, w, u);
+    P.rScale = u > 1.65 ? 0.001 : Math.max(0.001, 1 - s * s); P.happyAmt = Math.max(P.happyAmt, s);
+    if (C.once(1, u > 0.95)) C.fx(12, 3.6);
+  }
+});
+const ENTER_DUR = { sloth: 4.5, penguin: 3.3, fox: 2.3, owl: 3.2, wizard: 3.0, pip: 2.6, robot: 3.2, bat: 3.2, octopus: 2.9, dragon: 3.6, chameleon: 2.7 };
+const EXIT_DUR = { sloth: 3.8, penguin: 2.6, fox: 1.6, owl: 2.8, wizard: 2.2, pip: 1.8, robot: 2.2, bat: 2.8, octopus: 1.7, dragon: 3.2, chameleon: 2.2 };
 
 // ---------- rare idle flairs: subtle, in character ----------
 const FLAIR = {
@@ -275,7 +328,13 @@ const FLAIR = {
   fox(C) { const P = C.P, e = C.e, un = C.un, g = bump((un - 0.7) / 0.8) * e; P.earL += 0.7 * bump((un - 0.1) / 0.45) * e; P.earR += 0.5 * bump((un - 0.2) / 0.45) * e; P.headYaw += 0.4 * g; P.eyeAddX += 0.8 * g; },
   owl(C) { const P = C.P, e = C.e, un = C.un, g = pulse(un, 0.3, 1.9, 0.5) * e; P.headYaw += 1.05 * g; P.pitchAdd += 0.05 * g; P.lid -= 0.1 * g; },
   wizard(C) { const P = C.P, e = C.e, un = C.un, w = pulse(un, 0.2, 1.6, 0.4) * e; C.arm(1, 0.55, 3.2, 0.7, w, 0.1, 0.5); P.hatTilt += 0.18 * Math.sin(un * 6) * w; P.hatLift += 0.06 * w; P.headRoll += 0.06 * w; P.smile += 0.3 * w; },
-  pip(C) { const P = C.P, e = C.e, un = C.un, g = bump(un / 1.5) * e; P.headRoll += 0.12 * g; P.browRaise += 0.3 * g; P.hatTilt += 0.18 * Math.sin(un * 7) * g; P.eyeAddY += 0.5 * g; }
+  pip(C) { const P = C.P, e = C.e, un = C.un, g = bump(un / 1.5) * e; P.headRoll += 0.12 * g; P.browRaise += 0.3 * g; P.hatTilt += 0.18 * Math.sin(un * 7) * g; P.eyeAddY += 0.5 * g; },
+  // CAREER
+  robot(C) { const P = C.P, e = C.e, un = C.un, g = pulse(un, 0.3, 1.8, 0.2) * e; P.headRoll += 0.2 * g; P.browAsym += 0.6 * g; P.earUp += g; P.eyeAddY += 0.3 * g; },          // a curious head tilt
+  bat(C) { FLAIR.fox(C); },                                                                                                                                                       // an ear twitch and a glance
+  octopus(C) { const P = C.P, e = C.e, un = C.un, g = pulse(un, 0.2, 1.8, 0.5) * e; P.happyAmt = Math.max(P.happyAmt, 0.7 * g); P.smile += 0.35 * g; P.lid -= 0.1 * g; },  // a slow stretch of its arms
+  dragon(C) { FLAIR.sloth(C); },                                                                                                                                                  // a big lazy yawn
+  chameleon(C) { const P = C.P, e = C.e, un = C.un, g = pulse(un, 0.3, 1.9, 0.5) * e; P.eyeAddX += 0.9 * g; P.happyAmt = Math.max(P.happyAmt, 0.5 * g); P.smile += 0.2 * g; } // a slow sideways look; her colour warms
 };
 
 export const GEST = Object.assign({}, MOOD);

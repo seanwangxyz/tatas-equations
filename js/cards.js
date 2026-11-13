@@ -1,6 +1,6 @@
 'use strict';
 // ======================= SOCCER-CARD ALBUM =======================
-// 34 collectible cards drawn in code (CSS + the game's own line icons: no image files). Creature cards show a
+// 44 collectible cards (CAREER: +10 for the Legend League) drawn in code (CSS + the game's own line icons: no image files). Creature cards show a
 // head-and-shoulders picture of the 3D creature (T3.portrait, js/three/portraits.js) and fall back to the
 // creature's emoji when 3D is unavailable or the picture is not ready yet.
 // Every card has an explicit, checkable way to earn it. Nothing is random, nothing can be lost:
@@ -45,7 +45,13 @@ var Cards = (function () {
     { i: 6, id: 'splosh', pos: 'Keeper', stats: [['Care', 99], ['Checks', 96], ['Saves', 90]] },
     { i: 7, id: 'blaze', pos: 'Winger', stats: [['Speed', 97], ['Heat', 99], ['Pounce', 93]] },
     { i: 8, id: 'hex', pos: 'Playmaker', stats: [['Tricks', 99], ['Twists', 95], ['Vision', 92]] },
-    { i: 9, id: 'zog', pos: 'Captain', stats: [['Crown', 99], ['Power', 97], ['Calm', 95]] }
+    { i: 9, id: 'zog', pos: 'Captain', stats: [['Crown', 99], ['Power', 97], ['Calm', 95]] },
+    // CAREER: Legend League (opponents 11-15)
+    { i: 10, id: 'bleep', pos: 'Defender', stats: [['Logic', 99], ['Repeat', 98], ['Battery', 96]] },
+    { i: 11, id: 'flip', pos: 'Winger', stats: [['Flips', 99], ['Swoop', 96], ['Hearing', 98]] },
+    { i: 12, id: 'squiggle', pos: 'Keeper', stats: [['Reach', 99], ['Arms', 88], ['Wiggle', 97]] },
+    { i: 13, id: 'nugget', pos: 'Striker', stats: [['Treasure', 99], ['Power', 98], ['Patience', 95]] },
+    { i: 14, id: 'chroma', pos: 'Captain', stats: [['Colours', 99], ['Rules', 99], ['Calm', 97]] }
   ];
   var LIST = [];
   CREATURES.forEach(function (c) {

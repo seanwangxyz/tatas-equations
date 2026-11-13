@@ -19,6 +19,7 @@
 var Cup = (function () {
   // Opponent indexes (js/config.js OPPONENTS): 0 Snoozy*, 1 Penny**, 2 Rusty***, 3 Ollie****, 4 Mondo*****,
   // 5 Grub***, 6 Splosh****, 7 Blaze*****, 8 Hex*****+, 9 Messy (id zog)*****++
+  // CAREER: 10 Bleep, 11 Flip, 12 Squiggle, 13 Nugget, 14 Chroma (Legend League, each with a signature rule)
   var CUPS = [
     { id: 'kickoff', name: 'Kick-off Cup', blurb: 'Your first cup! Three friendly matches.', opps: [0, 1, 5],
       metal: ['#ffe0b8', '#e39a52', '#9a5a1f'], ribbon: '#2f8cff', xpFirst: 100, xpAgain: 25,
@@ -31,7 +32,11 @@ var Cup = (function () {
       open: function () { return oppOk(6); }, lockText: 'Beat Grub to open this cup.' },
     { id: 'champions', name: 'Champions Cup', blurb: 'Mondo, Hex and King Messy. Only the very best!', opps: [4, 8, 9],
       metal: ['#fff7c2', '#ffc83d', '#c98a00'], ribbon: '#ef4565', xpFirst: 300, xpAgain: 50,
-      open: function () { return beat(4) || beat(7) || wins('creature') > 0 || wins('monster') > 0; }, lockText: 'Beat Mondo or Blaze to open this cup.' }
+      open: function () { return beat(4) || beat(7) || wins('creature') > 0 || wins('monster') > 0; }, lockText: 'Beat Mondo or Blaze to open this cup.' },
+    // CAREER: the Legend League's cup (each round brings that creature's special rule, js/career.js)
+    { id: 'legend', name: 'Legend Cup', blurb: 'Flip, Squiggle and Nugget, with all their special rules!', opps: [11, 12, 13],
+      metal: ['#e3fafc', '#66d9e8', '#0b7285'], ribbon: '#fab005', xpFirst: 350, xpAgain: 60,
+      open: function () { return oppOk(11); }, lockText: 'Beat Bleep to open this cup.' }
   ];
   var ROUNDS = ['Quarter-final', 'Semi-final', 'Final'];
   var playing = null;   // the G object of the cup match in progress (in memory only)
@@ -196,9 +201,14 @@ var Cup = (function () {
     if (!has('startMatch')) return;
     var oi = byId(run.id).opps[run.round];
     run.last = null; save(); // the bracket message is about the last FINISHED match
-    startMatch('ai', oi);
-    playing = (typeof G !== 'undefined') ? G : null;
-    if (playing) playing.cup = { id: run.id, round: run.round };
+    var go = function () {
+      startMatch('ai', oi, { sigSeen: true }); // (CAREER: sigSeen = the signature screen was already shown, js/career.js)
+      playing = (typeof G !== 'undefined') ? G : null;
+      if (playing) playing.cup = { id: run.id, round: run.round };
+    };
+    // CAREER: a creature with a signature rule announces it first (one screen), then the round starts
+    if (window.Career && Career.announce(oi, go)) return;
+    go();
   }
   function active() { return !!(playing && typeof G !== 'undefined' && G === playing && state().run); }
 

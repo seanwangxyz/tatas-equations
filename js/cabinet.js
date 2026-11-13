@@ -3,7 +3,7 @@
 // A screen (#cabinet) that shows everything he has won as real 3D objects in a little trophy room:
 //   top shelf: the 4 Cup trophies (js/cup.js, in their own metal and ribbon colours)
 //   middle shelf: a crown for each Trio (js/trio.js)
-//   bottom shelf: a plaque for each creature he has beaten (gold for the two league bosses)
+//   bottom shelf: a plaque for each creature he has beaten (gold for the league bosses: 3 leagues, 15 plaques with CAREER)
 //   left wall: every badge as a medal (js/progress.js BADGES), one row per tier
 //   right wall: season pennants (js/season.js), newest first, plus an empty place for the next one of each league
 // Things not won yet stand in their place as see-through outlines (a quiet "this could be yours"), never a nag.
@@ -25,6 +25,7 @@ var Cabinet = (function () {
   function ord(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
   function snd(n) { try { if (typeof Snd !== 'undefined' && Snd && typeof Snd[n] === 'function') Snd[n](); } catch (e) {} }
   function opp(i) { return (typeof OPPONENTS !== 'undefined' && OPPONENTS[i]) || { name: '?', emoji: '?', color: '#eee', title: '' }; }
+  function isBoss(i) { return (i + 1) % 5 === 0; } // CAREER: the last creature of each league of five
 
   // ---------- what goes in the cabinet ----------
   function items() {
@@ -43,18 +44,19 @@ var Cabinet = (function () {
     // crowns
     if (typeof Trio !== 'undefined' && Trio.list) {
       Trio.list().forEach(function (p) {
-        var a = opp(p[0]), b = opp(p[1]), won = Trio.won(p[0], p[1]), boss = p[0] === 4 && p[1] === 9, mon = p[0] >= 5;
+        // (CAREER: "boss" = a pair of league bosses, e.g. 4+9 or 9+14; the cushion colour follows the league)
+        var a = opp(p[0]), b = opp(p[1]), won = Trio.won(p[0], p[1]), boss = isBoss(p[0]) && isBoss(p[1]), lg = Math.floor(p[0] / 5);
         out.push({ id: 'crown-' + p[0] + '-' + p[1], type: 'crown', won: won, title: 'Crown: ' + a.name + ' + ' + b.name, icon: '👑',
-          color: boss ? '#e8f0ff' : '#ffc83d', cushion: boss ? '#1f2a66' : mon ? '#5f3dc4' : '#c92a4a', gems: boss ? ['#74c0fc', '#e599f7', '#ffffff'] : null,
+          color: boss ? '#e8f0ff' : '#ffc83d', cushion: boss ? '#1f2a66' : ['#c92a4a', '#5f3dc4', '#0b7285'][lg] || '#c92a4a', gems: boss ? ['#74c0fc', '#e599f7', '#ffffff'] : null,
           story: won ? 'You beat ' + a.name + ' and ' + b.name + ' together, at one table, finishing first on your own!' : 'Play ' + a.name + ' and ' + b.name + ' together in Three at the table, and finish first, to win this crown.' });
       });
     }
     // plaques: each creature beaten
     (typeof OPPONENTS !== 'undefined' ? OPPONENTS : []).forEach(function (o, i) {
-      var won = !!(S.beaten && S.beaten[i]), boss = i === 4 || i === 9;
+      var won = !!(S.beaten && S.beaten[i]), boss = isBoss(i);
       out.push({ id: 'plaque-' + i, type: 'plaque', won: won, boss: boss, title: (boss ? 'Boss beaten: ' : 'Beaten: ') + o.name, name: o.name, icon: o.emoji, color: o.color,
         portrait: won && window.T3 && typeof T3.portrait === 'function' && T3.active && T3.active() ? function () { try { return T3.portrait(o.kind, o.pack || 'classic', 256); } catch (e) { return null; } } : null,
-        story: won ? 'You won a match against ' + o.name + ' ' + o.title + '!' + (boss ? ' The boss of the ' + (i < 5 ? 'Classic League' : 'Monster League') + '!' : '') + (o.tip ? ' (' + o.tip + ')' : '')
+        story: won ? 'You won a match against ' + o.name + ' ' + o.title + '!' + (boss ? ' The boss of the ' + (['Classic League', 'Monster League', 'Legend League'][Math.floor(i / 5)] || 'league') + '!' : '') + (o.tip ? ' (' + o.tip + ')' : '')
           : 'Win a match against ' + o.name + ' ' + o.title + ' to hang this plaque.' + (typeof oppOpen === 'function' && !oppOpen(i) ? ' Unlock ' + o.name + ' first by beating the creature before.' : '') });
     });
     // medals: badges
@@ -67,12 +69,12 @@ var Cabinet = (function () {
     if (typeof Season !== 'undefined' && Season.pennants) {
       var st = Season.state();
       Season.pennants().forEach(function (p, k) {
-        out.push({ id: 'pen-' + p.lg + '-' + p.n + '-' + k, type: 'pennant', won: true, kind: p.kind, big: ord(p.place), small: (p.lg === 'c' ? 'Classic' : 'Monster') + ' S' + p.n, icon: '🚩',
+        out.push({ id: 'pen-' + p.lg + '-' + p.n + '-' + k, type: 'pennant', won: true, kind: p.kind, big: ord(p.place), small: ({ c: 'Classic', m: 'Monster', l: 'Legend' }[p.lg] || 'League') + ' S' + p.n, icon: '🚩',
           title: (PEN_KIND_NAME[p.kind] || 'Pennant') + ', ' + p.league + ' season ' + p.n,
           story: p.league + ', season ' + p.n + ': you finished ' + ord(p.place) + ' with ' + p.pts + ' points' + (p.date ? ' (' + p.date + ')' : '') + '.' });
       });
-      ['c', 'm'].forEach(function (lg) {
-        var L = st[lg], name = Season.LEAGUES[lg].name;
+      (Season.ids ? Season.ids() : ['c', 'm']).forEach(function (lg) {
+        var L = st[lg], name = Season.LEAGUES[lg].name; if (!L) return;
         out.push({ id: 'pen-next-' + lg, type: 'pennant', won: false, kind: 'blue', icon: '🚩', title: name + ' season ' + L.n,
           story: 'Finish season ' + L.n + ' of the ' + name + ' (' + (Season.MY_GAMES - L.k) + ' fixture' + (Season.MY_GAMES - L.k === 1 ? '' : 's') + ' to go) and a pennant goes here. Every place wins one!' });
       });

@@ -255,9 +255,14 @@ export function mount(host, items, opts) {
   var pennants = items.filter(function (i) { return i.type === 'pennant'; }).slice(0, 24);
   var iz = ROOM.backZ + 0.3;
   function row(list, y, width, fn) { var n = list.length; list.forEach(function (it, k) { var x = n === 1 ? 0 : -width / 2 + width * k / (n - 1); fn(it, x, y); }); }
-  row(cups, SHELF[2], Math.min(CW - 1.0, cups.length * 1.0), function (it, x, y) { place(it, x, y, iz, 0, 0.98); });
-  row(crowns, SHELF[1], Math.min(CW - 0.6, crowns.length * 0.5), function (it, x, y) { place(it, x, y, iz, 0, 1.25); });
-  row(plaques, SHELF[0], Math.min(CW - 0.5, plaques.length * 0.45), function (it, x, y) { place(it, x, y, iz, 0, 1); });
+  // (CAREER: with three leagues there are 5 cups, 14 crowns and 15 plaques; when a shelf gets crowded every item on it
+  //  shrinks a little so neighbours never overlap: k = room per item / the item's natural width)
+  function fit(n, width, natural) { return n > 1 ? Math.min(1, (width / (n - 1)) / natural) : 1; }
+  var cupW = Math.min(CW - 1.0, cups.length * 1.0), crW = Math.min(CW - 0.6, crowns.length * 0.5), plW = Math.min(CW - 0.5, plaques.length * 0.45);
+  var cupK = fit(cups.length, cupW, 0.9), crK = fit(crowns.length, crW, 0.48), plK = fit(plaques.length, plW, 0.4);
+  row(cups, SHELF[2], cupW, function (it, x, y) { place(it, x, y, iz, 0, 0.98 * cupK); });
+  row(crowns, SHELF[1], crW, function (it, x, y) { place(it, x, y, iz, 0, 1.25 * crK); });
+  row(plaques, SHELF[0], plW, function (it, x, y) { place(it, x, y, iz, 0, plK); });
   // medals: one row per tier on the left wall (facing +x)
   var tiers = ['bronze', 'silver', 'gold', 'special'], rowsM = [];
   tiers.forEach(function (t) { var l = medals.filter(function (m) { return m.tier === t; }); while (l.length) rowsM.push(l.splice(0, 14)); });

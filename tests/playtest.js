@@ -16,12 +16,23 @@
 //   switches on one of its variation cards (with its setting) about 3 shakes in 4 (its scoring twists don't change play).
 //   The summary prints how often Goals and Solutions used a bonus cube, by creature, and the same re-check.
 //   e.g. node tests/playtest.js 4 4 bonus     |  node tests/playtest.js 4 4 average bonus:power
+//   CAREER (the Legend League, opponents 11-15):
+//     'sig'    = every creature's SIGNATURE RULE is in force (js/career.js): a pairing uses the signature of the
+//                Legend League creature in it (the later one if both are); a light signature (Mondo, Messy) only on
+//                shakes where that creature sets the Goal. Signature cards and dice are re-checked like 'variation'.
+//     'career' = only the pairings that matter for the Legend League: King Messy against each of the five, the
+//                Legend ladder (Messy -> Bleep -> ... -> Chroma), and Hex vs Messy as a yardstick.
+//     'old'    = only the first ten creatures' pairings and kids (to compare with numbers from before the Legend League).
+//   e.g. node tests/playtest.js 60 4 career sig
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
 const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv.slice(4).includes('notaste');
 const BONUSARG = process.argv.slice(4).find(a => /^bonus/.test(a)) || null; // BONUS
 const BONUS = BONUSARG ? (BONUSARG === 'bonus' ? ['big', 'power', 'twist'] : BONUSARG.replace(/^bonus:/, '').split('+')) : [];
-const CARD = process.argv.slice(4).find(a => a !== 'notaste' && !/^bonus/.test(a)) || null;
+const FLAGS = ['notaste', 'sig', 'career', 'old']; // CAREER
+const SIG = process.argv.slice(4).includes('sig'), CAREER = process.argv.slice(4).includes('career'), OLD = process.argv.slice(4).includes('old');
+const ONLY = (process.argv.slice(4).find(a => /^only=/.test(a)) || '').replace('only=', '').split(',').filter(Boolean).map(p => p.split('-').map(Number)); // CAREER: only=9-14,9-10 runs just those pairings
+const CARD = process.argv.slice(4).find(a => FLAGS.indexOf(a) < 0 && !/^bonus/.test(a) && !/^only=/.test(a)) || null;
 
 // A fake browser, just enough for the scripts to load. Nothing is drawn.
 const store = {};
@@ -142,21 +153,35 @@ function trickMove(G, o, opp) {
   return best || chooseMove(G, Object.assign({}, o, { smart: 1 }));
 }
 
+// CAREER: the signature in force for a pairing (see 'sig' above): {o, sig} or null
+function pairSig(A, B) {
+  if (!SIG) return null;
+  const ia = OPPONENTS.indexOf(A), ib = OPPONENTS.indexOf(B), full = [ib, ia].filter(i => i >= 0 && OPPONENTS[i].sig && !OPPONENTS[i].sig.light);
+  if (full.length) { const i = Math.max(...full); return { o: OPPONENTS[i], sig: OPPONENTS[i].sig }; }
+  return null;
+}
 function playShake(A0, B0, setter, stats) {
   const P = [tuned(A0, B0), tuned(B0, A0)];
+  // CAREER: which signature applies this shake (a light one only when its owner sets the Goal)
+  let SG = pairSig(A0, B0);
+  if (!SG && SIG && P[setter].sig && P[setter].sig.light) SG = { o: P[setter], sig: P[setter].sig };
+  const sigDie = SG && SG.sig.kind === 'bonus' ? SG.sig.die : null;
+  const sigCard = SG && SG.sig.kind === 'card' ? [SG.sig.card, SG.sig.set || null] : SG && SG.sig.kind === 'shuffle' ? ['*shuffle*', null] : null;
+  if (SG) stats.sig = (stats.sig || 0) + 1;
   const A = P[0], B = P[1];
   const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })), fractions: stage.fractions };
   G.cubes.forEach(c => { if (!Eq.isDigit(c.s) && stage.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
   // BONUS: the Big-number and Power dice join the roll as cubes 24, 25; the Twist deck may pick this shake's card
   G_HAS_BONUS = false;
-  ['big', 'power'].forEach(d => { if (!BONUS.includes(d)) return; const f = Eq.CUBE_FACES[d].filter(s => d !== 'big' || stage.fractions || Eq.bigOf(s).d === 1); G.cubes.push({ id: G.cubes.length, color: d, s: f[Math.floor(Math.random() * f.length)], zone: 'resources', order: G.cubes.length, locked: false }); G_HAS_BONUS = true; });
+  ['big', 'power'].forEach(d => { if (!BONUS.includes(d) && sigDie !== d) return; const f = Eq.CUBE_FACES[d].filter(s => d !== 'big' || stage.fractions || Eq.bigOf(s).d === 1); G.cubes.push({ id: G.cubes.length, color: d, s: f[Math.floor(Math.random() * f.length)], zone: 'resources', order: G.cubes.length, locked: false }); G_HAS_BONUS = true; });
   const TWISTCARDS = [['basem', { base: 8 }], ['basem', { base: 9 }], ['wild0'], ['upside'], ['sideways'], ['average'], ['multiops'], ['multk', { k: 6 }], ['multk', { k: 10 }], ['expo'], ['powbase'], ['twodigit'], ['remainder'], ['factorial'], ['nfactors']];
-  const twist = !CARD && BONUS.includes('twist') && Math.random() < 0.75 ? TWISTCARDS[Math.floor(Math.random() * TWISTCARDS.length)] : null;
+  const twist = !CARD && !sigCard && BONUS.includes('twist') && Math.random() < 0.75 ? TWISTCARDS[Math.floor(Math.random() * TWISTCARDS.length)] : null;
   if (twist) stats.twists = (stats.twists || 0) + 1;
-  if (CARD || twist) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
-    const pool = twist ? [twist[0]] : CARD === 'anycard' ? Eq.VARIATIONS : CARD === 'midcard' ? AI.MIDDLE : [CARD];
+  const useCard = CARD || twist || sigCard;
+  if (useCard) { // the same math mode the game builds (js/variations.js): fractions + the card (+ the Goal's symbols)
+    const pool = twist ? [twist[0]] : sigCard ? (sigCard[0] === '*shuffle*' ? Eq.VARIATIONS.filter(c => c !== 'expo' || stage.ops.includes('^')) : [sigCard[0]]) : CARD === 'anycard' ? Eq.VARIATIONS : CARD === 'midcard' ? AI.MIDDLE : [CARD];
     const card = pool[Math.floor(Math.random() * pool.length)], pickOne = a => a[Math.floor(Math.random() * a.length)];
-    let set = twist && twist[1] ? twist[1] : null;
+    let set = twist && twist[1] ? twist[1] : sigCard && sigCard[1] ? sigCard[1] : null;
     if (card === 'multk' && !set) set = { k: pickOne([6, 7, 8, 9, 10, 11]) };
     if (card === 'basem' && !set) set = { base: pickOne([8, 9]) };
     if (card === 'expo') { // a colour that has digits in Resources; then the mode is live, like G.fractions in the game
@@ -170,7 +195,7 @@ function playShake(A0, B0, setter, stats) {
   }
   if (!setGoal(G, P[setter], P[1 - setter])) { stats.noGoal++; return [0, 0]; }
   if (G_HAS_BONUS) { const u = BUSE[P[setter].name] || (BUSE[P[setter].name] = { goals: 0, goalsBonus: 0, sols: 0, solsBonus: 0 }); u.goals++; if (G.goalSyms.some(bonusSym)) u.goalsBonus++; }
-  if (CARD || twist) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
+  if (useCard) G.fractions = Eq.withGoal(G.fractions, G.goalSyms);
   let last = setter, turn = 1 - setter, order = 100, moves = 0;
   const pts = [0, 0], end = (how, who) => { stats.ends[how] = (stats.ends[how] || 0) + 1; stats.moves += moves; stats.shakes++; if (who !== undefined) stats.by[who][how] = (stats.by[who][how] || 0) + 1; return pts; };
   for (;;) {
@@ -230,17 +255,38 @@ if (BONUS.some(d => ['big', 'power', 'twist'].indexOf(d) < 0)) { console.log('Un
 if (CARD && CARD !== 'anycard' && CARD !== 'midcard' && Eq.VARIATIONS.indexOf(CARD) < 0) { console.log('Unknown card ' + CARD + '. Cards: ' + Eq.VARIATIONS.join(', ') + ', anycard, midcard'); process.exit(1); }
 process.on('exit', () => { if (BONUS.length) { console.log(`Bonus dice check (${BONUS.join('+')}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); console.log('Bonus cube use (Goals with a bonus cube / Solutions with a bonus cube):'); OPPONENTS.concat([BEGINNER, PRACTICED, TRICK]).forEach(o => { const u = BUSE[o.name]; if (u) console.log(`  ${(o.name + (o.stars ? ' ' + o.stars + '*' : '') + ':').padEnd(28)} Goals ${u.goalsBonus}/${u.goals}   Solutions ${u.solsBonus}/${u.sols}`); }); }
   if (CARD) console.log(`Variation check (${CARD}): ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the card` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : '')); });
-for (let i = 0; i < OPPONENTS.length - 1; i++) pairing(OPPONENTS[i], OPPONENTS[i + 1]);
-OPPONENTS.forEach(o => pairing(BEGINNER, o));
-[0, 1, 2, 4].forEach(i => pairing(PRACTICED, OPPONENTS[i]));
-[0, 1].forEach(i => pairing(TRICK, OPPONENTS[i]));
+// CAREER: which pairings run. Default: the whole ladder (now 15 creatures) and the kids; 'old' = the first ten only;
+// 'career' = only what the Legend League needs.
+const NOLD = 10, LEG = OPPONENTS.slice(NOLD);
+const LADDER = OLD ? OPPONENTS.slice(0, NOLD) : CAREER ? OPPONENTS.slice(NOLD - 1) : OPPONENTS;
+if (ONLY.length) { // just these pairings (by OPPONENTS index), then a short summary
+  ONLY.forEach(p => pairing(OPPONENTS[p[0]], OPPONENTS[p[1]]));
+  console.log(`\n===== ONLY: stage ${STAGE}, ${N} shakes per pairing${SIG ? ', SIGNATURES in force' : ''} =====`);
+  results.forEach(r => console.log(`  ${r.A} ${r.a.toFixed(2)} - ${r.b.toFixed(2)} ${r.B}  (margin ${(r.a - r.b >= 0 ? '+' : '') + (r.a - r.b).toFixed(2)})`));
+  process.exit(0);
+}
+if (CAREER) pairing(OPPONENTS[8], OPPONENTS[9]);
+for (let i = 0; i < LADDER.length - 1; i++) pairing(LADDER[i], LADDER[i + 1]);
+if (CAREER) LEG.slice(1).forEach(o => pairing(OPPONENTS[9], o));
+if (!CAREER) {
+  (OLD ? OPPONENTS.slice(0, NOLD) : OPPONENTS).forEach(o => pairing(BEGINNER, o));
+  [0, 1, 2, 4].forEach(i => pairing(PRACTICED, OPPONENTS[i]));
+  [0, 1].forEach(i => pairing(TRICK, OPPONENTS[i]));
+}
 
 // ---- Summary (stage and shakes are in the first line) ----
 const R = (A, B) => results.find(r => r.A === A && r.B === B);
 const line = (A, B) => { const r = R(A, B); return `${A} ${r.a.toFixed(2)} - ${r.b.toFixed(2)} ${B}  (margin ${(r.a - r.b >= 0 ? '+' : '') + (r.a - r.b).toFixed(2)})`; };
-console.log(`\n===== SUMMARY: stage ${STAGE}, ${N} shakes per pairing, average points per shake${NOTASTE ? ', math tastes OFF' : ''} =====`);
+console.log(`\n===== SUMMARY: stage ${STAGE}, ${N} shakes per pairing, average points per shake${NOTASTE ? ', math tastes OFF' : ''}${SIG ? ', SIGNATURES in force' : ''} =====`);
 console.log('Ladder (each should beat the one below it, i.e. the second name should win):');
-for (let i = 0; i < OPPONENTS.length - 1; i++) console.log('  ' + line(OPPONENTS[i].name, OPPONENTS[i + 1].name));
+for (let i = 0; i < LADDER.length - 1; i++) console.log('  ' + line(LADDER[i].name, LADDER[i + 1].name));
+if (CAREER) {
+  console.log('Legend League against King Messy (the Monster League boss), ' + (SIG ? 'each with its signature in force' : 'no signatures') + ':');
+  console.log('  ' + line(OPPONENTS[8].name, OPPONENTS[9].name) + '   <- yardstick: Hex vs Messy');
+  LEG.forEach(o => console.log('  ' + line(OPPONENTS[9].name, o.name)));
+  if (SIG) console.log(`Signature check: ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the rule` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : ''));
+  process.exit(0);
+}
 console.log('Kids:');
 console.log('  ' + line('Beginner kid', OPPONENTS[0].name));
 console.log('  ' + line('Beginner kid', OPPONENTS[1].name));

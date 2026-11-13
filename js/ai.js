@@ -22,7 +22,7 @@
 //   likes.sol   = sets of symbols it tries to work into its Solutions, in order (e.g. [['*','+'], ['*']])
 //   likes.mix   = true: tries Solutions that mix two different operations (Zog)
 var AI = (function () {
-  var VERSION = 6; // bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
+  var VERSION = 7; // (CAREER: 7) bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
 
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function assign(a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
@@ -35,7 +35,8 @@ var AI = (function () {
   function bonusFan(o) { return (o.stars || 0) >= 4; }
 
   // Only the fields the decisions read (a creature's talk lines stay on the page).
-  var FIELDS = ['name', 'maxDigits', 'timeMs', 'seeNow', 'seeImp', 'smart', 'shortView', 'callsImpossible', 'keepGoal', 'goalCubes', 'goalMax', 'likes', 'stars', 'fire'];
+  // (CAREER: sure, wide, trap, trapMs are the Legend League's extra skills; a creature without them plays exactly as before)
+  var FIELDS = ['name', 'maxDigits', 'timeMs', 'seeNow', 'seeImp', 'smart', 'shortView', 'callsImpossible', 'keepGoal', 'goalCubes', 'goalMax', 'likes', 'stars', 'fire', 'sure', 'wide', 'trap', 'trapMs', 'moveMs'];
   function skill(o) { var s = {}; FIELDS.forEach(function (k) { if (o[k] !== undefined) s[k] = o[k]; }); return s; }
   // The same creature with no tastes (Pip's hints use a creature's eye but should not have its taste).
   function plain(o) { return assign(o, { likes: null }); }
@@ -151,9 +152,17 @@ var AI = (function () {
     }
     if (o.callsImpossible !== false && Math.random() < o.seeImp * scale) {
       var r2 = Eq.solve(assign(base, { mode: 'impossible' }));
-      if (!r2.found && (o.shortView || r2.complete || (!strictImp && Math.random() < 0.3))) return { kind: 'impossible' };
+      if (o.sure) { if (!r2.found && sureImpossible(base, r2)) return { kind: 'impossible' }; } // CAREER: never a guess
+      else if (!r2.found && (o.shortView || r2.complete || (!strictImp && Math.random() < 0.3))) return { kind: 'impossible' };
     }
     return null;
+  }
+  // CAREER (o.sure): "I couldn't find one" only counts as Impossible! when the search was finished. If the quick
+  // search ran out of time, it thinks longer (3x the time, every number cube); if that is still unfinished, it lets it go.
+  function sureImpossible(base, r) {
+    if (r.complete) return true;
+    var r3 = Eq.solve(assign(base, { mode: 'impossible', maxDigits: 6, timeMs: Math.min(1500, Math.max(300, (base.timeMs || 300) * 3)) }));
+    return !r3.found && r3.complete;
   }
   // After the last cube: does this creature (not the mover) call Impossible!?
   function callsLastImpossible(o, st, goal, fractions) {
@@ -176,7 +185,7 @@ var AI = (function () {
     if (!res.length) return null;
     var likes = (o.likes && o.likes.syms) || [];
     if (bonusFan(o)) likes = likes.concat(res.map(function (c) { return c.s; }).filter(isBonusSym)); // BONUS: keeps a bonus cube in play
-    var base = { goal: goal, fractions: fractions, maxDigits: o.maxDigits, timeMs: 90 };
+    var base = { goal: goal, fractions: fractions, maxDigits: o.maxDigits, timeMs: o.moveMs || 90 }; // (CAREER: moveMs = a longer, more careful look at each move)
     function possible(after) { return Eq.solve(assign(base, { req: after.req, opt: after.perm, res: after.res, mode: 'impossible' })).found; }
     function out(cd) { return cd && { id: cd.id, zone: cd.zone, liked: cd.zone !== 'forbidden' && has(likes, cd.s) }; }
     if (res.length === 1) {
@@ -205,20 +214,50 @@ var AI = (function () {
         var fav = l.filter(function (s) { return has(likes, s); }), rest = l.filter(function (s) { return !has(likes, s); });
         l = z === 'forbidden' ? rest.concat(fav) : fav.concat(rest);
       }
-      l.slice(0, 4).forEach(function (s) { cands.push({ id: bySym[s].id, s: s, zone: z }); });
+      (o.wide ? l : l.slice(0, 4)).forEach(function (s) { cands.push({ id: bySym[s].id, s: s, zone: z }); }); // (CAREER: wide = every cube)
     });
     if (Math.random() > o.smart) return out(cands[0]); // a casual (not-so-careful) move
-    var fallback = null, t0 = now();
+    var fallback = null, t0 = now(), safe = [], look = o.trap && res.length >= 3 && res.length <= 7 && Math.random() < o.trap; // CAREER: near the end of a shake, look one move further
     for (var i = 0; i < cands.length; i++) {
       var cd = cands[i], after = applySym(st, cd.s, cd.zone);
       if (o.keepGoal !== false && !possible(after)) continue; // keepGoal === false: never checks that the Goal stays possible
       if (!fallback) fallback = cd;
       var nowable = after.res.length >= 2 && (after.req.length + after.perm.length) > 0 &&
         Eq.solve(assign(base, { req: after.req, opt: after.perm, res: after.res, mode: 'now', maxDigits: viewDigits(o) })).found;
-      if (!nowable) return out(cd);
-      if (now() - t0 > 900) break;
+      if (!nowable) { if (!look) return out(cd); safe.push({ cd: cd, after: after }); if (safe.length >= 5) break; }
+      if (now() - t0 > Math.max(900, 5 * (o.moveMs || 0))) break;
     }
+    if (look && safe.length) return out(trapPick(o, safe, base, Math.min(o.trapMs || 800, 2700 - (now() - t0)))); // (the whole move stays under ~3 s of thinking)
     return out(fallback || cands[0]);
+  }
+  // CAREER (o.trap): of the safe moves it found, which one leaves the opponent the fewest safe answers?
+  // A safe answer keeps the Goal possible and does not hand this creature a Now!. Counting stops at 3 (enough to
+  // tell "a trap" from "an ordinary position") and at trapMs of thinking; ties keep the creature's usual order.
+  // A move with NO safe answer wins the shake next turn (the opponent must give a Now! or make the Goal impossible).
+  function trapPick(o, safe, base, ms) {
+    var t0 = now(), budget = Math.max(150, ms || 800), best = safe[0], bestN = 99;
+    for (var i = 0; i < safe.length && now() - t0 < budget; i++) {
+      var a = safe[i].after, n = safeAnswers(o, a, base, Math.min(3, bestN), t0, budget);
+      if (n < bestN) { bestN = n; best = safe[i]; if (n === 0) break; }
+    }
+    return best.cd;
+  }
+  // How many different answers (cube symbol x zone) to position st are safe, counting up to cap.
+  function safeAnswers(o, st, base, cap, t0, budget) {
+    var seen = {}, n = 0, zones = ['required', 'permitted', 'forbidden'];
+    for (var k = 0; k < st.res.length; k++) {
+      var s = st.res[k]; if (seen[s]) continue; seen[s] = 1;
+      for (var z = 0; z < 3; z++) {
+        if (zones[z] === 'forbidden' && st.res.length < 2) continue;     // the last cube can't go to Forbidden
+        var a = applySym(st, s, zones[z]);
+        if (!Eq.solve(assign(base, { req: a.req, opt: a.perm, res: a.res, mode: 'impossible', timeMs: 30 })).found) continue; // makes the Goal impossible: not safe
+        var nowable = a.res.length >= 2 && (a.req.length + a.perm.length) > 0 &&
+          Eq.solve(assign(base, { req: a.req, opt: a.perm, res: a.res, mode: 'now', maxDigits: viewDigits(o), timeMs: 30 })).found;
+        if (!nowable && ++n >= cap) return n;
+        if (now() - t0 > budget) return Math.max(n, 1);                  // out of time: assume it is not a trap
+      }
+    }
+    return n;
   }
   // A whole turn: challenge the last move (when allowed) or else choose a move. -> {challenge} or {move}
   function turn(o, st, res, goal, fractions, mayChallenge, nowOk) {

@@ -56,7 +56,13 @@ export const TEAM = {
   fox: { jersey: '#e03131', dark: '#b52424', trim: '#ffffff', num: '9', pattern: 'hoops' },
   owl: { jersey: '#1c3d8c', dark: '#142c68', trim: '#ffd43b', num: '8', pattern: 'chevron' },
   wizard: { jersey: '#fab005', dark: '#d99200', trim: '#5f3dc4', num: '99', pattern: 'stars' },
-  pip: { jersey: '#ff922b', dark: '#e8710a', trim: '#ffffff', num: 'P', pattern: 'dots' }
+  pip: { jersey: '#ff922b', dark: '#e8710a', trim: '#ffffff', num: 'P', pattern: 'dots' },
+  // CAREER: Legend League
+  robot: { jersey: '#15aabf', dark: '#0b7285', trim: '#ffd43b', num: '3', pattern: 'hoops' },
+  bat: { jersey: '#1c7ed6', dark: '#1864ab', trim: '#ffd43b', num: '6', pattern: 'stripes' },
+  octopus: { jersey: '#f76707', dark: '#d9480f', trim: '#ffffff', num: '88', pattern: 'dots' },
+  dragon: { jersey: '#e03131', dark: '#a61e1e', trim: '#ffd43b', num: '12', pattern: 'sash' },
+  chameleon: { jersey: '#7048e8', dark: '#5f3dc4', trim: '#ffd43b', num: '21', pattern: 'stars' }
 };
 export function jerseyTexture(t) {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256; const g = cv.getContext('2d');
