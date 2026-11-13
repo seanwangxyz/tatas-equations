@@ -1509,7 +1509,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         // lin (a toss): the cube already moves as it leaves the hand, so it flies at an even pace along a parabola
         a.m.position.lerpVectors(a.p0, a.p1, a.lin ? k : e); a.m.position.y += a.lin ? 4 * k * (1 - k) * a.arc : Math.sin(k * Math.PI) * a.arc;
         a.m.quaternion.copy(a.q0).slerp(a.q1, e); a.m.scale.setScalar(a.s0 + (a.s1 - a.s0) * e);
-        if (k >= 1 && a.land) { Snd.thunk(); landFx(a, now); if (api.handlers.landed) api.handlers.landed(a.m.userData.id); }
+        if (k >= 1 && a.land) { Snd.thunk(a.m.userData.zone); /* MUSIC: the set-down sound differs by zone */ landFx(a, now); if (api.handlers.landed) api.handlers.landed(a.m.userData.id); }
         return k < 1;
       });
       dirty = true;

@@ -26,7 +26,8 @@ var PAL = {
 var FONT = '"Lilita One", "Trebuchet MS", "Segoe UI", sans-serif';
 
 function gS() { return typeof window !== 'undefined' && window.S ? window.S : null; }
-function gG() { return typeof window !== 'undefined' && window.G ? window.G : null; }
+// the match whose names and scores the screen shows: an On-Sets match at the 3D table has its own state (OG), and the last Equations match (G) must not show through
+function gG() { if (typeof window === 'undefined') return null; try { if (window.OS3D && OS3D.active && OS3D.active() && window.OG && OG.players) return OG; } catch (e) {} return window.G ? window.G : null; }
 function T3() { return typeof window !== 'undefined' ? window.T3 : null; }
 function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function fit(g, text, weight, size, maxW, min) { for (;;) { g.font = weight + ' ' + size + 'px ' + FONT; if (g.measureText(text).width <= maxW || size <= (min || 12)) return size; size -= 2; } }
