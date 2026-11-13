@@ -828,7 +828,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over') playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over' && !(window.Matchday && Matchday.active())) playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
