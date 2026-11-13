@@ -22,27 +22,34 @@ var OT_STEPS = [
   { t: 'pick', e: "R'", h: '′ means NOT', p: '<b>R′</b> (say "R prime" or "not R") means every card with <b>NO</b> red dot. Don\'t forget the blank card!', why: 'cards with no red dot' },
   { t: 'pick', e: 'V', h: 'V and Λ', p: '<b>V</b> means <b>every</b> card in the Universe. <b>Λ</b> means <b>no cards at all</b>. Tap all the cards in V.', why: 'every card' },
   { t: 'build', h: 'Now you name a set!', p: 'In the game, the <b>Goal</b> is a number of cards. Build a set with exactly <b>2 cards</b>. Watch the cards light up as you build!', goal: 2 },
-  { t: 'info', h: 'How a game goes', p: '<ul class="reasons os-rules"><li>The cubes are rolled and some cards are dealt. One player sets the <b>Goal</b>: a number of cards.</li><li>Players take turns moving one cube to <b>Required</b> (must be used), <b>Permitted</b> (may be used) or <b>Forbidden</b> (can\'t be used).</li><li>A <b>Solution</b> names a set with exactly the Goal\'s number of cards.</li><li><b>⚡ Now!</b> = "I can name it right now, with at most one more cube." <b>🚫 Impossible!</b> = "Nobody can ever name it with these cubes."</li><li>Correct scores 6 (or 4 after the last cube). Not correct scores 2. Everybody always scores something!</li></ul>', last: true }
+  { t: 'info', h: 'How a game goes', p: '<ul class="reasons os-rules"><li>The cubes are rolled and some cards are dealt. One player sets the <b>Goal</b>: a number of cards.</li><li>Players take turns moving one cube to <b>Required</b> (must be used), <b>Permitted</b> (may be used) or <b>Forbidden</b> (can\'t be used).</li><li>A <b>Solution</b> names a set with exactly the Goal\'s number of cards.</li><li><b>' + ico('bolt') + ' Now!</b> = "I can name it right now, with at most one more cube." <b>' + ico('ban') + ' Impossible!</b> = "Nobody can ever name it with these cubes."</li><li>Correct scores 6 (or 4 after the last cube). Not correct scores 2. Everybody always scores something!</li></ul>', last: true }
 ];
 function osStartTutorial() { OT = { step: 0, picked: {}, done: false, tries: 0, showed: false }; Onsets.view = 'tut'; go('onsets'); osRenderTut(); }
+// the Universe on its felt (dark navy plate with a label), used by the tutorial and the drills
+function osFelt(universe, set, opts) {
+  return '<div class="os-felt"><div class="os-plate-h">' + ico('cube') + ' Universe <span>' + universe.length + ' cards</span></div>' + OSUI.universeHTML(universe, set, opts || {}) + '</div>';
+}
+function osPlate(title, inner) { return '<div class="os-plate"><div class="os-plate-h">' + ico('cube') + ' ' + title + '</div>' + inner + '</div>'; }
 function osRenderTut() {
   if (!OT) return;
-  var st = OT_STEPS[OT.step], body = '', set = null, ev = null;
+  var st = OT_STEPS[OT.step], body = '', set = null, ev = null, n = OT_STEPS.length;
   if (st.e) { ev = OSE.evaluate(osToks(st.e), OT_UNI); set = ev.set; }
-  if (st.t === 'info') body = '<div class="os-tutp">' + st.p + '</div>' + (OT.step === 0 ? OSUI.universeHTML(OT_UNI, null, {}) : '') +
-    '<div class="row"><button class="btn big green" data-act="' + (st.last ? 'osTutFinish' : 'osTutNext') + '">' + (st.last ? 'Let\'s play! ' : 'Next ') + ico('play') + '</button></div>';
-  else if (st.t === 'pick') {
+  if (st.t === 'info') {
+    var four = OT.step === 0 ? '<div class="os-felt os-four">' + ['B', 'R', 'G', 'Y'].map(function (c) { return OSUI.cubeHTML({ s: c }, ''); }).join('') + '</div>' : '';
+    body = (st.last ? '<div class="os-tutp">' + st.p + '</div>' : osBubble(st.p, 'happy')) + (OT.step === 0 ? osFelt(OT_UNI, null, {}) + four : '') +
+      '<div class="row"><button class="btn big green" data-act="' + (st.last ? 'osTutFinish' : 'osTutNext') + '">' + (st.last ? 'Let\'s play! ' : 'Next ') + ico('play') + '</button></div>';
+  } else if (st.t === 'pick') {
     var showSet = OT.done || OT.showed;
-    body = '<div class="os-tutp">' + st.p + '</div><div class="expr os-expr big">' + OSUI.exprHTML(osToks(st.e)) + '</div>' +
-      OSUI.universeHTML(OT_UNI, showSet ? set : null, OT.done ? {} : { act: 'osTutPick', picked: OT.picked, noDim: true }) +
+    body = osBubble(st.p, 'happy') + osPlate('Set Name', '<div class="expr os-expr big">' + OSUI.exprHTML(osToks(st.e)) + '</div>') +
+      osFelt(OT_UNI, showSet ? set : null, OT.done ? {} : { act: 'osTutPick', picked: OT.picked, noDim: true }) +
       (OT.msg ? osBubble(OT.msg, OT.done ? 'cheer' : 'think') : '') +
       '<div class="row">' + (OT.done ? '<button class="btn big green" data-act="osTutNext">Next ' + ico('play') + '</button>'
-        : '<button class="btn big green" data-act="osTutCheck">' + ico('check') + ' Check</button>' + (OT.tries ? '<button class="btn" data-act="osTutShow">Show me</button>' : '')) + '</div>';
+        : '<button class="btn big green" data-act="osTutCheck">' + ico('check') + ' Check</button>' + (OT.tries ? '<button class="btn quiet" data-act="osTutShow">Show me</button>' : '')) + '</div>';
   } else if (st.t === 'build') {
-    body = '<div class="os-tutp">' + st.p + '</div>' + OSUI.universeHTML(OT_UNI, OT.lastSet != null ? OT.lastSet : null, {}) + (OT.msg ? osBubble(OT.msg, OT.done ? 'cheer' : 'think') : '') +
+    body = osBubble(st.p, 'happy') + osFelt(OT_UNI, OT.lastSet != null ? OT.lastSet : null, {}) + (OT.msg ? osBubble(OT.msg, OT.done ? 'cheer' : 'think') : '') +
       '<div class="row">' + (OT.done ? '<button class="btn big green" data-act="osTutNext">Next ' + ico('play') + '</button>' : '<button class="btn big green" data-act="osTutBuild">' + ico('pencil') + ' Build a set</button>') + '</div>';
   }
-  $('#onsets').innerHTML = osHdr('How to play On-Sets', 'osTutQuit') + '<div class="panel os-panel os-tut"><div class="os-steps">' + OT_STEPS.map(function (s, i) { return '<i class="' + (i < OT.step ? 'done' : i === OT.step ? 'now' : '') + '"></i>'; }).join('') + '</div><h3>' + st.h + '</h3>' + body + '</div>';
+  $('#onsets').innerHTML = osHdr('How to play On-Sets', 'osTutQuit') + '<div class="panel os-panel os-tut"><div class="os-steps" role="img" aria-label="Step ' + (OT.step + 1) + ' of ' + n + '">' + OT_STEPS.map(function (s, i) { return '<i class="' + (i < OT.step ? 'done' : i === OT.step ? 'now' : '') + '"></i>'; }).join('') + '<span>Step ' + (OT.step + 1) + ' of ' + n + '</span></div><h3>' + st.h + '</h3>' + body + '</div>';
 }
 ACT.osTutPick = function (el) { if (!OT || OT.done) return; var i = +el.dataset.arg; if (OT.picked[i]) delete OT.picked[i]; else OT.picked[i] = 1; if (!OSUI.cardSnd(OT.picked[i] ? 'lift' : 'place')) Snd.click(); OT.msg = ''; osRenderTut(); };
 ACT.osTutCheck = function () {
@@ -88,10 +95,10 @@ ACT.osTutQuit = function () { OT = null; OSUI.closeAll(); Onsets.open(); };
 
 // ======================= DRILLS =======================
 var OS_DRILLS = [
-  { id: 'count', icon: '🔢', name: 'How many cards?', blurb: 'Count the cards in a set.', color: '#d0ebff' },
-  { id: 'name', icon: '🔦', name: 'Name this set', blurb: 'Which set lights up these cards?', color: '#fff3bf' },
-  { id: 'find', icon: '🎯', name: 'Make the Goal', blurb: 'Build a set with exactly that many cards.', color: '#d3f9d8' },
-  { id: 'now', icon: '⚡', name: 'Now or not yet?', blurb: 'Could you name it right now?', color: '#ffe8cc' }
+  { id: 'count', ic: 'chart', name: 'How many cards?', blurb: 'Count the cards in a set.', color: '#4dabf7' },
+  { id: 'name', ic: 'bulb', name: 'Name this set', blurb: 'Which set lights up these cards?', color: '#f5b400' },
+  { id: 'find', ic: 'target', name: 'Make the Goal', blurb: 'Build a set with exactly that many cards.', color: '#22b573' },
+  { id: 'now', ic: 'bolt', name: 'Now or not yet?', blurb: 'Could you name it right now?', color: '#ff8a1f' }
 ];
 function osDrillState(id) { var d = osState().drills; if (!d[id]) d[id] = { lvl: 1, row: 0, miss: 0, done: 0 }; return d[id]; }
 function osDrillResult(id, ok) {
@@ -161,9 +168,10 @@ function osMakeDrill(id) {
   return null;
 }
 function osOpenDrills() { ODR = null; Onsets.view = 'drills'; go('onsets'); osRenderDrills(); }
+function osPips(lvl) { var h = ''; for (var i = 1; i <= 5; i++) h += '<i class="' + (i <= lvl ? 'on' : '') + '"></i>'; return '<span class="os-pips" role="img" aria-label="Level ' + lvl + ' of 5">' + h + '</span>'; }
 function osRenderDrills() {
   $('#onsets').innerHTML = osHdr('Set Drills', 'osHome') + '<div class="panel os-panel">' + osBubble('Pick a drill! No timers. Three right in a row moves a drill up a level.') +
-    '<div class="os-drills">' + OS_DRILLS.map(function (d) { var s = osDrillState(d.id); return '<button class="os-drillcard" style="--bg:' + d.color + '" data-act="osDrill" data-arg="' + d.id + '"><span class="os-di">' + d.icon + '</span><b>' + d.name + '</b><small>' + d.blurb + '</small><span class="os-lvl">Level ' + s.lvl + ' · ' + s.done + ' done</span></button>'; }).join('') + '</div></div>';
+    '<div class="os-drills">' + OS_DRILLS.map(function (d) { var s = osDrillState(d.id); return '<button class="os-drillcard" style="--dc:' + d.color + '" data-act="osDrill" data-arg="' + d.id + '"><span class="os-dband"><span class="os-di">' + ico(d.ic) + '</span></span><b>' + d.name + '</b><small>' + d.blurb + '</small><span class="os-lvl">' + osPips(s.lvl) + '<em>Level ' + s.lvl + ' · ' + s.done + ' done</em></span></button>'; }).join('') + '</div></div>';
 }
 ACT.osDrill = function (el) { osStartDrill(el.dataset.arg); };
 function osStartDrill(id) {
@@ -177,24 +185,24 @@ function osRenderDrill() {
   var P = ODR.P, d = OS_DRILLS.find(function (x) { return x.id === P.id; }), s = osDrillState(P.id), body = '';
   if (P.id === 'count') {
     body = '<p class="os-q">How many cards are in</p><div class="expr os-expr big">' + OSUI.exprHTML(P.e) + '</div>' +
-      OSUI.universeHTML(P.U, ODR.answered ? P.set : null, {}) +
+      osFelt(P.U, ODR.answered ? P.set : null, {}) +
       '<div class="row os-nums">' + P.U.map(function (c, i) { return i; }).concat([P.U.length]).map(function (n) { return '<button class="btn' + (ODR.answered && n === P.answer ? ' green' : ODR.answered && n === ODR.picked ? ' pink' : '') + '" data-act="osDCount" data-arg="' + n + '"' + (ODR.answered ? ' disabled' : '') + '>' + n + '</button>'; }).join('') + '</div>';
   } else if (P.id === 'name') {
-    body = '<p class="os-q">Which set is lit up?</p>' + OSUI.universeHTML(P.U, P.set, {}) +
+    body = '<p class="os-q">Which set is lit up?</p>' + osFelt(P.U, P.set, {}) +
       '<div class="os-opts">' + P.opts.map(function (o, i) { var right = o.set === P.answer, cls = ODR.answered ? (right ? ' green' : i === ODR.picked ? ' pink' : '') : ''; return '<button class="btn os-opt' + cls + '" data-act="osDName" data-arg="' + i + '"' + (ODR.answered ? ' disabled' : '') + '><span class="expr os-expr">' + OSUI.exprHTML(o.e) + '</span></button>'; }).join('') + '</div>' +
       (ODR.answered && ODR.picked != null && P.opts[ODR.picked].set !== P.answer ? '<p class="os-q">Your pick, ' + esc(OSUI.exprText(P.opts[ODR.picked].e)) + ', names these cards:</p>' + OSUI.universeHTML(P.U, P.opts[ODR.picked].set, { small: true }) : '');
   } else if (P.id === 'find') {
-    body = '<p class="os-q">Make a set with exactly <b>' + P.goal + '</b> card' + (P.goal === 1 ? '' : 's') + '.</p>' + OSUI.universeHTML(P.U, ODR.lit != null ? ODR.lit : null, {}) +
+    body = '<p class="os-q">Make a set with exactly <b>' + P.goal + '</b> card' + (P.goal === 1 ? '' : 's') + '.</p>' + osFelt(P.U, ODR.lit != null ? ODR.lit : null, {}) +
       '<div class="pool"><h4>Your cubes</h4><div class="cubes">' + P.cubes.map(function (c) { return OSUI.cubeHTML(c, 'mini'); }).join('') + '</div></div>' +
       (ODR.answered ? '' : '<div class="row"><button class="btn big green" data-act="osDFind">' + ico('pencil') + ' Build it</button></div>');
   } else if (P.id === 'now') {
     var row = function (lab, list) { return '<div class="os-minirow"><b>' + lab + '</b><span>' + (list.map(function (c) { return OSUI.cubeHTML(c, 'mini'); }).join('') || '<i>empty</i>') + '</span></div>'; };
     body = '<p class="os-q">The Goal is <b>' + P.goal + '</b> card' + (P.goal === 1 ? '' : 's') + '. Could someone name a set with ' + P.goal + ' card' + (P.goal === 1 ? '' : 's') + ' RIGHT NOW, using all of Required, any of Permitted, and at most ONE Resource cube?</p>' +
-      OSUI.universeHTML(P.U, ODR.lit != null ? ODR.lit : null, {}) +
-      '<div class="os-minimat">' + row('✅ Required', P.req) + row('👍 Permitted', P.perm) + row('🎲 Resources', P.res) + '</div>' +
+      osFelt(P.U, ODR.lit != null ? ODR.lit : null, {}) +
+      '<div class="os-minimat">' + row('<i class="td rq"></i>Required', P.req) + row('<i class="td pm"></i>Permitted', P.perm) + row('<i class="td rs"></i>Resources', P.res) + '</div>' +
       (ODR.answered ? '' : '<div class="row"><button class="btn now" data-act="osDNow" data-arg="1">' + ico('bolt') + ' Yes, Now!</button><button class="btn" data-act="osDNow" data-arg="0">Not yet</button></div>');
   }
-  $('#onsets').innerHTML = osHdr(d.icon + ' ' + d.name, 'osDrillsBack') + '<div class="panel os-panel os-drill"><div class="os-lvlchip">Level ' + s.lvl + '</div>' + body +
+  $('#onsets').innerHTML = osHdr(ico(d.ic) + ' ' + d.name, 'osDrillsBack') + '<div class="panel os-panel os-drill"><div class="os-lvlchip">' + osPips(s.lvl) + ' Level ' + s.lvl + '</div>' + body +
     (ODR.msg ? osBubble(ODR.msg, ODR.good ? 'cheer' : 'think') : '') +
     (ODR.answered ? '<div class="row"><button class="btn big green" data-act="osDNext">Next one ' + ico('play') + '</button></div>' : '') + '</div>';
 }

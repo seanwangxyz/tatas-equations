@@ -314,6 +314,79 @@
 .rc .xplist .ico{width:15px;height:15px;color:#e09a00;vertical-align:-2px}
 .rc-sols .os-resuni .os-card{--w:clamp(30px,3.4vw,40px)}
 @media (max-width:560px){.rc-board[style*="--n:3"] .rc-gain{flex-direction:column;align-items:center;gap:0;white-space:normal;text-align:center;font-size:13px}.rc-board[style*="--n:3"] .rc-gain b{font-size:24px}}
+/* ---------- Pop-ups: V / Λ choice, deal, Third Party, pass-the-device, rules ---------- */
+.modal .os-note{margin:4px 0}
+.modal .row .btn.quiet,.modal .btn.quiet{background:var(--soft);--edge:#cdd4e4;color:var(--ink2)}
+.os-vnexp{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.os-vnexp>div{display:flex;align-items:center;gap:8px;background:var(--soft);border-radius:14px;padding:5px 12px 5px 6px;font-size:16px;font-weight:800}
+.os-vnexp .os-cube{pointer-events:none}
+.os-choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.os-choice{border:none;background:#fff;border-radius:20px;padding:12px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;font:inherit;color:var(--ink);box-shadow:inset 0 0 0 3px var(--edge-card),0 5px 0 var(--edge-card);transition:transform var(--t-fast) var(--ease),box-shadow var(--t-fast)}
+.os-choice .cs{display:flex;gap:4px}.os-choice .os-cube{pointer-events:none}
+.os-choice b{font-family:var(--display);font-weight:400;font-size:20px}
+@media (hover:hover){.os-choice:hover,.os-num:hover{box-shadow:inset 0 0 0 3px var(--gold),0 5px 0 var(--gold-d);transform:translateY(-2px)}}
+.os-choice:active,.os-num:active{transform:translateY(3px);box-shadow:inset 0 0 0 3px var(--gold),0 1px 0 var(--gold-d)}
+.os-choice:focus-visible,.os-num:focus-visible{outline:4px solid var(--sky);outline-offset:2px}
+.os-numgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:8px;max-width:440px;margin:0 auto}
+.os-num{border:none;background:#fff;border-radius:18px;padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;cursor:pointer;font:inherit;color:var(--ink);box-shadow:inset 0 0 0 3px var(--edge-card),0 4px 0 var(--edge-card);transition:transform var(--t-fast) var(--ease)}
+.os-num b{font-family:var(--display);font-weight:400;font-size:30px;line-height:1}
+.os-num small{font-size:11px;font-weight:900;color:var(--mute);letter-spacing:.5px}
+.os-num.on{background:#fff4cf;box-shadow:inset 0 0 0 3px var(--gold),0 4px 0 var(--gold-d)}
+.os-pass{display:flex;align-items:center;gap:14px;justify-content:center;background:var(--soft);border-radius:20px;padding:10px 14px}
+.os-pass p{margin:0;font-size:18px;font-weight:800;line-height:1.3}
+.os-pass .rc-shirt{flex:0 0 auto}
+.os-pts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.os-pts>div{background:var(--soft);border-radius:16px;padding:8px 6px;text-align:center;display:flex;flex-direction:column;gap:2px;font-size:13.5px;font-weight:800;line-height:1.2;color:var(--ink2)}
+.os-pts b{font-family:var(--display);font-weight:400;font-size:24px;color:var(--ink)}
+.os-rulerows{display:flex;flex-direction:column;gap:8px}
+.os-rr{display:flex;gap:12px;align-items:center;background:var(--soft);border-radius:18px;padding:8px 12px 8px 8px}
+.os-rr .pic{flex:0 0 96px;display:flex;flex-wrap:wrap;gap:3px;justify-content:center;align-items:center}
+.os-rr p{margin:0;font-size:15.5px;line-height:1.35;font-weight:700;color:var(--ink2)}
+.os-rr .os-cube{pointer-events:none;--mini:28px}
+.os-rr .os-card{--w:26px}
+.os-bigpic{width:46px;height:46px;border-radius:15px;background:linear-gradient(#ffe27a,#ffbd1f);display:inline-flex;align-items:center;justify-content:center;color:#4a3000}
+.os-bigpic .ico{width:28px;height:28px}
+.os-zchips{display:flex;flex-direction:column;gap:3px;width:100%}
+.os-zchips i{font-style:normal;font-size:11.5px;font-weight:900;border-radius:8px;padding:1px 6px;text-align:center}
+.os-zchips .rq{background:#e1f8ee;color:#127a4c}.os-zchips .pm{background:#e3f1ff;color:#1c5fa8}.os-zchips .fb{background:#ffe3e8;color:#b02342}
+@media (max-width:560px){.os-rr .pic{flex-basis:92px}.os-rr .os-cube{--mini:27px}.os-rr p{font-size:14px}.os-pts{grid-template-columns:1fr}.os-pts>div{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;text-align:left}.os-pts b{min-width:70px;text-align:center}}
+/* ---------- Tutorial and drills: the Universe on a felt, Pip's line in a bubble, step and level pips ---------- */
+.os-felt{background:linear-gradient(#1b2b45,#0f1a2e);border-radius:20px;padding:6px 10px 10px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.1);display:flex;flex-direction:column;gap:2px;width:100%}
+.os-felt .os-plate-h span{margin-left:auto;font-weight:800;letter-spacing:.3px;text-transform:none;opacity:.85}
+.os-felt .os-uni{padding:4px 2px}
+.os-felt.os-four{flex-direction:row;justify-content:center;gap:10px;padding:10px}
+.os-tut .os-panel,.os-panel.os-tut,.os-panel.os-drill{display:flex;flex-direction:column;align-items:center;gap:10px}
+.os-tut h3,.os-tut .os-tutp{text-align:center}
+.os-tut>.os-say,.os-drill>.os-say{width:100%;justify-content:flex-start;margin:0}
+.os-say .bubble{flex:1;max-width:none;text-align:left}
+.os-tut .os-plate{width:100%}
+.os-tut .os-plate .os-expr,.os-tut .os-expr.big{max-width:none;margin:0}
+.os-tut .row,.os-drill .row{width:100%;justify-content:center}
+.os-steps{align-items:center;gap:6px;margin:0}
+.os-steps i{width:11px;height:11px;border-radius:50%;background:#dde2ee;transition:background var(--t) var(--ease)}
+.os-steps i.done{background:var(--good)}.os-steps i.now{background:var(--gold);box-shadow:0 0 0 3px rgba(255,200,61,.35)}
+.os-steps span{margin-left:8px;font-size:13px;font-weight:900;color:var(--mute)}
+.os-tut .os-tutp{font-size:17px;line-height:1.45;font-weight:700;max-width:640px;text-align:left}
+.os-tut .os-card{--w:clamp(52px,9vw,72px)}
+.os-felt.os-four .os-cube{cursor:default}
+.os-lvlchip{display:flex;align-items:center;gap:8px;margin:0 auto;background:var(--soft);border-radius:999px;padding:4px 12px;font-weight:900;font-size:14px}
+.os-pips{display:inline-flex;gap:4px}
+.os-pips i{width:9px;height:9px;border-radius:50%;background:#d3d8e6}.os-pips i.on{background:var(--gold-d)}
+.os-drills{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.os-drillcard{--dc:#4dabf7;padding:0 12px 14px;overflow:hidden;background:#fff;gap:5px;border-radius:24px;box-shadow:0 6px 0 #d7dce8,0 12px 18px rgba(20,30,60,.12)}
+.os-dband{align-self:stretch;margin:0 -12px 2px;height:64px;background:var(--dc);display:flex;align-items:flex-end;justify-content:center}
+.os-di{width:56px;height:56px;border-radius:50%;background:#fff;color:var(--dc);display:flex;align-items:center;justify-content:center;margin-bottom:-18px;box-shadow:0 4px 0 rgba(0,0,0,.12),inset 0 0 0 4px #fff;font-size:inherit}
+.os-di .ico{width:28px;height:28px}
+.os-drillcard b{margin-top:20px;font-size:21px}
+.os-lvl{background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.os-lvl em{font-style:normal;font-size:13px;font-weight:900;color:var(--mute)}
+.os-minirow .td{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;background:#8993ad}
+.os-minirow .td.rq{background:#22b573}.os-minirow .td.pm{background:#4dabf7}
+.os-drill .os-q{margin:2px 0;font-size:19px}
+.os-expr{background:linear-gradient(#1b2b45,#0f1a2e)}
+.os-opt .expr{background:linear-gradient(#1b2b45,#0f1a2e);box-shadow:none;padding:5px 8px}
+.os-opt{border-radius:20px}
+.os-drill .os-nums .btn{min-width:48px}
 /* creature cards: how far it sees, as four dots */
 .opp .os-dots{font-size:15px;letter-spacing:3px;line-height:1;display:flex;gap:3px;justify-content:center}
 .opp .os-dots b{font-weight:400;color:#d3d8e6}

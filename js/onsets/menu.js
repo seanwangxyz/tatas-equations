@@ -138,16 +138,17 @@ var Onsets = (function () {
     osStartMatch('p3', -1, fam.creature >= 0 ? { n2: a, creature: fam.creature } : { n2: a, n3: b, creature: -1 });
   };
   ACT.osRules = function () {
-    modal('<h2 class="hero">On-Sets in a nutshell</h2>' +
-      '<ul class="reasons os-rules">' +
-      '<li><b>Cards:</b> 16 cards, each with a different mix of blue, red, green and yellow dots (one is blank). The dealer puts out 6 to 12 of them: the <b>Universe</b>.</li>' +
-      '<li><b>Cubes:</b> colour cubes (B R G Y), operation cubes (∪ ∩ − ′), V (every card) and Λ (no cards), and digit cubes for the Goal.</li>' +
-      '<li><b>Goal:</b> a number made with 1 to 3 digit cubes. Side by side adds, stacked multiplies, upside down is negative.</li>' +
-      '<li><b>Moves:</b> one cube a turn to Required, Permitted or Forbidden.</li>' +
-      '<li><b>Solution:</b> a Set Name whose set has exactly the Goal\'s number of cards. At least 2 cubes, all of Required, none of Forbidden. ′ comes first; use ( ) for everything else.</li>' +
-      '<li><b>Now!</b> "I can do it now, with at most one more cube." <b>Impossible!</b> "Nobody can, ever." Right = 6, wrong = 2. After the last cube everybody writes: right = 4, wrong = 2.</li>' +
-      '</ul><p class="os-note">From the AGLOA On-Sets Tournament Rules 2026-27 (Elementary, basic game). No timers here, and a few things are simplified: see ONSETS_RULES_SUMMARY.md.</p>' +
-      '<div class="row"><button class="btn green" data-act="closeModal">Got it</button></div>');
+    var cu = function (s) { return OSUI.cubeHTML({ s: s }, 'mini'); }, card = function (n) { return OSUI.cardHTML(n, { small: true }); };
+    function row(pic, text) { return '<div class="os-rr"><div class="pic">' + pic + '</div><p>' + text + '</p></div>'; }
+    modal('<h2 class="hero">On-Sets in a nutshell</h2><div class="os-rulerows">' +
+      row(card(5) + card(10) + card(0), '<b>Cards:</b> 16 cards, each with a different mix of blue, red, green and yellow dots (one is blank). The dealer puts out 6 to 12 of them: the <b>Universe</b>.') +
+      row(cu('B') + cu('R') + cu('U') + cu('V') + cu('N'), '<b>Cubes:</b> colour cubes (B R G Y), operation cubes (∪ ∩ − ′), V (every card) and Λ (no cards), and digit cubes for the Goal.') +
+      row('<span class="os-bigpic">' + ico('target') + '</span>', '<b>Goal:</b> a number made with 1 to 3 digit cubes. Side by side adds, stacked multiplies, upside down is negative.') +
+      row('<span class="os-zchips"><i class="rq">Required</i><i class="pm">Permitted</i><i class="fb">Forbidden</i></span>', '<b>Moves:</b> one cube a turn to Required, Permitted or Forbidden.') +
+      row(cu('B') + cu('U') + cu('R'), '<b>Solution:</b> a Set Name whose set has exactly the Goal\'s number of cards. At least 2 cubes, all of Required, none of Forbidden. ′ comes first; use ( ) for everything else.') +
+      row('<span class="os-bigpic">' + ico('bolt') + '</span>', '<b>Now!</b> "I can do it now, with at most one more cube." <b>Impossible!</b> "Nobody can, ever." Right = 6, wrong = 2. After the last cube everybody writes: right = 4, wrong = 2.') +
+      '</div><p class="os-note">From the AGLOA On-Sets Tournament Rules 2026-27 (Elementary, basic game). No timers here, and a few things are simplified: see ONSETS_RULES_SUMMARY.md.</p>' +
+      '<div class="row"><button class="btn green big" data-act="closeModal">Got it</button></div>');
   };
   // A big tile for the Equations title / Play menu.
   api.tileHTML = function () {

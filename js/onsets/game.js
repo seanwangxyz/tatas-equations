@@ -181,10 +181,12 @@ function osNewShake() {
     if (osIsAI(setter)) { osFocus(setter); var vn = OSAI.chooseVN(); osSay('opp', 'I\'ll set out ' + (vn === 'VVN' ? 'two V and one Λ' : 'one V and two Λ') + '.'); setTimeout(function () { done(vn); }, 900); return; }
     osSay('pip', (osMulti() ? osName(setter) + ', you' : 'You') + ' set the Goal this shake. First, set out the three white cubes!');
     ACT.osVN = function (el) { var v = el.dataset.arg; ACT.osVN = null; closeModal(); done(v); };
+    var cb = function (s) { return OSUI.cubeHTML({ s: s }, 'mini'); };
     modal('<h2 class="hero">' + (osMulti() ? osName(setter) + ': ' : '') + 'Set out the white cubes</h2>' +
-      '<p style="text-align:center"><b>V</b> means EVERY card. <b>Λ</b> means NO cards. In the Elementary game these three cubes are not rolled: you choose.</p>' +
-      '<div class="row os-vn"><button class="btn" data-act="osVN" data-arg="VVN">' + OSUI.cubeHTML({ s: 'V' }, 'mini') + OSUI.cubeHTML({ s: 'V' }, 'mini') + OSUI.cubeHTML({ s: 'N' }, 'mini') + ' Two V, one Λ</button>' +
-      '<button class="btn" data-act="osVN" data-arg="VNN">' + OSUI.cubeHTML({ s: 'V' }, 'mini') + OSUI.cubeHTML({ s: 'N' }, 'mini') + OSUI.cubeHTML({ s: 'N' }, 'mini') + ' One V, two Λ</button></div>');
+      '<div class="os-vnexp"><div>' + cb('V') + '<span><b>V</b> means EVERY card</span></div><div>' + cb('N') + '<span><b>Λ</b> means NO cards</span></div></div>' +
+      '<p class="os-note">In the Elementary game these three cubes are not rolled: you choose.</p>' +
+      '<div class="os-choices"><button class="os-choice" data-act="osVN" data-arg="VVN"><span class="cs">' + cb('V') + cb('V') + cb('N') + '</span><b>Two V, one Λ</b></button>' +
+      '<button class="os-choice" data-act="osVN" data-arg="VNN"><span class="cs">' + cb('V') + cb('N') + cb('N') + '</span><b>One V, two Λ</b></button></div>');
   }
   // 2) the dealer (the player to the setter's right) chooses how many cards (6 to 12 in Elementary, rules II-B-1)
   function chooseDeal(done) {
@@ -192,8 +194,9 @@ function osNewShake() {
     var st = osState();
     ACT.osDeal = function (el) { var n = +el.dataset.arg; ACT.osDeal = null; st.deal = n; persist(); closeModal(); done(n); };
     modal('<h2 class="hero">' + (osMulti() || osIsAI(setter) ? osName(dealer) + ': ' : '') + 'Deal the cards</h2>' +
-      '<p style="text-align:center">You are the dealer. How many cards go in the <b>Universe</b>? (6 to 12.) Fewer cards make smaller Goals; more cards give more ways to make a set.</p>' +
-      '<div class="row os-deal">' + [6, 7, 8, 9, 10, 11, 12].map(function (n) { return '<button class="btn' + (n === st.deal ? ' yellow' : '') + '" data-act="osDeal" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div>');
+      '<p class="os-note">You are the dealer. How many cards go in the <b>Universe</b>?</p>' +
+      '<div class="os-numgrid os-deal">' + [6, 7, 8, 9, 10, 11, 12].map(function (n) { return '<button class="os-num' + (n === st.deal ? ' on' : '') + '" data-act="osDeal" data-arg="' + n + '"><b>' + n + '</b><small>cards</small></button>'; }).join('') + '</div>' +
+      '<p class="os-note">Fewer cards make smaller Goals. More cards give more ways to make a set.</p>');
   }
   var g0 = OG;
   chooseVN(function (vn) {
@@ -441,7 +444,7 @@ function osWrite(pi, mode, cb) {
   if (osIsAI(pi)) { osAIWrite(pi, mode, cb); return; }
   var open = function () { osOpenSolution(pi, mode, cb); };
   if (osMulti()) {
-    modal('<h2 class="hero">Pass to ' + osName(pi) + '</h2><p style="text-align:center">' + osName(pi) + ', it\'s your turn to write a Solution.' + (mode === 'last' || osN() > 2 ? ' No peeking, everybody else!' : '') + '</p><div class="row"><button class="btn green big" data-act="closeModal">I\'m ready!</button></div>', open);
+    modal('<h2 class="hero">Pass to ' + osName(pi) + '</h2><div class="os-pass">' + osRcFace(pi) + '<p>' + osName(pi) + ', it\'s your turn to write a Solution.' + (mode === 'last' || osN() > 2 ? ' No peeking, everybody else!' : '') + '</p></div><div class="row"><button class="btn green big" data-act="closeModal">I\'m ready!</button></div>', open);
   } else open();
 }
 function osCtx(mode) {
@@ -503,9 +506,9 @@ function osAskThirdParty(tp, kind, cb) {
   }
   ACT.osTpYes = function () { closeModal(); osWrite(tp, kind, function (res) { cb({ presented: true, ok: res.ok, tokens: res.tokens, chk: res.chk }); }); };
   ACT.osTpNo = function () { closeModal(); cb({ presented: false }); };
-  modal('<h2 class="hero">' + osName(tp) + ': Third Party</h2><p style="text-align:center">You may write a Solution too, but you don\'t have to.</p>' +
-    '<ul class="reasons os-rules"><li>Write a correct one: you score <b>4 or 6</b>.</li><li>Write a wrong one: you score <b>2</b>.</li><li>Skip it: you score by who turns out to be right' + (kind === 'impossible' ? ' (4 if Impossible! was right)' : ' (6 if the Now! Solution is wrong)') + '.</li></ul>' +
-    '<div class="row"><button class="btn green" data-act="osTpYes">' + ico('pencil') + ' I\'ll write one</button><button class="btn" data-act="osTpNo">No thanks</button></div>');
+  modal('<h2 class="hero">' + osName(tp) + ': Third Party</h2><p class="os-note">You may write a Solution too, but you don\'t have to.</p>' +
+    '<div class="os-pts"><div><b>4 or 6</b><span>Write a correct one</span></div><div><b>2</b><span>Write one that is not right</span></div><div><b>' + (kind === 'impossible' ? '4' : '6') + ' or 2</b><span>Skip it: ' + (kind === 'impossible' ? '4 if Impossible! was right' : '6 if the Now! Solution is wrong') + '</span></div></div>' +
+    '<div class="row"><button class="btn green big" data-act="osTpYes">' + ico('pencil') + ' I\'ll write one</button><button class="btn quiet" data-act="osTpNo">No thanks</button></div>');
 }
 function osResolve(res, tpRes) {
   var ch = OG.ch, pts = OSE.scoreChallenge(ch.kind, ch.challenger, ch.mover, ch.tp, res.ok, tpRes), lines = [];
@@ -536,9 +539,9 @@ function osLastCubePlayed() {
     osSay('pip', 'The last cube is on the mat!', 'think'); osRender();
     ACT.osLastImp = function (el) { closeModal(); var p = el && el.dataset.arg !== undefined ? +el.dataset.arg : hs[0]; OG.phase = 'move'; osChallenge('impossible', p); };
     ACT.osLastWrite = function () { closeModal(); osLastWrite(); };
-    modal('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
+    modal('<h2 class="hero">Last cube played!</h2><p class="os-note">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution: 4 points if it is right, 2 if not.</p>' +
       '<div class="row">' + hs.map(function (i) { return '<button class="btn imp" data-act="osLastImp" data-arg="' + i + '">' + ico('ban') + ' ' + (osMulti() ? osName(i) + ': ' : '') + 'Impossible!</button>'; }).join('') +
-      '<button class="btn green" data-act="osLastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
+      '<button class="btn green big" data-act="osLastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
   }
   if (ais.length) {
     var k = 0;
@@ -624,12 +627,12 @@ function osAskNoGoal(setter, hs) {
             osEndShake({ pts: osNoGoalPts(other, setter, ok), lines: [osName(other) + (ok ? ' proved a Goal was possible!' : '\'s Solution wasn\'t correct, so the "No Goal" call stands.')], sols: sols }); } });
       } });
   };
-  modal('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + osName(setter) + '</b> says no Goal can be made with these cubes and cards. ' + (hs.length > 1 ? 'Does everyone agree?' : osName(hs[0]) + ', do you agree?') + '</p>' +
-    '<div class="row"><button class="btn green" data-act="osNGAgree">' + (hs.length > 1 ? 'We agree' : 'I agree') + ': roll again</button>' +
+  modal('<h2 class="hero">No Goal?</h2><p class="os-note"><b>' + osName(setter) + '</b> says no Goal can be made with these cubes and cards. ' + (hs.length > 1 ? 'Does everyone agree?' : osName(hs[0]) + ', do you agree?') + '</p>' +
+    '<div class="row"><button class="btn green big" data-act="osNGAgree">' + (hs.length > 1 ? 'We agree' : 'I agree') + ': roll again</button>' +
     hs.map(function (i) { return '<button class="btn now" data-act="osNGChallenge" data-arg="' + i + '">' + (hs.length > 1 ? osName(i) + ': ' : '') + 'Challenge! I can make one</button>'; }).join('') + '</div>');
 }
 function osNoGoalAgreed() {
-  modal('<h2>🤝 Agreed!</h2><p style="text-align:center">Nobody could find a Goal, so this shake doesn\'t count. Same player rolls again!</p><div class="row"><button class="btn green" data-act="closeModal">Roll again</button></div>', function () { if (OG) osNewShake(); });
+  modal('<h2 class="hero">Agreed!</h2><p class="os-note">Nobody could find a Goal, so this shake doesn\'t count. The same player rolls again!</p><div class="row"><button class="btn green big" data-act="closeModal">Roll again ' + ico('play') + '</button></div>', function () { if (OG) osNewShake(); });
 }
 
 // ======================= END OF SHAKE / MATCH =======================
@@ -782,7 +785,7 @@ function osLeave() { if (window.OS3D) OS3D.end(); OG = null; OSUI.closeAll(); if
 ACT.osRematch = function () { var m = OG.mode, o = OG.oppIdx, cfg = OG.cfg; closeModal(); osStartMatch(m, o, cfg); };
 ACT.osToMenu = function () { closeModal(); osLeave(); Onsets.open(); };
 ACT.osQuit = function () {
-  modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but your On-Sets stars are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="osReallyQuit">Leave</button></div>');
+  modal('<h2 class="hero">Leave the game?</h2><p class="os-note">The points in this match won\'t count, but your On-Sets stars are saved.</p><div class="row"><button class="btn green big" data-act="closeModal">Keep playing</button><button class="btn quiet" data-act="osReallyQuit">Leave</button></div>');
 };
 ACT.osReallyQuit = function () { closeModal(); osLeave(); Onsets.open(); };
 
@@ -833,7 +836,7 @@ function osRender() {
   var gv = OG.goalValue, goalInner = OG.goal ? '<span class="expr os-gexpr">' + OSUI.goalPicHTML(OG.goal, true) + '</span><span class="gv">= ' + gv + ' card' + (gv === 1 ? '' : 's') + '</span>' : '<span class="gv os-gwait">' + (OG.phase === 'goal' ? 'waiting for the Goal…' : '…') + '</span>';
   $('#osMat').innerHTML = '<div class="mat os-mat">' +
     '<div class="os-unibox"><h3>🃏 UNIVERSE <small>' + (OG.universe.length ? OG.universe.length + ' cards' : 'dealing…') + '</small></h3>' + (OG.universe.length ? OSUI.universeHTML(OG.universe, OG.lit, { cls: 'os-mainuni' + (OG.rolling ? ' dealin' : '') }) : '<div class="os-uni"><span class="empty">The dealer is choosing how many cards…</span></div>') + '</div>' +
-    '<div class="os-goalz"><div class="goalhud os-ghud"><div class="gl">' + ico('target') + '<span>GOAL</span></div>' + goalInner + '</div></div>' +
+    (OG.goal || OG.phase === 'goal' ? '<div class="os-goalz"><div class="goalhud os-ghud"><div class="gl">' + ico('target') + '<span>GOAL</span></div>' + goalInner + '</div></div>' : '') +
     '<div class="zrow">' + osZoneHTML('required', '✅ REQUIRED', 'must use') + osZoneHTML('permitted', '👍 PERMITTED', 'may use') + osZoneHTML('forbidden', '⛔ FORBIDDEN', 'can\'t use') + '</div>' +
     '<div class="zone z-res os-res"><h3>🎲 RESOURCES <small>' + resC.length + ' left</small></h3><div class="cubes">' +
     (resC.map(function (c, i) { return OSUI.cubeHTML(c, (OG.selected === c.id ? 'sel' : '') + (OG.highlight === c.id ? ' hl' : '') + (OG.rolling ? ' dropin' : ''), 'osCube'); }).join('') || '<span class="empty">' + (OG.dealt ? 'empty' : 'the cubes are coming…') + '</span>') + '</div></div>' +
