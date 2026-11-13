@@ -954,3 +954,6 @@ function aiSetGoal() {
 }
 // Still thinks on the page (ACT.noGoal waits for the answer); docs/handoff/brain.md has the background version.
 function aiFindAnyEquation(o) { return AI.findAnyEquation(zoneCubes('resources').map(function (c) { return c.s; }), G.fractions); }
+
+// LIGHT: one soft clunk as each floodlight tower comes on at dusk (js/three/lighting.js sends the event)
+window.addEventListener('tata:floodlight', function () { if (window.Snd && Snd.thunk) Snd.thunk(); });
