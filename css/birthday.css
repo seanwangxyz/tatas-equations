@@ -1,7 +1,7 @@
 /* BIRTHDAY: the easter egg show over the 3D title (js/three/birthday.js). Loaded by that module itself
    (a <link> it adds once), so index.html needs no change. While the show plays the menu screens are hidden
    (not removed) and this layer takes every tap. */
-body.bday-on .screen.on{visibility:hidden}
+body.bday-on .screen.on,body.bday-on #title .t-greet{visibility:hidden !important;opacity:0 !important;pointer-events:none !important}
 body.bday-on #t3title::after{opacity:0;transition:opacity .6s}
 #bdayLayer{position:fixed;inset:0;z-index:60;pointer-events:auto;-webkit-tap-highlight-color:transparent;touch-action:manipulation;
   font-family:"Lilita One","Trebuchet MS",system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none}
