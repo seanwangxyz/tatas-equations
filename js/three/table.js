@@ -127,15 +127,33 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   };
   var ZCOL = { goal: '#ffffff', required: '#8ce99a', permitted: '#a5d8ff', forbidden: '#ffa8a8', resources: '#ffffff' };
   var FELT = { felt: '#2e8b57', space: '#2b2f77', jungle: '#3f7f2f', ocean: '#1c6ea4' };
+  // ---- ONSETS block: T3.tableLayouts({layouts, labels, zcol}) paints another set of zones (same 'wide' / 'tall' names,
+  // each zone [x, z, w, d]); T3.tableLayouts(null) puts Equations' back. The table is rebuilt at once if it is on screen. ----
+  var EQ_LAY = [LAYOUTS, LABELS, ZCOL];
+  api.tableLayouts = function (set) {
+    var L = set ? [set.layouts, set.labels, Object.assign({}, ZCOL, set.zcol || {})] : EQ_LAY;
+    if (LAYOUTS === L[0]) return;
+    LAYOUTS = L[0]; LABELS = L[1]; ZCOL = L[2]; layoutName = '';
+    if (host) chooseLayout();
+  };
+  // ---- end ONSETS block ----
 
   // ----- Textures -----
   var CUBECOL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'] };
   var texCache = {};
+  // ---- ONSETS block: other kinds of cube (js/three/onsets3d.js registers the On-Sets ones). T3.cubeKind(name, {faces, tex})
+  // adds name to Eq.CUBE_FACES (6 symbols, face k = atlas cell k, like the colours) and tex(res) -> its 3x2 face texture.
+  // A mesh takes the kind of the cube with its id in T3.sync / T3.pour (kindRole). Equations' colours never change. ----
+  var KINDS = {};
+  api.cubeKind = function (name, def) { KINDS[name] = def; Eq.CUBE_FACES[name] = def.faces.slice(); Object.keys(texCache).forEach(function (k) { if (k.indexOf('atlas' + name) === 0) { texCache[k].dispose(); delete texCache[k]; } }); };
+  function kindRole(m, color) { if (m && !m.userData.d20 && color && m.userData.color !== color && Eq.CUBE_FACES[color] && (KINDS[color] || CUBECOL[color])) { m.userData.color = color; buildMats(m); } }
+  // ---- end ONSETS block ----
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   // All six faces of one colour in a 3 x 2 atlas (face k in cell k % 3, row k / 3), so a cube is one draw call.
   function atlasTex(color, skin) {
     var res = texRes || 256, key = 'atlas' + color + skin + res + (window.A11y ? A11y.key() : ''); // (A11Y: the helpers change the faces)
     if (texCache[key]) return texCache[key];
+    if (KINDS[color]) return (texCache[key] = KINDS[color].tex(res)); // ONSETS: a registered cube kind brings its own faces
     var cv = document.createElement('canvas'); cv.width = 3 * res; cv.height = 2 * res; var g = cv.getContext('2d');
     Eq.CUBE_FACES[color].forEach(function (s, k) {
       g.save(); g.translate((k % 3) * res, Math.floor(k / 3) * res); g.beginPath(); g.rect(0, 0, res, res); g.clip(); g.scale(res / 128, res / 128);
@@ -776,12 +794,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       x += widths[i] * gs;
     });
     if (vr || vlab.count()) vlab.set(vlist, gt.filter(function (t) { return typeof t === 'object' && meshes[t.id]; }).map(function (t) { return meshes[t.id]; })); // VARI3D
+    if (G.slots) Object.keys(G.slots).forEach(function (id) { targets[id] = G.slots[id]; }); // ONSETS: places the caller chose itself (an On-Sets Goal: stacked, side by side, upside down = turn)
     var tz = api.handlers.targetZones ? api.handlers.targetZones() : [];
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, tz.indexOf(z) >= 0 ? 0.3 : 0); });
     pulseId = G.highlight != null ? G.highlight : null;
     G.cubes.forEach(function (c) {
       var m = meshes[c.id], t = targets[c.id]; if (!m) return;
-      d20Role(m, c.color); // (BONUS)
+      d20Role(m, c.color); kindRole(m, c.color); // (BONUS) (ONSETS: kindRole)
       if (!t) { m.visible = false; return; }
       m.visible = true;
       if (dragS && dragS.id === c.id && dragS.on) return;
@@ -847,7 +866,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (builtTier >= 0 && tierOf(qual) !== builtTier && !document.hidden) buildTable(); // the level changed (dropped): a venue and crowd built for it
     ensureCubes(); if (!world) buildWorld();
     meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
-    cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake
+    cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); kindRole(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake (ONSETS: kindRole)
     twistPour(); // BONUS: the Twist deck for this shake (its drawn card goes back on the deck)
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; }); vlab.clear(); vplan = null; // (VARI3D)
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, 0, true); });

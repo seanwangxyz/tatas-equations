@@ -15,7 +15,7 @@
 // Shapes:  st = { req: [syms], perm: [syms], res: [syms] };  res = [{id, s}] (Resource cubes it may move);
 //          U = the universe (array of cards); goal = a whole number.
 var OSAI = (function () {
-  var VERSION = 1;
+  var VERSION = 2;
   var LEVELS = {
     1: { maxCubes: 3, seeNow: 0.55, seeImp: 0.35, smart: 0.45, goalCubes: 1, deal: [6, 8] },
     2: { maxCubes: 5, seeNow: 0.75, seeImp: 0.6, smart: 0.7, goalCubes: 2, deal: [6, 9] },
@@ -132,6 +132,23 @@ var OSAI = (function () {
     var g = best[Math.floor(rnd() * best.length)];
     return { goal: { shape: g.shape, digits: g.digits.map(function (d) { return { s: d.s, neg: d.neg, id: dig[d.i].id }; }) }, value: g.value, cubes: pickV.cubes };
   }
+  // THREE PLAYERS. After a challenge the Third Party MAY present a Solution (rules IV-B, page O3). A creature that can
+  // see one presents it (presenting a correct Solution never scores less than staying quiet: rule VI-C), but a weak
+  // one sometimes doesn't bother. Returns {found, tokens} or {found: false}.
+  function thirdParty(o, st, goal, U, kind) {
+    var r = write(o, st, goal, U, kind);
+    if (r.found && rnd() < o.smart + 0.15) return r;
+    return { found: false };
+  }
+  // A creature that is NOT next may still challenge the move just made ("anyone may challenge", rules V).
+  // list = [{p, o, nowOk}] -> {p, d: {kind, plan?}} for the first one that challenges, or null.
+  function interject(list, st, goal, U) {
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i], d = decideChallenge(c.o, st, goal, U, c.nowOk, true);
+      if (d) return { p: c.p, d: d };
+    }
+    return null;
+  }
   // The dealer chooses how many cards (rules II-B-1: 6 to 12 in Elementary).
   function chooseDeal(o) { var r = o.deal || [6, 12]; return r[0] + Math.floor(rnd() * (r[1] - r[0] + 1)); }
   // The Goal-setter sets out two V and one Λ, or one V and two Λ (rules II-A-3).
@@ -144,8 +161,8 @@ var OSAI = (function () {
   return {
     VERSION: VERSION, LEVELS: LEVELS, level: level, skill: skill, applySym: applySym,
     decideChallenge: decideChallenge, chooseMove: chooseMove, turn: turn, write: write, callsLastImpossible: callsLastImpossible,
-    chooseGoal: chooseGoal, chooseDeal: chooseDeal, chooseVN: chooseVN, findAnyGoal: findAnyGoal,
-    TASKS: ['decideChallenge', 'chooseMove', 'turn', 'write', 'callsLastImpossible', 'chooseGoal', 'findAnyGoal']
+    chooseGoal: chooseGoal, chooseDeal: chooseDeal, chooseVN: chooseVN, findAnyGoal: findAnyGoal, thirdParty: thirdParty, interject: interject,
+    TASKS: ['decideChallenge', 'chooseMove', 'turn', 'write', 'callsLastImpossible', 'chooseGoal', 'findAnyGoal', 'thirdParty', 'interject']
   };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = OSAI;

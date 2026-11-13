@@ -227,6 +227,57 @@ var OSE = (function () {
     return out.replace(/\s+/g, ' ').trim();
   }
 
+  // ---- How a set forms, step by step (for the 3D "watch the set form" replay; the math is the same as evaluate) ----
+  // Returns [{set, count, text}] in the order a person would work it out: each colour (or V/Λ) on its own, then each
+  // ′ and each operation as it joins in, ending with the whole Set-Name. A leaf straight under a ′ is skipped (G′ is
+  // shown at once). Chains without ( ) are read left to right; that is only done when every legal reading names the
+  // same set (otherwise null: the replay then shows the final count only). Long names keep the first set and the
+  // operations only (at most `max` steps, default 7). null when the tokens are not a legal Set-Name.
+  function formSteps(tokens, universe, max) {
+    var ev = evaluate(tokens, universe);
+    if (!ev.ok || ev.sets.length !== 1) return null;
+    var syms = tokens.map(symOf), pos = 0, full = fullSet(universe);
+    function seq() {
+      var node = term();
+      while (pos < syms.length && isBinOp(syms[pos])) { var op = syms[pos++]; node = { op: op, a: node, b: term() }; }
+      return node;
+    }
+    function term() {
+      var node;
+      if (syms[pos] === '(') { pos++; node = seq(); pos++; node = { paren: true, a: node }; }
+      else node = { leaf: syms[pos++] };
+      while (syms[pos] === "'") { pos++; node = { op: "'", a: node }; }
+      return node;
+    }
+    var root = seq(), out = [];
+    function strip(n) { while (n.paren) n = n.a; return n; }
+    function text(n) {
+      if (n.paren) { var inner = strip(n); return inner.op && inner.op !== "'" ? '(' + text(inner) + ')' : text(inner); }
+      if (n.leaf) return show(n.leaf);
+      if (n.op === "'") { var a = strip(n.a); return (a.op && a.op !== "'" ? '(' + text(a) + ')' : text(n.a)) + '′'; }
+      return text(n.a) + ' ' + show(n.op) + ' ' + text(n.b);
+    }
+    function val(n) {
+      if (n.paren) return val(n.a);
+      if (n.leaf) return leafSet(n.leaf, universe);
+      if (n.op === "'") return apply("'", val(n.a), 0, full);
+      return apply(n.op, val(n.a), val(n.b), full);
+    }
+    function walk(n, underNot) {
+      if (n.paren) { walk(n.a, underNot); return; }
+      if (n.leaf) { if (!underNot) out.push({ node: n, leaf: true }); return; }
+      if (n.op === "'") { walk(n.a, true); out.push({ node: n }); return; }
+      walk(n.a, false); walk(n.b, false); out.push({ node: n });
+    }
+    walk(root, false);
+    var steps = out.map(function (o, i) { var m = val(o.node); return { set: m, count: popcount(m), text: text(o.node), leaf: !!o.leaf }; });
+    max = max || 7;
+    if (steps.length > max) steps = steps.filter(function (s, i) { return i === 0 || !s.leaf; });
+    if (steps.length > max) steps = steps.slice(steps.length - max);
+    if (steps[steps.length - 1].set !== ev.sets[0]) return null; // (never: the same math)
+    return steps;
+  }
+
   // ---- Restrictions (rules VI-B, pages O8-O9; NOT used in Elementary, kept here for later divisions) ----
   // A Restriction is Set1 = Set2, Set1 ⊆ Set2, or a chain (A ⊆ B = C ...: each neighbouring pair).
   // A card that breaks it is set aside while that Solution is checked. No ( ) may enclose = or ⊆.
@@ -472,7 +523,7 @@ var OSE = (function () {
     popcount: popcount, rng: rng, shuffle: shuffle,
     cardHas: cardHas, cardColors: cardColors, cardName: cardName, deal: deal, fullSet: fullSet, leafSet: leafSet, apply: apply, setCards: setCards,
     roll: roll, goalValue: goalValue, goalIdeas: goalIdeas, goalText: goalText,
-    interpret: interpret, evaluate: evaluate, exprText: exprText,
+    interpret: interpret, evaluate: evaluate, exprText: exprText, formSteps: formSteps,
     parseRestriction: parseRestriction, applyRestrictions: applyRestrictions,
     checkSolution: checkSolution, solve: solve, treeTokens: treeTokens,
     scoreChallenge: scoreChallenge, scoreLast: scoreLast

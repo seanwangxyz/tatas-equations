@@ -92,10 +92,93 @@ league (`osOpen`), separately from Equations.
   returning full screenshots; the page text checked out); iPad touch; sound/voice lines by ear;
   Web Worker fallback path on an old browser (code mirrors AIThink).
 
+## Round 2: On-Sets in 3D, in the stadium, with three players
+
+### What is playable
+- **On the 3D table** (whenever Equations would be 3D: `T3.active()`), in the same world: the venue, crowd,
+  weather, the creature(s) at their seats and the kid (and Tata) at theirs. The match is drawn on the **#game**
+  screen with Equations' own layout (`#gTop` scores, `#gGoal`, `#gMat` = the 3D table, `#gAct` = Pip's line and
+  buttons; the right-hand column on wide windows), so the look-around camera, photo button, speech bubbles and
+  close-ups work as they do in Equations. The flat mat (`#onsets`) stays for 3D off / unsupported, the tutorial
+  and the drills.
+- On the felt: a **Universe** zone with real cards (up to 12, a neat grid, faces from one atlas), the **Goal**
+  (digit cubes really stand on each other when stacked = multiply; an upside-down cube lies turned round =
+  negative), Required / Permitted / Forbidden and Resources. The 15 rolled cubes come out of the cup with the
+  physics pour (the faces that land up are the roll); the three white V/Λ cubes are set out beside the
+  Resources; then the dealer's cards fly in one by one from the dealer's side.
+- Creatures reach over and carry cubes (`T3.creatureMove`); the kid (and the mate, Tata) walks round and places
+  them (`T3.playerMove` / `T3.mateMove`), the Goal cubes too, one by one. A cube can also be dragged by hand.
+- **Teaching:** tapping a colour (or V / Λ) cube lifts its cards and dims the rest, with "R: 4 cards" above
+  them. While a Solution is built (the builder is docked: the right-hand column on wide windows, a bottom sheet
+  on phones, so the table stays in view) the cards of the set built so far lift live, with the count. When a
+  shake ends, a short **forming replay** shows one Solution step by step (R rises, then B′, then R ∪ B′...)
+  and ends with "5 cards = the Goal 5!" (or, calmly, "3 cards · the Goal is 4") next to the Goal. One ease per
+  change, nothing loops; a tap skips it. Steps come from `OSE.formSteps` (pure, tested).
+- **Three players** (flat and 3D): you + two creatures (`ai3`, an untimed **Go on** pause between the two
+  creatures' moves), you + a grown-up + a creature, three people (`p3`). Third Party (AI decides, a person is
+  asked), "can challenge too" buttons, a creature not next may challenge out of turn, last cube = everybody
+  writes, "No Goal" with three. Scoring = rule VI-C (all 12 cases tested against the rule text). Menu: "Three
+  Players" on the On-Sets menu.
+- Moods, babble + mouth, speech bubbles (`Social.bubble`), crowd (`crowdReact` → `T3.crowd`), scoreboard
+  (`T3.setBoard`: ON-SETS, GOAL 5 CARDS, NOW!, WINNER!), close-ups (`T3.shot('goal' | 'challenge' | 'win' |
+  'lose')`), confetti on a win.
+
+### Files (round 2)
+| File | What |
+|---|---|
+| `js/three/onsets3d.js` (new, ES module) | On-Sets cube kinds (one atlas, 6 kinds as texture views), the cards (3 instanced meshes = 3 draw calls), lift/dim/glow, the count label, deal, forming replay. `T3.onsets` |
+| `js/onsets/view3d.js` (new) | `OS3D`: the #game screen, OG → `T3.sync`, Goal slots (stacking), handlers, seats, hands, moods, camera/crowd moments, the On-Sets table layouts |
+| `js/onsets/game.js` | rewritten for 2 or 3 players and the 3D path (same rules code for flat and 3D); loads the two files above itself |
+| `js/onsets/engine.js` | `formSteps` |
+| `js/onsets/ai.js` | `thirdParty`, `interject` (worker VERSION 2) |
+| `js/onsets/ui.js` | builder `dock` + `onLive` |
+| `js/onsets/menu.js` | Three Players chooser |
+| `css/onsets.css`, `tests/onsets.test.js` (152 checks), `ONSETS_RULES_SUMMARY.md` | |
+
+### Hooks added to shared files (all marked ONSETS, additive)
+- `js/three/table.js` only:
+  1. `T3.cubeKind(name, {faces, tex})` + `kindRole()`: a registered cube kind brings its own 3x2 face texture
+     (one line in `atlasTex`); a mesh takes the kind (`color`) of the cube with its id in `T3.sync` / `T3.pour`
+     (added next to the BONUS `d20Role` calls). Equations' cubes always keep their own colours, so it is a no-op there.
+  2. `T3.tableLayouts({layouts, labels, zcol})` / `T3.tableLayouts(null)`: paint another zone set (rebuilds the table).
+  3. `G.slots` in `T3.sync`: a caller may place cubes itself ({x, z, scale, y, turn}); Equations never sets it.
+- **Not** edited: creatures.js, player.js (their `slotFor` reads the global `G`, which is null during On-Sets,
+  so a carried cube is dropped at the zone's centre and slides 0.4 s into its slot: good enough), game.js,
+  style.css, index.html, screens.js, ui.js.
+
+### Snippets for the owner (optional)
+- **Commentary:** `Commentary.say` stays quiet in On-Sets because `inMatch()` (js/commentary.js) needs `G`, and
+  its lines talk about maths/Equations. To let it speak, in `inMatch()` replace
+  `return typeof G !== 'undefined' && !!G && G.mode !== 'tutorial' && (typeof current === 'undefined' || current === 'game');`
+  with a version that also accepts `typeof OG !== 'undefined' && !!OG && OG.three`, and add On-Sets lines. The
+  On-Sets code already calls `Commentary.say('challenge', ...)`.
+- **index.html (optional):** the two new files load themselves from js/onsets/game.js. To list them explicitly,
+  after `<script src="js/onsets/menu.js"></script>` add `<script src="js/onsets/view3d.js"></script>` and after
+  `<script type="module" src="js/three/replay.js"></script>` add `<script type="module" src="js/three/onsets3d.js"></script>`.
+
+### Verified (round 2)
+- `node tests/onsets.test.js`: 152 passed. `node tests/engine.test.js`: 831 passed (one earlier run showed
+  2 failures that did not repeat; engine.js was not touched, looks like a time-limited solver check).
+- Browser (port 3538; the shared pane was tiny, so the 3D picture was checked from canvas captures plus page
+  state): 1v1 vs Snoozy in 3D: pour, deal, kid's Goal carried, Snoozy carrying cubes, colour-cube lift + count,
+  kid's move carried, correct Now! (B ∪ G) with live lift in the docked builder and the forming replay ending at
+  the Goal; Snoozy's "No Goal" challenged with a stacked Goal (4 on 1) and a wrong Solution (calm replay, kind
+  reason). Full 3-shake match kid + Penny + Rusty (autoplay for the kid): Go on pause, Third Party scoring
+  (silent TP after a wrong Now! = 6), last cube everybody writes, end screen, no errors. Kid + Tata + Snoozy:
+  Tata at the left seat carries cubes, human Third Party + pass-to screens, two full shakes. Then an Equations
+  match: Equations zones, 24 Equations cubes in their colours, Equations handlers, goal + moves + Impossible!
+  to the end of a shake, no errors. Sizes: 1280×800 and 1920×915 (side column; the builder sits exactly over
+  it), 1024×768, 400×800 (tall table, builder as bottom sheet, no horizontal scroll). Flat fallback (3D off) with
+  three players renders.
+- Not verified: a real tap/drag on the canvas with a mouse (handlers were called directly); iPad touch; sound by
+  ear; low quality tier and a quality change mid-match; the colour-blind A11y hooks (js/a11y.js is not in this
+  branch yet: code paths are guarded and untested); every challenge type in 3P by a person (Now! by the kid,
+  Impossible! by creatures, last-cube were seen; a person's Impossible! in 3P was not); orbit/photo in On-Sets
+  (same code as Equations, not clicked).
+
 ## Next steps (not in this version)
 
-- 3D table, avatars and creature animations for On-Sets (the mat is flat 2D only).
-- Three players (engine scoring supports a Third Party; the flow is 2-player only).
+- Commentary lines for On-Sets (snippet above). A Trophy-room / Stats page for On-Sets.
 - Variations (Elementary list, page O17) and Middle-division Restrictions (= and ⊆): the engine already
   parses and applies Restrictions; the solver and builder need a Restriction line.
 - Bonus moves; online play; Trophy-room badges and Stats for On-Sets; a daily On-Sets puzzle.

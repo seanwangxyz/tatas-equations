@@ -148,6 +148,36 @@
 .os-minirow i{color:#868e96}
 .os-toast{padding:10px 16px}
 
+/* ---------- Three players ---------- */
+.os-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:8px 0}
+.os-chip{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:86px;padding:8px 6px;border-radius:16px;border:3px solid transparent;background:#eef1f8;cursor:pointer;font:inherit;color:var(--ink,#1d2340)}
+.os-chip b{font-size:14px}.os-chip small{color:#5c7cfa;font-size:11px;letter-spacing:1px}
+.os-chip.on{border-color:#4dabf7;background:#e7f5ff;box-shadow:0 0 0 3px rgba(77,171,247,.25)}
+.os-chip:focus-visible{outline:4px solid var(--sky);outline-offset:2px}
+.os-act .also,#game.os3d .also{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;width:100%}
+
+/* ---------- On-Sets on the 3D table (#game.os3d; the layout itself is Equations' #game.three in css/style.css) ---------- */
+#game.os3d .os-ghud{gap:8px}
+#game.os3d .os-gexpr{display:inline-flex;align-items:center;--mini:26px;padding:4px 8px}
+#game.os3d .os-gexpr .os-goalpic{--g:26px}
+#game.os3d .os-gwait{opacity:.75;font-size:.8em}
+#game.os3d .os-ucount{font-weight:900;font-size:15px;background:rgba(255,255,255,.85);color:#1d2340;border-radius:999px;padding:3px 10px;white-space:nowrap}
+#game.os3d .os-whose{font-size:16px}
+/* the builders sit beside the table (wide windows) or under it (narrow), so the lifted cards on the table stay in view */
+#osB.os-dock{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;pointer-events:none;align-items:flex-end;justify-content:flex-end;padding:8px}
+#osB.os-dock .os-bbox{pointer-events:auto;width:min(440px,96vw);max-height:62vh;max-height:62dvh;padding:14px 14px 12px;border-radius:24px;animation:osDock .3s ease-out both}
+#osB.os-dock .os-buni{display:none}
+#osB.os-dock .os-bbox h2{font-size:22px;margin:0 0 4px}
+#osB.os-dock .os-note{font-size:14px!important}
+@keyframes osDock{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@media (min-width:900px) and (min-aspect-ratio:4/3){ #osB.os-dock .os-bbox{max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px)} }
+/* wide windows: exactly over the match screen's right-hand column (same width as css/style.css gives it) */
+@media (min-width:1100px) and (min-aspect-ratio:8/5){
+  #osB.os-dock{padding:0;align-items:stretch}
+  #osB.os-dock .os-bbox{width:clamp(280px,23vw,350px);max-height:none;border-radius:0;border-width:0 0 0 4px;box-sizing:border-box}
+}
+@media (max-width:560px){ #osB.os-dock{padding:4px} #osB.os-dock .os-bbox{width:100%;max-height:56vh;max-height:56dvh;border-radius:20px 20px 16px 16px} }
+
 /* ---------- Small screens ---------- */
 @media (max-width:560px){
   .os-card{--w:40px;border-radius:8px}
@@ -169,4 +199,5 @@
 }
 @media (prefers-reduced-motion:reduce){
   .os-card,.os-cube{transition:none}
+  #osB.os-dock .os-bbox{animation:none}
 }

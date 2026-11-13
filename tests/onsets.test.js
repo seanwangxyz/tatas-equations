@@ -329,5 +329,103 @@ ok('a careful creature\'s moves never leave a Now! (20 tries)', safeCount === 20
 const w = OSAI.write(strong, { req: ['B'], perm: ['U', 'G'], res: [] }, 5, U8, 'last');
 ok('creature writes B ∪ G', w.found && OSE.evaluate(w.tokens, U8).count === 5, w);
 
+// ---------------- THREE PLAYERS: Third Party scoring, every case of rule VI-C (page O3) ----------------
+// VI-A: anyone not correct scores 2. VI-B: a correct Challenger or Mover scores 6. VI-C: a correct Third Party scores 6
+// if (a) a correct Solution after Impossible!, (b) a correct Solution after Now! when the Challenger's is not correct,
+// (c) no Solution after Now! and the Challenger's is incorrect; otherwise a correct Third Party scores 4.
+// V: correct = wrote a correct Solution (had to or chose to), or didn't have to and nobody wrote a correct one.
+(function () {
+  const cases = [];
+  ['now', 'impossible'].forEach(kind => [true, false].forEach(wOk => [null, true, false].forEach(tp => cases.push({ kind, wOk, tp }))));
+  let good = 0;
+  cases.forEach(c => {
+    const tpRes = c.tp === null ? { presented: false } : { presented: true, ok: c.tp };
+    const p = OSE.scoreChallenge(c.kind, 0, 1, 2, c.wOk, tpRes);
+    const anyOk = c.wOk || c.tp === true;
+    const chCorrect = c.kind === 'now' ? c.wOk : !anyOk, mvCorrect = c.kind === 'now' ? !anyOk : c.wOk;
+    const tpCorrect = c.tp === null ? !anyOk : c.tp;
+    let tpPts = 2;
+    if (tpCorrect) {
+      if (c.kind === 'impossible' && c.tp === true) tpPts = 6;                     // (a)
+      else if (c.kind === 'now' && c.tp === true && !c.wOk) tpPts = 6;             // (b)
+      else if (c.kind === 'now' && c.tp === null && !c.wOk) tpPts = 6;             // (c)
+      else tpPts = 4;
+    }
+    const exp = { 0: chCorrect ? 6 : 2, 1: mvCorrect ? 6 : 2, 2: tpPts };
+    if (p[0] === exp[0] && p[1] === exp[1] && p[2] === exp[2]) good++; else console.log('  case', JSON.stringify(c), 'got', JSON.stringify(p), 'expected', JSON.stringify(exp));
+  });
+  ok('3 players: all ' + cases.length + ' challenge cases score as rules V and VI-C say (' + good + ')', good === cases.length);
+})();
+ok('3 players, last cube: correct 4, not correct 2 for everyone (R VII)', JSON.stringify(OSE.scoreLast({ 0: true, 1: false, 2: true })) === JSON.stringify({ 0: 4, 1: 2, 2: 4 }));
+
+// ---------------- Watching a set form, step by step (the 3D replay; js/three/onsets3d.js draws it) ----------------
+(function () {
+  const steps = OSE.formSteps(T("R U B'"), U8);
+  ok("R ∪ B′ forms as R, then B′, then R ∪ B′", steps && steps.map(s => s.text).join(' | ') === 'R | B′ | R ∪ B′', steps && steps.map(s => s.text));
+  ok('each step\'s count is the size of its set', steps && steps.every(s => s.count === OSE.popcount(s.set)));
+  ok('the last step is the whole Set-Name', steps && steps[steps.length - 1].count === count("RUB'", U8));
+  const s2 = OSE.formSteps(T("(R U B) I G'"), U8);
+  ok('(R ∪ B) ∩ G′: R, B, R ∪ B, G′, then all of it', s2 && s2.map(s => s.text).join(' | ') === 'R | B | R ∪ B | G′ | (R ∪ B) ∩ G′', s2 && s2.map(s => s.text));
+  const s3 = OSE.formSteps(T("(B U G)'"), U8);
+  ok('(B ∪ G)′ ends with the complement of the union', s3 && s3[s3.length - 1].text === '(B ∪ G)′' && s3[s3.length - 1].count === count("(BUG)'", U8), s3 && s3.map(s => s.text));
+  ok('a chain with one meaning (B ∪ G ∪ R) is read left to right', (OSE.formSteps(T('B U G U R'), U8) || []).map(s => s.text).join(' | ') === 'B | G | B ∪ G | R | B ∪ G ∪ R');
+  const amb = OSE.evaluate(T('B U G - R'), U8);
+  ok('a Set-Name whose readings name different sets has no steps (null)', amb.sets.length > 1 && OSE.formSteps(T('B U G - R'), U8) === null, amb.sets);
+  ok('not a Set-Name: null', OSE.formSteps(T('B U'), U8) === null);
+  const long = OSE.formSteps(T("((B U G) - (R I Y))'"), ALL16);
+  ok('long names stay short (at most 7 steps)', long && long.length <= 7 && long[long.length - 1].count === count("((BUG)-(RIY))'", ALL16), long && long.length);
+  ok('works with real cube tokens ({s, id})', (OSE.formSteps([{ s: 'R', id: 4 }, { s: 'U', id: 11 }, { s: 'B', id: 3 }], U8) || []).length === 3);
+})();
+
+// ---------------- Computer player with three at the table ----------------
+(function () {
+  const strong1 = Object.assign({}, OSAI.skill({ stars: 5 }), { smart: 1, seeNow: 1, seeImp: 1 });
+  const st = { req: ['B'], perm: ['U', 'G'], res: ['R', 'Y'] };
+  const tp = OSAI.thirdParty(strong1, st, 5, U8, 'now');
+  ok('a strong Third Party presents a correct Solution when there is one', tp.found && OSE.evaluate(tp.tokens, U8).count === 5, tp);
+  const none = OSAI.thirdParty(strong1, { req: ['B', 'R'], perm: [], res: [] }, 3, U8, 'last');
+  ok('a Third Party with nothing to write stays quiet', !none.found);
+  const hit = OSAI.interject([{ p: 2, o: strong1, nowOk: true }], { req: ['B'], perm: ['U'], res: ['G', 'R', 'I'] }, 5, U8);
+  ok('a creature that is not next can challenge (Now! when B ∪ G makes 5)', hit && hit.p === 2 && hit.d.kind === 'now', hit);
+  const quiet = OSAI.interject([{ p: 2, o: Object.assign({}, strong1, { seeNow: 0, seeImp: 0 }), nowOk: true }], st, 5, U8);
+  ok('...and one that sees nothing lets the turn go on', quiet === null);
+  ok('the new tasks can run in the worker', OSAI.TASKS.indexOf('thirdParty') >= 0 && OSAI.TASKS.indexOf('interject') >= 0);
+})();
+
+// ---------------- The 3D table: zones (js/onsets/view3d.js) and cube faces (js/three/onsets3d.js) ----------------
+(function () {
+  const vm = require('vm');
+  const sb = {}; vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(root, 'js', 'onsets', 'view3d.js'), 'utf8') + '\nthis.OS3D = OS3D;', sb);
+  const L = sb.OS3D.LAYOUTS;
+  ['wide', 'tall'].forEach(name => {
+    const lay = L[name], z = lay.z, keys = Object.keys(z);
+    ok(name + ': has the six On-Sets zones', ['universe', 'goal', 'required', 'permitted', 'forbidden', 'resources'].every(k => keys.indexOf(k) >= 0));
+    ok(name + ': every zone is on the felt', keys.every(k => { const r = z[k]; return r[0] >= -lay.W / 2 && r[0] + r[2] <= lay.W / 2 && r[1] >= -lay.D / 2 && r[1] + r[3] <= lay.D / 2; }));
+    let overlap = false;
+    keys.forEach((a, i) => keys.slice(i + 1).forEach(b => { const p = z[a], q = z[b]; if (p[0] < q[0] + q[2] - 1e-6 && q[0] < p[0] + p[2] - 1e-6 && p[1] < q[1] + q[3] - 1e-6 && q[1] < p[1] + p[3] - 1e-6) overlap = true; }));
+    ok(name + ': no two zones overlap', !overlap);
+    // 12 cards fit the Universe at a readable size (the same grid search as onsets3d.js); 18 cubes fit Resources at full size
+    const r = z.universe, aw = r[2] - 0.6, ad = r[3] - 1.15; let best = 0;
+    for (let c = 1; c <= 12; c++) best = Math.max(best, Math.min(1.12, aw / (c * 1.3 * 1.12), ad / (Math.ceil(12 / c) * 1.72 * 1.08)));
+    ok(name + ': 12 cards fit the Universe at 85% size or more (' + best.toFixed(2) + ')', best >= 0.85);
+    const rs = z.resources, cols = Math.floor((rs[2] - 0.5) / 1.25), rows = Math.floor((rs[3] - 1.25) / 1.25);
+    ok(name + ': 18 cubes fit in Resources without shrinking', cols * rows >= 18, { cols, rows });
+    const g = z.goal; ok(name + ': a Goal row of 3 cubes fits', g[2] - 0.5 >= 3 * 1.06);
+  });
+  // colour and operation cubes have 4 symbols on 6 faces: two layouts with different doubled symbols, picked half the
+  // time each, give every symbol exactly 1 in 4 (interpretation 1). Read straight from the module so they can't drift.
+  const src = fs.readFileSync(path.join(root, 'js', 'three', 'onsets3d.js'), 'utf8');
+  const faces = name => { const m = src.match(new RegExp("name: '" + name + "', faces: (\\[[^\\]]*\\])")); return m ? JSON.parse(m[1].replace(/'/g, '"').replace(/"""/g, '"\'"')) : null; };
+  [['osC1', 'osC2', ['B', 'R', 'G', 'Y']], ['osO1', 'osO2', ['U', 'I', '-', "'"]]].forEach(([a, b, syms]) => {
+    const fa = faces(a), fb = faces(b);
+    const pr = s => 0.5 * fa.filter(x => x === s).length / 6 + 0.5 * fb.filter(x => x === s).length / 6;
+    ok(a + '/' + b + ': each of ' + syms.join(' ') + ' comes up 1 time in 4', fa && fb && fa.length === 6 && fb.length === 6 && syms.every(s => Math.abs(pr(s) - 0.25) < 1e-9), { fa, fb });
+  });
+  const fd = faces('osD'); ok('digit cubes are 1 1 2 3 4 5 (R Glossary, page OG2)', fd && fd.join('') === '112345', fd);
+  const gsrc = fs.readFileSync(path.join(root, 'js', 'onsets', 'game.js'), 'utf8');
+  ok('the match picks each of the two layouts half the time', /color'\) return Math\.random\(\) < 0\.5 \? 'osC1' : 'osC2'/.test(gsrc) && /op'\) return Math\.random\(\) < 0\.5 \? 'osO1' : 'osO2'/.test(gsrc));
+})();
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
