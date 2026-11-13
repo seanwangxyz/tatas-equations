@@ -107,23 +107,24 @@ function renderSetup() {
     var open = oppOpen(i);
     return '<div class="opp' + (open ? '' : ' lock') + '" data-act="' + (open ? 'playOpp' : 'lockedOpp') + '" data-arg="' + i + '">' + (S.beaten[i] ? '<span class="done">' + ico('check') + '</span>' : '') + avatarHTML(o, 'lg') +
       '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + oppStars(o) + '</div>' +
-      (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
-      (o.taste ? '<div class="otitle" style="margin-top:4px;font-size:13px;line-height:1.25">🎲 Likes: ' + esc(o.taste) + '</div>' : '') +
+      (o.tip ? '<div class="o-line">' + ico('bulb') + '<span>Tip: ' + esc(o.tip) + '</span></div>' : '') + // ROUND 9: icon lines instead of emoji
+      (o.taste ? '<div class="o-line taste">' + ico('dice') + '<span>Likes: ' + esc(o.taste) + '</span></div>' : '') +
       (window.Career ? Career.tagHTML(i) : '') + // CAREER: "Special rule: Use It Again"
       (window.Rivals && open ? Rivals.cardLineHTML(i) : '') + // RIVALS: "Rival 3-2 · Last: you won 10-6"
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
   var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE, 2 * LEAGUE).join(''), legends = oppCards.slice(2 * LEAGUE).join(''); // CAREER
   var sTab = window.setupTab || 'opps';
-  var sTabs = [['opps', ico('paw') + ' Creatures'], ['trio', '👑 Three at the table'], ['cups', ico('trophy') + ' Cups'], ['people', ico('people') + ' With people']].filter(function (t) { return (t[0] !== 'trio' || window.Trio) && (t[0] !== 'cups' || window.Cup); });
+  var sTabs = [['opps', ico('paw') + ' Creatures'], ['trio', ico('crown') + ' Three at the table'], ['cups', ico('trophy') + ' Cups'], ['people', ico('people') + ' With people']].filter(function (t) { return (t[0] !== 'trio' || window.Trio) && (t[0] !== 'cups' || window.Cup); });
   if (!sTabs.some(function (t) { return t[0] === sTab; })) sTab = 'opps';
   function sPart(name) { return '<div class="stab" data-tab="' + name + '" style="display:' + (name === sTab ? 'block' : 'none') + '">'; }
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
     '<div class="panel"><div class="seg setup-tabs" role="tablist" style="flex-wrap:wrap;margin-bottom:12px">' + sTabs.map(function (t) { return '<button role="tab" aria-selected="' + (t[0] === sTab) + '" class="' + (t[0] === sTab ? 'on' : '') + '" data-act="setupTab" data-arg="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
-    sPart('opps') + '<h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
-    '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
-    (legends ? '<h3 class="tierh">🌟 Legend League <span style="font-weight:600;opacity:.7;font-size:14px">(each brings a special rule)</span> ' + (window.Career ? Career.buttonHTML('small') : '') + '</h3><div class="opps">' + legends + '</div>' : '') + // CAREER
-    '</div>' + sPart('trio') + (window.Trio ? Trio.setupHTML() : '') + (window.Tourney ? '<h3 class="tierh">⚖️ Tournament practice</h3><div class="opps">' + Tourney.tileHTML() + '</div>' : '') + '</div>' + // TOURNEY
+    // ROUND 9: each league has its colour (dot in the heading, band on the cards)
+    sPart('opps') + '<h3 class="tierh lg-1" style="margin-top:0"><span class="lg-dot"></span> Play the creatures</h3><div class="opps lg-1">' + opps + '</div>' +
+    '<h3 class="tierh lg-2"><span class="lg-dot"></span> Monster League <span class="tsub">(the tough ones)</span></h3><div class="opps lg-2">' + monsters + '</div>' +
+    (legends ? '<h3 class="tierh lg-3"><span class="lg-dot"></span> Legend League <span class="tsub">(each brings a special rule)</span> ' + (window.Career ? Career.buttonHTML('small') : '') + '</h3><div class="opps lg-3">' + legends + '</div>' : '') + // CAREER
+    '</div>' + sPart('trio') + (window.Trio ? Trio.setupHTML() : '') + (window.Tourney ? '<h3 class="tierh">' + ico('scale') + ' Tournament practice</h3><div class="opps">' + Tourney.tileHTML() + '</div>' : '') + '</div>' + // TOURNEY
     sPart('cups') + (window.Cup ? Cup.setupHTML() : '') + '</div>' +
     sPart('people') + '<h3 class="tierh" style="margin-top:0">' + ico('people') + ' Play with people</h3><div class="opps">' +
     (window.Online ? Online.setupCardHTML() : '') +
@@ -132,7 +133,7 @@ function renderSetup() {
     (typeof giftTileHTML === 'function' ? giftTileHTML() : '') +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
-    '</div></div><div class="row" style="margin-top:18px"><b style="font-family:var(--display);font-weight:400;font-size:20px">Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';
+    '</div></div><div class="setup-foot"><b>Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';
 }
 ACT.playOpp = function (el) { startMatch('ai', +el.dataset.arg); };
 ACT.playPvp = function () { startMatch('pvp'); };
@@ -207,11 +208,16 @@ function renderStats() {
     '<div class="chart"><b>Operations you\'ve used:</b> <span style="font-size:20px">' + opsLine + '</span></div></div>';
 }
 
+// ROUND 9: a Settings group that folds (rarely used ones); window.setOpen (js/ui.js) remembers it across re-renders
+function setFold(key, title, more) {
+  var open = typeof setOpen !== 'undefined' && setOpen[key];
+  return '<details class="group" data-g="' + key + '"' + (open ? ' open' : '') + '><summary><h3>' + title + '</h3><span class="g-more">' + more + '</span><span class="g-chev">' + ico('chev') + '</span></summary>';
+}
 function renderSettings() {
   var st = stageInfo();
   var faces = Eq.COLORS.map(function (c) { return '<tr><td><b>' + c + '</b></td><td>' + Eq.CUBE_FACES[c].map(function (s) { return '<span class="cube tiny c-' + c + '"><span>' + show(s) + '</span></span>'; }).join(' ') + '</td></tr>'; }).join('');
   $('#settings').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('gear') + ' Settings</h2></div><div class="panel">' +
-    '<div class="seg" style="flex-wrap:wrap;margin-bottom:12px">' + ['Sound', 'You', 'Easier', 'The game', 'Parent corner', 'Account'].map(function (n) { return '<button data-act="setJump" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div>' +
+    '<div class="seg set-jump" style="margin-bottom:12px">' + ['Sound', 'You', 'Easier', 'The game', 'Parent corner', 'Account'].map(function (n) { return '<button data-act="setJump" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div>' +
     '<div class="group"><h3>' + ico('sound') + ' Sound</h3>' +
     '<div class="setrow"><label>Music volume</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.music + '" data-set="music"></div>' +
     '<div class="setrow"><label>Sound effects</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.sfx + '" data-set="sfx"></div>' +
@@ -221,8 +227,8 @@ function renderSettings() {
     '<div class="setrow"><label>Your name</label><input type="text" maxlength="14" value="' + esc(S.name) + '" id="nameInput"><button class="btn small" data-act="saveName">Save</button></div>' +
     '<div class="setrow"><label>Name on the back of the shirt</label><input type="text" maxlength="12" value="' + esc(backName()) + '" id="backInput"><button class="btn small" data-act="saveBack">Save</button></div>' +
     '<div class="setrow"><label>Your jersey number</label><input type="text" maxlength="2" style="width:70px" value="' + esc(S.jersey || '7') + '" id="jerseyInput"><button class="btn small" data-act="saveJersey">Save</button></div></div>' +
-    '<div class="group"><h3>' + ico('paw') + ' Name your creatures</h3>' + OPPONENTS.map(function (o, i) { return '<div class="setrow"><label>' + o.emoji + ' ' + esc(o.title.replace(/^the /, 'The ')) + ' #' + o.num + '</label><input type="text" maxlength="14" class="oppName" data-i="' + i + '" placeholder="' + esc(DEFAULT_OPP_NAMES[i]) + '" value="' + esc((S.oppNames || [])[i] || '') + '"></div>'; }).join('') +
-    '<div class="row" style="justify-content:flex-start;margin:8px 0 4px"><button class="btn small" data-act="saveOppNames">Save names</button></div></div>' +
+    setFold('names', ico('paw') + ' Name your creatures', OPPONENTS.length + ' names') + OPPONENTS.map(function (o, i) { return '<div class="setrow"><label>' + o.emoji + ' ' + esc(o.title.replace(/^the /, 'The ')) + ' #' + o.num + '</label><input type="text" maxlength="14" class="oppName" data-i="' + i + '" placeholder="' + esc(DEFAULT_OPP_NAMES[i]) + '" value="' + esc((S.oppNames || [])[i] || '') + '"></div>'; }).join('') +
+    '<div class="row" style="justify-content:flex-start;margin:8px 0 4px"><button class="btn small" data-act="saveOppNames">Save names</button></div></details>' +
     (window.A11y ? A11y.settingsHTML() : '') + // A11Y: Colour helpers, High-contrast colours, Text size, Reduce flashing
     '<div class="group"><h3>' + ico('dice') + ' The game</h3>' +
     '<div class="setrow"><label>Shakes per match</label><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes2" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div>' +
@@ -238,11 +244,11 @@ function renderSettings() {
     '<div class="setrow"><label>Watch the intro again</label><button class="btn small" data-act="replayIntro">Play intro</button></div></div>' +
     (window.Account ? Account.panelHTML() : '') + // ACCOUNT
     (window.PWA ? PWA.settingsHTML() : '') + // PWA: app on this device (install, offline, updates)
-    '<div class="group"><h3>' + ico('disk') + ' Move progress to another device</h3>' +
+    setFold('move', ico('disk') + ' Move progress to another device', 'copy and load') +
     '<p>Copy this code, then paste it into Settings on the other device and tap <b>Load</b>.</p>' +
     '<textarea id="exportBox" readonly>' + exportCode() + '</textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small" data-act="copyCode">Copy code</button></div>' +
-    '<textarea id="importBox" placeholder="Paste a TATA-… code here"></textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small blue" data-act="importIt">Load</button></div></div>' +
-    '<div class="group"><h3>' + ico('cap') + ' Parent corner</h3>' +
+    '<textarea id="importBox" placeholder="Paste a TATA-… code here"></textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small blue" data-act="importIt">Load</button></div></details>' +
+    setFold('parent', ico('cap') + ' Parent corner', 'for grown-ups') + // ROUND 9: folds; the jump button opens it
     '<div class="setrow"><label>For Tata: how he is doing<br><small style="font-weight:600">Skills, where he gets stuck, playing time. Grown-ups only (press and hold).</small></label><button class="btn small blue" data-act="parentOpen" data-arg="settings">Open</button></div>' +
     '<div class="setrow"><label>Operations in play<br><small style="font-weight:600">Tap to switch each one on or off. Locked ones start in Forbidden with a 🔒.</small></label><div class="row" style="gap:6px;justify-content:flex-start">' +
       Eq.OPS.map(function (o) { var on = st.ops.indexOf(o) >= 0; return '<button class="btn small ' + (on ? 'green' : '') + '" data-act="opToggle" data-arg="' + o + '" style="min-width:52px;font-size:20px">' + show(o) + '</button>'; }).join('') +
@@ -258,8 +264,16 @@ function renderSettings() {
     '<div class="setrow"><label>"Beat Tata\'s Record" needs ' + TATA_RECORD + ' points in one match (change <code>TATA_RECORD</code> near the top of the game code). Best so far: ' + S.stats.bestMatch + '</label></div>' +
     '<div class="setrow"><label>Cube faces in this game (see RULES_SUMMARY.md)</label><table class="facetable">' + faces + '</table></div>' +
     (window.PWA ? PWA.parentRowHTML() : '') + // PWA: Reset app cache
-    '<div class="setrow"><label>Start over from zero</label><button class="btn small pink" data-act="resetAsk">Reset progress</button></div></div>' +
+    '<div class="setrow"><label>Start over from zero</label><button class="btn small pink" data-act="resetAsk">Reset progress</button></div></details>' +
     '</div>';
+  // ROUND 9: on/off buttons (here and in the rows other files add) look like switches; same buttons, same acts
+  [].forEach.call(document.querySelectorAll('#settings .setrow .btn.small, #settings .bonus-row .btn.small'), function (b) {
+    var t = b.textContent.replace(/\s+/g, ' ').trim(), m = /^(✔ ?)?(On|Off|Voice on|Voice off|3D on|3D off \(flat mat\)|Allowed)$/.exec(t);
+    if (!m) return;
+    var on = !!m[1] || b.classList.contains('green');
+    b.classList.add('sw'); b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.textContent = on ? 'On' : 'Off';
+  });
 }
 ACT.pickPack = function (el) { if (el.dataset.ok !== '1') { Snd.boop(); modal('<h2>Not installed yet</h2><p style="text-align:center">The monster models need to be downloaded and added to the game first. The classic creatures are used until then.</p><div class="row"><button class="btn" data-act="closeModal">OK</button></div>'); return; } S.cos.pack = el.dataset.arg; persist(); Snd.pop(); renderSettings(); };
 ACT.toggleSet = function (el) { var k = el.dataset.arg, on = el.dataset.def === '1' ? S.set[k] !== false : S.set[k] === true; S.set[k] = !on; persist(); Snd.click(); renderSettings(); };
