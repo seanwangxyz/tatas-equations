@@ -27,12 +27,29 @@
 //   'cheer' people hop with arms up (scarves, flags and foam fingers go up too)   opts.wave: true adds a wave
 //   'aw'    a gentle slump with the head tilted (sympathetic, never mocking); 'aww' is accepted too
 //   'wave'  the classic stadium wave (up, arms up, down), used by T3.fx('wave')
+//
+// THE CROWD AS A CHARACTER (stadium and night stadium only; docs/handoff/crowd2.md). The same calls now mean more:
+// crowd.js asks crowdstory.js what the moment is (kick-off, a Goal set, a challenge, a great or brilliant shake, a lost
+// shake, a replay, a match win, a trophy lift) and the supporters answer it in their own way, picking different sections
+// each time: scarves up at kick-off and held, flags raised for the rest of a shake, everyone leaning in during a
+// challenge (held, still) then exploding or sighing kindly (and an encouraging clap after a lost shake: never booing),
+// a single Mexican wave after a brilliant Solution, heads turning to the big screen for a replay, a card stunt (tifo)
+// showing his number or GOAL, confetti cannons and, at night, phone lights after a win (crowdshow.js). At rest they
+// are a still tableau: the home end in his kit (S.kit), an away corner in the creature's colours, families, friends
+// in matching face paint, a brass band, standing fans, a kid on shoulders, stewards, a TV camera platform, the home
+// mascot, hand-made banners with his shirt name and number, empty seats on small grounds. "Pose changes" (stances)
+// move once to a new still pose; every animation still ends with every instance matrix copied from the rest pose.
 import * as THREE from 'three';
+import { FLOOR_Y } from './environment.js';
+import { stadiumTier } from './weather.js';
+import * as story from './crowdstory.js';
+import { makeBanners, makeTifo, tifoPicture, makeConfetti, makePhones } from './crowdshow.js';
 
 // ----- figure layout (person-local units, y up, facing +z, origin on the step under the seat) -----
 var SEAT_Y = 0.17, HIP_Y = 0.25, NECK = 0.34, SH_X = 0.245, SH_Y = 0.29, HAND = 0.3, REST_RAISE = 0.38, REST_ROLL = 0.1;
 export var HEAD_TOP = 0.36; // top of the head above the neck pivot
-var DUR = { clap: 1500, ooh: 1800, gasp: 1300, cheer: 2400, aw: 2000, wave: 1700 };
+var DUR = { clap: 1500, ooh: 1800, gasp: 1300, cheer: 2400, aw: 2000, wave: 1700, mwave: 3800 };
+var RAISE = 0.24; // a standing figure's origin is this far above the ground (its legs reach down to it)
 // ---- COLLECT (spot the fan) block: one person waves once (see T3.crowdWave below) ----
 DUR.hi = 1900;
 // ---- end COLLECT block ----
@@ -275,6 +292,17 @@ var GEAR = {
     });
     cbox(g, { y: 0.14, z: 0.205, w: 0.15, h: 0.1, d: 0.06, b: B(0.02), ch: 1, fc: 'x', uvF: [0.3125, 0.189, 0.6875, 0.459], no: 'k' });
   },
+  bandhat: function (g, d, B) { // the brass band's tall hat: A crown, B band and plume
+    cbox(g, { y: 0.47, w: 0.33, h: 0.24, d: 0.31, b: B(0.02), no: 'b' });
+    cbox(g, { y: 0.37, w: 0.34, h: 0.05, d: 0.32, ch: 1, no: 'tb' });
+    cbox(g, { y: 0.35, z: 0.2, w: 0.28, h: 0.02, d: 0.1, vc: '#1b1e24' });
+    cbox(g, { y: 0.64, z: 0.03, w: 0.06, h: 0.13, d: 0.06, ch: 1, taper: 0.6, no: 'b' });
+    hairPeek(g, true);
+  },
+  cubehead: function (g, d, B) { // the home mascot's big cube head (an original "Cubey" costume): A cube, face from the atlas
+    cbox(g, { y: 0.25, w: 0.52, h: 0.48, d: 0.48, b: B(0.07), fc: 'x', no: 'b' });
+    [-1, 1].forEach(function (s) { cbox(g, { x: s * 0.13, y: 0.5, w: 0.05, h: 0.05, d: 0.05, ch: 1, no: 'b' }); }); // two little dots on top
+  },
   // monsters: A horn / stalk colour, B tip
   horns: function (g, d, B) { [-1, 1].forEach(function (s) { cbox(g, { x: s * 0.11, y: 0.42, w: 0.065, h: 0.15, d: 0.065, taper: 0.25, rz: -s * 0.4, no: 'b' }); }); },
   horn1: function (g, d, B) { cbox(g, { y: 0.45, z: 0.03, w: 0.085, h: 0.19, d: 0.085, taper: 0.22, rx: 0.2, no: 'b' }); },
@@ -302,8 +330,60 @@ var HELD = {
   scarf: { code: 6, fn: function (g, d, B) {
     cbox(g, { w: 1.0, h: 0.11, d: 0.015, fc: 'x', bc: 'x' });
     [-1, 1].forEach(function (s) { [-1, 1].forEach(function (t) { cbox(g, { x: s * 0.5 + t * 0.012, y: -0.075, w: 0.01, h: 0.06, d: 0.016, ch: 1, no: 'tb' }); }); });
+  } },
+  drink: { code: 5, fn: function (g, d, B) { // a paper cup with a lid: A cup, B lid
+    cbox(g, { y: 0.065, w: 0.075, h: 0.12, d: 0.075, taper: 1.15, no: 'b' });
+    cbox(g, { y: 0.13, w: 0.088, h: 0.02, d: 0.088, ch: 1 });
   } }
 };
+// rare big props, pooled in one more mesh ('x:' keys). Codes as for held things (0 body, 1 torso, 2 head, 5 right hand).
+var PROPS = {
+  stand: { code: 0, fn: function (g, d, B) { // standing legs (origin RAISE above the ground): A trousers, B shins, C shoes
+    cbox(g, { y: 0.21, z: -0.01, w: 0.36, h: 0.09, d: 0.23, no: 'b' });
+    [-1, 1].forEach(function (s) {
+      cbox(g, { x: s * 0.09, y: 0.05, w: 0.15, h: 0.24, d: 0.17, no: 'tb' });
+      cbox(g, { x: s * 0.09, y: -0.12, w: 0.13, h: 0.12, d: 0.14, ch: 1, no: 'tb' });
+      cbox(g, { x: s * 0.09, y: -0.205, z: 0.03, w: 0.14, h: 0.07, d: 0.21, ch: 2 });
+    });
+  } },
+  shoulders: { code: 0, fn: function (g, d, B) { // a kid's legs either side of the grown-up's head
+    cbox(g, { y: 0.21, z: -0.01, w: 0.52, h: 0.08, d: 0.2, no: 'b' });
+    [-1, 1].forEach(function (s) {
+      cbox(g, { x: s * 0.25, y: 0.2, z: 0.12, w: 0.13, h: 0.11, d: 0.28 });
+      cbox(g, { x: s * 0.25, y: 0.06, z: 0.23, w: 0.11, h: 0.19, d: 0.11, ch: 1, no: 't' });
+      cbox(g, { x: s * 0.25, y: -0.06, z: 0.26, w: 0.12, h: 0.06, d: 0.16, ch: 2 });
+    });
+  } },
+  rig: { code: 0, fn: function (g, d, B) { // the TV camera platform: deck under the operator's feet, legs to the ground, camera on a tripod
+    var top = -RAISE, H = 0.9;
+    cbox(g, { y: top - 0.05, z: 0.1, w: 1.3, h: 0.1, d: 1.4, vc: '#5c636a' });
+    [[-0.58, -0.5], [0.58, -0.5], [-0.58, 0.7], [0.58, 0.7]].forEach(function (q) { cbox(g, { x: q[0], y: top - 0.1 - H / 2, z: q[1], w: 0.08, h: H, d: 0.08, vc: '#868e96', no: 'tb' }); });
+    cbox(g, { y: top - 0.1 - H * 0.55, z: 0.1, w: 1.2, h: 0.05, d: 0.05, vc: '#868e96' });
+    cbox(g, { y: top + 0.4, z: -0.62, w: 1.3, h: 0.05, d: 0.05, vc: '#ced4da' }); // rail behind
+    [-0.62, 0.62].forEach(function (x) { cbox(g, { x: x, y: top + 0.2, z: -0.62, w: 0.05, h: 0.4, d: 0.05, vc: '#ced4da', no: 'tb' }); });
+    cbox(g, { y: top + 0.36, z: 0.5, w: 0.05, h: 0.72, d: 0.05, vc: '#343a40', no: 'tb' }); // tripod column
+    [-1, 1].forEach(function (s) { cbox(g, { x: s * 0.13, y: top + 0.18, z: 0.5, w: 0.035, h: 0.4, d: 0.035, rz: s * 0.4, vc: '#343a40' }); });
+    cbox(g, { y: top + 0.78, z: 0.52, w: 0.2, h: 0.22, d: 0.5, b: B(0.02), vc: '#2b2f3a' });
+    cbox(g, { y: top + 0.78, z: 0.82, w: 0.15, h: 0.15, d: 0.12, vc: '#121417' });
+    cbox(g, { x: 0.13, y: top + 0.82, z: 0.38, w: 0.06, h: 0.08, d: 0.12, vc: '#121417' });
+    cbox(g, { x: -0.115, y: top + 0.8, z: 0.52, w: 0.012, h: 0.08, d: 0.2, vc: '#e03131' }); // the red "on air" stripe
+  } },
+  drum: { code: 1, fn: function (g, d, B) { // a bass drum on the chest: A shell, B rims
+    cbox(g, { y: 0.11, z: 0.25, w: 0.4, h: 0.36, d: 0.2, b: B(0.02) });
+    [-1, 1].forEach(function (s) { cbox(g, { y: 0.11, z: 0.25 + s * 0.095, w: 0.42, h: 0.38, d: 0.025, ch: 1 }); });
+    cbox(g, { y: 0.11, z: 0.365, w: 0.32, h: 0.28, d: 0.01, vc: '#f1f3f5', no: 'k' });
+  } },
+  horn: { code: 2, fn: function (g, d, B) { // a trumpet from the mouth, gold
+    cbox(g, { y: 0.135, z: 0.24, w: 0.04, h: 0.04, d: 0.2, vc: '#f2c230' });
+    cbox(g, { y: 0.135, z: 0.37, w: 0.12, h: 0.12, d: 0.07, vc: '#f7d154' });
+    cbox(g, { x: 0.03, y: 0.17, z: 0.24, w: 0.02, h: 0.04, d: 0.08, vc: '#d4a017' });
+  } }
+};
+// the tifo card: front plate (colour A: the picture) and back plate (B), pivot on the bottom edge, front +z
+function cardGeo(g, d, B) {
+  cbox(g, { y: 0.275, z: 0.006, w: 0.6, h: 0.55, d: 0.012, ch: 0, no: 'k' });
+  cbox(g, { y: 0.275, z: -0.006, w: 0.6, h: 0.55, d: 0.012, ch: 1, no: 'f' });
+}
 
 // =====================================================================================================
 // Texture atlas: 16 x 8 cells of 64 px, four coverage layers packed into RGBA:
@@ -410,10 +490,29 @@ C('flagStripe', function (D) { D.rect('b', 0, 0, 0.34, 1); D.rect('w', 0.34, 0, 
 C('flagStar', function (D) { D.rect('b', 0, 0.42, 1, 0.16); D.star('w', 0.5, 0.5, 0.2); });
 C('scarfBands', function (D) { [0.04, 0.29, 0.54, 0.79].forEach(function (x) { D.rect('b', x, 0, 0.12, 1); }); D.rect('w', 0, 0.0, 1, 0.12); D.rect('w', 0, 0.88, 1, 0.12); });
 C('finger1', function (D) { D.text('w', '#1', 0.5, 0.55, 0.42); });
+// --- the crowd as a character: his number on replica shirts (redrawn when it changes), band, stewards, mascot ---
+var KIDNUM = '7';
+C('kidnum', function (D) { D.text('b', KIDNUM, 0.5, 0.56, KIDNUM.length > 1 ? 0.5 : 0.62); D.rect('b', 0.36, 0.08, 0.28, 0.05); });
+C('band', function (D) { [0.3, 0.45, 0.6, 0.75].forEach(function (y) { D.rect('b', 0.22, y, 0.56, 0.035); D.circ('b', 0.22, y + 0.017, 0.03); D.circ('b', 0.78, y + 0.017, 0.03); }); D.rect('b', 0.47, 0.0, 0.06, 1); D.rect('w', 0.3, 0.0, 0.4, 0.06); });
+C('stewardB', function (D) { D.rect('w', 0, 0.62, 1, 0.08); D.text('k', 'STEWARD', 0.5, 0.36, 0.17); });
+C('cubey', function (D) { eyeball(D, 0.33, 0.4, 0.11, 0.05, 0.01, 0.01); eyeball(D, 0.67, 0.4, 0.11, 0.05, -0.01, 0.01); D.chord('k', 0.5, 0.62, 0.17, 0, Math.PI); D.on('k', 'cut'); D.ell('k', 0.5, 0.74, 0.08, 0.045); D.on('k'); D.ell('c', 0.5, 0.74, 0.08, 0.045); D.ell('c', 0.18, 0.62, 0.07, 0.045); D.ell('c', 0.82, 0.62, 0.07, 0.045); [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]].forEach(function (q) { D.circ('k', q[0], q[1], 0.035); }); });
 
-var atlasTex = null;
+var atlasTex = null, atlasNum = '';
+// his number changed (Settings): redraw the atlas in place (a one-off, about 10 ms)
+function refreshAtlas(num) {
+  num = String(num || '7').slice(0, 2);
+  if (num === KIDNUM && atlasTex) return;
+  KIDNUM = num;
+  if (atlasTex) { drawAtlas(atlasTex.image.data); atlasTex.needsUpdate = true; atlasNum = num; }
+}
 function getAtlas() {
   if (atlasTex) return atlasTex;
+  var data = drawAtlas(null), t = new THREE.DataTexture(data, COLS * CELL, ROWS * CELL, THREE.RGBAFormat);
+  t.colorSpace = THREE.NoColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true;
+  atlasTex = t; atlasNum = KIDNUM;
+  return t;
+}
+function drawAtlas(into) {
   var W = COLS * CELL, H = ROWS * CELL, cx = {}, cv = {}, ox = 0, oy = 0;
   'bwkc'.split('').forEach(function (l) { var c = document.createElement('canvas'); c.width = W; c.height = H; cv[l] = c; var g = c.getContext('2d'); g.fillStyle = g.strokeStyle = '#fff'; g.lineCap = g.lineJoin = 'round'; cx[l] = g; });
   var D = {
@@ -439,16 +538,13 @@ function getAtlas() {
     draw(D);
     'bwkc'.split('').forEach(function (l) { cx[l].restore(); });
   });
-  var data = new Uint8Array(W * H * 4), im = {};
+  var data = into || new Uint8Array(W * H * 4), im = {};
   'bwkc'.split('').forEach(function (l) { im[l] = cx[l].getImageData(0, 0, W, H).data; });
   for (var y = 0; y < H; y++) { // flip rows: texture v goes up like the faces
     var src = (H - 1 - y) * W * 4, dst = y * W * 4;
     for (var x = 0; x < W; x++, src += 4, dst += 4) { data[dst] = im.b[src + 3]; data[dst + 1] = im.w[src + 3]; data[dst + 2] = im.k[src + 3]; data[dst + 3] = im.c[src + 3]; }
   }
-  var t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);
-  t.colorSpace = THREE.NoColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true;
-  atlasTex = t;
-  return t;
+  return data;
 }
 
 // One material for every crowd part: colours come from the per-instance A/B/C attributes picked by the
@@ -528,6 +624,7 @@ function character(L, p, R, T, kind) {
 function dressPerson(p, R, o, beach) {
   var T = o.teams[p.team ? 1 : 0], L = p.L = {};
   var kid = R() < (beach ? 0.22 : 0.17), elder = !kid && R() < 0.1;
+  if (p.role) { kid = p.role === 'kid'; elder = p.role === 'elder'; } // groups (families, friends) decide
   p.sc = kid ? 0.74 + R() * 0.07 : 0.93 + R() * 0.15; p.hs = kid ? 1.15 : 0.98 + R() * 0.05;
   L.seat = o.seatCol || T.seat;
   L.skin = pick(R, SKINS); L.hair = elder ? pick(R, GREYS) : R() < 0.04 ? pick(R, FUNHAIR) : pick(R, HAIRS);
@@ -562,6 +659,13 @@ function dressPerson(p, R, o, beach) {
     if (!beach && hr < 0.11) L.held = { t: 'scarf', a: T.shirt, b: T.trim, cell: 'scarfBands' };
     else if (hr < (beach ? 0.04 : 0.11) + 0.05 * hk) L.held = { t: 'flag', a: beach ? pick(R, BRIGHT) : T.shirt, b: beach ? pick(R, BRIGHT) : T.trim, cell: R() < 0.5 ? 'flagStripe' : 'flagStar' };
     else if (hr < (beach ? 0.04 : 0.11) + 0.09 * hk) L.held = { t: 'finger', a: beach ? pick(R, BRIGHT) : pick(R, [T.shirt, T.shirt, '#ffd43b', '#69db7c']), b: '#ffffff', cell: 'finger1' };
+    else if (o.drinks && !kid && hr < 0.24) L.held = { t: 'drink', a: pick(R, ['#f8f9fa', '#f8f9fa', '#e03131', '#1c7ed6', '#fab005']), b: '#ffffff', cell: -1 };
+    // groups: a family's kids and friends who came together dress alike (his kit, his number, face paint, beanies)
+    var th = p.theme;
+    if (th === 'replica' && T.shirt) { L.shirt = T.shirt; L.print = 'kidnum'; L.pc = T.trim; L.bare = false; }
+    else if (th === 'paint') { L.face = 'paint'; L.paint = T.shirt; if (R() < 0.6) { L.shirt = T.shirt; L.print = wpick(R, TEAM_PRINTS); L.pc = T.trim; } }
+    else if (th === 'beanie') { L.gear = { t: 'beanie', a: T.shirt, b: T.trim, c: L.hair, cell: -1 }; L.shirt = R() < 0.5 ? T.shirt : T.alt; L.print = R() < 0.5 ? 'hstripe' : 'none'; L.pc = T.trim; }
+    else if (th === 'scarf' && !L.held) { L.held = { t: 'scarf', a: T.shirt, b: T.trim, cell: 'scarfBands' }; }
   }
 }
 var MONSTER = ['#94d82d', '#9775fa', '#ff922b', '#22b8cf', '#f783ac', '#ffd43b', '#4dabf7', '#69db7c', '#e599f7', '#ff6b6b'];
@@ -654,18 +758,218 @@ install();
 // for headless checks and debugging: the crowd T3.crowd drives right now (or null)
 export function currentCrowd() { return current; }
 
+// =====================================================================================================
+// The crowd as a character: casting the tableau (stadium only, docs/handoff/crowd2.md)
+// =====================================================================================================
+// team colours as tokens ('@0s' = home shirt ...), painted from crowdstory.palette() and repainted when it changes
+function tokTeam(t) { return { shirt: '@' + t + 's', alt: '@' + t + 'a', trim: '@' + t + 't', seat: '@' + t + 'e' }; }
+function tokColour(tok, pal) { var t = tok.charAt(1) === '1' ? pal.away : pal.home, k = tok.charAt(2); return k === 's' ? t.shirt : k === 'a' ? t.alt : k === 't' ? t.trim : t.seat; }
+var AWAY0 = 0.665, AWAYW = [0, 0.07, 0.08, 0.095, 0.11, 0.125];
+function standOf(ry) { return Math.round(ry * 10); }
+// rows of seats: people grouped by stand and step, sorted along the stand. Sets p.row, p.level (0 = front), p.s (along)
+function rowsOf(pts, skip) {
+  var map = {}, rows = [], stands = {};
+  pts.forEach(function (p, i) {
+    if (skip && skip(p)) return;
+    var ry = p.seatRy != null ? p.seatRy : (p.ry || 0), st = standOf(ry), k = st + ':' + Math.round(p.y * 10);
+    p.sRy = ry; p.s = p.x * Math.cos(ry) - p.z * Math.sin(ry);
+    var r = map[k]; if (!r) { r = map[k] = { stand: st, y: p.y, ry: ry, list: [] }; rows.push(r); }
+    r.list.push(i); p.row = r;
+  });
+  rows.forEach(function (r) { r.list.sort(function (a, b) { return pts[a].s - pts[b].s; }); (stands[r.stand] = stands[r.stand] || []).push(r); });
+  Object.keys(stands).forEach(function (k) { stands[k].sort(function (a, b) { return a.y - b.y; }); stands[k].forEach(function (r, l) { r.level = l; r.top = l === stands[k].length - 1; }); });
+  rows.forEach(function (r) { r.list.forEach(function (i, j) { pts[i].level = r.level; pts[i].ri = j; }); });
+  return { rows: rows, stands: stands };
+}
+// the person in `cands` whose key is nearest t and who passes ok(i)
+function nearestKey(pts, cands, t, ok) { var b = -1, bd = 9; cands.forEach(function (i) { var d = Math.abs(pts[i].key - t); if (d < bd && ok(i)) { bd = d; b = i; } }); return b; }
+function plainFan(p) { return !p.charKind && !p.job && !p.vip && !p.band && !p.stand && !p.hold; }
+
+// ----- the tableau before dressing: home end and away corner, families and friends -----
+function castTeams(pts, rows, R2, tier) {
+  var a1 = AWAY0 + AWAYW[tier];
+  pts.forEach(function (p) { p.away = p.key >= AWAY0 && p.key <= a1; p.team = p.away && R2() > 0.06 ? 1 : 0; });
+  rows.rows.forEach(function (r) {
+    var L = r.list, j = 0;
+    while (j < L.length) {
+      if (R2() > 0.5) { j++; continue; }
+      var size = 2 + Math.floor(R2() * 3), g = [L[j]];
+      for (var k = j + 1; k < L.length && g.length < size; k++) { var a = pts[L[k - 1]], b = pts[L[k]]; if (b.s - a.s > 0.95 || b.team !== a.team) break; g.push(L[k]); }
+      j += g.length + 1;
+      if (g.length < 2) continue;
+      var t = R2();
+      if (t < 0.4) { // a family: a grown-up (or two) and kids in his kit
+        g.forEach(function (i, n) { var p = pts[i]; p.role = n === 0 || (n === 3 && g.length === 4) ? 'adult' : 'kid'; p.theme = p.role === 'kid' ? (R2() < 0.65 ? 'replica' : '') : (R2() < 0.3 ? 'replica' : ''); });
+      } else if (t < 0.78) { // friends who came together: the same face paint, beanies, scarves or shirts
+        var th = ['paint', 'beanie', 'replica', 'scarf'][Math.floor(R2() * 4)];
+        g.forEach(function (i) { pts[i].role = 'adult'; pts[i].theme = th; });
+      } else g.forEach(function (i) { pts[i].role = R2() < 0.5 ? 'elder' : 'adult'; }); // a couple
+    }
+  });
+}
+function plainL(R, o, kind) { // staff and the mascot: dressed by hand
+  var skin = pick(R, SKINS), hair = pick(R, HAIRS);
+  var L = { seat: null, skin: skin, hair: hair, paint: PINK, pantsC: '#3b5b92', pants: '#1f2a44', shins: '#1f2a44', shoes: '#212529', hands: skin, cape: null, held: null, bare: false, face: pick(R, ['smile', 'content', 'specs', 'tache', 'beard']) };
+  if (kind === 'steward') { L.shirt = '#d4f218'; L.print = 'hivis'; L.pc = '#ffffff'; L.back = 'stewardB'; L.gear = R() < 0.5 ? { t: 'cap', a: '#1f2a44', b: '#1f2a44', c: hair, cell: 'logoStar' } : hairGear(L, R, pick(R, ['short', 'bob', 'bun', 'curls'])); }
+  else if (kind === 'camera') { L.shirt = '#2b2f3a'; L.print = 'hoodie'; L.pc = '#ffffff'; L.face = 'smile'; L.gear = { t: 'headphones', a: '#212529', b: '#e03131', c: hair, cell: -1 }; }
+  else if (kind === 'mascot') { L.shirt = '@0s'; L.print = 'kidnum'; L.pc = '@0t'; L.pants = L.shins = '@0s'; L.shoes = '@0t'; L.hands = '#ffd43b'; L.skin = '#ffd43b'; L.face = 'kid'; L.gear = { t: 'cubehead', a: '#ffd43b', b: '@0t', c: hair, cell: 'cubey' }; }
+  return L;
+}
+// ----- after dressing: found fans to better seats, the band, standing fans, banner holders, staff and the mascot -----
+function castExtras(pts, rows, R2, R, tier, o, board) {
+  var T0 = o.teams[0], back = rows.stands[0] || [], extras = [], out = { holders: [], rival: null, op: null };
+  var frontBack = []; back.forEach(function (r) { if (r.level <= 1) frontBack = frontBack.concat(r.list); });
+  // 1. Spot the Fan characters he has found move to the front rows of the back stand, where he can see them
+  var targets = [0.4, 0.6, 0.36, 0.64, 0.44, 0.56, 0.32, 0.68, 0.28, 0.72, 0.24, 0.76, 0.2], ti = 0;
+  CHAR_KINDS.filter(function (k) { return story.found().indexOf(k) >= 0; }).forEach(function (kind) {
+    var c = -1; for (var i = 0; i < pts.length; i++) if (pts[i].charKind === kind && !pts[i].vip) { c = i; break; }
+    if (c < 0 || ti >= targets.length) return;
+    var d = nearestKey(pts, frontBack, targets[ti++], function (i) { return i !== c && plainFan(pts[i]) && !pts[i].away && !pts[i].L.held; });
+    if (d < 0) return;
+    var A = pts[c], B = pts[d], sw = ['L', 'charKind', 'sc', 'hs'];
+    sw.forEach(function (k) { var t = A[k]; A[k] = B[k]; B[k] = t; });
+    if (!A.charKind) delete A.charKind;
+    A.L.seat = o.teams[A.team ? 1 : 0].seat; B.L.seat = o.teams[B.team ? 1 : 0].seat; B.vip = true;
+  });
+  // 2. the brass band (tier 2+): two short rows in the home part of the back stand, horns and a drum each row
+  if (tier >= 2) {
+    var per = tier >= 4 ? 4 : 3;
+    back.filter(function (r) { return r.level === 1 || r.level === 2; }).forEach(function (r) {
+      var c = nearestKey(pts, r.list, 0.31, function (i) { return plainFan(pts[i]) && !pts[i].away; }); if (c < 0) return;
+      var j0 = Math.max(0, pts[c].ri - Math.floor(per / 2)), run = r.list.slice(j0, j0 + per).filter(function (i) { return plainFan(pts[i]) && !pts[i].away; });
+      run.forEach(function (i, n) {
+        var p = pts[i], L = p.L, drum = n === Math.floor(run.length / 2);
+        p.band = drum ? 'drum' : 'horn'; p.sc = 0.95 + R2() * 0.08; p.hs = 1;
+        L.shirt = T0.trim; L.print = 'band'; L.pc = '#ffd43b'; L.pants = L.shins = '#1f2a44'; L.shoes = '#212529'; L.bare = false; L.held = null; L.cape = null; L.hands = L.skin;
+        L.gear = { t: 'bandhat', a: T0.shirt, b: '#ffd43b', c: L.hair, cell: -1 }; if (L.face === 'shades' || L.face === 'tacheShades') L.face = 'smile';
+        p.pose = drum ? { ra0: 0.75, ra1: 0.75, yaw: 0.32 } : { ra0: 1.22, ra1: 1.22, yaw: 0.56, hd: -0.06 }; p.armK = 0;
+      });
+    });
+  }
+  // 3. a few fans stand in the back rows; from tier 2 one of them carries a kid on the shoulders
+  var tops = []; Object.keys(rows.stands).forEach(function (k) { var st = rows.stands[k]; if (st.length) tops = tops.concat(st[st.length - 1].list); });
+  var nst = [0, 2, 3, 4, 5, 6][tier], stT = [0.42, 0.58, 0.3, 0.7, 0.22, 0.78], carriers = [];
+  for (var s = 0; s < nst; s++) {
+    var c2 = nearestKey(pts, tops, stT[s], function (i) { var p = pts[i]; return plainFan(p) && p.team === 0 && p.sc > 0.9 && !p.L.cape; });
+    if (c2 < 0) continue;
+    var P2 = pts[c2]; P2.stand = true;
+    if (tier >= 2 && s % 2 === 0) { P2.L.held = null; P2.carry = true; P2.pose = { ra0: 2.25, ra1: 2.25, yaw: 0.05, roll: -0.35 }; P2.armK = 0; P2.hopK = 0; carriers.push(P2); }
+  }
+  // 4. hand-made banners, held up by two fans in the front rows (a third one may sit behind it)
+  function pairNear(t, ok) {
+    var best = null, bd = 9;
+    rows.rows.forEach(function (r) {
+      if (r.level > 1) return;
+      for (var j = 0; j < r.list.length; j++) for (var q = j + 1; q <= j + 2 && q < r.list.length; q++) {
+        var a = pts[r.list[j]], b = pts[r.list[q]], gap = b.s - a.s;
+        if (gap < 1.05 || gap > 2.5 || !ok(a) || !ok(b)) continue;
+        if (q === j + 2 && !plainFan(pts[r.list[j + 1]])) continue;
+        var d = Math.abs((a.key + b.key) / 2 - t) + r.level * 0.01;
+        if (d < bd) { bd = d; best = [r.list[j], r.list[q]]; }
+      }
+    });
+    return best;
+  }
+  var nb = [0, 2, 3, 4, 6, 8][tier], bT = [0.4, 0.6, 0.33, 0.66, 0.26, 0.45, 0.18, 0.82, 0.1, 0.9];
+  function holder(p) { return plainFan(p) && !p.used && p.sc > 0.85; }
+  for (var b = 0; b < nb && b < bT.length; b++) {
+    var pr = pairNear(bT[b], function (p) { return holder(p) && !p.away; });
+    if (!pr) continue;
+    out.holders.push([pts[pr[0]], pts[pr[1]]]);
+    pr.forEach(function (i) { var p = pts[i]; p.hold = true; p.used = true; p.L.held = null; p.pose = { ra0: 1.32, ra1: 1.32, yaw: 0.12 }; p.armK = 0; var r = p.row; [-1, 1].forEach(function (dj) { var q = r.list[p.ri + dj]; if (q != null) pts[q].used = true; }); });
+  }
+  var rp = pairNear(AWAY0 + AWAYW[tier] / 2, function (p) { return holder(p) && p.away && p.team === 1; });
+  if (rp) { out.rival = [pts[rp[0]], pts[rp[1]]]; rp.forEach(function (i) { var p = pts[i]; p.hold = true; p.L.held = null; p.pose = { ra0: 1.32, ra1: 1.32, yaw: 0.12 }; p.armK = 0; }); }
+  // 5. staff: stewards on the ground in front of each stand (facing the fans), a TV camera on the back stand's top row
+  function extra(p) { p.job = p.job || 'x'; p.noSeat = true; p.rk = p.rk == null ? 0 : p.rk; extras.push(p); return p; }
+  var nsw = tier <= 2 ? 1 : tier <= 4 ? 2 : 3;
+  Object.keys(rows.stands).forEach(function (k) {
+    var fr = rows.stands[k][0]; if (!fr || fr.list.length < 4) return;
+    for (var m = 0; m < nsw; m++) {
+      var p = pts[fr.list[Math.floor((m + 0.5) / nsw * fr.list.length)]], nx = Math.sin(fr.ry), nz = Math.cos(fr.ry);
+      extra({ x: p.x + nx * 1.25, y: FLOOR_Y, z: p.z + nz * 1.25, ry: fr.ry + Math.PI, key: p.key, team: 0, job: 'steward', stand: true, sc: 0.98 + R2() * 0.06, hs: 1, L: plainL(R2, o, 'steward') });
+    }
+  });
+  if (back.length) {
+    var top = back[back.length - 1], want = board && board.x > 0 ? -6 : 6, c3 = -1, cd = 1e9;
+    top.list.forEach(function (i) { var d = Math.abs(pts[i].x - want); if (d < cd && !pts[i].charKind) { cd = d; c3 = i; } });
+    if (c3 >= 0) {
+      var P3 = pts[c3];
+      // the camera operator takes this seat and the two beside it (they become the platform)
+      [-1, 1].forEach(function (dj) { var q = top.list[P3.ri + dj]; if (q != null) pts[q].gone = true; });
+      out.op = extra({ x: P3.x, y: P3.y + 0.12, z: P3.z, ry: Math.atan2(-P3.x, -P3.z), key: P3.key, team: 0, job: 'camera', stand: true, rig: true, sc: 1, hs: 1, L: plainL(R2, o, 'camera') });
+      P3.gone = true;
+      out.op.pose = { ra0: 1.05, ra1: 1.15, yaw: 0.22 };
+    }
+  }
+  // 6. the home mascot, on the grass in front of the back stand (behind the ad boards), left of the table
+  var fb = back[0];
+  if (fb && fb.list.length > 6) {
+    var wantM = board && board.x > 0 ? -5.5 : 5.5, cm = -1, md = 1e9;
+    fb.list.forEach(function (i) { var d = Math.abs(pts[i].x - wantM); if (d < md) { md = d; cm = i; } });
+    if (cm >= 0) { var PM = pts[cm]; extra({ x: PM.x, y: FLOOR_Y, z: PM.z + 1.0, ry: Math.atan2(-PM.x, -(PM.z + 1.0)), key: PM.key, team: 0, job: 'mascot', stand: true, rk: 1, sc: 1.28, hs: 1, L: plainL(R2, o, 'mascot') }); }
+  }
+  // 7. the kids on shoulders
+  carriers.forEach(function (c) {
+    var p = { x: c.x, y: c.y, z: c.z, ry: c.ry, key: c.key, team: 0, role: 'kid', theme: 'replica', job: 'rider', riderP: c, rk: 1, hopK: 0 };
+    for (var tries = 0; tries < 8; tries++) { dressPerson(p, R2, o, false); if (!p.charKind) break; delete p.charKind; }
+    p.L.held = null; p.L.cape = null; p.sc = 0.76; p.hs = 1.15;
+    p.pose = { ra0: 0.5, ra1: 2.55, yaw: 0, roll: 0.15 }; p.armK = 0.6;
+    extra(p);
+  });
+  return { extras: extras, holders: out.holders, rival: out.rival, op: out.op };
+}
+// seats with nobody in them: gaps of one to three seats in a row (small grounds have many; tier 5 a few)
+function emptySeats(pts, rows, tier, avoid) {
+  var out = [], a1 = AWAY0 + AWAYW[tier];
+  rows.rows.forEach(function (r) {
+    for (var j = 1; j < r.list.length; j++) {
+      var a = pts[r.list[j - 1]], b = pts[r.list[j]], gap = b.s - a.s, n = Math.round(gap / 0.62) - 1;
+      if (n < 1 || gap > 2.7) continue;
+      for (var k = 1; k <= n; k++) {
+        var f = k / (n + 1), x = a.x + (b.x - a.x) * f, z = a.z + (b.z - a.z) * f, key = a.key + (b.key - a.key) * f;
+        if (avoid && Math.hypot(x - avoid.x, z - avoid.z) < 1.0) continue;
+        out.push({ x: x, y: r.y, z: z, ry: r.ry, key: key, level: r.level, stand: r.stand, s: a.s + (b.s - a.s) * f, tok: key >= AWAY0 && key <= a1 ? '@1e' : '@0e' });
+      }
+    }
+  });
+  return out;
+}
+function findBoard(group) {
+  var scr = null; group.traverse(function (o2) { if (o2.userData && o2.userData.board) scr = o2; });
+  if (!scr || !scr.parent) return null;
+  var w = scr.geometry && scr.geometry.parameters ? scr.geometry.parameters.width : 6;
+  return { x: scr.parent.position.x, y: scr.parent.position.y, z: scr.parent.position.z, w: w };
+}
+
 // pts: [{ x, y, z, ry (facing the pitch), seatRy (optional, the seat's facing), key (0..1 along the stands), team (0 | 1) }]
 // o: { quality(), style ('fans' | 'beach' | 'monsters'), teams ([{ shirt, alt, trim, seat }, ...]), seatCol,
-//      seats (true), dim (1), seed, redress (optional, for checks: (p, i, asCharacter) after dressing) }
-// Returns { pts, N, meshes, react(kind, opts), step(now), reset(), busy(), stats() }.
+//      seats (true), dim (1), seed, redress (optional, for checks: (p, i, asCharacter) after dressing),
+//      detached (the title screen: T3.crowd never drives it), plain (true: no character, the old crowd) }
+// 'fans' without o.teams = the stadium: the crowd as a character (his kit, the away corner, displays, directed reactions).
+// Returns { pts, N, meshes, react(kind, opts), step(now), reset(), busy(), stats(), ... }.
 export function makeBlockCrowd(group, pts, o) {
   o = o || {};
   var quality = o.quality || function () { return 2; }, q0 = quality(), det = q0 >= 2 ? 2 : q0 >= 1 ? 1 : 0, dim = o.dim == null ? 1 : o.dim, style = o.style || 'fans';
+  var live = style === 'fans' && !o.teams && !o.plain, tier = live ? Math.max(1, Math.min(5, +stadiumTier() || 1)) : 0;
+  if (live) { o.teams = [tokTeam(0), tokTeam(1)]; o.drinks = true; refreshAtlas(story.jersey()); }
   o.teams = o.teams || [{ shirt: '#e03131', alt: '#c92a2a', trim: '#ffffff', seat: '#c73a3a' }, { shirt: '#1c7ed6', alt: '#1864ab', trim: '#ffffff', seat: '#2f66c4' }];
   if (q0 < 1) pts = pts.filter(function (p, i) { return i % 3 !== 2; }); // low tier: a third fewer people
   else if (q0 < 2) pts = pts.filter(function (p, i) { return i % 6 !== 5; }); // medium (tablets start here): a sixth fewer, a few empty seats
-  var N = pts.length, R = rng(o.seed || 4242), mat = crowdMaterial(dim);
+  var R = rng(o.seed || 4242), R2 = rng((o.seed || 4242) + 77), mat = crowdMaterial(dim), board = live ? findBoard(group) : null;
+  var rows = live ? rowsOf(pts) : null;
+  if (live) castTeams(pts, rows, R2, tier);
   pts.forEach(function (p) { if (style === 'monsters') dressMonster(p, R, o); else dressPerson(p, R, o, style === 'beach'); });
+  var cast = live ? castExtras(pts, rows, R2, R, tier, o, board) : null;
+  if (cast) { pts = pts.filter(function (p) { return !p.gone; }).concat(cast.extras); }
+  var N = pts.length;
+  if (cast) { // indexes moved (the operator's seats went): find the holders and the carriers again, and the rows
+    var ix = new Map(); pts.forEach(function (p, i) { ix.set(p, i); });
+    cast.holders = cast.holders.map(function (pr) { return [ix.get(pr[0]), ix.get(pr[1])]; });
+    if (cast.rival) cast.rival = [ix.get(cast.rival[0]), ix.get(cast.rival[1])];
+    pts.forEach(function (p) { if (p.riderP) p.rider = ix.get(p.riderP); });
+    rows = rowsOf(pts, function (p) { return p.noSeat; });
+  }
   if (o.redress) pts.forEach(function (p, i) { o.redress(p, i, function (kind) { character(p.L, p, R, o.teams[p.team ? 1 : 0], kind); }); }); // for checks: dress someone up
 
   // ----- what each person wears: one entry per instance -----
@@ -676,88 +980,126 @@ export function makeBlockCrowd(group, pts, o) {
   }
   pts.forEach(function (p, i) {
     var L = p.L;
-    if (o.seats !== false) add(i, 'seat', seatGeo, -1, L.seat, L.seat, L.seat);
-    add(i, 'legs', legsGeo, 0, L.pants, L.shins, L.shoes);
+    if (o.seats !== false && !p.noSeat) add(i, 'seat', seatGeo, -1, L.seat, L.seat, L.seat);
+    if (p.stand) add(i, 'x:stand', PROPS.stand.fn, 0, L.pants, L.shins, L.shoes); else add(i, 'legs', legsGeo, 0, L.pants, L.shins, L.shoes);
+    if (p.rig) add(i, 'x:rig', PROPS.rig.fn, 0, '#5c636a', '#5c636a', '#5c636a');
+    if (p.rider != null) add(i, 'x:shoulders', PROPS.shoulders.fn, 0, L.pants, L.shins, L.shoes);
     var tp = L.print && L.print !== 'none' ? L.print : -1;
-    add(i, 'torso', torsoGeo, 1, L.shirt, L.pc || '#ffffff', L.pantsC, tp, tp !== -1 && BACKS[tp] ? tp : -1);
+    add(i, 'torso', torsoGeo, 1, L.shirt, L.pc || '#ffffff', L.pantsC, tp, L.back || (tp !== -1 && BACKS[tp] ? tp : -1));
     if (L.cape) add(i, 'cape', capeGeo, 1, L.cape, L.cape, L.cape);
     add(i, 'head', headFn, 2, L.skin, L.hair, L.paint, L.face);
     if (L.gear) add(i, 'g:' + L.gear.t, GEAR[L.gear.t], 2, L.gear.a, L.gear.b, L.gear.c, L.gear.cell);
     var fore = L.bare ? L.skin : L.shirt;
     add(i, 'arms', armGeo, 3, L.shirt, fore, L.hands); add(i, 'arms', armGeo, 4, L.shirt, fore, L.hands);
     if (L.held) add(i, 'h:' + L.held.t, HELD[L.held.t].fn, HELD[L.held.t].code, L.held.a, L.held.b, L.held.b, L.held.cell, L.held.cell);
+    if (p.band) add(i, 'x:' + p.band, PROPS[p.band].fn, PROPS[p.band].code, o.teams[0].shirt, '#f1f3f5', '#f1f3f5');
   });
-  // rare parts share a mesh: held things and capes in one, head gear worn by fewer than 2% in another. A draw
-  // call each would cost more than the few vertices that collapse (each instance shows only its own variant)
-  function rare(key) { return key === 'cape' || key.charAt(1) === ':' && (key.charAt(0) === 'h' || count[key] < Math.max(4, 0.02 * N)); }
-  var parts = [], partIx = {}, mixFns = { mixH: [], mixG: [] }, mixVar = {};
+  var empties = live ? emptySeats(pts, rows, tier, cast && cast.op) : [];
+  if (o.seats !== false) empties.forEach(function (e) { add(-1, 'seat', seatGeo, -1, e.tok, e.tok, e.tok); });
+  // rare parts share a mesh: held things and capes in one, head gear worn by fewer than 2% in another, big props
+  // (standing legs, the camera platform, instruments) in a third. A draw call each would cost more than the few
+  // vertices that collapse (each instance shows only its own variant)
+  function rare(key) { var c0 = key.charAt(0); return key === 'cape' || key.charAt(1) === ':' && (c0 === 'h' || c0 === 'x' || count[key] < Math.max(4, 0.02 * N)); }
+  var parts = [], partIx = {}, mixFns = { mixH: [], mixG: [], mixX: [] }, mixVar = {}, seatSlot = new Int32Array(N).fill(-1), emptySlot = [];
   var attStart = new Int32Array(N + 1), attPart = [], attSlot = [], attCode = [], attPerson = []; // codes: 0 legs, 1 torso, 2 head, 3/4 arms, 5 right-hand upright, 6 scarf
   ents.forEach(function (e) {
     var key = e.key, vr = 0;
-    if (rare(key)) { var mk = key.charAt(0) === 'g' ? 'mixG' : 'mixH'; if (mixVar[key] == null) { mixFns[mk].push(e.fn); mixVar[key] = mixFns[mk].length; } vr = mixVar[key]; key = mk; }
+    if (rare(key)) { var c0 = key.charAt(0), mk = c0 === 'g' ? 'mixG' : c0 === 'x' ? 'mixX' : 'mixH'; if (mixVar[key] == null) { mixFns[mk].push(e.fn); mixVar[key] = mixFns[mk].length; } vr = mixVar[key]; key = mk; }
     if (partIx[key] == null) { partIx[key] = parts.length; parts.push({ key: key, fn: e.fn, list: [] }); }
     var k = partIx[key], P = parts[k];
     P.list.push(e.a, e.b, e.c, e.c0, e.c1, vr);
-    if (e.code >= 0) { attPerson.push(e.i); attPart.push(k); attSlot.push(P.list.length / 6 - 1); attCode.push(e.code); }
+    var slot = P.list.length / 6 - 1;
+    if (key === 'seat') { if (e.i >= 0) seatSlot[e.i] = slot; else emptySlot.push(slot); }
+    if (e.code >= 0) { attPerson.push(e.i); attPart.push(k); attSlot.push(slot); attCode.push(e.code); }
   });
   // attachments come in person order: attStart[i] .. attStart[i + 1] are person i's
   for (var i1 = 0, j1 = 0; i1 <= N; i1++) { while (j1 < attPerson.length && attPerson[j1] < i1) j1++; attStart[i1] = j1; }
 
   // ----- one InstancedMesh per part type -----
-  var meshes = [], dyn = [], seatMesh = null, tc = new THREE.Color();
+  var meshes = [], dyn = [], seatMesh = null, tc = new THREE.Color(), pal = live ? story.palette() : null, toks = [];
+  function colourOf(c, arr, at) { if (typeof c === 'string' && c.charAt(0) === '@') { toks.push(arr, at, c); return tokColour(c, pal); } return c; }
   parts.forEach(function (P) {
     var n = P.list.length / 6, geo = mixFns[P.key] ? buildMix(mixFns[P.key], det) : build(P.fn, det), A = new Float32Array(n * 3), B = new Float32Array(n * 3), Cc = new Float32Array(n * 3), Me = new Float32Array(n * 3);
     for (var j = 0; j < n; j++) {
       var L6 = j * 6;
-      tc.set(P.list[L6]); A[j * 3] = tc.r; A[j * 3 + 1] = tc.g; A[j * 3 + 2] = tc.b;
-      tc.set(P.list[L6 + 1]); B[j * 3] = tc.r; B[j * 3 + 1] = tc.g; B[j * 3 + 2] = tc.b;
-      tc.set(P.list[L6 + 2]); Cc[j * 3] = tc.r; Cc[j * 3 + 1] = tc.g; Cc[j * 3 + 2] = tc.b;
+      tc.set(colourOf(P.list[L6], A, j * 3)); A[j * 3] = tc.r; A[j * 3 + 1] = tc.g; A[j * 3 + 2] = tc.b;
+      tc.set(colourOf(P.list[L6 + 1], B, j * 3)); B[j * 3] = tc.r; B[j * 3 + 1] = tc.g; B[j * 3 + 2] = tc.b;
+      tc.set(colourOf(P.list[L6 + 2], Cc, j * 3)); Cc[j * 3] = tc.r; Cc[j * 3 + 1] = tc.g; Cc[j * 3 + 2] = tc.b;
       Me[j * 3] = P.list[L6 + 3]; Me[j * 3 + 1] = P.list[L6 + 4]; Me[j * 3 + 2] = P.list[L6 + 5];
     }
     geo.setAttribute('iA', new THREE.InstancedBufferAttribute(A, 3)); geo.setAttribute('iB', new THREE.InstancedBufferAttribute(B, 3));
     geo.setAttribute('iC', new THREE.InstancedBufferAttribute(Cc, 3)); geo.setAttribute('iMeta', new THREE.InstancedBufferAttribute(Me, 3));
     var m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false; m.name = 'crowd:' + P.key;
-    group.add(m); meshes.push(m); P.mesh = m;
+    group.add(m); meshes.push(m); P.mesh = m; P.geo = geo;
     if (P.key === 'seat') seatMesh = m; else dyn.push(m);
   });
   var partArr = parts.map(function (P) { return P.mesh.instanceMatrix.array; });
+  // the home kit, the away colours, his number changed (or a new opponent): repaint the tokens in place
+  function repaint() {
+    if (!live) return;
+    pal = story.palette();
+    for (var k = 0; k < toks.length; k += 3) { tc.set(tokColour(toks[k + 2], pal)); var a = toks[k], at = toks[k + 1]; a[at] = tc.r; a[at + 1] = tc.g; a[at + 2] = tc.b; }
+    parts.forEach(function (P) { P.geo.attributes.iA.needsUpdate = P.geo.attributes.iB.needsUpdate = P.geo.attributes.iC.needsUpdate = true; });
+    refreshAtlas(story.jersey());
+    if (banners) { styleBanners(); banners.retext(bannerTexts()); }
+  }
 
   // ----- base matrix per person: T(x, y, z) * Ry(ry) * scale, and a fixed (never moving) rest pose -----
-  var base = new Float32Array(12 * N), key = new Float32Array(N), rA = new Float32Array(N), rB = new Float32Array(N), hs = new Float32Array(N), kidF = new Uint8Array(N);
+  var base = new Float32Array(12 * N), key = new Float32Array(N), rA = new Float32Array(N), rB = new Float32Array(N), hs = new Float32Array(N), kidF = new Uint8Array(N), bRy = new Float32Array(N);
   var rRa0 = new Float32Array(N), rRa1 = new Float32Array(N), rYaw = new Float32Array(N), rHd = new Float32Array(N), rTilt = new Float32Array(N), rHy = new Float32Array(N);
+  var rDy = new Float32Array(N), rLean = new Float32Array(N), rRoll = new Float32Array(N);
+  var rk = new Uint8Array(N).fill(1), armK = new Float32Array(N).fill(1), hopK = new Float32Array(N).fill(1), away = new Uint8Array(N), heldT = new Uint8Array(N), clasp = new Uint8Array(N);
   var S = new Float64Array(12);
   pts.forEach(function (p, i) {
-    var k = p.sc || 1, ry = (p.ry || 0) + (R() - 0.5) * 0.3, c = Math.cos(ry), s = Math.sin(ry), b = i * 12, y = p.y + SEAT_Y * (1 - k);
-    base[b] = c * k; base[b + 1] = 0; base[b + 2] = s * k; base[b + 3] = p.x;
+    var k = p.sc || 1, ry = (p.ry || 0) + (R() - 0.5) * 0.3, b = i * 12, y = p.stand ? p.y + RAISE * k : p.y + SEAT_Y * (1 - k);
+    if (p.job) ry = p.ry || 0; // staff, the mascot and riders face exactly where they should
+    if (p.rider != null) { // on the shoulders of the grown-up (who is already placed: riders come last)
+      var c = p.rider, cb = c * 12, kc = base[cb + 5], fx = base[cb + 2] / kc, fz = base[cb + 10] / kc;
+      ry = Math.atan2(fx, fz); y = base[cb + 7] + (HIP_Y + NECK + 0.02) * kc - HIP_Y * k;
+      p.x = base[cb + 3] - fx * 0.15 * kc; p.z = base[cb + 11] - fz * 0.15 * kc;
+    }
+    var c2 = Math.cos(ry), s = Math.sin(ry);
+    base[b] = c2 * k; base[b + 1] = 0; base[b + 2] = s * k; base[b + 3] = p.x;
     base[b + 4] = 0; base[b + 5] = k; base[b + 6] = 0; base[b + 7] = y;
-    base[b + 8] = -s * k; base[b + 9] = 0; base[b + 10] = c * k; base[b + 11] = p.z;
+    base[b + 8] = -s * k; base[b + 9] = 0; base[b + 10] = c2 * k; base[b + 11] = p.z;
+    bRy[i] = ry;
     key[i] = p.key || 0; rA[i] = R(); rB[i] = R(); hs[i] = p.hs || 1; kidF[i] = p.sc < 0.85 ? 1 : 0;
     rHd[i] = (R() - 0.5) * 0.14; rTilt[i] = (R() - 0.5) * 0.16; rHy[i] = (R() - 0.5) * 0.4;
     var held = p.L.held && p.L.held.t, r = R();
     if (held === 'scarf') { rRa0[i] = rRa1[i] = 0.5; rYaw[i] = 0.25; }
-    else if (held) { rRa0[i] = (R() - 0.5) * 0.12; rRa1[i] = 0.55; }
+    else if (held) { rRa0[i] = (R() - 0.5) * 0.12; rRa1[i] = held === 'drink' ? 0.42 : 0.55; }
     else if (r < 0.18) { rRa0[i] = rRa1[i] = 0.22; rYaw[i] = 0.18; } // hands together on the lap
     else { rRa0[i] = (R() - 0.5) * 0.16; rRa1[i] = (R() - 0.5) * 0.16; }
-    if (seatMesh) { // seats: not scaled, never move
+    if (seatMesh && seatSlot[i] >= 0) { // seats: not scaled, never move
       var ry0 = p.seatRy != null ? p.seatRy : (p.ry || 0), c0 = Math.cos(ry0), s0 = Math.sin(ry0);
       S[0] = c0; S[1] = 0; S[2] = s0; S[3] = p.x; S[4] = 0; S[5] = 1; S[6] = 0; S[7] = p.y; S[8] = -s0; S[9] = 0; S[10] = c0; S[11] = p.z;
-      put(seatMesh.instanceMatrix.array, i, S);
+      put(seatMesh.instanceMatrix.array, seatSlot[i], S);
     }
+    // the character's own still pose and how they join in
+    var po = p.pose; if (po) { if (po.ra0 != null) rRa0[i] = po.ra0; if (po.ra1 != null) rRa1[i] = po.ra1; if (po.yaw != null) rYaw[i] = po.yaw; if (po.roll != null) rRoll[i] = po.roll; if (po.hd != null) rHd[i] = po.hd; }
+    if (p.job === 'camera' || p.job === 'mascot' || p.job === 'rider') rHy[i] = 0;
+    if (p.rk != null) rk[i] = p.rk; if (p.armK != null) armK[i] = p.armK; if (p.hopK != null) hopK[i] = p.hopK;
+    away[i] = p.team === 1 ? 1 : 0; heldT[i] = held === 'flag' ? 1 : held === 'finger' ? 2 : held === 'scarf' ? 3 : held ? 4 : 0;
   });
+  if (live) { var RC = rng(909); for (var ic = 0; ic < N; ic++) clasp[ic] = RC() < 0.3 ? 1 : 0; }
+  if (seatMesh) empties.forEach(function (e, j) { var c0 = Math.cos(e.ry), s0 = Math.sin(e.ry); S[0] = c0; S[1] = 0; S[2] = s0; S[3] = e.x; S[4] = 0; S[5] = 1; S[6] = 0; S[7] = e.y; S[8] = -s0; S[9] = 0; S[10] = c0; S[11] = e.z; put(seatMesh.instanceMatrix.array, emptySlot[j], S); });
 
   // pose accumulators (added on top of the rest pose)
-  var aDy = new Float32Array(N), aLean = new Float32Array(N), aHead = new Float32Array(N), aTilt = new Float32Array(N);
+  var aDy = new Float32Array(N), aLean = new Float32Array(N), aHead = new Float32Array(N), aTilt = new Float32Array(N), aHy = new Float32Array(N);
   var aRa0 = new Float32Array(N), aRa1 = new Float32Array(N), aRoll = new Float32Array(N), aYaw = new Float32Array(N);
   var Pm = new Float64Array(12), Tm = new Float64Array(12), J = new Float64Array(12), Hm = new Float64Array(12), A0 = new Float64Array(12), A1 = new Float64Array(12), M = new Float64Array(12);
-  function pose(i, dy, lean, hd, tilt, ra0, ra1, roll, yaw) {
+  // acc: add the reaction accumulators (false: the rest pose)
+  function pose(i, acc) {
     var b = i * 12, k, j;
+    var dy = rDy[i], lean = rLean[i], hd = rHd[i], tilt = rTilt[i], hy = rHy[i], ra0 = rRa0[i], ra1 = rRa1[i], yaw = rYaw[i], roll = rRoll[i];
+    if (acc) { dy += aDy[i]; lean += aLean[i]; hd += aHead[i]; tilt += aTilt[i]; hy += aHy[i]; ra0 += aRa0[i]; ra1 += aRa1[i]; yaw += aYaw[i]; roll += aRoll[i]; }
     for (k = 0; k < 12; k++) Pm[k] = base[b + k];
     Pm[7] += dy;
     mul(Pm, joint(0, HIP_Y, 0, 0, 0, lean, 1, J), Tm);
-    mul(Tm, joint(0, NECK, 0, rHy[i], rTilt[i] + tilt, rHd[i] + hd, hs[i], J), Hm);
+    mul(Tm, joint(0, NECK, 0, hy, tilt, hd, hs[i], J), Hm);
     // side 0 is local -x, side 1 is +x. roll is "outward", weighted by cos(raise) so raised arms make a V;
     // yaw is "inward" (toward the other hand: clapping, hands to the face)
-    var r0 = REST_RAISE + rRa0[i] + ra0, r1 = REST_RAISE + rRa1[i] + ra1, ro = REST_ROLL + roll, yw = rYaw[i] + yaw;
+    var r0 = REST_RAISE + ra0, r1 = REST_RAISE + ra1, ro = REST_ROLL + roll, yw = yaw;
     if (r0 > 3.0) r0 = 3.0; if (r1 > 3.0) r1 = 3.0;
     mul(Tm, joint(-SH_X, SH_Y, 0, yw, -ro * Math.cos(r0), -r0, 1, J), A0);
     mul(Tm, joint(SH_X, SH_Y, 0, -yw, ro * Math.cos(r1), -r1, 1, J), A1);
@@ -788,7 +1130,7 @@ export function makeBlockCrowd(group, pts, o) {
       }
     }
   }
-  for (var i0 = 0; i0 < N; i0++) pose(i0, 0, 0, 0, 0, 0, 0, 0, 0);
+  for (var i0 = 0; i0 < N; i0++) pose(i0, false);
   var rest = dyn.map(function (m) { return m.instanceMatrix.array.slice(); }), restOf = parts.map(function (P) { return P.mesh === seatMesh ? null : rest[dyn.indexOf(P.mesh)]; });
   meshes.forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
   function uploadAll() { for (var k = 0; k < dyn.length; k++) dyn[k].instanceMatrix.needsUpdate = true; }
@@ -796,72 +1138,349 @@ export function makeBlockCrowd(group, pts, o) {
   function restorePerson(i) {
     for (var j = attStart[i]; j < attStart[i + 1]; j++) { var a = partArr[attPart[j]], r = restOf[attPart[j]], o2 = attSlot[j] * 16; for (var q = 0; q < 16; q++) a[o2 + q] = r[o2 + q]; }
   }
+  function poseRest(i) { var live0 = partArr; partArr = restOf; pose(i, false); partArr = live0; } // a new still pose: written into the rest copy only
+  // a hand's place in group space from the rest pose (side 0 left, 1 right)
+  function handAt(i, side) {
+    for (var j = attStart[i]; j < attStart[i + 1]; j++) if (attCode[j] === 3 + side) { var r = restOf[attPart[j]], o2 = attSlot[j] * 16; return { x: r[o2 + 12] - HAND * r[o2 + 4], y: r[o2 + 13] - HAND * r[o2 + 5], z: r[o2 + 14] - HAND * r[o2 + 6] }; }
+    return null;
+  }
+
+  // ===== stances: a held pose that changes once (flags up, scarves up, leaning in, looking at the big screen, phones up) =====
+  var NP = 9, B_LEAN = 1, B_FLAG = 2, B_SCARF = 4, B_LOOK = 8, B_PHONE = 16;
+  var rest0 = new Float32Array(N * NP), bits = new Uint8Array(N), lookYaw = new Float32Array(N), cur9 = new Float32Array(NP), new9 = new Float32Array(NP);
+  function getP(i, out) { out[0] = rDy[i]; out[1] = rLean[i]; out[2] = rHd[i]; out[3] = rTilt[i]; out[4] = rHy[i]; out[5] = rRa0[i]; out[6] = rRa1[i]; out[7] = rYaw[i]; out[8] = rRoll[i]; }
+  function setP(i, v) { rDy[i] = v[0]; rLean[i] = v[1]; rHd[i] = v[2]; rTilt[i] = v[3]; rHy[i] = v[4]; rRa0[i] = v[5]; rRa1[i] = v[6]; rYaw[i] = v[7]; rRoll[i] = v[8]; }
+  for (var ip = 0; ip < N; ip++) { getP(ip, cur9); rest0.set(cur9, ip * NP); }
+  function target(i, out) {
+    for (var k = 0; k < NP; k++) out[k] = rest0[i * NP + k];
+    var b = bits[i], h = heldT[i];
+    if (b & B_LEAN) { out[1] += 0.17; out[2] += 0.12; if (clasp[i] && armK[i] > 0) { out[5] = out[6] = 1.2; out[7] = 0.55; } }
+    if (b & B_FLAG) { if (h === 1) { out[6] = 2.7; out[8] = 0.1; } else if (h === 2) out[6] = 2.55; else if (h === 3) { out[5] = out[6] = 2.5; out[7] = 0; out[8] = 0.2; } }
+    if (b & B_SCARF && h === 3) { out[5] = out[6] = 2.68; out[7] = 0; out[8] = 0.28; }
+    if (b & B_LOOK) { out[4] = lookYaw[i]; out[2] -= 0.06; }
+    if (b & B_PHONE) { out[6] = 2.3; out[7] = 0.05; }
+  }
+  // move `list` into (on) or out of (off) a stance once: ms long, each person after delay(i) ms
+  function stance(list, bit, on, now, ms, delay) {
+    var L = [];
+    for (var j = 0; j < list.length; j++) { var i = list[j]; if (!!(bits[i] & bit) !== on) L.push(i); }
+    if (!L.length) return false;
+    var d = new Float32Array(L.length * NP), del = new Float32Array(L.length), mx = 0;
+    for (j = 0; j < L.length; j++) {
+      i = L[j]; getP(i, cur9); bits[i] = on ? bits[i] | bit : bits[i] & ~bit; target(i, new9);
+      for (var k = 0; k < NP; k++) d[j * NP + k] = cur9[k] - new9[k];
+      setP(i, new9); poseRest(i);
+      del[j] = delay ? delay(i) : 0; if (del[j] > mx) mx = del[j];
+    }
+    reacts.push({ kind: 'shift', t0: now, dur: mx + ms + 30, len: ms, idx: L, d: d, del: del });
+    return true;
+  }
+  function withBit(bit) { var l = []; for (var i = 0; i < N; i++) if (bits[i] & bit) l.push(i); return l; }
+  function release(bit, now, ms) { return stance(withBit(bit), bit, false, now, ms || 600, null); }
 
   // ----- reactions -----
   var reacts = [], stamp = 1, mark = new Int32Array(N), cur = new Int32Array(N), prev = new Int32Array(N), nCur = 0, nPrev = 0, pending = false;
   function pick2(kind, opts, low) {
     var list = [], i;
-    if (kind === 'wave') { for (i = 0; i < N; i++) list.push(i); return list; }
+    if (kind === 'wave') { for (i = 0; i < N; i++) if (rk[i]) list.push(i); return list; }
     if (kind === 'clap') {
-      var c = typeof opts.at === 'number' ? Math.max(0, Math.min(1, opts.at)) : 0.15 + Math.random() * 0.7, w = 0.13;
-      for (i = 0; i < N; i++) if (Math.abs(key[i] - c) < w && Math.random() < (low ? 0.5 : 0.8)) list.push(i);
+      var c = typeof opts.at === 'number' ? Math.max(0, Math.min(1, opts.at)) : 0.15 + Math.random() * 0.7, w = opts.w || 0.13;
+      for (i = 0; i < N; i++) if (rk[i] && Math.abs(key[i] - c) < w && Math.random() < (low ? 0.5 : 0.8)) list.push(i);
       return list;
     }
     var f = (FRAC[kind] || 0.8) * (low ? 0.6 : 1);
-    for (i = 0; i < N; i++) if (Math.random() < f) list.push(i);
+    for (i = 0; i < N; i++) if (rk[i] && Math.random() < f) list.push(i);
     return list;
   }
-  // one person's contribution from one reaction at s ms since it started. Arm targets are absolute angles,
-  // so people holding a scarf or a flag end up in the same pose as everyone else.
-  function add2(r, i, s) {
+  // one person's contribution from one reaction at s ms since it started (j: the person's place in r.idx). Arm targets
+  // are absolute angles, so people holding a scarf or a flag end up in the same pose as everyone else. Arms are scaled
+  // by armK (banner holders and the band keep their hands where they are), hops by hopK and r.hop (reduced motion: 0).
+  function add2(r, i, s, j) {
     var u = rA[i], v = rB[i], e, t = s / 1000, dur = r.dur / 1000, b0 = REST_RAISE + rRa0[i], b1 = REST_RAISE + rRa1[i];
+    var dy = 0, ln = 0, hd = 0, tl = 0, hy = 0, a0 = 0, a1 = 0, yw = 0, rl = 0;
     switch (r.kind) {
+      case 'shift': { // a stance change: the old pose fades into the new one (applied as is: no scaling)
+        var w = 1 - sm((s - r.del[j]) / r.len); if (w <= 0) return;
+        var q = j * NP, D = r.d;
+        aDy[i] += D[q] * w; aLean[i] += D[q + 1] * w; aHead[i] += D[q + 2] * w; aTilt[i] += D[q + 3] * w; aHy[i] += D[q + 4] * w;
+        aRa0[i] += D[q + 5] * w; aRa1[i] += D[q + 6] * w; aYaw[i] += D[q + 7] * w; aRoll[i] += D[q + 8] * w;
+        return;
+      }
       case 'clap': {
-        var tt = t - 0.15 * u; e = env(tt, 0.2, 0.3, dur - 0.25); if (!e) return;
-        aRa0[i] += (1.3 - b0) * e; aRa1[i] += (1.3 - b1) * e;
-        aYaw[i] += (0.62 + 0.16 * Math.sin(6.2832 * 3.6 * tt + 6.2832 * v) - rYaw[i]) * e; aLean[i] += 0.04 * e; return;
+        var tt = t - 0.15 * u; e = env(tt, 0.2, 0.3, (r.base || r.dur) / 1000 - 0.25); if (!e) return;
+        a0 = (1.3 - b0) * e; a1 = (1.3 - b1) * e;
+        yw = (0.62 + 0.16 * Math.sin(6.2832 * 3.6 * tt + 6.2832 * v) - rYaw[i]) * e; ln = 0.04 * e; break;
       }
       case 'ooh': {
         e = env(t - 0.2 * u, 0.35, 0.6, dur - 0.2); if (!e) return;
-        aLean[i] += 0.18 * e; aHead[i] += 0.12 * e;
-        if (v < 0.3) { var ea = env(t - 0.2 - 0.2 * u, 0.3, 0.5, dur - 0.45); aRa0[i] += (2.9 - b0) * ea; aRa1[i] += (2.9 - b1) * ea; aYaw[i] += (0.5 - rYaw[i]) * ea; aRoll[i] -= 0.1 * ea; }
-        return;
+        ln = 0.18 * e; hd = 0.12 * e;
+        if (v < 0.3) { var ea = env(t - 0.2 - 0.2 * u, 0.3, 0.5, dur - 0.45); a0 = (2.9 - b0) * ea; a1 = (2.9 - b1) * ea; yw = (0.5 - rYaw[i]) * ea; rl = -0.1 * ea; }
+        break;
       }
       case 'gasp': {
         var tg = t - 0.06 * u; e = tg <= 0 ? 0 : sm(tg / 0.12) * (tg < 0.5 ? 1 : sm((dur - tg) / 0.75)); if (!e) return;
-        aLean[i] -= 0.18 * e; aDy[i] += 0.02 * e; aHead[i] -= 0.08 * e;
-        if (v < 0.35) { aRa0[i] += (2.35 - b0) * e; aRa1[i] += (2.35 - b1) * e; aYaw[i] += (0.62 - rYaw[i]) * e; aRoll[i] -= 0.1 * e; }
-        return;
+        ln = -0.18 * e; dy = 0.02 * e; hd = -0.08 * e;
+        if (v < 0.35) { a0 = (2.35 - b0) * e; a1 = (2.35 - b1) * e; yw = (0.62 - rYaw[i]) * e; rl = -0.1 * e; }
+        break;
       }
-      case 'cheer': {
-        var tc2 = t - 0.15 * u; e = env(tc2, 0.25, 0.45, dur - 0.15); if (!e) return;
-        var per = 0.36 + 0.12 * v; aDy[i] += (kidF[i] ? 0.27 : 0.2) * Math.abs(Math.sin(Math.PI * tc2 / per)) * e;
-        aRa0[i] += (2.75 - b0) * e; aRa1[i] += (2.75 - b1) * e; aYaw[i] -= rYaw[i] * e; aRoll[i] += 0.3 * e; aLean[i] -= 0.04 * e; aHead[i] -= 0.08 * e; return;
+      case 'cheer': { // r.k0 / r.spread: the cheer ripples out from one place; r.big: bigger hops
+        var tc2 = t - 0.15 * u - (r.spread ? Math.abs(key[i] - r.k0) * r.spread : 0); e = env(tc2, 0.25, 0.45, (r.base || r.dur) / 1000 - 0.15); if (!e) return;
+        var per = 0.36 + 0.12 * v; dy = (kidF[i] ? 0.27 : 0.2) * (r.big ? 1.2 : 1) * Math.abs(Math.sin(Math.PI * tc2 / per)) * e;
+        a0 = (2.75 - b0) * e; a1 = (2.75 - b1) * e; yw = -rYaw[i] * e; rl = 0.3 * e; ln = -0.04 * e; hd = -0.08 * e; break;
       }
       case 'aw': {
         e = env(t - 0.2 * u, 0.5, 0.7, dur - 0.2); if (!e) return;
-        aLean[i] += 0.1 * e; aHead[i] += 0.22 * e; aTilt[i] += (v < 0.5 ? 0.2 : -0.2) * e; aDy[i] -= 0.03 * e;
-        aRa0[i] += (0.2 - b0) * e; aRa1[i] += (0.2 - b1) * e; return;
+        ln = 0.1 * e; hd = 0.22 * e; tl = (v < 0.5 ? 0.2 : -0.2) * e; dy = -0.03 * e;
+        a0 = (0.2 - b0) * e; a1 = (0.2 - b1) * e; break;
       }
       // ---- COLLECT (spot the fan) block: 'hi' = one fan waves once (right arm up, three side-to-side waves, down) ----
       case 'hi': {
         e = env(t, 0.3, 0.45, dur); if (!e) return;
         var wv = Math.sin(6.2832 * 1.7 * Math.max(0, t - 0.3)) * sm((t - 0.25) / 0.2) * sm((dur - 0.45 - t) / 0.25);
-        aRa1[i] += (2.75 - b1 + 0.28 * wv) * e; aYaw[i] += -rYaw[i] * e; aDy[i] += 0.05 * e; aHead[i] -= 0.06 * e; aTilt[i] += 0.12 * wv * e;
+        a1 = (2.75 - b1 + 0.28 * wv) * e; yw = -rYaw[i] * e; dy = 0.05 * e; hd = -0.06 * e; tl = 0.12 * wv * e;
+        aRa1[i] += a1; aYaw[i] += yw; aDy[i] += dy; aHead[i] += hd; aTilt[i] += tl; // a fan he tapped always waves, whatever they hold
         return;
       }
       // ---- end COLLECT block ----
       case 'wave': {
         var f = (s / r.dur) * 1.5 - 0.25, dd = (key[i] - f) / 0.15; if (dd <= -1 || dd >= 1) return;
         var up = 0.5 * (1 + Math.cos(Math.PI * dd));
-        aDy[i] += 0.5 * up; aRa0[i] += (2.8 - b0) * up; aRa1[i] += (2.8 - b1) * up; aYaw[i] -= rYaw[i] * up; aRoll[i] += 0.25 * up; return;
+        dy = 0.5 * up; a0 = (2.8 - b0) * up; a1 = (2.8 - b1) * up; yw = -rYaw[i] * up; rl = 0.25 * up; break;
       }
+      case 'mwave': { // one Mexican wave, once round the ground (r.dir: +1 left to right, -1 right to left)
+        var f2 = (s / r.dur) * 1.4 - 0.2, pos = r.dir > 0 ? key[i] : 1 - key[i], d2 = (pos - f2) / 0.075; if (d2 <= -1 || d2 >= 1) return;
+        var up2 = 0.5 * (1 + Math.cos(Math.PI * d2));
+        dy = 0.4 * up2; a0 = (2.85 - b0) * up2; a1 = (2.85 - b1) * up2; yw = -rYaw[i] * up2; rl = 0.22 * up2; ln = -0.06 * up2; break;
+      }
+      case 'card': { // tifo: hold a card up over the head (in step with the cards), then down again
+        var tq = s - r.del[j], downAt = 750 + r.up + r.hold;
+        e = tq <= 0 ? 0 : sm(tq / r.up); if (s > downAt) e = Math.min(e, 1 - sm((s - downAt - r.del[j] * 0.3) / r.down)); if (e <= 0) return;
+        a0 = (2.25 - b0) * e; a1 = (2.25 - b1) * e; yw = (0.42 - rYaw[i]) * e; hd = -0.06 * e; break;
+      }
+      default: return;
+    }
+    var ak = armK[i], hk = hopK[i] * (r.hop == null ? 1 : r.hop);
+    aDy[i] += dy * hk; aLean[i] += ln; aHead[i] += hd; aTilt[i] += tl; aHy[i] += hy;
+    aRa0[i] += a0 * ak; aRa1[i] += a1 * ak; aYaw[i] += yw * ak; aRoll[i] += rl * ak;
+  }
+  // keep at most 12 reactions; never drop a stance change (that would make someone jump)
+  function pushR(r) {
+    if (!r.idx || !r.idx.length) return false;
+    if (reacts.length >= 12) { for (var k = 0; k < reacts.length; k++) if (reacts[k].kind !== 'shift') { reacts.splice(k, 1); break; } }
+    reacts.push(r); return true;
+  }
+
+  // ===== the displays (banners, tifo, confetti cannons, phone lights): built for the stadium only =====
+  var banners = null, tifo = null, confetti = null, phones = null, tifoOf = null, phoneIdx = [], cannons = [], night = dim <= 0.66;
+  function bannerTexts() {
+    if (!banners) return [];
+    var lines = story.bannerLines(banners.nHome), out = [];
+    for (var k = 0; k < banners.specs.length; k++) out.push(k < banners.nHome ? lines[k] || '' : story.rivalLine());
+    return out;
+  }
+  function styleBanners() {
+    var p2 = story.palette();
+    banners.specs.forEach(function (s, k) {
+      var st = s.look;
+      if (st === 'away') { s.bg = p2.away.shirt; s.fg = p2.away.trim; s.fg2 = null; s.out = 'rgba(0,0,0,.35)'; s.edge = p2.away.trim; }
+      else if (st === 'cream') { s.bg = '#fbf6e9'; s.fg = p2.home.shirt; s.fg2 = p2.home.trim; s.out = 'rgba(0,0,0,.18)'; s.edge = p2.home.shirt; }
+      else if (st === 'shirt') { s.bg = p2.home.shirt; s.fg = '#ffffff'; s.fg2 = null; s.out = 'rgba(0,0,0,.35)'; s.edge = p2.home.trim; }
+      else { s.bg = p2.home.trim; s.fg = '#ffffff'; s.fg2 = '#ffe066'; s.out = 'rgba(0,0,0,.35)'; s.edge = '#ffffff'; }
+    });
+  }
+  if (live && cast) {
+    // banners: between the holders' hands, facing the pitch
+    var specs = [];
+    function bannerSpec(pr, look) {
+      var ha = [handAt(pr[0], 0), handAt(pr[0], 1)], hb = [handAt(pr[1], 0), handAt(pr[1], 1)];
+      if (!ha[0] || !hb[0]) return null;
+      var pa = { x: (ha[0].x + ha[1].x) / 2, y: (ha[0].y + ha[1].y) / 2, z: (ha[0].z + ha[1].z) / 2 }, pb = { x: (hb[0].x + hb[1].x) / 2, y: (hb[0].y + hb[1].y) / 2, z: (hb[0].z + hb[1].z) / 2 };
+      var ry = pts[pr[0]].sRy != null ? pts[pr[0]].sRy : pts[pr[0]].ry, nx = Math.sin(ry), nz = Math.cos(ry), ax = nz, az = -nx;
+      var w = Math.abs((pb.x - pa.x) * ax + (pb.z - pa.z) * az) + 0.34, h = Math.max(0.42, Math.min(0.66, w * 0.27));
+      return { x: (pa.x + pb.x) / 2 + nx * 0.07, y: Math.max(pa.y, pb.y) + 0.06, z: (pa.z + pb.z) / 2 + nz * 0.07, ax: ax, az: az, nx: nx, nz: nz, w: w, h: h, look: look, text: '' };
+    }
+    var looks = ['cream', 'shirt', 'trim', 'cream', 'shirt', 'cream', 'trim', 'shirt'];
+    cast.holders.forEach(function (pr, k) { var s = bannerSpec(pr, looks[k % looks.length]); if (s) specs.push(s); });
+    var nHome = specs.length;
+    if (cast.rival) { var sr = bannerSpec(cast.rival, 'away'); if (sr) specs.push(sr); }
+    if (specs.length) {
+      banners = makeBanners(group, specs); banners.nHome = nHome;
+      styleBanners(); banners.retext(bannerTexts());
+      if (o.detached) banners.setOpen();
     }
   }
+  if (live && !o.detached) {
+    // tifo (tier 3+): the lower rows of the back stand, a block clear of the scoreboard, as close to the middle as it gets
+    var backRows = (rows.stands[0] || []).slice();
+    if (tier >= 3 && backRows.length >= 4) {
+      var lower = [backRows[0]]; for (var lr = 1; lr < backRows.length; lr++) { if (backRows[lr].y - backRows[lr - 1].y > 0.9) break; lower.push(backRows[lr]); }
+      var xmin = 1e9, xmax = -1e9; lower.forEach(function (r) { r.list.forEach(function (i) { xmin = Math.min(xmin, pts[i].x); xmax = Math.max(xmax, pts[i].x); }); });
+      var ivs = [[xmin + 0.3, xmax - 0.3]];
+      if (board) { var b0x = board.x - board.w / 2 - 1.2, b1x = board.x + board.w / 2 + 1.2; ivs = [[xmin + 0.3, Math.min(xmax - 0.3, b0x)], [Math.max(xmin + 0.3, b1x), xmax - 0.3]].filter(function (v) { return v[1] - v[0] > 4; }); }
+      var bestIv = null, bestD = 1e9; ivs.forEach(function (v) { var c = Math.max(v[0], Math.min(v[1], 0)), d = Math.abs(c) - (v[1] - v[0]) * 0.05; if (d < bestD) { bestD = d; bestIv = v; } });
+      if (bestIv) {
+        var hw = Math.min(6.2, (bestIv[1] - bestIv[0]) / 2), cx = Math.max(bestIv[0] + hw, Math.min(bestIv[1] - hw, 0)), x0 = cx - hw, cardList = [], owner = [];
+        tifoOf = new Int32Array(N).fill(-1);
+        lower.forEach(function (r, lv) {
+          var nx = Math.sin(r.ry), nz = Math.cos(r.ry);
+          function addCard(x, z, who) { if (x < x0 - 0.01 || x > cx + hw + 0.01) return; cardList.push({ x: x + nx * 0.16, y: r.y + 0.62, z: z + nz * 0.16, ry: r.ry, c: Math.round((x - x0) / 0.62), r: lv }); owner.push(who); }
+          r.list.forEach(function (i) { if (!pts[i].hold && !pts[i].band) addCard(pts[i].x, pts[i].z, i); });
+          empties.forEach(function (e) { if (e.stand === r.stand && Math.abs(e.y - r.y) < 0.05) addCard(e.x, e.z, -1); });
+        });
+        var cols = 0; cardList.forEach(function (cd) { cols = Math.max(cols, cd.c + 1); });
+        var tgeo = build(cardGeo, 0);
+        tifo = makeTifo(group, cardList, tgeo, mat, cols, lower.length);
+        if (tifo) { tifo.cols = cols; tifo.rows = lower.length; owner.forEach(function (who, ci) { if (who >= 0) tifoOf[who] = ci; }); }
+      }
+    }
+    // confetti cannons on the stand fronts
+    Object.keys(rows.stands).forEach(function (k) {
+      var fr = rows.stands[k][0]; if (!fr || fr.list.length < 6) return;
+      [0.15, 0.5, 0.85].forEach(function (f) { var p = pts[fr.list[Math.floor(f * (fr.list.length - 1))]], nx = Math.sin(fr.ry), nz = Math.cos(fr.ry); cannons.push({ x: p.x + nx * 0.9, y: p.y + 0.1, z: p.z + nz * 0.9, nx: nx, nz: nz }); });
+    });
+    confetti = makeConfetti(group, [300, 550, 850][det], FLOOR_Y);
+    // phone lights at dusk and night (after a win)
+    if (night) {
+      var spots = [], RP = rng(4711);
+      for (var ph = 0; ph < N; ph++) {
+        var pp = pts[ph]; if (!rk[ph] || pp.job || armK[ph] < 1 || heldT[ph] || RP() > 0.42) continue;
+        var bb = ph * 12, kk = base[bb + 5], fx2 = base[bb + 2] / kk, fz2 = base[bb + 10] / kk, sx = base[bb] / kk, sz = base[bb + 8] / kk; // forward and the person's +x (right)
+        spots.push({ x: base[bb + 3] + (sx * 0.27 + fx2 * 0.12) * kk, y: base[bb + 7] + 1.12 * kk, z: base[bb + 11] + (sz * 0.27 + fz2 * 0.12) * kk, d: Math.abs(key[ph] - 0.5) * 1800 + RP() * 250 });
+        phoneIdx.push(ph);
+      }
+      phones = makePhones(group, spots);
+    }
+    // where everyone looks for a replay: the big screen
+    if (board) for (var il = 0; il < N; il++) {
+      var bi = il * 12, ang = Math.atan2(board.x - base[bi + 3], board.z - base[bi + 11]) - bRy[il];
+      while (ang > Math.PI) ang -= 2 * Math.PI; while (ang < -Math.PI) ang += 2 * Math.PI;
+      lookYaw[il] = Math.max(-1.15, Math.min(1.15, ang));
+    }
+  }
+
+  // ===== the director: what a reaction means, and how these supporters answer it =====
+  var recent = [], tifoN = 0, waveDir = 1, goodN = 0;
+  function centre(lo, hi) { // a place along the stands away from the last few used
+    var best = (lo + hi) / 2, bd = -1;
+    for (var k = 0; k < 7; k++) { var c = lo + Math.random() * (hi - lo), d = 1; for (var j = 0; j < recent.length; j++) d = Math.min(d, Math.abs(c - recent[j])); if (d > bd) { bd = d; best = c; } }
+    recent.push(best); if (recent.length > 3) recent.shift();
+    return best;
+  }
+  function who(fn, frac) { var l = []; for (var i = 0; i < N; i++) if (rk[i] && fn(i) && Math.random() < frac) l.push(i); return l; }
+  function R_(kind, idx, now, x) { return pushR(Object.assign({ kind: kind, t0: now, dur: DUR[kind], base: DUR[kind], idx: idx, hop: hopG }, x || {})); }
+  function cheerFrom(idx, k0, spread, now, big) { // a cheer that ripples out from k0
+    var mx = 0; for (var j = 0; j < idx.length; j++) mx = Math.max(mx, Math.abs(key[idx[j]] - k0));
+    if (reducedNow) spread = 0;
+    return R_('cheer', idx, now, { k0: k0, spread: spread, big: !!big, dur: DUR.cheer + mx * spread * 1000 });
+  }
+  function awayClap(now) { var l = who(function (i) { return away[i]; }, 0.85); return l.length ? R_('clap', l, now + 250, { dur: 2200, base: 2200 }) : false; }
+  function flagsUp(now, k0) { var l = []; for (var i = 0; i < N; i++) if (rk[i] && heldT[i] && heldT[i] < 4 && !away[i]) l.push(i); return stance(l, B_FLAG, true, now, reducedNow ? 250 : 650, function (i) { return reducedNow ? 0 : 250 + Math.abs(key[i] - k0) * 900; }); }
+  function stunt(pic, now) {
+    if (!tifo || tifo.busy()) return false;
+    var p2 = story.palette(), cols3 = [p2.home.shirt, '#ffffff', p2.home.trim];
+    var sh = tifo.show(pic, cols3, now, reducedNow), l = [], del = [];
+    for (var i = 0; i < N; i++) if (tifoOf[i] >= 0 && rk[i]) { l.push(i); del.push(sh.delay[tifoOf[i]]); }
+    R_('card', l, now, { del: Float32Array.from(del), up: sh.up, hold: sh.hold, down: sh.down, dur: sh.dur, hop: 0 });
+    return true;
+  }
+  function picture(kind) { return tifo ? tifoPicture(kind === 'num' ? 'word' : kind, tifo.cols, tifo.rows, kind === 'num' ? story.jersey() : kind === 'goal' ? 'GOAL' : '') : null; }
+  var hopG = 1, reducedNow = false;
+  function direct(kind, opts, now, low) {
+    var m = story.moment(kind, opts), any = false;
+    reducedNow = story.reduced(); hopG = reducedNow ? 0 : 1;
+    var home = function (i) { return !away[i]; }, all = function () { return true; };
+    if (banners && !banners.isOpen() && banners.unfurl(now, reducedNow)) any = true; // the banners unroll at the first reaction of a match
+    if (kind !== 'gasp' && withBit(B_LEAN).length) any = release(B_LEAN, now, m === 'lost' ? 1100 : 380) || any; // the challenge is over
+    if (m !== 'kickoff' && withBit(B_SCARF).length) any = release(B_SCARF, now, 800) || any;
+    var lf = low ? 0.6 : 1;
+    switch (m) {
+      case 'move': { var c = centre(0.06, 0.94); any = R_('clap', who(function (i) { return Math.abs(key[i] - c) < 0.12; }, 0.8 * lf), now) || any; break; }
+      case 'challenge': { // a gasp, then most of the ground leans in and stays leaning in (still) until it is decided
+        any = R_('gasp', who(all, 0.85 * lf), now) || any;
+        any = stance(who(all, 0.8), B_LEAN, true, now, reducedNow ? 250 : 700, function () { return reducedNow ? 0 : 350 + Math.random() * 250; }) || any;
+        break;
+      }
+      case 'lost': { // a kind sigh (never a boo), then an encouraging clap from two sections
+        any = R_('aw', who(home, 0.75 * lf), now) || any;
+        var c1 = centre(0.1, 0.9), c2 = centre(0.1, 0.9);
+        any = R_('clap', who(function (i) { return Math.abs(key[i] - c1) < 0.15 || Math.abs(key[i] - c2) < 0.15 || away[i]; }, 0.8 * lf), now + 1600, { dur: 2000, base: 2000 }) || any;
+        break;
+      }
+      case 'kickoff': { // the teams come out: a cheer from the home end, scarves up (and held), flags up
+        any = cheerFrom(who(home, 0.85 * lf), 0.3, 1.1, now, false) || any;
+        any = R_('cheer', who(function (i) { return away[i]; }, 0.85 * lf), now + 150) || any;
+        var sl = []; for (var i = 0; i < N; i++) if (rk[i] && heldT[i] === 3) sl.push(i);
+        any = stance(sl, B_SCARF, true, now, reducedNow ? 250 : 800, function (i) { return reducedNow ? 0 : 900 + Math.abs(key[i] - 0.3) * 1100; }) || any;
+        any = flagsUp(now + 400, 0.3) || any;
+        break;
+      }
+      case 'goal': { // a Goal is set: one or two sections cheer, the flags go up and stay up for the shake
+        var cg = centre(0.1, 0.9);
+        any = cheerFrom(who(function (i) { return home(i) && Math.abs(key[i] - cg) < 0.2; }, 0.85 * lf), cg, 1.6, now, false) || any;
+        any = flagsUp(now, cg) || any;
+        break;
+      }
+      case 'shake': case 'brilliant': { // a great shake: the whole home end, rippling from a new place; something extra each time
+        goodN++;
+        var k0 = centre(0.15, 0.85);
+        any = cheerFrom(who(home, 0.85 * lf), k0, 1.2, now, m === 'brilliant') || any;
+        any = awayClap(now) || any; any = flagsUp(now, k0) || any;
+        if (m === 'brilliant' && !low && !reducedNow) { any = R_('mwave', who(all, 1), now + 1300, { dir: waveDir, hop: 1 }) || any; waveDir = -waveDir; }
+        if (tifo && (m === 'brilliant' || goodN % 2 === 0)) any = stunt(picture(tifoN++ % 2 ? 'cube' : 'num'), now + 500) || any;
+        break;
+      }
+      case 'win': case 'trophy': { // the big one: everyone, a wave once round, the card stunt, confetti, phones at night
+        any = cheerFrom(who(home, 0.9), 0.5, 0.8, now, true) || any;
+        any = awayClap(now) || any; any = flagsUp(now, 0.5) || any;
+        if (!low && !reducedNow) { any = R_('mwave', who(all, 1), now + 1500, { dir: waveDir, hop: 1 }) || any; waveDir = -waveDir; }
+        if (tifo) any = stunt(picture(m === 'win' ? 'goal' : 'star'), now + 700) || any;
+        if (confetti && !reducedNow && cannons.length) any = confetti.burst(cannons, [story.palette().home.shirt, story.palette().home.trim, '#ffffff', '#ffd43b'], now + 300, Math.round((confetti.points.geometry.attributes.aAlpha.count) * (story.calm() ? 0.35 : 1))) || any;
+        if (phones && !phones.on()) { phones.light(now + 1400, reducedNow); any = stance(phoneIdx, B_PHONE, true, now, reducedNow ? 250 : 600, function (i) { return reducedNow ? 0 : 1400 + Math.abs(key[i] - 0.5) * 1800; }) || any; }
+        break;
+      }
+      case 'replay': { // (heads already turned to the screen) the section nearest the screen cheers the replayed Goal
+        var cb = board ? Math.max(0.3, Math.min(0.7, 0.5 + board.x / 60)) : 0.6;
+        any = cheerFrom(who(function (i) { return home(i) && Math.abs(key[i] - cb) < 0.22; }, 0.85 * lf), cb, 1.5, now, false) || any;
+        break;
+      }
+      default: return plain(kind, opts, now, low) || any;
+    }
+    return any;
+  }
+  function plain(kind, opts, now, low) { // the first crowd's reactions, as they were
+    var list = pick2(kind, opts, low); if (!list.length) return false;
+    pushR({ kind: kind, t0: now, dur: DUR[kind], idx: list });
+    if (kind === 'cheer' && opts.wave && !low) pushR({ kind: 'wave', t0: now + 250, dur: DUR.wave, idx: pick2('wave', opts, low) });
+    return true;
+  }
+
+  // ===== the watcher: a few times a second while frames are drawn, looks at the game (no work at rest otherwise) =====
+  var w0 = live && !o.detached ? story.watch() : null, wLast = -1e9, wG = w0 ? w0.g : null, wShake = w0 ? w0.shake : 0, wRep = false, wSig = live ? story.sig() : '';
+  function watcher(now) {
+    if (Math.abs(now - wLast) < 250) return;
+    wLast = now;
+    var w = story.watch(), sg = story.sig();
+    if (sg !== wSig) { wSig = sg; repaint(); }
+    if (w.g !== wG) { wG = w.g; wShake = w.shake; newMatch(now); }
+    else if (w.shake !== wShake) { wShake = w.shake; release(B_FLAG, now, 700); release(B_LEAN, now, 500); } // a new shake: flags down, done leaning
+    if (w.replay !== wRep) {
+      wRep = w.replay;
+      if (wRep && board) stance(who(function (i) { return !pts[i].job; }, 0.85), B_LOOK, true, now, reducedNow ? 250 : 550, function (i) { return reducedNow ? 0 : Math.min(900, Math.hypot(base[i * 12 + 3] - board.x, base[i * 12 + 11] - board.z) * 28); });
+      else release(B_LOOK, now, 650);
+    }
+  }
+  function newMatch(now) { // a new match on the same venue: everyone settles back into the plain still tableau
+    for (var b = 1; b <= 16; b *= 2) release(b, now, 500);
+    if (banners) banners.furl();
+    if (phones) phones.off();
+    if (tifo) tifo.stop();
+    if (confetti) confetti.stop();
+  }
+
   var api = {
     pts: pts, N: N, meshes: meshes, group: group,
     attached: function () { var p = group; while (p.parent) p = p.parent; return !!p.isScene; },
-    busy: function () { return reacts.length > 0 || pending; },
+    busy: function () { return reacts.length > 0 || pending || !!(tifo && tifo.busy()) || !!(confetti && confetti.busy()); },
     // draw calls and triangles this crowd adds (for the notes and for checks)
     // tris: triangles sent (vertex work); drawn: triangles that are not collapsed (raster work)
     stats: function () {
@@ -873,47 +1492,59 @@ export function makeBlockCrowd(group, pts, o) {
         var meta = g.attributes.iMeta.array;
         for (k = 0; k < m.count; k++) dr += (perVar[0] || 0) + (meta[k * 3 + 2] ? perVar[meta[k * 3 + 2]] || 0 : 0);
       });
-      return { people: N, draws: meshes.length, tris: Math.round(t), drawn: dr, parts: parts.map(function (P) { return P.key + ':' + P.mesh.count; }) };
+      var shows = { banners: banners ? banners.specs.length : 0, tifoCards: tifo ? tifo.cards.length : 0, confetti: !!confetti, phones: phoneIdx.length, emptySeats: empties.length,
+        staff: pts.filter(function (p) { return p.job; }).map(function (p) { return p.job; }), band: pts.filter(function (p) { return p.band; }).length, standing: pts.filter(function (p) { return p.stand && !p.job; }).length, away: away.reduce(function (s2, v) { return s2 + v; }, 0) };
+      var showDraws = (banners ? 1 : 0) + (tifo && tifo.mesh.visible ? 1 : 0) + (confetti && confetti.points.visible ? 1 : 0) + (phones && phones.points.visible ? 1 : 0);
+      return { people: N, draws: meshes.length, showDraws: showDraws, tris: Math.round(t), drawn: dr, parts: parts.map(function (P) { return P.key + ':' + P.mesh.count; }), shows: shows };
     },
     // returns true if a reaction started (or the same one is already under way)
     react: function (kind, opts) {
       if (!N) return false;
       kind = kind === 'aww' ? 'aw' : String(kind || '');
-      if (!DUR[kind]) return false;
+      if (!DUR[kind] || kind === 'mwave') return false;
       opts = opts || {};
       var now = performance.now(), low = quality() < 1;
-      for (var k = 0; k < reacts.length; k++) if (reacts[k].kind === kind && now - reacts[k].t0 < 400) return true; // no stacking up
-      var list = pick2(kind, opts, low); if (!list.length) return false;
-      if (reacts.length >= 4) reacts.shift();
-      reacts.push({ kind: kind, t0: now, dur: DUR[kind], idx: list });
-      if (kind === 'cheer' && opts.wave && !low) reacts.push({ kind: 'wave', t0: now + 250, dur: DUR.wave, idx: pick2('wave', opts, low) });
-      return true;
+      for (var k = 0; k < reacts.length; k++) if (reacts[k].kind === kind && now - reacts[k].t0 < 400 && reacts[k].t0 <= now) return true; // no stacking up
+      if (live && !o.detached && kind !== 'wave' && kind !== 'hi') return direct(kind, opts, now, low);
+      return plain(kind, opts, now, low);
     },
     // true while something moved this frame (the table keeps rendering); false once everyone is still
     step: function (now) {
-      if (!reacts.length) { if (pending) { pending = false; restoreAll(); return true; } return false; }
+      var busy = false;
+      if (w0) watcher(now);
+      if (banners && banners.step(now)) busy = true;
+      if (tifo && tifo.step(now)) busy = true;
+      if (confetti && confetti.step(now)) busy = true;
+      if (phones && phones.step(now)) busy = true;
+      if (!reacts.length) { if (pending) { pending = false; restoreAll(); return true; } return busy; }
       stamp++; nCur = 0;
       var nl = 0, r, j, i, s;
       for (var k = 0; k < reacts.length; k++) {
         r = reacts[k]; s = now - r.t0;
         if (s >= r.dur) continue;
         reacts[nl++] = r; // keep the live ones, in place (no garbage per frame)
-        if (s < 0) continue;
+        if (s < 0) { if (r.kind !== 'shift') continue; s = 0; } // a stance change holds the old pose until it starts
         for (j = 0; j < r.idx.length; j++) {
           i = r.idx[j];
-          if (mark[i] !== stamp) { mark[i] = stamp; cur[nCur++] = i; aDy[i] = aLean[i] = aHead[i] = aTilt[i] = aRa0[i] = aRa1[i] = aRoll[i] = aYaw[i] = 0; }
-          add2(r, i, s);
+          if (mark[i] !== stamp) { mark[i] = stamp; cur[nCur++] = i; aDy[i] = aLean[i] = aHead[i] = aTilt[i] = aHy[i] = aRa0[i] = aRa1[i] = aRoll[i] = aYaw[i] = 0; }
+          add2(r, i, s, j);
         }
       }
       reacts.length = nl;
-      for (j = 0; j < nCur; j++) { i = cur[j]; pose(i, aDy[i], aLean[i], aHead[i], aTilt[i], aRa0[i], aRa1[i], aRoll[i], aYaw[i]); }
+      for (j = 0; j < nCur; j++) { i = cur[j]; pose(i, true); }
       for (j = 0; j < nPrev; j++) { i = prev[j]; if (mark[i] !== stamp) restorePerson(i); }
       var sw = prev; prev = cur; cur = sw; nPrev = nCur;
       if (!reacts.length) { restoreAll(); nPrev = 0; pending = false; return true; } // exactly the rest pose: completely still
       uploadAll(); pending = true;
       return true;
     },
-    reset: function () { reacts = []; nPrev = 0; pending = false; restoreAll(); if (current === api) current = null; },
+    reset: function () { reacts = []; nPrev = 0; pending = false; restoreAll(); if (tifo) tifo.stop(); if (confetti) confetti.stop(); if (current === api) current = null; },
+    // for checks: the rest pose arrays and the live ones are identical (the crowd is perfectly still)
+    stillCheck: function () { var d = 0; dyn.forEach(function (m, k) { var a = m.instanceMatrix.array, r2 = rest[k]; for (var q = 0; q < a.length; q++) d = Math.max(d, Math.abs(a[q] - r2[q])); }); return { maxDiff: d, reacts: reacts.length, pending: pending, busy: api.busy() }; },
+    // for checks: which stances are held now ({ lean, flag, scarf, look, phone } counts) and the displays
+    stances: function () { var c = { lean: 0, flag: 0, scarf: 0, look: 0, phone: 0 }; for (var i = 0; i < N; i++) { var b = bits[i]; if (b & B_LEAN) c.lean++; if (b & B_FLAG) c.flag++; if (b & B_SCARF) c.scarf++; if (b & B_LOOK) c.look++; if (b & B_PHONE) c.phone++; } c.bannersOpen = banners ? banners.isOpen() : null; c.phonesOn = phones ? phones.on() : null; return c; },
+    // for checks and the notes: the displays (null where this venue has none)
+    shows: function () { return { banners: banners, tifo: tifo, confetti: confetti, phones: phones }; },
     // ---- COLLECT (spot the fan) block: picking and the one-person wave (additive; nothing above uses it) ----
     // chars(): [{ i, kind }] the character fans of this crowd (the same ones every time this venue is built at this tier)
     chars: function () { var out = []; for (var i = 0; i < N; i++) if (pts[i].charKind) out.push({ i: i, kind: pts[i].charKind }); return out; },
@@ -949,8 +1580,7 @@ export function makeBlockCrowd(group, pts, o) {
       if (!(i >= 0 && i < N)) return false;
       var now = performance.now();
       for (var k = 0; k < reacts.length; k++) if (reacts[k].kind === 'hi' && reacts[k].idx[0] === i && now - reacts[k].t0 < reacts[k].dur) return true;
-      if (reacts.length >= 4) reacts.shift();
-      reacts.push({ kind: 'hi', t0: now, dur: DUR.hi, idx: [i] });
+      pushR({ kind: 'hi', t0: now, dur: DUR.hi, idx: [i] });
       return true;
     }
     // ---- end COLLECT block ----
