@@ -3,6 +3,8 @@
    The 3D scene lives in the fixed layer #t3title behind the screens; the menu is HTML on top of it,
    in a glass panel: on the right on wide screens, at the bottom in portrait. Without 3D the flat
    title is used (same markup, no .t3 class). Nothing here loops: only one-shot entrances and feedback.
+   The main menu (class prefix mm-): a big Play + "Pick who", four mode tiles, "My stuff" mini tiles,
+   Settings / How to Play. The chooser pop-ups (3 Players, Play with Tata) use .mm-opt.
    =================================================================== */
 
 /* ---------- the 3D layer ---------- */
@@ -30,29 +32,55 @@ body.t3on #t3title::after{content:"";position:absolute;inset:0;pointer-events:no
 /* ---------- title: shared (flat and 3D) ---------- */
 #title .t-greet{display:flex;align-items:center;gap:10px;margin:4px 0 10px;flex-wrap:nowrap}
 #title .t-panel{display:flex;flex-direction:column;align-items:center;width:100%}
-#title .menu{width:min(640px,94vw)}
+#title .mm-me{display:flex;align-items:center;gap:8px;width:min(560px,94vw)}
+#title .mm-me .playercard{flex:1;min-width:0;width:auto}
+#title .mm-acct:empty{display:none}   /* ACCOUNT chip slot: no space until something is put in it */
+#title .mm-acct{flex:0 0 auto;display:flex;align-items:center}
 
-/* sticker buttons: an icon badge, a glossy top, a little lift on hover, a squish on press */
-#title .menu .btn,#title .menu-sub .btn{transition:transform .16s cubic-bezier(.3,1.6,.5,1),box-shadow .16s,filter .15s}
-#title .menu .btn{border-radius:22px;padding:9px 18px 9px 10px;gap:13px;min-height:62px;overflow:hidden;
+#title .mm{display:flex;flex-direction:column;gap:10px;width:min(560px,94vw)}
+#title .mm .btn{transition:transform .16s cubic-bezier(.3,1.6,.5,1),box-shadow .16s,filter .15s}
+/* big Play + "Pick who" */
+#title .mm-hero{display:grid;grid-template-columns:1fr auto;gap:8px}
+#title .mm-play{min-width:0;width:100%;justify-content:center;min-height:76px;font-size:34px;padding:8px 14px 8px 10px;gap:12px;border-radius:24px;overflow:hidden;
   box-shadow:0 5px 0 var(--edge),0 10px 18px rgba(0,0,0,.32),inset 0 2px 0 var(--hi),inset 0 0 0 2px rgba(255,255,255,.16)}
-#title .menu .btn::after{content:"";position:absolute;left:7px;right:7px;top:4px;height:44%;border-radius:17px 17px 50% 50%/17px 17px 14px 14px;
-  background:linear-gradient(rgba(255,255,255,.34),rgba(255,255,255,0));pointer-events:none}
-#title .menu .btn .bi{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:44px;height:44px;border-radius:15px;
+#title .mm-play .bl{display:flex;flex-direction:column;align-items:flex-start;line-height:1;position:relative;z-index:1}
+#title .mm-play .bl small{font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:15px;letter-spacing:0;opacity:.95;margin-top:3px;max-width:11em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#title .mm-pick{flex-direction:column;gap:2px;min-width:74px;min-height:76px;padding:6px 8px;border-radius:20px;font-size:14px;line-height:1.05}
+#title .mm-pick .ico{width:28px;height:28px}
+/* the four ways to play */
+#title .mm-modes{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+#title .mm-tile{width:100%;min-width:0;justify-content:flex-start;min-height:62px;padding:7px 10px 7px 7px;gap:10px;border-radius:19px;font-family:var(--display);font-weight:400;font-size:20px;letter-spacing:.3px;overflow:hidden;
+  box-shadow:0 5px 0 var(--edge),0 9px 16px rgba(0,0,0,.3),inset 0 2px 0 var(--hi),inset 0 0 0 2px rgba(255,255,255,.16)}
+#title .mm-tile .bl{position:relative;z-index:1;text-align:left;line-height:1.02}
+/* glossy top and icon badge (Play and the mode tiles) */
+#title .mm-play::after,#title .mm-tile::after{content:"";position:absolute;left:7px;right:7px;top:4px;height:44%;border-radius:15px 15px 50% 50%/15px 15px 12px 12px;
+  background:linear-gradient(rgba(255,255,255,.32),rgba(255,255,255,0));pointer-events:none}
+#title .mm .bi{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:40px;height:40px;border-radius:14px;
   background:rgba(255,255,255,.2);box-shadow:inset 0 -3px 0 rgba(0,0,0,.14),0 1px 0 rgba(255,255,255,.3)}
-#title .menu .btn.yellow .bi{background:rgba(255,255,255,.5)}
-#title .menu .btn .bi .ico{width:26px;height:26px}
-#title .menu .btn .bl{position:relative;z-index:1;text-align:left;line-height:1.05}
-#title .menu .btn.hero{justify-content:center;min-height:82px;font-size:36px;padding-left:16px}
-#title .menu .btn.hero .bi{width:54px;height:54px;border-radius:18px}
-#title .menu .btn.hero .bi .ico{width:32px;height:32px}
+#title .mm .btn.yellow .bi{background:rgba(255,255,255,.5)}
+#title .mm .bi .ico{width:24px;height:24px}
+#title .mm-play .bi{width:52px;height:52px;border-radius:17px}
+#title .mm-play .bi .ico{width:30px;height:30px}
+/* "My stuff" */
+#title .mm-h{margin:2px 0 -3px 4px;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.78);text-align:left;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+#title .mm-stuff{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:7px}
+#title .mm-mini{flex-direction:column;gap:3px;min-width:0;min-height:62px;padding:7px 3px 6px;border-radius:16px;font-size:13px;line-height:1.08}
+#title .mm-mini .ico{width:25px;height:25px}
+#title .mm-mini span{display:block}
+#title .mm-foot{display:flex;gap:8px;justify-content:center}
+#title .mm-foot .btn{flex:1 1 0;min-width:0}
+/* "New" badge (js/tour.js): still, no animation */
+#title .mm-new{position:absolute;top:3px;right:3px;z-index:2;display:inline-flex;align-items:center;gap:2px;padding:1px 6px 1px 4px;border-radius:999px;
+  background:#ffe066;color:#5c3c00;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:11px;letter-spacing:.2px;line-height:16px;text-shadow:none;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+#title .mm-mini .mm-new,#title .mm-foot .mm-new{top:-8px;right:-5px}
+
+/* sticker feel: a little lift on hover, a squish on press */
 @media (hover:hover){
-  #title .menu .btn:hover,#splash .tapgo:hover{transform:translateY(-3px) scale(1.02);filter:brightness(1.07)}
-  #title .menu .btn:hover{box-shadow:0 8px 0 var(--edge),0 16px 26px rgba(0,0,0,.34),inset 0 2px 0 var(--hi),inset 0 0 0 2px rgba(255,255,255,.24)}
-  #title .menu-sub .btn:hover{transform:translateY(-2px)}
+  #title .mm-play:hover,#title .mm-tile:hover,#splash .tapgo:hover{transform:translateY(-3px) scale(1.02);filter:brightness(1.07)}
+  #title .mm-mini:hover,#title .mm-pick:hover,#title .mm-foot .btn:hover{transform:translateY(-2px)}
 }
-#title .menu .btn:active,#splash .tapgo:active{transform:translateY(4px) scale(.97);filter:none;box-shadow:0 1px 0 var(--edge),0 2px 6px rgba(0,0,0,.28),inset 0 2px 0 var(--hi)}
-#title .menu .btn:focus-visible,#title .menu-sub .btn:focus-visible,#splash .tapgo:focus-visible{outline:4px solid #fff;outline-offset:3px}
+#title .mm-play:active,#title .mm-tile:active,#title .mm-mini:active,#title .mm-pick:active,#splash .tapgo:active{transform:translateY(4px) scale(.97);filter:none;box-shadow:0 1px 0 var(--edge),0 2px 6px rgba(0,0,0,.28),inset 0 2px 0 var(--hi)}
+#title .mm .btn:focus-visible,#splash .tapgo:focus-visible{outline:4px solid #fff;outline-offset:3px}
 
 /* ---------- title: 3D ---------- */
 #title.t3{padding:max(12px,calc(var(--sat) + 8px)) max(16px,var(--sar)) max(14px,calc(var(--sab) + 8px)) max(16px,var(--sal))}
@@ -64,55 +92,94 @@ body.t3on #t3title::after{content:"";position:absolute;inset:0;pointer-events:no
 #title.t3.t3-rest .t-greet{opacity:1;transform:translate(-50%,calc(-100% - 6px)) scale(1)}
 #title.t3 .t-greet .bubble{font-size:16px;padding:9px 14px;max-width:min(270px,70vw);text-align:center;border-radius:18px}
 #title.t3 .t-greet .bubble::before{left:50%;top:auto;bottom:-8px;margin:0 0 0 -9px;width:18px;height:18px}
+body.tour-on #title .t-greet{visibility:hidden}   /* the What's new card replaces Pip's greeting while it is up */
 /* the glass panel */
-#title.t3 .t-panel{background:linear-gradient(180deg,rgba(16,30,72,.6),rgba(6,12,32,.74));border:1.5px solid rgba(255,255,255,.16);border-radius:30px;padding:16px 16px 14px;
+#title.t3 .t-panel{background:linear-gradient(180deg,rgba(16,30,72,.6),rgba(6,12,32,.74));border:1.5px solid rgba(255,255,255,.16);border-radius:30px;padding:14px 14px 12px;
   box-shadow:0 22px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14);-webkit-backdrop-filter:blur(10px) saturate(1.15);backdrop-filter:blur(10px) saturate(1.15);
   animation:panelIn .5s cubic-bezier(.2,.9,.3,1.1) both .05s}
 #t3title.t3-low ~ #title.t3 .t-panel{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(8,16,40,.86)}
 @keyframes panelIn{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
-#title.t3 .playercard{width:100%;margin:0 0 10px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}
-#title.t3 .stagechip{margin:0 0 12px;font-size:14px;background:rgba(0,0,0,.3)}
-#title.t3 .menu{width:100%;gap:12px}
-#title.t3 .menu-sub{margin-top:12px}
+#title.t3 .mm-me{width:100%;margin:0 0 8px}
+#title.t3 .playercard{margin:0;padding:7px 12px 7px 8px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}
+#title.t3 .playercard .jersey{width:40px;height:40px;font-size:22px}
+#title.t3 .playercard .pc-name{font-size:20px}
+#title.t3 .playercard .pc-main{gap:5px}
+#title.t3 .stagechip{margin:0 0 10px;font-size:13px;line-height:1.25;padding:4px 12px;background:rgba(0,0,0,.3)}
+#title.t3 .mm{width:100%}
 
 /* wide screens (desktop, iPad landscape): the panel on the right, the scene on the left */
 @media (min-aspect-ratio:11/10) and (min-width:700px){
-  #title.t3 .t-panel{position:absolute;right:max(20px,calc(var(--sar) + 12px));top:50%;width:clamp(330px,32vw,410px);max-height:calc(100% - 28px);overflow-y:auto;
+  #title.t3 .t-panel{position:absolute;right:max(20px,calc(var(--sar) + 12px));top:50%;width:clamp(340px,32vw,410px);max-height:calc(100% - 28px);overflow-y:auto;
     animation-name:panelInSide;transform:translateY(-50%)}
   @keyframes panelInSide{from{opacity:0;transform:translate(24px,-50%)}to{opacity:1;transform:translateY(-50%)}}
-  #title.t3 .menu{grid-template-columns:1fr}
-  #title.t3 .menu .btn{min-height:58px;font-size:23px}
-  #title.t3 .menu .btn.hero{min-height:76px;font-size:34px}
 }
+/* short wide windows (phone landscape, small laptops): tighter */
 @media (min-aspect-ratio:11/10) and (min-width:700px) and (max-height:700px){
-  #title.t3 .t-panel{padding:12px}
-  #title.t3 .menu{gap:9px}
-  #title.t3 .menu .btn{min-height:50px;font-size:20px}
-  #title.t3 .menu .btn .bi{width:36px;height:36px}
-  #title.t3 .menu .btn.hero{min-height:64px;font-size:30px}
+  #title.t3 .t-panel{padding:10px 10px 9px}
+  #title.t3 .mm{gap:7px}
+  #title.t3 .mm-me{margin-bottom:6px}
+  #title.t3 .stagechip{margin-bottom:7px;font-size:12px}
+  #title.t3 .mm-play,#title.t3 .mm-pick{min-height:62px}
+  #title.t3 .mm-play{font-size:29px}
+  #title.t3 .mm-play .bi{width:44px;height:44px}
+  #title.t3 .mm-tile{min-height:52px;font-size:18px}
+  #title.t3 .mm .bi{width:34px;height:34px}
+  #title.t3 .mm-mini{min-height:54px;padding-top:5px}
+  #title.t3 .mm-foot .btn{min-height:40px}
 }
 /* portrait (phones, iPad upright): the scene on top, the panel at the bottom */
 @media not all and (min-aspect-ratio:11/10), (max-width:699px){
-  #title.t3{justify-content:flex-start;padding-top:max(38vh,250px)}
-  #title.t3 .t-panel{margin-top:auto;width:min(600px,100%);padding:12px 12px 10px;border-radius:26px}
-  #title.t3 .menu{grid-template-columns:1fr 1fr;gap:10px}
-  #title.t3 .menu .btn{min-height:54px;font-size:19px;padding:7px 10px 7px 7px;gap:9px;border-radius:19px}
-  #title.t3 .menu .btn .bi{width:38px;height:38px;border-radius:13px}
-  #title.t3 .menu .btn .bi .ico{width:22px;height:22px}
-  #title.t3 .menu .btn.hero{grid-column:1/-1;min-height:66px;font-size:30px}
-  #title.t3 .menu .btn.hero .bi{width:46px;height:46px}
-  #title.t3 .playercard{padding:7px 12px 7px 8px;margin-bottom:8px}
-  #title.t3 .playercard .jersey{width:38px;height:38px;font-size:21px}
-  #title.t3 .playercard .pc-name{font-size:19px}
-  #title.t3 .stagechip{font-size:13px;margin-bottom:10px;padding:4px 12px}
-  #title.t3 .menu-sub{margin-top:10px}
-  #title.t3 .menu-sub .btn{min-height:44px;font-size:16px}
+  #title.t3{justify-content:flex-start;padding-top:max(36vh,240px)}
+  #title.t3 .t-panel{margin-top:auto;width:min(600px,100%);padding:11px 11px 10px;border-radius:26px}
+  #title.t3 .mm{gap:8px}
+  #title.t3 .mm-me{margin-bottom:7px}
+  #title.t3 .playercard .jersey{width:36px;height:36px;font-size:20px}
+  #title.t3 .playercard .pc-name{font-size:18px}
+  #title.t3 .stagechip{font-size:12px;margin-bottom:8px;padding:3px 10px}
+  #title.t3 .mm-play,#title.t3 .mm-pick{min-height:64px}
+  #title.t3 .mm-play{font-size:30px}
+  #title.t3 .mm-play .bi{width:44px;height:44px}
+  #title.t3 .mm-tile{min-height:54px;font-size:18px;gap:8px;padding:6px 8px 6px 6px}
+  #title.t3 .mm .bi{width:36px;height:36px;border-radius:12px}
+  #title.t3 .mm .bi .ico{width:21px;height:21px}
+  #title.t3 .mm-mini{min-height:56px;font-size:12.5px}
+  #title.t3 .mm-mini .ico{width:23px;height:23px}
+  #title.t3 .mm-foot .btn{min-height:40px;font-size:15px}
 }
 @media (max-width:360px){
-  #title.t3 .menu .btn{font-size:17px}
+  #title .mm-tile{font-size:16px}
+  #title .mm-play{font-size:27px}
+  #title .mm-mini{font-size:11.5px}
 }
-/* the flat title (no 3D): the same buttons on the mat, laid out as before */
+/* phones in portrait that are short (older iPhones): a little less room above the panel */
+@media (max-width:699px) and (max-height:700px){
+  #title.t3{padding-top:max(26vh,150px)}
+}
+/* the flat title (no 3D): the same menu on the mat */
 #title:not(.t3) .t-panel{gap:0}
+#title:not(.t3) .stagechip{margin:4px 0 12px}
+#title:not(.t3) .title-top{margin:2px 0 4px}
+#title:not(.t3) .title-top .logo{font-size:clamp(38px,min(8vw,7.5vh),68px)}
+#title:not(.t3) .t-greet{margin:0 0 6px}
+#title:not(.t3) .t-pip{width:76px!important;height:85px!important}
+
+/* ---------- chooser pop-ups (3 Players, Play with Tata) ---------- */
+.mm-opts{display:flex;flex-direction:column;gap:9px;margin:4px 0 10px}
+.mm-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;font:inherit;color:var(--ink,#1d2340);
+  background:#fff;border:2px solid #dfe5ef;border-radius:18px;padding:9px 12px 9px 9px;box-shadow:0 4px 0 #cfd7e4;transition:transform .12s,box-shadow .12s}
+.mm-opt:active{transform:translateY(3px);box-shadow:0 1px 0 #cfd7e4}
+.mm-opt:focus-visible{outline:4px solid var(--sky,#4dabf7);outline-offset:2px}
+@media (hover:hover){.mm-opt:hover{transform:translateY(-2px);box-shadow:0 6px 0 #cfd7e4}}
+.mm-oi{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:15px;color:#1d2340}
+.mm-oi .ico{width:28px;height:28px}
+.mm-ot{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mm-ot b{font-family:var(--display);font-weight:400;font-size:21px;letter-spacing:.3px;line-height:1.05}
+.mm-ot small{font-size:14px;font-weight:700;color:#495057;line-height:1.25}
+.mm-ot small .ico{width:13px;height:13px;vertical-align:-1px}
+.mm-opt.lock{background:#f3f5f9;border-style:dashed}
+.mm-opt.lock .mm-oi{filter:grayscale(.7);opacity:.8}
+.mm-later{text-align:center;font-size:14px;font-weight:700;color:#868e96;margin:0 0 8px}
+
 @media (prefers-reduced-motion:reduce){
   #t3title.on,#title.t3 .t-panel{animation:none}
   #title.t3 .t-greet{transition:none}
