@@ -830,7 +830,7 @@ var T3 = window.T3;
     var was = mode; mode = m; running = true;
     document.body.classList.add('t3on'); host.classList.toggle('t3-low', B.qi === 0);
     borrow(); ensureSize();
-    if (!B.compiled) { B.compiled = true; try { if (renderer.compileAsync) { var Bc = B; Bc.compiling = true; renderer.compileAsync(B.scene, B.camera).then(function () { Bc.compiling = false; if (Bc.freeLater) freeScene(Bc); else { dirty = true; kick(); } }, function () { Bc.compiling = false; if (Bc.freeLater) freeScene(Bc); }); } } catch (e) {} }
+    if (!B.compiled) { B.compiled = true; try { if (renderer.compile) renderer.compile(B.scene, B.camera); } catch (e) {} dirty = true; kick(); /* plain warm-up: three r170's compileAsync throws from its own timer when a material is freed while compiling */ }
     if (m === 'splash') {
       shownSplash = true; rest = false; intro = null; drift = null;
       renderer.toneMappingExposure = 0.78;

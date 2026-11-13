@@ -76,6 +76,8 @@ function avatarMoveFn(who) {
   if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3' || G.mode === 'tourney')) return T3.mateMove; // (TOURNEY: + tourney)
   return null;
 }
+// CUPTOSS: who handles the cup and the reroll toss in 3D: 'me' (the kid), 'mate' (Tata), a creature seat 0/1, or null (today's pour)
+function rollerOf(i) { var f = avatarMoveFn(i); return isAI(i) ? aiSeat(i) : f === T3.mateMove ? 'mate' : f === T3.playerMove ? 'me' : null; }
 // A human's move: the kid (or the mate) picks the cube up and lobs it into the zone, like aiPlace for creatures.
 function humanPlace(id, zone, who) {
   var fn = avatarMoveFn(who);
@@ -163,11 +165,10 @@ function rerollOps(done) {
   renderGame();
   // the roller's hands (3D): toss up to two cubes into the air; more go back into the cup. Flat table: a clatter.
   function rollAnim(roll, next) {
-    if (T3.active() && T3.rerollToss) T3.rerollToss(roll, { by: rollerBy() }, next);
+    if (T3.active() && T3.rerollToss) T3.rerollToss(roll, { by: rollerOf(by), onToss: function () { } }, next);
     else if (T3.active() && T3.reroll) T3.reroll(roll, next);
     else { Snd.clatter(); renderGame(); setTimeout(next, 700); }
   }
-  function rollerBy() { return isAI(by) ? { who: 'ai', seat: aiSeat(by) } : (G.team && G.team.cur === 1) || (by !== 0 && !isAI(by) && G.mode === 'p3') ? { who: 'mate' } : { who: 'kid' }; }
   function toForbidden(list2, then) {
     var k = 0;
     (function one() {
@@ -218,6 +219,7 @@ function newShake(fixedCubes) {
   if (T3.active()) {
     renderGame();
     var g0 = G, c0 = G.cubes;   // (a pour that belongs to a match he already left must not touch the new one)
+    if (T3.pourBy) T3.pourBy(rollerOf(G.setter));   // CUPTOSS: the Goal-setter dumps the cup
     T3.pour(G.cubes, function (res) {
       if (!G || G !== g0 || G.cubes !== c0) return;
       if (!fixedCubes) res.forEach(function (s, i) { G.cubes[i].s = s; });

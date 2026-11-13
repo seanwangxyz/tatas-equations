@@ -576,6 +576,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var e = k < 0.25 ? k / 0.25 : 1 - (k - 0.25) / 0.75; e = e * e * (3 - 2 * e); // up quickly, down slowly, once
     plinth.material.emissiveIntensity = e * (calm() ? 0.45 : 0.9); return true;
   }
+  // the cup dump and the reroll toss (gentle, no flashing; asked for by name) follow only the game's own Reduce flashing switch,
+  // not the device's reduce-motion setting
+  function gameCalm() { try { return !!(window.A11y && A11y.calm()); } catch (e) { return false; } }
   function calm() { try { return !!(window.A11y && A11y.calm()) || !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
   // ---- end CRAFT cloth ----
   function buildTable() {
@@ -1382,7 +1385,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return t1 >= t0 ? t0 : null;
   }
   function planDump(by, keep) {   // keep: { id: true } cubes that stay on the table (the cup must not stand on them)
-    if (by == null || calm() || document.hidden || !layout || !host || current !== 'game') return null;
+    if (by == null || gameCalm() || document.hidden || !layout || !host || current !== 'game') return null;
     var g = gripOf(by); if (!g) return null;
     var cs = DUMP.cs, rIn = 1.75 * cs + 0.35, rB = 1.4 * cs + 0.12, te = feltEntry(g.x, g.z, g.fx, g.fz); if (te == null) return null;
     var cl = function (v, h, r) { r = r || rIn; return Math.max(-h + r, Math.min(h - r, v)); }, W = layout.W / 2, Dh = layout.D / 2;
@@ -1678,7 +1681,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (!list.length || !layout || !host || document.hidden || current !== 'game' || pour || !document.body.contains(renderer.domElement)) { api._tossWhy = [!list.length, !layout, !host, document.hidden, current, !!pour].join(','); list.forEach(function (e) { if (!rollingId(e.id)) flatten(meshes[e.id], e.s); }); onToss(); fin(); return false; }
       if (toss) endToss(true); if (redump) endRedump(true); if (tumble) endTumble();
       var fin2 = function () { list.forEach(function (e) { flatten(meshes[e.id], e.s); }); fin(); };
-      if (calm()) { onToss(); turnInPlace(list, fin2); return true; }
+      if (gameCalm()) { onToss(); turnInPlace(list, fin2); return true; }
       var dl = list.some(function (e) { return isD20(meshes[e.id]); }), g = (!dl && opts.by != null) ? gripOf(opts.by) : null;
       if (g && list.length === 2 && meshes[list[0].id].position.distanceTo(meshes[list[1].id].position) > 2 * g.reach + 1.2) {
         // too far apart for one in each hand: one toss, then the other
