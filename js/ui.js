@@ -24,7 +24,10 @@ var ICONS = {
   paw: '<circle cx="7" cy="10" r="1.8"/><circle cx="17" cy="10" r="1.8"/><circle cx="10" cy="6.5" r="1.8"/><circle cx="14" cy="6.5" r="1.8"/><path d="M12 12c-3 0-5 3-5 5 0 1.6 1.5 2 3 1.5 1.4-.5 2.6-.5 4 0 1.5.5 3-.1 3-1.5 0-2-2-5-5-5z"/>',
   cube: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
   home: '<path d="M4 11l8-7 8 7M6 10v10h12V10"/>',
-  disk: '<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>'
+  disk: '<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>',
+  shirt: '<path d="M8.5 3.5L3 6.5l2 4.5 2.5-1V20.5h9V10l2.5 1 2-4.5-5.5-3c-.6 1.6-2 2.5-3.5 2.5s-2.9-.9-3.5-2.5z"/>',
+  table: '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 9h17M3.5 14h17M9 9v11"/>',
+  sparkle: '<path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/>'
 };
 var ICON_FILL = { bolt: 'f', play: 'f', star: 'fs' };
 function ico(name, extra) { return '<svg class="ico ' + (ICON_FILL[name] || '') + (extra ? ' ' + extra : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
@@ -122,6 +125,7 @@ function go(id) {
   });
   current = id;
   if (window.Title3D) Title3D.screen(id); // TITLE: the 3D title scene stops (and later frees itself) on any other screen
+  if (window.Tour && Tour.onScreen) Tour.onScreen(id); // TOUR: leaving the title closes the What's new tour
 }
 var lastTheme = '';
 function applyCosmetics() {
@@ -199,27 +203,97 @@ function splash3d() { if (title3dOK() && Title3D.show('splash')) $('#splash').cl
   document.addEventListener('pointerover', function (e) { if (e.pointerType === 'mouse' && window.TitleSfx && onBtn(e) && !(e.relatedTarget && onBtn(e) && onBtn(e).contains(e.relatedTarget))) TitleSfx.ui('hover'); });
   document.addEventListener('pointerdown', function (e) { if (window.TitleSfx && onBtn(e)) { TitleSfx.unlock(); TitleSfx.ui('press'); } });
 })();
+// ----- The main menu (the title screen's panel) -----
+// One big Play (1 v 1 against the creature he is working on) with a "Pick who" button next to it, four ways to play
+// as tiles, "My stuff" as small tiles, Settings / How to Play as small buttons. Every tile reuses an existing ACT
+// handler; the two choosers (3 Players, Play with Tata) only open a small pop-up that hands over to those handlers.
+// data-tile names a tile for the What's new tour (js/tour.js): it points at it and puts a "New" badge on it.
+function mmNextOpp() {
+  var i, n = OPPONENTS.length;
+  if (S.mmLast != null && S.mmLast < n && oppOpen(S.mmLast) && !S.beaten[S.mmLast]) return S.mmLast; // the one he picked last, until he beats it
+  for (i = 0; i < n; i++) if (oppOpen(i) && !S.beaten[i]) return i;
+  for (i = n - 1; i >= 0; i--) if (oppOpen(i)) return i;
+  return 0;
+}
+function mmOpenCount() { return OPPONENTS.filter(function (o, i) { return oppOpen(i); }).length; }
+// one choice in a chooser pop-up: closes the pop-up, then runs the existing handler (data-arg = its ACT name)
+function mmOpt(act, icon, color, title, line, lock) {
+  return '<button class="mm-opt' + (lock ? ' lock' : '') + '" data-act="mmGo" data-arg="' + act + '"><span class="mm-oi" style="background:' + color + '">' + ico(lock ? 'lock' : icon) + '</span>' +
+    '<span class="mm-ot"><b>' + title + '</b><small>' + (lock ? ico('lock') + ' ' + lock : line) + '</small></span></button>';
+}
+function mmInstall() {
+  if (ACT.mmGo) return; // ACT is made in js/game.js (loaded after this file), so these are added on the first title
+  ACT.mmGo = function (el) { var a = el.dataset.arg; closeModal(); if (a && typeof ACT[a] === 'function') ACT[a](el); };
+  ACT.playNext = function () { startMatch('ai', mmNextOpp()); };
+  ACT.mmPick = function () { window.setupTab = 'opps'; ACT.setup(); }; // "Pick who": the Play screen on its creatures part
+  ACT.mmTrios = function () { mmJump('Three at the table'); }; // the crown list lives on the Play screen
+  ACT.mmTrioLocked = function () { if (ACT.lockedTrio) ACT.lockedTrio(); };
+  ACT.menu3p = function () {
+    var two = mmOpenCount() >= 2;
+    modal('<h2 class="hero">' + ico('people') + ' 3 Players</h2><div class="mm-opts">' +
+      (window.Trio ? mmOpt(two ? 'trioPick' : 'mmTrioLocked', 'paw', '#e5dbff', 'You against two creatures', 'Pick any two creatures. Beat them both!', two ? '' : 'Unlock two creatures first, then come back') +
+        (two ? mmOpt('mmTrios', 'trophy', '#fff3bf', 'Crown challenges', 'Beat a pair of creatures to win a crown') : '') : '') +
+      mmOpt('playP3', 'people', '#ffe8cc', 'Family game', '3 people on this device, or 2 people and a creature') +
+      '</div><p class="mm-later">Online with three players is coming later.</p>' +
+      '<div class="row"><button class="btn" data-act="closeModal">' + ico('back') + ' Back</button></div>');
+  };
+  ACT.menuTata = function () {
+    modal('<h2 class="hero">' + ico('heart', 'f') + ' Play with Tata</h2><div class="mm-opts">' +
+      (window.Team ? mmOpt('playTeam', 'people', '#d3f9d8', 'Team-up', 'You and Tata on one team against a tough creature') : '') +
+      mmOpt('playPvp', 'dice', '#ffd6d6', '2 Players', 'You against Tata, taking turns on this device') +
+      (window.Online ? mmOpt('online', 'bolt', '#d0ebff', 'Online', 'Two devices, far apart. Talk on FaceTime while you play') : '') +
+      (typeof giftTileHTML === 'function' ? mmOpt('giftOpen', 'heart', '#ffe3ec', 'Puzzle from Tata', 'Tata makes a puzzle, you crack it') : '') +
+      '</div><div class="row"><button class="btn" data-act="closeModal">' + ico('back') + ' Back</button></div>');
+  };
+  // remember the creature he picked on the Play screen, so the big Play button carries on with it
+  var po = ACT.playOpp;
+  if (typeof po === 'function') ACT.playOpp = function (el) { S.mmLast = +el.dataset.arg; persist(); return po.apply(this, arguments); };
+}
+// open the Play screen at one of its sections (matched by the section heading's text)
+function mmJump(text) {
+  window.setupTab = 'trio'; // used if the Play screen gets tabs (docs/handoff/menu.md); harmless otherwise
+  ACT.setup();
+  var hs = document.querySelectorAll('#setup .tierh');
+  for (var i = 0; i < hs.length; i++) if (hs[i].textContent.indexOf(text) >= 0) { hs[i].scrollIntoView({ block: 'start' }); break; }
+}
 function gotoTitle() {
   applyCosmetics();
+  mmInstall();
   var greets = ['Hi, ' + esc(S.name) + '! Ready to make some equations?', 'Welcome back, ' + esc(S.name) + '! Let\'s roll some cubes!', 'Math time! I\'ve been practicing my moves.', 'Hi ' + esc(S.name) + '! Every Solution makes your brain stronger!'];
-  var st = stageInfo(), t3 = title3dOK();
-  function item(cls, act, icon, label) { return '<button class="btn big ' + cls + '" data-act="' + act + '"><span class="bi">' + ico(icon) + '</span><span class="bl">' + label + '</span></button>'; }
+  var st = stageInfo(), t3 = title3dOK(), nx = OPPONENTS[mmNextOpp()];
+  function badge(tid) { return window.Tour && Tour.badgeHTML ? Tour.badgeHTML(tid) : ''; }
+  function tile(cls, act, icon, label, tid) { return '<button class="btn mm-tile ' + cls + '" data-act="' + act + '" data-tile="' + tid + '"><span class="bi">' + ico(icon) + '</span><span class="bl">' + label + '</span>' + badge(tid) + '</button>'; }
+  function mini(act, icon, label, tid) { return '<button class="btn ghost mm-mini" data-act="' + act + '" data-tile="' + tid + '">' + ico(icon) + '<span>' + label + '</span>' + badge(tid) + '</button>'; }
   var el = $('#title');
   el.classList.toggle('t3', t3); el.classList.remove('t3-rest');
   el.innerHTML =
     '<div class="title-top"><h1 class="logo t-logo">Tata\'s<span class="eq">Equations</span></h1></div>' +
     '<div class="t-greet">' + pipHTML('happy', 100, 't-pip') + '<div class="bubble">' + greets[Math.floor(Math.random() * greets.length)] + '</div></div>' +
     '<div class="t-panel">' +
-    '<div class="playercard"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + '</div>' + xpBarHTML() + '</div></div>' +
+    '<div class="mm-me"><div class="playercard"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + '</div>' + xpBarHTML() + '</div></div>' +
+    '<div id="acctSlot" class="mm-acct"></div></div>' + // ACCOUNT: the account chip goes in here (another helper's snippet); while empty it takes no space
     '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
-    '<nav class="menu" aria-label="Main menu">' +
-    '<button class="btn big green hero" data-act="setup"><span class="bi">' + ico('play') + '</span><span class="bl">Play</span></button>' +
-    item('yellow', 'camp', 'star', 'Training Camp') +
-    item('purple', 'trophies', 'trophy', 'Trophy Room') +
-    item('blue', 'settings', 'gear', 'Settings') +
-    item('orange', 'tutorial', 'cap', 'How to Play') +
+    '<nav class="mm" aria-label="Main menu">' +
+    '<div class="mm-hero">' +
+    '<button class="btn big green hero mm-play" data-act="playNext" data-tile="play"><span class="bi">' + ico('play') + '</span><span class="bl">Play<small>against ' + esc(nx.name) + '</small></span></button>' +
+    '<button class="btn mm-pick" data-act="mmPick" data-tile="pick">' + ico('paw') + '<span>Pick who</span></button>' +
+    '</div>' +
+    '<div class="mm-modes">' +
+    tile('orange', 'menu3p', 'people', '3 Players', 'p3') +
+    tile('pink', 'menuTata', 'heart', 'Play with Tata', 'tata') +
+    (window.Cup ? tile('yellow', 'cup', 'trophy', 'Cups', 'cups') : '') +
+    tile('blue', 'camp', 'star', 'Training Camp', 'camp') +
+    '</div>' +
+    '<h2 class="mm-h">My stuff</h2>' +
+    '<div class="mm-stuff">' +
+    (typeof Kit !== 'undefined' ? mini('openKit', 'shirt', 'My kit', 'kit') : '') +
+    mini('trophies', 'trophy', 'Trophy Room', 'trophies') +
+    (window.Season ? mini('season', 'table', 'Season Table', 'season') : '') +
+    mini('stats', 'chart', 'My Stats', 'stats') +
+    '</div>' +
+    '<div class="mm-foot"><button class="btn small ghost" data-act="settings" data-tile="settings">' + ico('gear') + ' Settings' + badge('settings') + '</button>' +
+    '<button class="btn small ghost" data-act="tutorial" data-tile="howto">' + ico('cap') + ' How to Play</button></div>' +
     '</nav>' +
-    '<div class="menu-sub"><button class="btn ghost" data-act="stats">' + ico('chart') + ' My Stats</button>' + (window.Season ? '<button class="btn ghost" data-act="season">' + ico('trophy') + ' Season Table</button>' : '') + '</div>' +
     (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>') +
     '</div>';
   go('title');
@@ -231,4 +305,5 @@ function gotoTitle() {
     el.classList.remove('t3');
     Snd.setMood('menu');
   }
+  if (window.Tour && Tour.maybeStart) Tour.maybeStart(); // TOUR: What's new (waits for the opening; never in a match, never before the tutorial)
 }

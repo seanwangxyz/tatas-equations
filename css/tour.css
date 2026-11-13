@@ -1,0 +1,40 @@
+/* ===================================================================
+   What's new tour (js/tour.js): a spotlight on one title menu tile, Pip's card beside it.
+   No looping animation: the spotlight ring pulses softly once when a stop appears, then stays still.
+   Sits under pop-ups (#modal is 60) and over the title.
+   =================================================================== */
+#tour{position:fixed;inset:0;z-index:55;display:none}
+#tour.on{display:block}
+/* the dim around the spotlight is the spot's own huge shadow */
+#tour .tour-spot{position:fixed;border-radius:24px;box-shadow:0 0 0 200vmax rgba(3,8,22,.62),0 0 0 3px #ffe066,0 0 24px 4px rgba(255,224,102,.55);
+  pointer-events:none;transition:left .32s cubic-bezier(.3,.8,.3,1),top .32s cubic-bezier(.3,.8,.3,1),width .32s cubic-bezier(.3,.8,.3,1),height .32s cubic-bezier(.3,.8,.3,1)}
+#tour .tour-spot::after{content:"";position:absolute;inset:-3px;border-radius:inherit;border:3px solid #ffe066;opacity:0;pointer-events:none}
+#tour .tour-spot.pulse::after{animation:tourPulse .9s ease-out 1 both}
+@keyframes tourPulse{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.12)}}
+
+#tour .tour-card{position:fixed;width:min(340px,calc(100vw - 24px));display:flex;gap:10px;align-items:flex-start;
+  background:#fffdf6;color:var(--ink,#1d2340);border-radius:22px;padding:12px 14px 12px 10px;box-shadow:0 14px 36px rgba(0,0,0,.45),0 0 0 3px rgba(255,224,102,.9);
+  animation:tourIn .28s cubic-bezier(.2,.9,.3,1.1) both}
+@keyframes tourIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+#tour .tour-pip{flex:0 0 auto;margin-top:2px}
+#tour .tour-body{flex:1;min-width:0}
+#tour .tour-step{font-size:12px;font-weight:900;letter-spacing:1px;text-transform:uppercase;color:#b07d00}
+#tour h3{margin:2px 0 4px;font-family:var(--display);font-weight:400;font-size:23px;line-height:1.05;letter-spacing:.3px}
+#tour p{margin:0 0 10px;font-size:16px;font-weight:700;line-height:1.3}
+#tour .tour-btns{display:flex;gap:8px;justify-content:flex-end}
+#tour .tour-btns .btn{min-height:44px}
+#tour .tour-next .ico{width:.9em;height:.9em}
+#tour .btn:focus-visible{outline:4px solid #1f78e6;outline-offset:2px}
+/* the little arrow from the card to the tile */
+#tour .tour-arrow{position:absolute;width:0;height:0;border:11px solid transparent}
+#tour .side-left .tour-arrow{right:-24px;margin-top:-11px;border-left:14px solid #ffe066}
+#tour .side-above .tour-arrow{bottom:-24px;margin-left:-11px;border-top:14px solid #ffe066}
+#tour .side-below .tour-arrow{top:-24px;margin-left:-11px;border-bottom:14px solid #ffe066}
+@media (max-width:420px){
+  #tour h3{font-size:21px}
+  #tour p{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){
+  #tour .tour-spot{transition:none}
+  #tour .tour-spot.pulse::after,#tour .tour-card{animation:none}
+}
