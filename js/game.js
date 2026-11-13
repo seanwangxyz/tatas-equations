@@ -540,6 +540,7 @@ function askThirdParty(tp, kind, cb) {
 }
 var scoreChallenge = Eq.scoreChallenge; // official 2/3-player scoring lives in the engine (unit-tested)
 function resolveChallenge(ok, tokens, chk, tpRes) {
+  if (ok && tokens && Snd.readout) { try { Snd.readout(tokens.map(function (t) { return typeof t === 'string' ? t : t.s; }), G.goal); } catch (e) {} } // MUSIC: a correct Solution reads out, one note per cube
   var ch = G.ch, lines = [], pts = scoreChallenge(ch.kind, ch.challenger, ch.mover, ch.tp, ok, tpRes);
   var cn = esc(G.players[ch.challenger].name), mn = esc(G.players[ch.mover].name);
   if (ch.kind === 'now') lines.push(ok ? cn + ' called <b>Now!</b> and wrote a correct Solution.' : cn + ' called <b>Now!</b> but the Solution wasn\'t correct.');
@@ -770,7 +771,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
