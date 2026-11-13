@@ -63,6 +63,7 @@ export function makeBanners(group, specs) {
   var arr = mesh.instanceMatrix.array, open = new Float32Array(specs.length), t0 = new Float32Array(specs.length), anim = false;
   function place(i, k) { // k: 0 rolled up .. 1 open
     var s = specs[i], o = i * 16, h = s.h * (0.06 + 0.94 * k);
+    if (!s.text) { for (var z = 0; z < 16; z++) arr[o + z] = 0; return; } // no words (no rivalry yet): no banner
     arr[o] = s.ax * s.w; arr[o + 1] = 0; arr[o + 2] = s.az * s.w; arr[o + 3] = 0;
     arr[o + 4] = 0; arr[o + 5] = h; arr[o + 6] = 0; arr[o + 7] = 0;
     arr[o + 8] = s.nx; arr[o + 9] = 0; arr[o + 10] = s.nz; arr[o + 11] = 0;
@@ -83,7 +84,7 @@ export function makeBanners(group, specs) {
     },
     furl: function () { for (var i = 0; i < specs.length; i++) { open[i] = 0; place(i, 0); } anim = false; mesh.instanceMatrix.needsUpdate = true; },
     setOpen: function () { for (var i = 0; i < specs.length; i++) { open[i] = 1; place(i, 1); } anim = false; mesh.instanceMatrix.needsUpdate = true; },
-    retext: function (texts) { texts.forEach(function (t, i) { if (specs[i] && t != null) specs[i].text = t; }); paintAll(); },
+    retext: function (texts) { texts.forEach(function (t, i) { if (specs[i] && t != null) specs[i].text = t; }); paintAll(); for (var i = 0; i < specs.length; i++) place(i, open[i] >= 1 ? 1 : open[i] > 0 ? open[i] : 0); mesh.instanceMatrix.needsUpdate = true; },
     step: function (now) {
       if (!anim) return false;
       var live = false;

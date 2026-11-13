@@ -662,7 +662,7 @@ function dressPerson(p, R, o, beach) {
     else if (o.drinks && !kid && hr < 0.24) L.held = { t: 'drink', a: pick(R, ['#f8f9fa', '#f8f9fa', '#e03131', '#1c7ed6', '#fab005']), b: '#ffffff', cell: -1 };
     // groups: a family's kids and friends who came together dress alike (his kit, his number, face paint, beanies)
     var th = p.theme;
-    if (th === 'replica' && T.shirt) { L.shirt = T.shirt; L.print = 'kidnum'; L.pc = T.trim; L.bare = false; }
+    if (th === 'replica' && T.shirt) { L.shirt = T.shirt; L.print = p.team ? 'star' : 'kidnum'; L.pc = T.trim; L.bare = false; } // his number in the home end only
     else if (th === 'paint') { L.face = 'paint'; L.paint = T.shirt; if (R() < 0.6) { L.shirt = T.shirt; L.print = wpick(R, TEAM_PRINTS); L.pc = T.trim; } }
     else if (th === 'beanie') { L.gear = { t: 'beanie', a: T.shirt, b: T.trim, c: L.hair, cell: -1 }; L.shirt = R() < 0.5 ? T.shirt : T.alt; L.print = R() < 0.5 ? 'hstripe' : 'none'; L.pc = T.trim; }
     else if (th === 'scarf' && !L.held) { L.held = { t: 'scarf', a: T.shirt, b: T.trim, cell: 'scarfBands' }; }
@@ -764,7 +764,7 @@ export function currentCrowd() { return current; }
 // team colours as tokens ('@0s' = home shirt ...), painted from crowdstory.palette() and repainted when it changes
 function tokTeam(t) { return { shirt: '@' + t + 's', alt: '@' + t + 'a', trim: '@' + t + 't', seat: '@' + t + 'e' }; }
 function tokColour(tok, pal) { var t = tok.charAt(1) === '1' ? pal.away : pal.home, k = tok.charAt(2); return k === 's' ? t.shirt : k === 'a' ? t.alt : k === 't' ? t.trim : t.seat; }
-var AWAY0 = 0.665, AWAYW = [0, 0.07, 0.08, 0.095, 0.11, 0.125];
+var AWAY0 = 0.665, AWAYW = [0, 0.06, 0.075, 0.09, 0.105, 0.12];
 function standOf(ry) { return Math.round(ry * 10); }
 // rows of seats: people grouped by stand and step, sorted along the stand. Sets p.row, p.level (0 = front), p.s (along)
 function rowsOf(pts, skip) {
@@ -787,7 +787,9 @@ function plainFan(p) { return !p.charKind && !p.job && !p.vip && !p.band && !p.s
 
 // ----- the tableau before dressing: home end and away corner, families and friends -----
 function castTeams(pts, rows, R2, tier) {
-  var a1 = AWAY0 + AWAYW[tier];
+  // the away corner: the next n seats round from AWAY0 (about 6% of the ground at tier 1, 12% at tier 5)
+  var n = Math.round(pts.length * AWAYW[tier]), order = pts.map(function (p, i) { return i; }).filter(function (i) { return pts[i].key >= AWAY0; }).sort(function (a, b) { return pts[a].key - pts[b].key; });
+  var a1 = order.length ? pts[order[Math.min(n, order.length) - 1]].key : AWAY0; rows.a1 = a1;
   pts.forEach(function (p) { p.away = p.key >= AWAY0 && p.key <= a1; p.team = p.away && R2() > 0.06 ? 1 : 0; });
   rows.rows.forEach(function (r) {
     var L = r.list, j = 0;
@@ -878,7 +880,7 @@ function castExtras(pts, rows, R2, R, tier, o, board) {
     out.holders.push([pts[pr[0]], pts[pr[1]]]);
     pr.forEach(function (i) { var p = pts[i]; p.hold = true; p.used = true; p.L.held = null; p.pose = { ra0: 1.32, ra1: 1.32, yaw: 0.12 }; p.armK = 0; var r = p.row; [-1, 1].forEach(function (dj) { var q = r.list[p.ri + dj]; if (q != null) pts[q].used = true; }); });
   }
-  var rp = pairNear(AWAY0 + AWAYW[tier] / 2, function (p) { return holder(p) && p.away && p.team === 1; });
+  var rp = pairNear((AWAY0 + (rows.a1 || AWAY0)) / 2, function (p) { return holder(p) && p.away && p.team === 1; });
   if (rp) { out.rival = [pts[rp[0]], pts[rp[1]]]; rp.forEach(function (i) { var p = pts[i]; p.hold = true; p.L.held = null; p.pose = { ra0: 1.32, ra1: 1.32, yaw: 0.12 }; p.armK = 0; }); }
   // 5. staff: stewards on the ground in front of each stand (facing the fans), a TV camera on the back stand's top row
   function extra(p) { p.job = p.job || 'x'; p.noSeat = true; p.rk = p.rk == null ? 0 : p.rk; extras.push(p); return p; }
@@ -922,7 +924,7 @@ function castExtras(pts, rows, R2, R, tier, o, board) {
 }
 // seats with nobody in them: gaps of one to three seats in a row (small grounds have many; tier 5 a few)
 function emptySeats(pts, rows, tier, avoid) {
-  var out = [], a1 = AWAY0 + AWAYW[tier];
+  var out = [], a1 = rows.a1 || AWAY0;
   rows.rows.forEach(function (r) {
     for (var j = 1; j < r.list.length; j++) {
       var a = pts[r.list[j - 1]], b = pts[r.list[j]], gap = b.s - a.s, n = Math.round(gap / 0.62) - 1;
@@ -969,7 +971,7 @@ export function makeBlockCrowd(group, pts, o) {
     cast.holders = cast.holders.map(function (pr) { return [ix.get(pr[0]), ix.get(pr[1])]; });
     if (cast.rival) cast.rival = [ix.get(cast.rival[0]), ix.get(cast.rival[1])];
     pts.forEach(function (p) { if (p.riderP) p.rider = ix.get(p.riderP); });
-    rows = rowsOf(pts, function (p) { return p.noSeat; });
+    var keepA1 = rows.a1; rows = rowsOf(pts, function (p) { return p.noSeat; }); rows.a1 = keepA1;
   }
   if (o.redress) pts.forEach(function (p, i) { o.redress(p, i, function (kind) { character(p.L, p, R, o.teams[p.team ? 1 : 0], kind); }); }); // for checks: dress someone up
 
