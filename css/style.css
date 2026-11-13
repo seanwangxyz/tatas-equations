@@ -723,6 +723,18 @@ html.a11y-calm .modal-back.leaving{display:none}
   #game #gAct .emote-bar > *{flex:0 0 auto}
 }
 
+/* iPad upright (and other 3D windows without the side column, wider than a phone): missions on one line and the emotes in
+   one scrolling row too, so the panel under the picture stays short (it took half of a 768 x 1024 screen) */
+@media not all and (min-width:1000px) and (min-aspect-ratio:5/4){
+  #game.three #gAct .msn-chips{flex-wrap:nowrap;gap:4px;overflow:hidden}
+  #game.three #gAct .msn-chip{flex:1 1 0;min-width:0}
+  #game.three #gAct .msn-chip .msn-t{max-width:none;min-width:0}
+  #game.three #gAct .acts .why-btn{order:0}
+  #game.three #gAct .emote-bar{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;scrollbar-width:none;width:100%}
+  #game.three #gAct .emote-bar::-webkit-scrollbar{display:none}
+  #game.three #gAct .emote-bar > *{flex:0 0 auto}
+}
+
 /* Three at the table: pick any two (all creatures, league by league; locked ones visible) */
 .trio-league{margin:6px 0 10px}
 .trio-lh{font-family:var(--display);font-size:15px;color:var(--ink2,#556);margin:0 0 6px 2px}
