@@ -30,7 +30,7 @@ node tests/playtest.js 40 0   # prints a SUMMARY block at the end
 # The "Kid who knows the trick" shows those blind spots can be learned.
 ```
 
-822 checks (217 of them for the house-rule bonus dice): the evaluator, the Solution validator, the solver, and the official 2- and
+948 checks (217 of them for the house-rule bonus dice, 117 for tournament practice): the evaluator, the Solution validator, the solver, and the official 2- and
 3-player challenge scoring.
 
 ## Where things live

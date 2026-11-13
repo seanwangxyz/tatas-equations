@@ -61,3 +61,27 @@ A star = one correct Solution or one correct Impossible! call. Settings → Pare
   proper football shorts and Tata's athletic build; shirt back name setting (TYSON W.); Play screen tabs.
 - Still to do: test real Google sign-in and a real three-player room after publishing; iPad/sound pass;
   second extra figure for three humans in 3D; On-Sets 3D, three players, variations.
+
+## Round 9, the overnight run of 13 Nov 2026 (built on this computer, NOT published; waiting for Tata)
+Restore points (git tags): `before-night-2026-11-13` (start), `live-2026-11-13` (what is on the site),
+`night-1-nine-items`, `night-2-creative-round-1`, `night-3-creative-round-2`, `night-4-gameplay`, `night-5-polish`.
+Every helper's piece is also its own merge commit, so one piece can be undone with `git revert -m 1 <merge>`.
+- Nine items: Explain this Solution; creatures that remember (S.rivals); voice/video in online rooms (OFF until
+  docs/handoff/firebase-rules-v3.json is published: needs Tata's OK; rooms/$code/rtc); install as an app + offline
+  (run `node tools/build-precache.js` before every publish; the offline cache is off on localhost unless ?sw=1);
+  colour helpers, text size, reduce flashing; On-Sets in 3D with three players; tournament practice + Judge Pip
+  (several variation cards at once; RULES_SUMMARY.md section 8); one audio bus, Sound check, speed overlay (?perf=1);
+  match day: walk-out, toss for the first Goal, trophy lift.
+- Creative: cube and table craft; creature acting (nothing moves at rest); one musical theme with league/venue/
+  evening flavours and creature motifs; painted skies, floodlights at dusk, designed big screen, photo frames;
+  result cards, creature trading cards, Settings switches; the crowd as supporters; avatar poses and new
+  celebrations; step-by-step Goal replay, composed fireworks, trophy room, still title.
+- Gameplay (house features, each with a Settings switch): match missions + Skills Passport (S.missions);
+  the "Why?" button that explains a move already made.
+- Layout: the match side column now also on iPad landscape (min-width 1000px, aspect 5:4); compact phone panel.
+- Tests: engine 948, explain 4558, rivals 2110, account 595, parent 75, onsets 152, voice 61, missions 603, why 4910.
+- Still to do: Tata's 5-minute device and sound checklist (docs/handoff/device-checklist.md); nobody has heard the
+  new music or sounds; real iPad/Safari; real Google sign-in; publish Firebase rules v3 before voice works;
+  camera hooks kickoff/hero/final from docs/handoff/light.md not applied (the walk-out covers kick-off);
+  handshake with the creature and Tata on the podium; On-Sets poster on the title; a second figure for three
+  humans online in 3D.
