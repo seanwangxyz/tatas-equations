@@ -635,7 +635,11 @@ html.ts-l .modal:has(>.rc),html.ts-xl .modal:has(>.rc){width:min(720px,calc(96vw
 .opp .lockbadge{margin-top:auto}
 .opps[class*="lg-"] .opp.lock{background:linear-gradient(#dfe3ec 0 52px,#f6f7fb 52px);box-shadow:0 6px 0 #d7dce8}
 .opp.lock .o-line{opacity:.55}
+.opp{min-width:0}
+.hdr h2{min-width:0;overflow-wrap:anywhere;line-height:1.05}
 @media (max-width:560px){
+  .opps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hdr h2{font-size:24px}
   .opp{padding:10px 8px;border-radius:20px}
   .opp .avatar.lg{width:72px;height:72px;font-size:42px}
   .opps[class*="lg-"] .opp{background:linear-gradient(var(--band) 0 42px,#fff 42px)}
