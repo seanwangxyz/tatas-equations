@@ -369,7 +369,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); if (window.Missions && Missions.close) Missions.close(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once

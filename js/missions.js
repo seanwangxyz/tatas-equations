@@ -401,7 +401,7 @@ var Missions = (function () {
   }
   function eligible(g) { return !!g && MODES.indexOf(g.mode) >= 0 && g.players && g.players[0] && !g.players[0].ai; }
   function start(g) {
-    A = null;
+    A = null; closeOv();
     if (!on() || !eligible(g)) return;
     var m = store(), ctx = ctxOf(g); m.n++;
     var list = choose(ctx, m, m.n, bootSeen(S));
@@ -451,9 +451,10 @@ var Missions = (function () {
         if (g.players.length >= 3) for (var i = 0; i < g.players.length; i++) if (i !== x.by && i !== mover) { tp = i; break; }
         apply(A.rec, 'challenge', { by: x.by, kind: x.kind, mover: mover, tp: tp });
       } else if (ev === 'shake') {
+        closeOv(); // a start card or tip still open would sit on top of the shake's result pop-up
         var r = x.r || {};
         apply(A.rec, 'shake', { phase: x.phase || g.phase, pts: r.pts, sols: r.sols, hint: !!g.hintUsed, cubes: g.cubes, fr: g.fractions, goal: g.goal, card: g.vari || null });
-      } else if (ev === 'end') { A.ended = true; save(); return; }
+      } else if (ev === 'end') { closeOv(); A.ended = true; save(); return; }
       evaluate();
     } catch (e) { if (typeof console !== 'undefined') console.warn('[missions]', e); } // never get in the way of the game
   }
@@ -627,7 +628,7 @@ var Missions = (function () {
   return {
     // game hooks and HTML pieces
     note: note, chipsHTML: chipsHTML, matchLineHTML: matchLineHTML, parentHTML: parentHTML, settingsHTML: settingsHTML, buttonHTML: buttonHTML,
-    open: openPassport, swap: swap, cosmeticOpen: cosmeticOpen, rankFor: rankFor, on: on, bytes: bytes, current: function () { return A; },
+    open: openPassport, close: closeOv, swap: swap, cosmeticOpen: cosmeticOpen, rankFor: rankFor, on: on, bytes: bytes, current: function () { return A; },
     // pure parts (tests)
     CATALOGUE: CATALOGUE, FAMILIES: FAMILIES, RANKS: RANKS, COVERS: COVERS, PERSONA: PERSONA, FULL: FULL, MODES: MODES,
     available: available, choose: choose, swapFor: swapFor, bootSeen: bootSeen, newRecord: newRecord, apply: apply, check: check,
