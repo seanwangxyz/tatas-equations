@@ -36,9 +36,10 @@ function osLevel(stars) { var L = 0; for (var i = 0; i < OS_LEVELS.length; i++) 
 function osStar(why, n) {
   var o = osState(), before = osLevel(o.stars);
   o.stars += (n || 1); persist();
-  osToast('⭐ ' + why);
+  if (typeof OG !== 'undefined' && OG) { (OG.starsShake = OG.starsShake || []).push(why); (OG.starsMatch = OG.starsMatch || []).push(why); }
+  osToast(ico('star') + ' ' + why);
   var after = osLevel(o.stars);
-  if (after > before) setTimeout(function () { osToast('🎉 New On-Sets level: ' + OS_LEVELS[after].name + '!'); if (Snd.fanfare) Snd.fanfare(); }, 900);
+  if (after > before) setTimeout(function () { osToast(ico('crown') + ' New On-Sets level: ' + OS_LEVELS[after].name + '!'); if (Snd.fanfare) Snd.fanfare(); }, 900);
 }
 function osToast(text) {
   var box = document.getElementById('toasts'); if (!box) return;
@@ -94,7 +95,8 @@ function osThink(task, args, minMs) {
 function osOops(e) { if (window.console) console.error('[On-Sets computer player]', e); }
 function osTalk(o, kind) { return o && o.talk && o.talk[kind] ? pick(o.talk[kind]) : ''; }
 function osMood(i, m) { if (os3d()) OS3D.mood(i, m); }
-function osCrowd(kind) { if (os3d()) OS3D.crowd(kind); }
+function osCrowd(kind) { try { if (os3d()) OS3D.crowd(kind); else if (typeof crowdReact === 'function') crowdReact(kind); } catch (e) {} }
+function osKid(m) { if (os3d()) try { OS3D.kid(m); } catch (e) {} }   // the kid's own moods: wave, now, win, lose, yes, proud, gg
 // the cube kinds the 3D table draws (js/three/onsets3d.js). Colour and operation cubes have 4 symbols on 6 faces:
 // each cube gets one of two face layouts at random every shake (two symbols doubled), so each symbol still comes up
 // with exactly a 1 in 4 chance (ONSETS_RULES_SUMMARY.md, interpretation 1).
@@ -208,7 +210,7 @@ function osNewShake() {
         return;
       }
       OG.rolling = true;
-      if (Snd.clatter) Snd.clatter();
+      if (Snd.clatter) Snd.clatter(); OSUI.cardSnd('place');
       osRender(); OG.rolling = false;
       setTimeout(function () { if (OG === g0 && OG.phase === 'setup') osGoalPhase(); }, 1100);
     });
@@ -263,6 +265,9 @@ function osSetGoal(goal, value) {
   if (Snd.thunk) Snd.thunk(); if (Snd.chime) Snd.chime();
   banner('🎯 GOAL: ' + value, value + ' card' + (value === 1 ? '' : 's'));
   if (os3d()) OS3D.goalSet(value);
+  else osCrowd(goal.digits.length >= 3 ? 'ooh' : 'cheer');
+  if (osIsAI(OG.setter)) osMood(OG.setter, 'proud');
+  else { osKid('proud'); if (value >= 10 || goal.digits.length >= 3) osAIs().forEach(function (i, k) { setTimeout(function () { if (OG && OG.phase === 'move') osMood(i, 'impressed'); }, 600 + k * 350); }); }
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   osRender();
   setTimeout(function () { if (OG && OG.phase === 'move') { var told = spare.length && !osIsAI(OG.turn); if (told) osSay('pip', 'The Goal is <b>' + value + '</b> card' + (value === 1 ? '' : 's') + '. The spare digit cube' + (spare.length > 1 ? 's go' : ' goes') + ' to Forbidden (digits are only for the Goal). ' + (osMulti() ? '<b>' + osName(OG.turn) + '</b>, your' : 'Your') + ' turn: move a cube, or challenge!'); osNextTurn(told); } }, 900);
@@ -322,7 +327,7 @@ ACT.osCube = function (el) {
 };
 function osLitFor(id) {
   var c = id != null ? OG.cubes[id] : null;
-  if (c && OSE.isSetSym(c.s)) { OG.lit = OSE.leafSet(c.s, OG.universe); OG.litCount = OSE.popcount(OG.lit); if (os3d()) OS3D.highlight(OG.lit, OSE.show(c.s) + ': ' + OG.litCount + ' card' + (OG.litCount === 1 ? '' : 's')); }
+  if (c && OSE.isSetSym(c.s)) { OG.lit = OSE.leafSet(c.s, OG.universe); OG.litCount = OSE.popcount(OG.lit); if (!os3d()) OSUI.cardSnd('lift'); if (os3d()) OS3D.highlight(OG.lit, OSE.show(c.s) + ': ' + OG.litCount + ' card' + (OG.litCount === 1 ? '' : 's')); }
   else { OG.lit = null; if (os3d()) OS3D.highlight(null); }
 }
 ACT.osZone = function (el) {
@@ -355,7 +360,7 @@ function osAITurn() {
   if (!OG || OG.phase !== 'move' || !osIsAI(OG.turn)) return;
   var me = OG.turn, P = OG.players[me], o = P.ai;
   osFocus(me);
-  OG.busy = true; osSay('opp', (S.set.trash !== false && o.talk && Math.random() < 0.25) ? osTalk(o, 'trash') : pick(o.think)); osRender();
+  OG.busy = true; osSay('opp', (S.set.trash !== false && o.talk && Math.random() < 0.25) ? osTalk(o, 'trash') : pick(o.think)); osMood(me, 'think'); osRender();
   var sit = osSit(), canCh = OG.lastMover !== null && OG.lastMover !== me, nowOk = !osNowCheck(me);
   if (osCubes('resources').length === 1) nowOk = false;
   var pause = osN() > 2 ? 2300 + Math.random() * 1300 : 900 + Math.random() * 600, t0 = performance.now(); // RACE: with three at the table, a moment for the others to call first
@@ -479,8 +484,8 @@ function osAIWrite(pi, mode, cb) {
   var job = plan ? new Promise(function (ok) { setTimeout(function () { ok(plan); }, 1500); }) : osThink('write', [P.skill, osSnap(), OG.goalValue, OG.universe, mode], 1500);
   job.then(function (r) {
     if (!osStill(sit)) return;
-    if (r && r.found) { var toks = osSymsToTokens(r.tokens, mode), chk = OSE.checkSolution(toks, osCtx(mode)); osSay('opp', chk.ok ? 'Done!' : 'Hmm…'); cb({ ok: chk.ok, tokens: toks, chk: chk }); }
-    else { osSay('opp', 'I… couldn\'t find one!'); cb({ ok: false, tokens: null, chk: { reasons: ['No Solution was written.'] } }); }
+    if (r && r.found) { var toks = osSymsToTokens(r.tokens, mode), chk = OSE.checkSolution(toks, osCtx(mode)); osSay('opp', chk.ok ? 'Done!' : 'Hmm…'); osMood(pi, chk.ok ? 'proud' : 'sheepish'); cb({ ok: chk.ok, tokens: toks, chk: chk }); }
+    else { osSay('opp', 'I… couldn\'t find one!'); osMood(pi, 'sheepish'); cb({ ok: false, tokens: null, chk: { reasons: ['No Solution was written.'] } }); }
   }).catch(osOops);
 }
 // After a challenge in a 3-player match the Third Party MAY present a Solution (rules IV-B, page O3).
@@ -510,6 +515,7 @@ function osResolve(res, tpRes) {
   if (ch.tp !== null) lines.push(tpRes && tpRes.presented ? osName(ch.tp) + ' (Third Party) also wrote a Solution: ' + (tpRes.ok ? 'correct!' : 'not correct.') : osName(ch.tp) + ' (Third Party) didn\'t write one.');
   if (osVsCreature()) {
     if (ch.challenger === 0 && pts[0] === 6) {
+      osKid('yes');
       var st = osState(); if (ch.kind === 'now') st.stats.nowWins++; else st.stats.impWins++;
       osStar(ch.kind === 'now' ? 'Correct Now! challenge' : 'Correct Impossible! call');
     } else if (ch.mover === 0 && ch.kind === 'impossible' && res.ok) osStar('Proved it wasn\'t impossible!');
@@ -627,14 +633,40 @@ function osNoGoalAgreed() {
 }
 
 // ======================= END OF SHAKE / MATCH =======================
+// RESULTS (same cards as Equations: the .rc-* classes in css/style.css). A player's picture: the creature's portrait, the kid's own
+// shirt (kit colour, trim and number), other people a numbered shirt in their seat colour.
+function osRcFace(i) {
+  var p = OG.players[i];
+  if (p.ai) return avatarHTML(p.ai, 'lg');
+  var sh = ['#c9342c', '#1c7ed6', '#2f9e44'][i % 3], tr = '#ffffff', num = String(i + 1);
+  if (i === 0) { num = S.jersey || '7'; try { var k = typeof Kit !== 'undefined' && Kit.current ? Kit.current() : null; if (k && k.shirt) { sh = k.shirt; tr = k.trim || tr; } } catch (e) {} }
+  var light = typeof rcLight === 'function' && rcLight(sh);
+  return '<span class="rc-shirt' + (light ? ' light' : '') + '" style="--shirt:' + sh + ';--trim:' + tr + '" aria-hidden="true">' + esc(num) + '</span>';
+}
+// gain: points this shake (counts up once, "+n this shake"); without it the tile shows the final score only
+function osRcSide(i, top, gain) {
+  var p = OG.players[i], g = gain == null ? null : gain;
+  return '<div class="rc-side' + (top ? ' top' : '') + '"><div class="rc-face">' + osRcFace(i) + '</div><div class="rc-name">' + osName(i) + '</div>' +
+    '<div class="rc-score" data-count="' + p.score + '" data-from="' + (g == null ? 0 : p.score - g) + '">' + p.score + '</div>' +
+    (g == null ? '' : '<div class="rc-gain"><b>+<span data-count="' + g + '">' + g + '</span></b> this shake</div>') + '</div>';
+}
+function osRcXP(list) { return list && list.length ? '<div class="xplist">' + list.map(function (l) { return '<span>' + ico('star') + ' ' + esc(l) + '</span>'; }).join('') + '</div>' : ''; }
+// "5 cards · the Goal is 5": the Solution's card count against the Goal (calm when it is not the same number)
+function osCmp(count, goal) {
+  var same = goal != null && count === goal, cs = count + ' card' + (count === 1 ? '' : 's');
+  return '<div class="os-cmp' + (same ? ' ok' : '') + '"><span class="oc-n">' + count + '</span><span class="oc-t">' + (same ? cs + ' = the Goal ' + ico('check') : goal != null ? cs + ' · the Goal is ' + goal : cs) + '</span></div>';
+}
+function osSolCard(label, tokens, ok, chk, tag) {
+  var head = '<div class="rc-h">' + label + (tag === false ? '' : ok ? ' <span class="rc-tag ok">' + ico('check') + ' correct</span>' : ' <span class="rc-tag try">not quite</span>') + '</div>';
+  if (!tokens) return '<div class="rc-sol">' + head + '<p style="margin:0">No Solution written.</p></div>';
+  var ev = OSE.evaluate(tokens, OG.universe), body = '<div class="expr os-expr">' + OSUI.exprHTML(tokens, OG.cubes) + '</div>';
+  if (ev.ok && !ev.ambiguous) body += OSUI.universeHTML(OG.universe, ev.set, { small: true, cls: 'os-resuni' }) + osCmp(ev.count, OG.goalValue);
+  if (!ok && chk && chk.reasons && chk.reasons.length) body += '<ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
+  return '<div class="rc-sol' + (ok ? ' ok' : '') + '">' + head + body + '</div>';
+}
 function osSolHTML(i, s) {
   if (!s) return '';
-  var head = '<b>' + osName(i) + '\'s Solution:</b> ' + (s.ok ? '<span style="color:var(--good)">' + ico('check') + ' correct</span>' : '<span style="color:var(--mute)">not quite</span>');
-  if (!s.tokens) return '<p>' + head + ' (no Solution written)</p>';
-  var ev = OSE.evaluate(s.tokens, OG.universe), body = '<div class="expr os-expr">' + OSUI.exprHTML(s.tokens, OG.cubes) + '</div>';
-  if (ev.ok && !ev.ambiguous) body += OSUI.universeHTML(OG.universe, ev.set, { small: true, cls: 'os-resuni' }) + '<p class="os-cnt">' + ev.count + ' card' + (ev.count === 1 ? '' : 's') + '</p>';
-  if (!s.ok && s.chk && s.chk.reasons && s.chk.reasons.length) body += '<ul class="reasons">' + s.chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
-  return '<div style="margin:8px 0">' + head + body + '</div>';
+  return osSolCard(osName(i) + '\'s Solution', s.tokens, s.ok, s.chk);
 }
 // the one Solution the 3D table shows forming: the kid's correct one, else anyone's correct one, else the kid's try,
 // else a sample that works
@@ -677,14 +709,19 @@ function osEndShake(r) {
     else { Snd.boop(); osCrowd('aw'); if (os3d()) OS3D.kid('clap'); osSay('pip', 'Good try! Every shake teaches your brain something new.'); }
   } else Snd.chime();
   if (aiTalk) setTimeout(function () { if (OG && OG.phase === 'over') osSay('opp', aiTalk); }, 400);
-  var html = '<h2 class="hero">' + (osAIs().length && !osMulti() ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
-    '<div style="text-align:center;font-size:18px">Goal: <b>' + (OG.goalValue != null ? OG.goalValue + ' card' + (OG.goalValue === 1 ? '' : 's') : '?') + '</b></div>' +
-    r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
-    osIdx().map(function (i) { return osSolHTML(i, r.sols && r.sols[i]); }).join('') +
-    (sample ? '<p><b>One way that works:</b></p><div class="expr os-expr">' + OSUI.exprHTML(sample) + '</div>' + (function () { var e = OSE.evaluate(sample, OG.universe); return OSUI.universeHTML(OG.universe, e.set, { small: true, cls: 'os-resuni' }) + '<p class="os-cnt">' + e.count + ' card' + (e.count === 1 ? '' : 's') + '</p>'; })()
-      : (OG.goalValue != null && !anyOk ? '<div class="okbox">I searched and there is no Solution with these cubes.' + (OG.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '')) +
-    osIdx().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + osName(i) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + OG.players[i].score + '</span></div>'; }).join('') +
-    '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="closeModal">' + (OG.shake >= OG.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div>';
+  // RESULTS: the end-of-shake card (Equations' .rc cards): every side's tile (points count up once), what happened, the Solutions
+  // as cubes with their card count against the Goal, what was earned, one clear button. Never shaming: a miss is "Nice try!".
+  var vsAI = osAIs().length > 0 && !osMulti(), gv = OG.goalValue;
+  var solsHTML = osIdx().map(function (i) { return osSolHTML(i, r.sols && r.sols[i]); }).join('') +
+    (sample ? osSolCard(anyOk ? 'Another way' : 'One way that works', sample, true, null, false) : '');
+  var html = '<div class="rc rc-shake' + (vsAI ? (good ? ' win' : ' kind') : '') + '"><h2 class="hero">' + (vsAI ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
+    '<div class="rc-meta"><span class="rc-chip">Shake ' + OG.shake + ' of ' + OG.shakes + '</span><span class="rc-chip gold">' + ico('target') + ' Goal <b>' + (gv != null ? gv : '?') + '</b> card' + (gv === 1 ? '' : 's') + '</span></div>' +
+    '<div class="rc-board" style="--n:' + osN() + '">' + osIdx().map(function (i) { return osRcSide(i, (r.pts[i] || 0) >= 4, r.pts[i] || 0); }).join('') + '</div>' +
+    (r.lines.length ? '<div class="rc-lines">' + r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>' : '') +
+    (solsHTML ? '<div class="rc-sols">' + solsHTML + '</div>' : '') +
+    (gv != null && !sample && !anyOk ? '<div class="okbox">I searched and there is no Solution with these cubes.' + (OG.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '') +
+    osRcXP(OG.starsShake) +
+    '<div class="row"><button class="btn green big" data-act="closeModal">' + (OG.shake >= OG.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div></div>';
   var g0 = OG, show = function () { if (OG === g0) modal(html, osNextShake); };
   var rp = os3d() && OG.goalValue != null ? osReplayPick(r, sample) : null;
   if (rp && OS3D.form(rp, OG.goalValue, function () { setTimeout(show, 300); })) return;
@@ -696,7 +733,7 @@ function osNextShake() {
   OG.shake++; OG.setter = osNext(OG.setter); osNewShake();
 }
 function osEndMatch() {
-  var st = osState(), html, a = OG.players[0].score;
+  var st = osState(), html, tone = '', a = OG.players[0].score;
   st.stats.matches++;
   if (OG.mode === 'ai') {
     var b = OG.players[1].score, o = OG.players[1].ai, idx = OG.oppIdx, won = a > b, tie = a === b, first = false;
@@ -706,26 +743,40 @@ function osEndMatch() {
       osStar(first ? 'First On-Sets win against ' + o.name + '!' : 'Won against ' + o.name, first ? 2 : 1);
       if (window.victoryFX) victoryFX(); if (Snd.fanfare) Snd.fanfare(); banner('🏆 YOU WIN!', S.name + ' wins!'); Snd.setMood('win');
     }
-    if (os3d()) OS3D.matchEnd(won ? [0] : tie ? [0, 1] : [1]);
+    osFinale(won ? [0] : tie ? [0, 1] : [1]);
     persist();
     var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
+    tone = won ? ' win' : tie ? ' tie' : ' kind';
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
-      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? (osTalk(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? osTalk(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
-      '<div class="score-line"><span>' + osName(0) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
-      (won && nextO && first ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play On-Sets!</p>' : '');
+      '<div class="rc-board final n2">' + osRcSide(0, won) + '<div class="rc-vs" aria-hidden="true">VS</div>' + osRcSide(1, !won && !tie) + '</div>' +
+      '<div class="rc-say">' + avatarHTML(o) + '<div class="bubble">' + (won ? (osTalk(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? osTalk(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
+      (won && nextO && first ? '<p class="rc-next">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play On-Sets!</p>' : '') +
+      osRcXP(OG.starsMatch);
   } else {
     var top = Math.max.apply(null, OG.players.map(function (p) { return p.score; }));
     var winners = osIdx().filter(function (i) { return OG.players[i].score === top; });
     if (window.victoryFX) victoryFX(); if (Snd.fanfare) Snd.fanfare();
     if (OG.mode === 'ai3' && winners.length === 1 && winners[0] === 0) { st.stats.wins++; osStar('Beat ' + OG.players[1].name + ' and ' + OG.players[2].name + ' at On-Sets!'); }
-    if (os3d()) OS3D.matchEnd(winners);
+    osFinale(winners);
     persist();
     var order = osIdx().sort(function (x, y) { return OG.players[y].score - OG.players[x].score; });
+    tone = winners.indexOf(0) >= 0 || !osIsAI(winners[0]) ? ' win' : ' kind';
     html = '<h2 class="hero">' + (winners.length > 1 ? 'Tie: ' + winners.map(osName).join(' & ') + '!' : osName(winners[0]) + ' wins!') + '</h2>' +
-      order.map(function (i) { return '<div class="score-line' + (OG.players[i].score === top ? ' win' : '') + '"><span>' + (OG.players[i].score === top ? ico('trophy') + ' ' : '') + osName(i) + '</span><span class="p">' + OG.players[i].score + '</span></div>'; }).join('');
+      '<div class="rc-board final" style="--n:' + osN() + '">' + order.map(function (i) { return osRcSide(i, OG.players[i].score === top); }).join('') + '</div>' +
+      osRcXP(OG.starsMatch);
   }
-  html += '<div class="row" style="margin-top:12px"><button class="btn green" data-act="osRematch">Play again</button><button class="btn" data-act="osToMenu">' + ico('home') + ' On-Sets menu</button></div>';
-  modal(html, null);
+  html += '<div class="row"><button class="btn green big" data-act="osRematch">' + ico('play') + ' Play again</button><button class="btn" data-act="osToMenu">' + ico('home') + ' On-Sets menu</button></div>';
+  modal('<div class="rc rc-match' + tone + '">' + html + '</div>', null);
+}
+// The end of the match, felt like an Equations match: the table celebrates (3D), the crowd, a sporting "good game" from the kid, the
+// beaten creature's own little tune. Every call is guarded, so a missing module is simply skipped.
+function osFinale(winners) {
+  if (os3d()) OS3D.matchEnd(winners);
+  var kidWon = winners.length === 1 && winners[0] === 0;
+  if (os3d()) {
+    setTimeout(function () { if (OG && OG.phase === 'over' && os3d()) OS3D.kid(kidWon ? 'gg' : 'clap'); }, 4600);
+    if (kidWon && osAIs().length && window.Snd && Snd.motif) { var lo = OG.players[osAIs()[0]].ai; setTimeout(function () { if (OG && lo) try { Snd.motif(lo.kind, 'beaten'); } catch (e) {} }, 3600); }
+  }
 }
 function osLeave() { if (window.OS3D) OS3D.end(); OG = null; OSUI.closeAll(); if (Snd.stopBabble) Snd.stopBabble(); }
 ACT.osRematch = function () { var m = OG.mode, o = OG.oppIdx, cfg = OG.cfg; closeModal(); osStartMatch(m, o, cfg); };
@@ -779,10 +830,10 @@ function osRender() {
   if (!$('#osTop')) el.innerHTML = '<div id="osTop" class="game-top os-top"></div><div id="osMat" class="os-matwrap"></div><div id="osAct" class="actionbar os-act"></div>';
   $('#osTop').innerHTML = osTopHTML();
   var resC = osCubes('resources');
-  var goalInner = OG.goal ? OSUI.goalPicHTML(OG.goal, true) + '<span class="gval">= ' + OG.goalValue + ' card' + (OG.goalValue === 1 ? '' : 's') + '</span>' : '<span class="empty">' + (OG.phase === 'goal' ? 'waiting for the Goal…' : '') + '</span>';
+  var gv = OG.goalValue, goalInner = OG.goal ? '<span class="expr os-gexpr">' + OSUI.goalPicHTML(OG.goal, true) + '</span><span class="gv">= ' + gv + ' card' + (gv === 1 ? '' : 's') + '</span>' : '<span class="gv os-gwait">' + (OG.phase === 'goal' ? 'waiting for the Goal…' : '…') + '</span>';
   $('#osMat').innerHTML = '<div class="mat os-mat">' +
     '<div class="os-unibox"><h3>🃏 UNIVERSE <small>' + (OG.universe.length ? OG.universe.length + ' cards' : 'dealing…') + '</small></h3>' + (OG.universe.length ? OSUI.universeHTML(OG.universe, OG.lit, { cls: 'os-mainuni' + (OG.rolling ? ' dealin' : '') }) : '<div class="os-uni"><span class="empty">The dealer is choosing how many cards…</span></div>') + '</div>' +
-    '<div class="zone z-goal os-goalz"><h3>🎯 GOAL</h3><div class="cubes">' + goalInner + '</div></div>' +
+    '<div class="os-goalz"><div class="goalhud os-ghud"><div class="gl">' + ico('target') + '<span>GOAL</span></div>' + goalInner + '</div></div>' +
     '<div class="zrow">' + osZoneHTML('required', '✅ REQUIRED', 'must use') + osZoneHTML('permitted', '👍 PERMITTED', 'may use') + osZoneHTML('forbidden', '⛔ FORBIDDEN', 'can\'t use') + '</div>' +
     '<div class="zone z-res os-res"><h3>🎲 RESOURCES <small>' + resC.length + ' left</small></h3><div class="cubes">' +
     (resC.map(function (c, i) { return OSUI.cubeHTML(c, (OG.selected === c.id ? 'sel' : '') + (OG.highlight === c.id ? ' hl' : '') + (OG.rolling ? ' dropin' : ''), 'osCube'); }).join('') || '<span class="empty">' + (OG.dealt ? 'empty' : 'the cubes are coming…') + '</span>') + '</div></div>' +

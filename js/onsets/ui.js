@@ -3,6 +3,8 @@
 // Cards, cubes, the Goal picture, and the two builders (Set-Name and Goal). Uses the site's shared helpers
 // (esc, ico, $, Snd, ACT) and OSE (js/onsets/engine.js). Everything here is prefixed os / OSUI.
 var OSUI = (function () {
+  // ---- Card sounds (js/sound.js Snd.card: 'lift' | 'place' | 'flip'); a no-op where the sound module has none ----
+  function cardSnd(kind) { try { if (window.Snd && Snd.card) { Snd.card(kind); return true; } } catch (e) {} return false; }
   // ---- Cards ----
   function cardHTML(card, opts) {
     opts = opts || {};
@@ -178,6 +180,7 @@ var OSUI = (function () {
   function openGoalBuilder(cfg) {
     GB = cfg; GB.picked = []; GB.shape = null;
     var sh = shell(); sh.classList.toggle('os-dock', !!cfg.dock); sh.classList.add('on');
+    if (Snd.getMood && Snd.getMood() !== 'off') Snd.setMood('think'); // the music leans in while he builds
     renderGoalBuilder();
   }
   function goalNow() {
@@ -216,7 +219,7 @@ var OSUI = (function () {
     if (GB.picked.some(function (p) { return p.id === id; }) || GB.picked.length >= 3) { Snd.boop(); return; }
     var c = GB.digits.find(function (x) { return x.id === id; }); GB.picked.push({ id: id, s: c.s, neg: false }); Snd.click(); renderGoalBuilder();
   };
-  ACT.osgFlip = function (el) { if (!GB) return; var id = +el.dataset.arg, p = GB.picked.find(function (x) { return x.id === id; }); if (p) { p.neg = !p.neg; Snd.click(); renderGoalBuilder(); } };
+  ACT.osgFlip = function (el) { if (!GB) return; var id = +el.dataset.arg, p = GB.picked.find(function (x) { return x.id === id; }); if (p) { p.neg = !p.neg; if (!cardSnd('flip')) Snd.click(); renderGoalBuilder(); } };
   ACT.osgShape = function (el) { if (!GB) return; GB.shape = el.dataset.arg; Snd.click(); renderGoalBuilder(); };
   ACT.osgBack = function () { if (!GB) return; GB.picked.pop(); renderGoalBuilder(); };
   ACT.osgClear = function () { if (!GB) return; GB.picked = []; renderGoalBuilder(); };
@@ -229,6 +232,6 @@ var OSUI = (function () {
   function builderOpen() { return !!OB || !!GB; }
   function closeAll() { GB = null; close(); }
 
-  return { cardHTML: cardHTML, universeHTML: universeHTML, cubeHTML: cubeHTML, faceHTML: faceHTML, exprHTML: exprHTML, exprText: exprText, goalPicHTML: goalPicHTML, shapeIcon: shapeIcon,
+  return { cardSnd: cardSnd, cardHTML: cardHTML, universeHTML: universeHTML, cubeHTML: cubeHTML, faceHTML: faceHTML, exprHTML: exprHTML, exprText: exprText, goalPicHTML: goalPicHTML, shapeIcon: shapeIcon,
     openSetBuilder: openSetBuilder, openGoalBuilder: openGoalBuilder, builderOpen: builderOpen, closeAll: closeAll, rerender: function () { if (OB) renderSetBuilder(); else if (GB) renderGoalBuilder(); } };
 })();

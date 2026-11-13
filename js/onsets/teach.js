@@ -44,7 +44,7 @@ function osRenderTut() {
   }
   $('#onsets').innerHTML = osHdr('How to play On-Sets', 'osTutQuit') + '<div class="panel os-panel os-tut"><div class="os-steps">' + OT_STEPS.map(function (s, i) { return '<i class="' + (i < OT.step ? 'done' : i === OT.step ? 'now' : '') + '"></i>'; }).join('') + '</div><h3>' + st.h + '</h3>' + body + '</div>';
 }
-ACT.osTutPick = function (el) { if (!OT || OT.done) return; var i = +el.dataset.arg; if (OT.picked[i]) delete OT.picked[i]; else OT.picked[i] = 1; Snd.click(); OT.msg = ''; osRenderTut(); };
+ACT.osTutPick = function (el) { if (!OT || OT.done) return; var i = +el.dataset.arg; if (OT.picked[i]) delete OT.picked[i]; else OT.picked[i] = 1; if (!OSUI.cardSnd(OT.picked[i] ? 'lift' : 'place')) Snd.click(); OT.msg = ''; osRenderTut(); };
 ACT.osTutCheck = function () {
   if (!OT) return;
   var st = OT_STEPS[OT.step], set = OSE.evaluate(osToks(st.e), OT_UNI).set, extra = 0, missing = 0;

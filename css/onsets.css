@@ -71,8 +71,8 @@
 .os-unibox{background:rgba(255,255,255,.1);border:3px solid rgba(255,255,255,.35);border-radius:20px;padding:6px 8px 8px}
 .os-unibox h3,.os-goalz h3{color:#fff;font-size:16px;letter-spacing:1px;margin:0 0 4px;text-shadow:0 1px 0 rgba(0,0,0,.3);display:flex;align-items:center;gap:6px}
 .os-unibox h3 small{font-family:var(--font);font-weight:700;opacity:.85;letter-spacing:0;font-size:12px}
-.os-goalz .cubes{gap:12px}
-.os-goalz .gval{font-family:var(--display);font-size:22px}
+.os-goalz{display:flex;justify-content:center;padding:2px 0 6px}
+
 .os-zone .cubes{min-height:var(--cube)}
 .os-act{width:100%;max-width:1180px}
 .os-whose{width:100%;text-align:center;font-family:var(--display);font-size:18px}
@@ -157,10 +157,10 @@
 .os-act .also,#game.os3d .also{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;width:100%}
 
 /* ---------- On-Sets on the 3D table (#game.os3d; the layout itself is Equations' #game.three in css/style.css) ---------- */
-#game.os3d .os-ghud{gap:8px}
-#game.os3d .os-gexpr{display:inline-flex;align-items:center;--mini:26px;padding:4px 8px}
-#game.os3d .os-gexpr .os-goalpic{--g:26px}
-#game.os3d .os-gwait{opacity:.75;font-size:.8em}
+.os-ghud{gap:8px}
+.os-gexpr{display:inline-flex;align-items:center;--mini:26px;padding:4px 8px}
+.os-gexpr .os-goalpic{--g:26px}
+.os-gwait{opacity:.75;font-size:.8em}
 #game.os3d .os-ucount{font-weight:900;font-size:15px;background:rgba(255,255,255,.85);color:#1d2340;border-radius:999px;padding:3px 10px;white-space:nowrap}
 #game.os3d .os-whose{font-size:16px}
 /* the builders sit beside the table (wide windows) or under it (narrow), so the lifted cards on the table stay in view */
@@ -304,6 +304,16 @@
   .os-trays .pool h4{font-size:13px}
   .os-buni{padding:4px}
 }
+/* ---------- Result cards (the .rc-* parts are Equations' own, in css/style.css) ---------- */
+.rc-sol .os-expr{background:linear-gradient(#1b2b45,#0f1a2e);box-shadow:inset 0 0 0 2px rgba(255,255,255,.1);--mini:34px}
+.rc-sol .os-resuni{margin:0;background:var(--soft);justify-content:center;gap:5px}
+.os-cmp{display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:16px;color:var(--ink2)}
+.os-cmp .oc-n{min-width:34px;height:34px;padding:0 6px;border-radius:11px;background:var(--soft);box-shadow:inset 0 0 0 2px var(--edge-card);display:inline-flex;align-items:center;justify-content:center;font-family:var(--display);font-size:22px;color:var(--ink)}
+.os-cmp.ok{color:#127a4c}.os-cmp.ok .oc-n{background:#e1f8ee;box-shadow:inset 0 0 0 2px #4ad08f}
+.os-cmp .ico{width:17px;height:17px;vertical-align:-3px;stroke-width:3.2}
+.rc .xplist .ico{width:15px;height:15px;color:#e09a00;vertical-align:-2px}
+.rc-sols .os-resuni .os-card{--w:clamp(30px,3.4vw,40px)}
+@media (max-width:560px){.rc-board[style*="--n:3"] .rc-gain{flex-direction:column;align-items:center;gap:0;white-space:normal;text-align:center;font-size:13px}.rc-board[style*="--n:3"] .rc-gain b{font-size:24px}}
 /* creature cards: how far it sees, as four dots */
 .opp .os-dots{font-size:15px;letter-spacing:3px;line-height:1;display:flex;gap:3px;justify-content:center}
 .opp .os-dots b{font-weight:400;color:#d3d8e6}
