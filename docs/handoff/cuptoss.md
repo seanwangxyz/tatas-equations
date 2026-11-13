@@ -72,3 +72,86 @@ skipped by a tap, torn down, hidden, on any error, or by a safety timeout). Retu
 - After landing, every cube is checked flat on face `s` (`flatten`).
 
 `T3.reroll(list, done)` is unchanged and still works. `T3.tossing()`: true while a toss / re-dump is running.
+
+## Wiring for js/game.js (not applied: game.js is the lead's)
+
+1. A helper next to `avatarMoveFn` (after its closing `}`, before the comment `// A human's move: the kid (or the mate) picks the cube up and lobs it`):
+
+```js
+// CUPTOSS: who handles the cup / the reroll toss for player i in 3D: a creature seat (0 / 1), 'me', 'mate', or null (no figure: today's animation)
+function rollerOf(i) { var f = avatarMoveFn(i); return isAI(i) ? aiSeat(i) : f === T3.mateMove ? 'mate' : f === T3.playerMove ? 'me' : null; }
+```
+
+2. `newShake`: the Goal-setter dumps the cup. Insert ONE line right before the anchor
+   `    T3.pour(G.cubes, function (res) {`:
+
+```js
+    if (T3.pourBy) T3.pourBy(rollerOf(G.setter));   // CUPTOSS: the Goal-setter picks the cup up and dumps it
+```
+
+   (Equivalent: pass it as a third argument, `}, { by: rollerOf(G.setter) });` on the `T3.pour` call's closing line.)
+   Without the helper, the same one line inline:
+   `if (T3.pourBy) T3.pourBy(isAI(G.setter) ? aiSeat(G.setter) : avatarMoveFn(G.setter) === T3.mateMove ? 'mate' : avatarMoveFn(G.setter) === T3.playerMove ? 'me' : null);`
+
+3. `rerollOps`: the roller tosses the cubes by hand. Replace the anchor line
+   `    if (T3.active() && T3.reroll) T3.reroll(roll, next);   // they hop up, tumble and land showing the new face (about 1 s, with the clatter)`
+   with:
+
+```js
+    if (T3.active() && T3.rerollToss) T3.rerollToss(roll, { by: rollerOf(G.setter), onToss: function () { /* the cubes leave the hand: a line could go here */ } }, next);   // CUPTOSS: grabbed, tossed up, they land showing the new face
+    else if (T3.active() && T3.reroll) T3.reroll(roll, next);
+```
+
+   `next` is called exactly once after they land (as with T3.reroll), so the `setTimeout(step, 350)` rhythm is unchanged.
+   One or two cubes take ~1.7-2.7 s (grab 0.84 s, then the fall), three or more ~4.3-6 s (back into the cup and dumped).
+
+Online: guests keep calling `T3.pour(cubes, done)` without `by` (online.js), so they see today's pour; the host's
+`rollerOf` already maps the far person to `'mate'` through `Online.moveFn`. Tutorial: `avatarMoveFn` returns null, so
+null: today's pour. On-Sets (onsets3d / ONSETS hooks): untouched, keeps its own pour.
+
+## Hooks (new)
+
+- `T3.pour(cubes, done, { by })`, `T3.pourBy(by)` (one-shot, read by the next `T3.pour` within 3 s).
+- `T3.rerollToss(list, { by, onToss }, done)`, `T3.tossing()`.
+- `T3._cuptoss(o)`: checks / tuning (`{ dump: {...}, toss: {...} }` sets times; `{ faces: [ids] }` returns each cube's
+  top face, flatness and position; also the cup load, whether hands are on the cup, the dump clock).
+- `ctx.grips.human('me' | 'mate')` (player.js) / `ctx.grips.creature(0 | 1)` (creatures.js): a figure's grip adapter
+  `{ x, z, fx, fz, reach, sy, hand, set({ far, fn }) | set(null), hands(), holding() }`, null when that figure is not
+  at the table. `set` takes per-frame world hand spots, a weight, openness and a look target; the figure leans / lies on
+  the rim / steps in once for `far` and eases home on `set(null)`. Creatures: their reactions ease out only once the
+  hands actually start (an entrance gives way like for a move).
+- `T3.playerState().hold`: the chosen reach (stand / flop / crawl) while his hands are held.
+
+## Performance
+
+Nothing new at rest: the cup is hidden after every pour / toss (one Group, as before), the pile is the cubes
+themselves, no new meshes. During a dump: one extra cylinder body in the physics while the cup stands on the felt.
+A 3+-cube reroll runs its fall up front (up to 420 physics steps with only the rerolled cubes moving: a few ms). The
+render loop goes quiet afterwards: measured 0.5 renders/s before and after creature and kid dumps in a calm venue
+(same as today's pour), creatures `quiet`, no hands held (`T3._cuptoss().held` false).
+
+## Verified / not verified
+
+Verified (my own tab, 1280x800, timer-driven frames, pictures rendered from the canvas and looked at):
+- Strips: the sweep into the cup from the seat camera and close up (cubes go over the rim and drop in, the pile
+  inside, the cup waits above its place until the cubes lying there are in); kid dump (cup to his left on screen,
+  tummy on the rim, lift, upside down, back down); creature dumps: Snoozy, Rusty, Ollie (classic), Blaze, Grub, Hex
+  (monster rigs, hands on the cup's sides); Tata dump (p3, his corner seat); second creature dump (ai3, Splosh at the
+  left corner); two-cube toss (kid: belly slide; Snoozy: leans and steps in); one-cube toss (Hex); three-cube back into
+  the cup (Snoozy and the kid).
+- Numeric: a wall check on every frame of the sweep (no cube passes through the cup's wall: 0 hits for creature,
+  fallback and kid sweeps after the fixes, with Goal cubes lying under the cup's spot); the hands on the cup's sides
+  (creature exact; the kid's far hand within ~0.3); 20 pours mixed (kid / creature / none, high then low quality, Goal
+  cubes on the table): done() once each, 0 cubes off the felt at the finish, 0 `settleInside` fixes, every cube in
+  Resources after the sync, cup load empty after; 20 rerolls mixed (1, 2, 3, 4, 5 cubes; kid / creature; calm):
+  done() once, onToss once, every cube shows exactly the requested face, flat, inside the felt, also after a sync.
+  Teardown: leaving the match mid-toss and mid-dump: done() once, hands let go, nothing pouring.
+- The fallback pour (no `by`: today's flow until game.js is wired) with the walk-out and coin toss on: reaches the Goal
+  phase; the cubes go into the cup the new way. `node tests/engine.test.js`: 948 passed.
+
+Not verified: real devices / 60 fps feel (timer-driven frames; the shared pane reports reduced motion, so motion was
+checked with the media query overridden); the game.js wiring itself (not applied; tested by calling `T3.pourBy` /
+`T3.pour(.., {by})` / `T3.rerollToss` directly the same way); the tall phone layout; Team-up with Tata at the left
+seat dumping (same code path as the p3 corner seat); online play (guests fall back by design); the trophy lift and
+tournament practice (untouched code paths). Seen once during a match start, not from these files: a three.js
+`checkMaterialsReady ... isReady` error from title.js's `compileAsync`.

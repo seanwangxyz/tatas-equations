@@ -1402,7 +1402,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var D = { g: g, by: by, cs: cs, R: R, L: L, ax: ax, hr: hr, up: new THREE.Vector3(R.x, R.y + 0.8, R.z), u: -1, w: 0, open: 1, angle: 0, spill: false, freed: false, col: null, start: 1e9,
       ha: new THREE.Vector3(), hb: new THREE.Vector3(), look: new THREE.Vector3() };
     var fa = L.clone().addScaledVector(ax, hr), fb = L.clone().addScaledVector(ax, -hr);
-    var far = Math.hypot(fa.x - g.x, fa.z - g.z) > Math.hypot(fb.x - g.x, fb.z - g.z) ? fa : fb;
+    var far = (Math.hypot(fa.x - g.x, fa.z - g.z) > Math.hypot(fb.x - g.x, fb.z - g.z) ? fa : fb).clone();
+    if (g.kind !== 'creature') far.x += dx * 0.6, far.z += dz * 0.6;   // a person plans a little further: the hand reaching across his body gets there too
     var ok = false;
     try { ok = g.set({ far: far, fn: function (now, out) { if (D.w <= 0) { out.w = 0; return; } out.a = D.ha; out.b = D.hb; out.w = D.w; out.open = D.open; out.look = D.look; } }); } catch (e) { ok = false; }
     return ok ? D : null;
@@ -1434,9 +1435,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (u < T.lift0) p.copy(D.R);
     else if (u < T.lift1) { e = sstep01((u - T.lift0) / (T.lift1 - T.lift0)); p.lerpVectors(D.R, D.L, e); ang = -0.1 * Math.sin(Math.PI * e); }
     else if (u < T.hold) { p.copy(D.L); ang = Math.PI * sstep01((u - T.lift1) / (T.turn1 - T.lift1)); }
-    else if (u < T.back) { e = sstep01((u - T.hold) / (T.back - T.hold)); p.lerpVectors(D.L, D.up, e); ang = Math.PI * (1 - e); }
-    else if (u < T.down) { e = sstep01((u - T.back) / (T.down - T.back)); p.lerpVectors(D.up, D.R, e); }
-    else p.copy(D.R);
+    else if (u < T.back) { e = sstep01((u - T.hold) / (T.back - T.hold)); p.lerpVectors(D.L, D.upB || D.up, e); ang = Math.PI * (1 - e); }
+    else if (u < T.down) { e = sstep01((u - T.back) / (T.down - T.back)); p.lerpVectors(D.upB || D.up, D.Rb || D.R, e); }
+    else p.copy(D.Rb || D.R);
     obj.quaternion.setFromAxisAngle(D.ax, ang); obj.scale.setScalar(D.cs); obj.updateMatrixWorld();
     return ang;
   }
@@ -1448,7 +1449,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     D.open = u < T.reach * 0.85 ? 1 : 0.15;
     D.ha.copy(cup.position).addScaledVector(D.ax, D.hr); D.hb.copy(cup.position).addScaledVector(D.ax, -D.hr); D.look.copy(cup.position);
     if (!D.spill && u > T.lift1 && ang > 1.75) D.spill = true;
-    if (u >= T.back && !D.col && !D.noCol && world) { footprint(D); if (u >= T.down && !D.col) D.noCol = true; }
+    if (u >= T.hold && !D.Rb && !D.pre) backSpot(D, world && pour ? world.bodies : []);   // (a reroll's pre-run chose it already)
+    if (u >= T.back && u < T.free + 1.2 && !D.col && world && pour) footprint(D);   // until it is solid there, a cube in its way is pushed out (for a while at most)
     if (u >= T.free && !D.freed) releaseDump(D);
   }
   // a cube leaving the upturned cup: toward a spot on the felt beyond the cup (away from the roller and from where the cup
@@ -1458,7 +1460,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var W = layout.W / 2 - 1.2, Dh = layout.D / 2 - 1.2, a = (Math.random() - 0.5) * 2.2, ca = Math.cos(a), sa = Math.sin(a), far = 3.5 + Math.random() * 5;
     var tx = D.L.x + (dx * ca - dz * sa) * far, tz = D.L.z + (dz * ca + dx * sa) * far;
     tx = Math.max(-W, Math.min(W, tx)); tz = Math.max(-Dh, Math.min(Dh, tz));
-    var ex = tx - b.position.x, ez = tz - b.position.z, len = Math.hypot(ex, ez) || 1, sp = Math.min(3 + Math.random() * 3.5, len * 1.6);
+    var ex = tx - b.position.x, ez = tz - b.position.z, len = Math.hypot(ex, ez) || 1, sp = Math.min(4 + Math.random() * 4, len * 2);
     b.velocity.set(ex / len * sp, -1.5 + Math.random() * 1.5, ez / len * sp);
   }
   // the cup coming back down: a cube lying where it goes is nudged aside first (gently); once it stands on the felt it is
@@ -1466,17 +1468,24 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function clearSpot(D, bodies, wake) {
     var r = 1.45 * D.cs, any = false;
     bodies.forEach(function (b) {
-      if (b.mass <= 0) return; var dx = b.position.x - D.R.x, dz = b.position.z - D.R.z, d = Math.hypot(dx, dz) || 1e-3;
-      if (d < r + 0.55) { any = true; b.wakeUp(); b.velocity.set(dx / d * 2.6, 1.1, dz / d * 2.6); }
+      if (b.mass <= 0) return; var R = D.Rb || D.R, dx = b.position.x - R.x, dz = b.position.z - R.z, d = Math.hypot(dx, dz) || 1e-3;
+      if (d < r + 0.6) { any = true; b.wakeUp(); b.velocity.x = dx / d * 2.4; b.velocity.z = dz / d * 2.4; if (b.position.y < 0.7) b.velocity.y = Math.max(b.velocity.y, 0.4); }
     });
     if (any && wake) wake();
     return any;
   }
-  function spotFree(D, bodies) { var r = 1.45 * D.cs + 0.55; return !bodies.some(function (b) { return b.mass > 0 && Math.hypot(b.position.x - D.R.x, b.position.z - D.R.z) < r; }); }
-  function cupBody(D, mat) { var r = 1.45 * D.cs, c = new CANNON.Body({ mass: 0, material: mat }); c.addShape(new CANNON.Cylinder(r, r, 3.2 * D.cs, 12)); c.position.set(D.R.x, 1.6 * D.cs, D.R.z); return c; }
+  function spotFree(D, bodies, R) { R = R || D.Rb || D.R; var r = 1.45 * D.cs + 0.55; return !bodies.some(function (b) { return b.mass > 0 && Math.hypot(b.position.x - R.x, b.position.z - R.z) < r; }); }
+  // where the cup goes back down: its own place, or the nearest free place along the edge if cubes landed there
+  function backSpot(D, bodies) {
+    if (D.Rb) return; var W = layout.W / 2, Dh = layout.D / 2, rB = 1.4 * D.cs + 0.12, q = new THREE.Vector3();
+    [0, 1.5, -1.5, 3, -3].some(function (o) { q.set(Math.max(-W + rB, Math.min(W - rB, D.R.x + D.ax.x * o)), D.R.y, Math.max(-Dh + rB, Math.min(Dh - rB, D.R.z + D.ax.z * o))); return spotFree(D, bodies, q) && (D.Rb = q.clone()); });
+    if (!D.Rb) D.Rb = D.R.clone();
+    D.upB = new THREE.Vector3(D.Rb.x, D.Rb.y + 0.8, D.Rb.z);
+  }
+  function cupBody(D, mat) { var R = D.Rb || D.R, r = 1.45 * D.cs, c = new CANNON.Body({ mass: 0, material: mat }); c.addShape(new CANNON.Cylinder(r, r, 3.2 * D.cs, 12)); c.position.set(R.x, 1.6 * D.cs, R.z); return c; }
   function footprint(D) {
-    if (!D.nudged) { D.nudged = true; clearSpot(D, world.bodies, function () { if (pour) pour.settledAt = 0; }); return; }
-    if (D.u >= DUMP.down && spotFree(D, world.bodies)) { D.col = cupBody(D, world.floorMat); world.addBody(D.col); }
+    if (D.u >= DUMP.down && spotFree(D, world.bodies)) { D.col = cupBody(D, world.floorMat); world.addBody(D.col); return; }
+    clearSpot(D, world.bodies, function () { if (pour) pour.settledAt = 0; });
   }
   function releaseDump(D) {
     if (!D || D.freed) return; D.freed = true; D.w = 0;
@@ -1779,7 +1788,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     });
     var gEnd = orderGather(J.gather, D.R, 0.06);
     J.gLate = 0.22; D.start = Math.max(0.75, 0.3 + J.gLate + gEnd + 0.15); hoverPlan(D, J.gather, J.gLate);
-    try { J.sim = preSim(D, list); } catch (e) { console.warn('redump', e); J.sim = null; }
+    try { J.sim = preSim(D, list); D.pre = true; } catch (e) { console.warn('redump', e); J.sim = null; }
     if (!J.sim) { releaseDump(D); return false; }
     emptyLoad(true);
     cup.visible = true; cup.position.copy(J.from); cup.quaternion.set(0, 0, 0, 1); cup.scale.setScalar(D.cs); cup.updateMatrixWorld();
@@ -1818,8 +1827,8 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         (function (fr) { b.addEventListener('collide', function (ev) { var v = Math.abs(ev.contact.getImpactVelocityAlongNormal()); if (v > 1.2) hits.push([fr(), Math.min(1, v / 11)]); }); })(function () { return f; });
         w.addBody(b); C.push({ id: id, s: ids[id], m: m, b: b, f0: f, pos: [], q: [] }); lastSpawn = f;
       }
-      if (!col && u >= T.back) { col = 1; clearSpot(D, C.map(function (c) { return c.b; })); }
-      if (col === 1 && u >= T.down) { col = 2; var bs = C.map(function (c) { return c.b; }); if (spotFree(D, bs)) w.addBody(cupBody(D, fm)); }
+      if (!D.Rb && u >= T.hold) backSpot(D, C.map(function (c) { return c.b; }));
+      if (col !== 2 && u >= T.back) { var bs = C.map(function (c) { return c.b; }); col = 1; if (u >= T.down && spotFree(D, bs)) { col = 2; w.addBody(cupBody(D, fm)); } else clearSpot(D, bs); }
       w.step(1 / 60);
       C.forEach(function (c) { var p = c.b.position, q = c.b.quaternion; c.pos.push(p.x, p.y, p.z); c.q.push(q.x, q.y, q.z, q.w); });
       if (C.length === order.length && f > lastSpawn + 20 && col) {
