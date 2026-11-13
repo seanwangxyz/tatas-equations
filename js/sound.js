@@ -557,7 +557,7 @@ var Snd = (function () {
     fl.type = 'lowpass'; fl.Q.value = 1.4;
     fl.frequency.setValueAtTime(550, t); fl.frequency.linearRampToValueAtTime(2800, t + 0.07); fl.frequency.exponentialRampToValueAtTime(1500, t + dur);
     vol = vol || 0.07;
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.035); g.gain.setValueAtTime(vol * 0.85, t + Math.max(0.05, dur - 0.08)); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.035); g.gain.linearRampToValueAtTime(vol * 0.85, t + Math.max(0.05, dur - 0.08)); g.gain.linearRampToValueAtTime(0.0001, t + dur);
     [-9, 0, 9].forEach(function (dt) {
       var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; o.connect(g); outs.push(o);
       o.start(t); o.stop(t + dur + 0.05); track(o, []);
@@ -580,8 +580,8 @@ var Snd = (function () {
     }
   }
   function crash(delay, vol, dur) {
-    hiss({ dur: dur, vol: vol, delay: delay, type: 'highpass', f: 5500, attack: 0.004, reverb: 0.5 });
-    hiss({ dur: dur * 0.7, vol: vol * 0.7, delay: delay, type: 'bandpass', f: 8200, q: 1.5, attack: 0.004, reverb: 0.5 });
+    hiss({ dur: dur, vol: vol * 1.2, delay: delay, type: 'bandpass', f: 4200, q: 0.7, attack: 0.004, reverb: 0.5 });   // AUDIO2: a softer cymbal (was 5.5 kHz high-pass + 8.2 kHz)
+    hiss({ dur: dur * 0.7, vol: vol * 0.6, delay: delay, type: 'bandpass', f: 6000, q: 1.2, attack: 0.004, reverb: 0.5 });
   }
   // A choir-ish vowel: sawtooth through two formant band-passes
   var VOW = { ah: [790, 1180], oh: [500, 930], eh: [560, 1850], ee: [330, 2250], oo: [320, 800] };
@@ -1365,7 +1365,7 @@ var Snd = (function () {
       if (shim) { shim.frequency.setValueAtTime(b.f * 3, tt); }
       bp1.frequency.setValueAtTime(F[0] * cfg.fs, tt); bp2.frequency.setValueAtTime(F[1] * cfg.fs, tt);
       eg.gain.setValueAtTime(0.0001, tt); eg.gain.linearRampToValueAtTime(g0, tt + att);
-      eg.gain.setValueAtTime(g0 * 0.85, tt + Math.max(att + 0.002, b.d * 0.5)); eg.gain.exponentialRampToValueAtTime(0.0001, tt + b.d);
+      eg.gain.linearRampToValueAtTime(g0 * 0.85, tt + Math.max(att + 0.002, b.d * 0.5)); eg.gain.exponentialRampToValueAtTime(0.0001, tt + b.d);
     }
     track(main, outs); main.start(t0); main.stop(end + 0.1);
     duck(0.5, plan.ms / 1000 + 0.35);

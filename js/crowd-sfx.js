@@ -125,7 +125,7 @@ var CrowdSfx = (function () {
       var c = ctx(); if (!c || c.state === 'closed') return 0;
       if (!force && c.state !== 'running' && !own) return 0;          // a suspended context would play it late, in a heap
       last = now;
-      var b = bus(); b.g.gain.setValueAtTime(own ? 1.1 * v : 1, c.currentTime); // shared: the bus applies the volume
+      var b = bus(); b.g.gain.setTargetAtTime(own ? 1.1 * v : 1, c.currentTime, 0.02); // shared: the bus applies the volume
       // a per-sound trim node, so overlapping kinds keep their own level
       var tg = c.createGain(); tg.gain.value = KTRIM[kind] || 1; tg.connect(b.g); dst = tg;
       var ms; try { ms = f(c.currentTime + 0.02); } finally { dst = null; }
