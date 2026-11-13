@@ -906,7 +906,8 @@ function castExtras(pts, rows, R2, R, tier, o, board) {
   var fb = back[0];
   if (fb && fb.list.length > 6) {
     var wantM = board && board.x > 0 ? -5.5 : 5.5, cm = -1, md = 1e9;
-    fb.list.forEach(function (i) { var d = Math.abs(pts[i].x - wantM); if (d < md) { md = d; cm = i; } });
+    var hx = []; out.holders.forEach(function (pr) { hx.push(pr[0].x, pr[1].x); }); // not in front of a banner
+    fb.list.forEach(function (i) { var d = Math.abs(pts[i].x - wantM); for (var h = 0; h < hx.length; h++) if (Math.abs(pts[i].x - hx[h]) < 1.6) d += 50; if (d < md) { md = d; cm = i; } });
     if (cm >= 0) { var PM = pts[cm]; extra({ x: PM.x, y: FLOOR_Y, z: PM.z + 1.0, ry: Math.atan2(-PM.x, -(PM.z + 1.0)), key: PM.key, team: 0, job: 'mascot', stand: true, rk: 1, sc: 1.28, hs: 1, L: plainL(R2, o, 'mascot') }); }
   }
   // 7. the kids on shoulders
@@ -1255,7 +1256,7 @@ export function makeBlockCrowd(group, pts, o) {
       case 'card': { // tifo: hold a card up over the head (in step with the cards), then down again
         var tq = s - r.del[j], downAt = 750 + r.up + r.hold;
         e = tq <= 0 ? 0 : sm(tq / r.up); if (s > downAt) e = Math.min(e, 1 - sm((s - downAt - r.del[j] * 0.3) / r.down)); if (e <= 0) return;
-        a0 = (2.25 - b0) * e; a1 = (2.25 - b1) * e; yw = (0.42 - rYaw[i]) * e; hd = -0.06 * e; break;
+        a0 = (1.75 - b0) * e; a1 = (1.75 - b1) * e; yw = (0.45 - rYaw[i]) * e; hd = -0.06 * e; break;
       }
       default: return;
     }
@@ -1313,17 +1314,20 @@ export function makeBlockCrowd(group, pts, o) {
     // tifo (tier 3+): the lower rows of the back stand, a block clear of the scoreboard, as close to the middle as it gets
     var backRows = (rows.stands[0] || []).slice();
     if (tier >= 3 && backRows.length >= 4) {
-      var lower = [backRows[0]]; for (var lr = 1; lr < backRows.length; lr++) { if (backRows[lr].y - backRows[lr - 1].y > 0.9) break; lower.push(backRows[lr]); }
+      // the top rows (the upper tier at tier 5): clear of the tunnel, the banners and the band in the front rows
+      var lower = [backRows[backRows.length - 1]], fy0 = backRows[0].y;
+      for (var lr = backRows.length - 2; lr >= 0 && lower.length < 7; lr--) { var ro = backRows[lr]; if (lower[0].y - ro.y > 0.9 || ro.level < 3 || ro.y < fy0 + 2.0) break; lower.unshift(ro); }
       var xmin = 1e9, xmax = -1e9; lower.forEach(function (r) { r.list.forEach(function (i) { xmin = Math.min(xmin, pts[i].x); xmax = Math.max(xmax, pts[i].x); }); });
       var ivs = [[xmin + 0.3, xmax - 0.3]];
       if (board) { var b0x = board.x - board.w / 2 - 1.2, b1x = board.x + board.w / 2 + 1.2; ivs = [[xmin + 0.3, Math.min(xmax - 0.3, b0x)], [Math.max(xmin + 0.3, b1x), xmax - 0.3]].filter(function (v) { return v[1] - v[0] > 4; }); }
-      var bestIv = null, bestD = 1e9; ivs.forEach(function (v) { var c = Math.max(v[0], Math.min(v[1], 0)), d = Math.abs(c) - (v[1] - v[0]) * 0.05; if (d < bestD) { bestD = d; bestIv = v; } });
+      // beside the creature (it hides the middle from his seat), on the side away from the scoreboard
+      var tx = board && board.x < 0 ? 7.5 : -7.5, bestIv = null, bestD = 1e9; ivs.forEach(function (v) { var c = Math.max(v[0], Math.min(v[1], tx)), d = Math.abs(c - tx) - (v[1] - v[0]) * 0.05; if (d < bestD) { bestD = d; bestIv = v; } });
       if (bestIv) {
-        var hw = Math.min(6.2, (bestIv[1] - bestIv[0]) / 2), cx = Math.max(bestIv[0] + hw, Math.min(bestIv[1] - hw, 0)), x0 = cx - hw, cardList = [], owner = [];
+        var hw = Math.min(5.0, (bestIv[1] - bestIv[0]) / 2), cx = Math.max(bestIv[0] + hw, Math.min(bestIv[1] - hw, tx)), x0 = cx - hw, cardList = [], owner = [];
         tifoOf = new Int32Array(N).fill(-1);
         lower.forEach(function (r, lv) {
-          var nx = Math.sin(r.ry), nz = Math.cos(r.ry);
-          function addCard(x, z, who) { if (x < x0 - 0.01 || x > cx + hw + 0.01) return; cardList.push({ x: x + nx * 0.16, y: r.y + 0.62, z: z + nz * 0.16, ry: r.ry, c: Math.round((x - x0) / 0.62), r: lv }); owner.push(who); }
+          var nx = Math.sin(r.ry), nz = Math.cos(r.ry), up = lower[lv + 1] ? lower[lv + 1].y - r.y : lv ? r.y - lower[lv - 1].y : 0.6, hy = Math.max(1, (up - 0.02) / 0.55 / 0.96);
+          function addCard(x, z, who) { if (x < x0 - 0.01 || x > cx + hw + 0.01) return; cardList.push({ x: x + nx * 0.34, y: r.y + 0.6, z: z + nz * 0.34, ry: r.ry, hy: hy, c: Math.round((x - x0) / 0.62), r: lv }); owner.push(who); }
           r.list.forEach(function (i) { if (!pts[i].hold && !pts[i].band) addCard(pts[i].x, pts[i].z, i); });
           empties.forEach(function (e) { if (e.stand === r.stand && Math.abs(e.y - r.y) < 0.05) addCard(e.x, e.z, -1); });
         });
@@ -1383,7 +1387,7 @@ export function makeBlockCrowd(group, pts, o) {
     R_('card', l, now, { del: Float32Array.from(del), up: sh.up, hold: sh.hold, down: sh.down, dur: sh.dur, hop: 0 });
     return true;
   }
-  function picture(kind) { return tifo ? tifoPicture(kind === 'num' ? 'word' : kind, tifo.cols, tifo.rows, kind === 'num' ? story.jersey() : kind === 'goal' ? 'GOAL' : '') : null; }
+  function picture(kind) { if (tifo && tifo.rows < 5 && (kind === 'num' || kind === 'goal')) kind = 'cube'; return tifo ? tifoPicture(kind === 'num' ? 'word' : kind, tifo.cols, tifo.rows, kind === 'num' ? story.jersey() : kind === 'goal' ? 'GOAL' : '') : null; }
   var hopG = 1, reducedNow = false;
   function direct(kind, opts, now, low) {
     var m = story.moment(kind, opts), any = false;
@@ -1435,7 +1439,11 @@ export function makeBlockCrowd(group, pts, o) {
         if (!low && !reducedNow) { any = R_('mwave', who(all, 1), now + 1500, { dir: waveDir, hop: 1 }) || any; waveDir = -waveDir; }
         if (tifo) any = stunt(picture(m === 'win' ? 'goal' : 'star'), now + 700) || any;
         if (confetti && !reducedNow && cannons.length) any = confetti.burst(cannons, [story.palette().home.shirt, story.palette().home.trim, '#ffffff', '#ffd43b'], now + 300, Math.round((confetti.points.geometry.attributes.aAlpha.count) * (story.calm() ? 0.35 : 1))) || any;
-        if (phones && !phones.on()) { phones.light(now + 1400, reducedNow); any = stance(phoneIdx, B_PHONE, true, now, reducedNow ? 250 : 600, function (i) { return reducedNow ? 0 : 1400 + Math.abs(key[i] - 0.5) * 1800; }) || any; }
+        if (phones && !phones.on()) {
+          any = stance(phoneIdx, B_PHONE, true, now, reducedNow ? 250 : 600, function (i) { return reducedNow ? 0 : 1400 + Math.abs(key[i] - 0.5) * 1800; }) || any;
+          phones.place(function (k) { var h = handAt(phoneIdx[k], 1); return h ? { x: h.x, y: h.y + 0.06, z: h.z } : null; }); // the raised hands (rest pose, already updated)
+          phones.light(now + 1400, reducedNow);
+        }
         break;
       }
       case 'replay': { // (heads already turned to the screen) the section nearest the screen cheers the replayed Goal

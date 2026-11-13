@@ -149,10 +149,11 @@ export function makeTifo(group, cards, geo, mat, cols, rows) {
   group.add(mesh);
   var arr = mesh.instanceMatrix.array, delay = new Float32Array(n), run = null, col = new THREE.Color();
   function place(i, k) { // k: 0 down on the lap (flat, tiny) .. 1 held up
-    var p = cards[i], o = i * 16, s = 0.15 + 0.85 * k, rx = -(1 - k) * 1.45, cy = Math.cos(p.ry), sy = Math.sin(p.ry), cx = Math.cos(rx), sx = Math.sin(rx);
-    // R = Ry(ry) * Rx(rx), then scale
-    arr[o] = cy * s; arr[o + 1] = 0; arr[o + 2] = -sy * s; arr[o + 3] = 0;
-    arr[o + 4] = sy * sx * s; arr[o + 5] = cx * s; arr[o + 6] = cy * sx * s; arr[o + 7] = 0;
+    // held up it leans back a little, toward the seats across the pitch (and his seat); hy: as tall as the row's step
+    var p = cards[i], o = i * 16, s = 0.15 + 0.85 * k, rx = -(1 - k) * 1.45 - 0.3 * k, cy = Math.cos(p.ry), sy = Math.sin(p.ry), cx = Math.cos(rx), sx = Math.sin(rx), w = s * 1.05, h = s * (p.hy || 1);
+    // R = Ry(ry) * Rx(rx), then scale (w, h, s)
+    arr[o] = cy * w; arr[o + 1] = 0; arr[o + 2] = -sy * w; arr[o + 3] = 0;
+    arr[o + 4] = sy * sx * h; arr[o + 5] = cx * h; arr[o + 6] = cy * sx * h; arr[o + 7] = 0;
     arr[o + 8] = sy * cx * s; arr[o + 9] = -sx * s; arr[o + 10] = cy * cx * s; arr[o + 11] = 0;
     arr[o + 12] = p.x; arr[o + 13] = p.y - 0.35 * (1 - k); arr[o + 14] = p.z; arr[o + 15] = 1;
   }
@@ -221,7 +222,7 @@ function pointsOf(n, mat) {
 
 // confetti cannons: origins [{x, y, z, nx, nz}] (the stand front, nx/nz toward the pitch); floor: the pitch height
 export function makeConfetti(group, max, floor) {
-  var pts = pointsOf(max, pointsMat({ size: 0.16 })), geo = pts.geometry; pts.name = 'crowd:confetti';
+  var pts = pointsOf(max, pointsMat({ size: 0.26 })), geo = pts.geometry; pts.name = 'crowd:confetti';
   group.add(pts);
   var P = geo.attributes.position.array, Cl = geo.attributes.color.array, Sz = geo.attributes.aSize.array, Al = geo.attributes.aAlpha.array;
   var V = new Float32Array(max * 3), T0 = new Float32Array(max), ph = new Float32Array(max), n = 0, run = null, col = new THREE.Color();
@@ -276,6 +277,8 @@ export function makePhones(group, spots) {
   geo.attributes.position.needsUpdate = true;
   return {
     points: pts, on: function () { return pts.visible; },
+    // place(fn): fn(k) -> {x, y, z} or null: move light k (to the phone in the raised hand)
+    place: function (fn) { for (var k = 0; k < n; k++) { var q = fn(k); if (q) { P[k * 3] = q.x; P[k * 3 + 1] = q.y; P[k * 3 + 2] = q.z; } } geo.attributes.position.needsUpdate = true; },
     light: function (now, instant) {
       if (pts.visible) return false;
       for (var i = 0; i < n; i++) Al[i] = instant ? 1 : 0;
