@@ -1087,10 +1087,11 @@ if (T3 && T3.ctx) (function () {
     if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && !mate.g) highFive(); }
   }
   function step(A, now) {
-    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
+    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; A.hold = null; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
     if (document.hidden && A.trip) finishNow(A, true);
+    if (A.trip && A.hold) A.hold = null;                                  // (CUPTOSS: a move wins over held hands)
     var P = A.P, F = A.F, i, k, W = A.wk;
     for (k in P) P[k] = 0; P.headPitch = 0.22;
     for (k in F) F[k] = 0; F.lid = 0.95;
@@ -1103,13 +1104,14 @@ if (T3 && T3.ctx) (function () {
       if (u > A.g.dur || fd <= 0) { A.g = null; d = null; } else me1 = env(u, A.g.dur, d.att, d.rel) * fd;
     }
     if (!A.g && A.proudNext) { A.proudNext = false; var gp = gameNow(); if (gp) A.proud = { g: gp, ph: gp.phase }; }   // after a great shake: hands on hips
-    var sw = stanceWeights(A, now), sk = A.trip ? 0 : 1 - me1 * (1 - ((d && d.keep) || 0)), rail = null, stName = A.st.cur;
+    var sw = stanceWeights(A, now), sk = (A.trip || A.hold) ? 0 : 1 - me1 * (1 - ((d && d.keep) || 0)), rail = null, stName = A.st.cur;
     if (sk > 0) {
       if ((sw.study || 0) + (sw.look || 0) > 0) rail = railSpots(A);
       for (var sn in sw) if (sw[sn] > 0 && STANCES[sn]) STANCES[sn].fn(A, sw[sn] * sk, { rail: rail });
       var tg = attention(A, stName); if (tg && A.model) lookAt(A, tg, sk * (1 - me1 * 0.8)); else A.att = null;
     }
     if (d) d.fn(A, u, me1, A.g.opts);
+    if (A.hold && !A.trip) holdPose(A, now);                              // (CUPTOSS)
     var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; syncHome(A); }
@@ -1127,7 +1129,7 @@ if (T3 && T3.ctx) (function () {
     P.lean += (grown ? 0.09 : 0.16) * run; P.twist += (grown ? 0.06 : 0.1) * run * Math.sin(W.ph); P.hop += (grown ? 0.05 : 0.09) * run * Math.abs(Math.cos(W.ph));
     if (A.turnStep) { var ts = A.turnStep; P.hop += 0.04 * Math.abs(Math.sin(ts * TAU)); }   // turning on the spot: two little steps
     // smooth everything toward the targets (calm follow-through, never a snap; quicker while he moves a cube)
-    var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-(T ? 18 : 10) * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T || W.spd > 0 || W.yaw !== W.yawT, cur = A.cur, Fc = A.Fc;
+    var kb = 1 - Math.exp(-(T || A.hold ? 24 : 14) * dt), ka = 1 - Math.exp(-(T || A.hold ? 18 : 10) * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T || !!A.hold || W.spd > 0 || W.yaw !== W.yawT, cur = A.cur, Fc = A.Fc;
     while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
     for (k in cur) { var df = P[k] - cur[k]; if (Math.abs(df) > 1e-4) { moving = true; cur[k] += df * kb; } else cur[k] = P[k]; }
     for (k in Fc) { var dff = F[k] - Fc[k]; if (Math.abs(dff) > 1e-3) moving = true; Fc[k] += dff * kf; }
@@ -1170,6 +1172,7 @@ if (T3 && T3.ctx) (function () {
       if (a.padF) { a.padF.rotation.x = 1.25 * A.arm[i].cu; a.padT.rotation.x = 1.0 * A.arm[i].th; }
     }
     if (T && A.trip === T) tripArm(A, T, dt);
+    else if (A.hold) holdArms(A);                                          // (CUPTOSS)
     placeShadow(A);
     var lid = Fc.lid * (1 - blink);
     m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
@@ -1318,7 +1321,7 @@ if (T3 && T3.ctx) (function () {
     function st(A) {
       var T = A.trip, g = T && T.segs[T.i];
       return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
-        pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null };
+        pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null, hold: A.hold ? { mode: A.hold.plan.mode, lean: +A.hold.plan.lean.toFixed(2), sl: +(A.hold.plan.sl || 0).toFixed(2) } : null };   // (CUPTOSS: hold)
     }
     var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
   };
@@ -1332,6 +1335,70 @@ if (T3 && T3.ctx) (function () {
   T3.playerSpec = function (o) { return specOf(o, 'main'); };
   // debugging / previews: the model objects (read-only use please)
   T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
+
+  // ---------- CUPTOSS: both hands held by table.js (he dumps the cup, tosses cubes to roll them again) ----------
+  // ctx.grips.human('me' | 'mate') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
+  // faces), reach, hand (palm -> held object), set(h), hands(), holding() }. set({ far, fn }): far = the farthest world
+  // point his hands will need (his body leans, lies on the rim or kneels in for it ONCE, chosen like a move's grab);
+  // fn(now, out) fills out.a / out.b (world hand spots or null), out.w (0..1 free pose -> spots), out.open, out.look.
+  // set(null): he lets go and eases back. Returns false if he can't reach far from his seat.
+  var HOP = { a: null, b: null, w: 0, open: 0.5, look: null }, HCH = new THREE.Vector3();
+  function holdSet(A, h) {
+    if (!h || !h.fn) { A.hold = null; A.settled = false; ctx.dirty(); ctx.startLoop(); return true; }
+    if (!A.model || !A.shown || !A.fits || !A.model.root.visible || document.hidden || !ctx.layout) return false;
+    if (A.trip) finishNow(A, true);
+    if (A.g) A.g = null;
+    syncHome(A);
+    var H = homeOf(A), p = { x: H.x, z: H.z, nx: Math.sin(H.yaw), nz: Math.cos(H.yaw) }, far = h.far || new THREE.Vector3(H.x + p.nx * 3, 1, H.z + p.nz * 3);
+    var plan = reachPlan(A, p, far, WALK.slideMax * 1.15);
+    if (!plan) return false;
+    A.hold = { fn: h.fn, plan: plan, yaw0: H.yaw };
+    A.settled = false; ctx.dirty(); ctx.startLoop();
+    return true;
+  }
+  function humanGrip(A) {
+    if (!A.model || !(A.shown) || !A.fits || !A.model.root.visible || !ctx.layout || (A.trip && A.trip.script)) return null;
+    var H = homeOf(A), D = A.dims, s = A.place.s;
+    return { kind: A.who, x: H.x, z: H.z, fx: Math.sin(H.yaw), fz: Math.cos(H.yaw), reach: (D.L1 + D.L2) * s, sy: A.place.y + D.SH_Y * s, hand: 0.26 * D.handS * s,
+      set: function (h) { return holdSet(A, h); }, holding: function () { return !!A.hold; },
+      hands: function () { if (!A.model) return null; A.model.root.updateMatrixWorld(true); return A.model.arms.map(function (a) { return a.pos.clone().applyMatrix4(A.model.chest.matrixWorld); }); } };
+  }
+  ctx.grips = ctx.grips || {};
+  ctx.grips.human = function (who) { return humanGrip(who === 'mate' ? mate : me); };
+  // the body for this frame: the reach plan (lean / tummy on the rim / kneeling in), blended by the hands' weight
+  function holdPose(A, now) {
+    var Hd = A.hold; HOP.a = HOP.b = HOP.look = null; HOP.w = 0; HOP.open = 0.5;
+    try { Hd.fn(now, HOP); } catch (e) { console.warn('player hold', e); A.hold = null; return; }
+    var P = A.P, pl = Hd.plan, wb = clamp(HOP.w, 0, 1);
+    A.wk.yawT = Hd.yaw0 + wrap(pl.yaw - Hd.yaw0) * wb;
+    if (pl.mode !== 'stand') {
+      P.flop += wb; P.pitch += pl.p * wb; P.slide += pl.sl * wb * wb * wb; P.lift += pl.lift * Math.min(1, wb * 1.6); P.headPitch += -0.25 * wb;
+      if (pl.mode === 'crawl') P.crawl += wb;
+    } else { P.lean += pl.lean * wb; P.fwd += pl.fwd * wb; P.headPitch += 0.2 * wb; }
+    face(A, { gazeY: -0.5, browUp: 0.2, smile: 0.3 }, wb);
+  }
+  // after the body is posed: the hands go to their spots (world), the right hand (arm 0) to the spot on his right
+  function holdArms(A) {
+    var m = A.model, w = clamp(HOP.w, 0, 1), pts = [HOP.a, HOP.b].filter(function (q) { return !!q; });
+    if (!pts.length || w <= 0) return;
+    var cx = Math.cos(A.wk.yaw), cz = -Math.sin(A.wk.yaw), lx = function (q) { return (q.x - A.wk.x) * cx + (q.z - A.wk.z) * cz; };
+    if (pts.length === 2 && lx(pts[0]) > lx(pts[1])) pts = [pts[1], pts[0]];
+    m.root.updateMatrixWorld(true); inv.copy(m.chest.matrixWorld).invert();
+    for (var i = 0; i < 2; i++) {
+      var q = pts.length === 2 ? pts[i] : (i === (lx(pts[0]) < 0 ? 0 : 1) ? pts[0] : null); if (!q) continue;
+      var R = A.arm[i], a = m.arms[i];
+      HCH.copy(q).applyMatrix4(inv); R.goal.lerp(HCH, w); R.des.copy(R.goal);
+      R.al += (0.9 - R.al) * w; R.op += (HOP.open - R.op) * w; R.dAl = R.al; R.dOp = R.op;
+      a.open = R.op; a.solve(R.goal.x, R.goal.y, R.goal.z, R.al, 0);
+    }
+    // the free hand (one cube): on the rim / felt beside him while he lies over the table
+    if (pts.length === 1 && A.hold.plan.mode !== 'stand') {
+      var fi = lx(pts[0]) < 0 ? 1 : 0, FR = A.arm[fi], fa = m.arms[fi], sg = fi ? 1 : -1, fx = Math.sin(A.wk.yaw), fz = Math.cos(A.wk.yaw), s = A.place.s, pl = A.hold.plan, reach = (pl.sl + A.dims.SH_Y * Math.sin(pl.p) + 0.45) * s;
+      HCH.set(A.wk.x + fx * reach + fz * sg * 0.9 * s, 0.05 + 0.26 * A.dims.handS * s, A.wk.z + fz * reach - fx * sg * 0.9 * s).applyMatrix4(inv);
+      FR.goal.lerp(HCH, w); FR.des.copy(FR.goal); fa.open = 1; fa.solve(FR.goal.x, FR.goal.y, FR.goal.z, 0.9, 0);
+    }
+  }
+  // ---------- end CUPTOSS ----------
 
   // ---------- MATCHDAY (js/three/matchday.js): a scripted walk along a path (the walk-out, the trophy podium) ----------
   // T3.playerScript(who, o, done) / T3.playerScript(who, null)
