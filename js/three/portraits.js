@@ -107,8 +107,9 @@ if (T3 && T3.ctx) (function () {
         pose(a);
         // compile its shaders off the main thread where the browser can (KHR_parallel_shader_compile), then draw
         var r = ctx.renderer;
-        // three's compileAsync can throw inside its own timer (a material without a program) and then never settles: never wait on it for more than a moment
-        var ready = r.compileAsync ? Promise.race([r.compileAsync(scene, cam).catch(function () { }), new Promise(function (res) { setTimeout(res, 1200); })]) : Promise.resolve();
+                // (three r170's compileAsync throws from its own timer when a material ends up without a program, so warm up with the plain compile)
+        try { if (r.compile) r.compile(scene, cam); } catch (e) {}
+        var ready = Promise.resolve();
         return ready.then(function () { return shoot(a, job.size, job.pack); });
       })
       .catch(function (e) { console.warn('portrait', job.kind, job.pack, e); if (actor && actor.root.parent === scene) scene.remove(actor.root); return null; })
