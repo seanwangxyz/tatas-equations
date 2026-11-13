@@ -3,17 +3,23 @@
 // WeatherSfx.set(kind)  kind: 'rain' | 'wind' | 'off' (or '' / null = off). A very quiet looping bed under the
 //   game's own sounds: soft rain (filtered noise, steady) or a soft wind (low noise, slowly breathing in and out).
 //   Synthesised with the Web Audio API (no audio files). Fades in and out over about two seconds; changing kind
-//   cross-fades. Honours S.set.mute and the S.set.sfx volume (0..1, default 0.8); call WeatherSfx.refresh() after
-//   the volume or mute changes (or just call set() again). Uses the game's audio context if js/sound.js exposes one
-//   (Snd.context() / Snd.ctx), otherwise makes its own, unlocked by the first tap or key press (iPad Safari).
+//   cross-fades. Plays on the game's shared context through Snd.bus('amb') (js/sound.js): Mute, the Effects volume and
+//   the Ambience balance (S.set.mix.amb) apply there (Snd.apply() calls WeatherSfx.refresh() so the bed stops when
+//   silent). Without js/sound.js it makes its own context (S.set.mute / S.set.sfx honoured), unlocked by a tap.
+//   Levels audited offline (docs/handoff/sound.md): about -45 LUFS, the same as the stadium murmur.
 //   T3.matchWeather() / T3.weather() return the kind to use as .ambience ('rain', 'wind' or '').
 var WeatherSfx = (function () {
   var ac = null, own = false, bed = null, want = 'off', hooked = false, noise = null;
-  var LEVEL = { rain: 0.05, wind: 0.035 };
+  var LEVEL = { rain: 0.0124, wind: 0.018 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
-  function vol() { var st = setg(); if (st.mute) return 0; var v = st.sfx; return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.8; }
+  function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
+  function vol() {
+    if (sharedOK()) return Snd.level('amb') > 0 ? 1 : 0;   // the bus applies the volume
+    var st = setg(); if (st.mute) return 0; var v = st.sfx; return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.8;
+  }
+  function dest() { return (!own && sharedOK()) ? Snd.bus('amb') : ac.destination; }
   function shared() {
-    try { if (typeof Snd === 'undefined' || !Snd) return null; var c = typeof Snd.context === 'function' ? Snd.context() : Snd.ctx; return c && c.createGain ? c : null; } catch (e) { return null; }
+    try { if (!sharedOK()) return null; var c = Snd.context(); return c && c.createGain ? c : null; } catch (e) { return null; }
   }
   function ctx() {
     var c = shared();
@@ -39,8 +45,8 @@ var WeatherSfx = (function () {
     try { var t = b.c.currentTime; b.out.gain.cancelScheduledValues(t); b.out.gain.setTargetAtTime(0, t, now ? 0.05 : 0.6); b.nodes.forEach(function (n) { if (n.stop) { try { n.stop(t + (now ? 0.3 : 3)); } catch (e) {} } }); setTimeout(function () { try { b.out.disconnect(); } catch (e) {} }, now ? 500 : 3500); } catch (e) {}
   }
   function startBed(kind) {
-    var c = ac, t = c.currentTime, out = c.createGain(), nodes = [];
-    out.gain.value = 0.0001; out.connect(c.destination);
+    var c = ac, t = c.currentTime, out = c.createGain(), nodes = [], d = dest();
+    out.gain.value = 0.0001; out.connect(d);
     var s = c.createBufferSource(); s.buffer = noiseBuf(); s.loop = true; nodes.push(s);
     if (kind === 'rain') { // a steady, soft hiss: no drips, nothing that ticks
       var hp = c.createBiquadFilter(), lp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500; lp.type = 'lowpass'; lp.frequency.value = 3800; lp.Q.value = 0.4;
@@ -52,7 +58,7 @@ var WeatherSfx = (function () {
       s.connect(lp2); lp2.connect(g2); g2.connect(out);
     }
     s.start(t, Math.random() * 3);
-    bed = { kind: kind, c: c, out: out, nodes: nodes };
+    bed = { kind: kind, c: c, out: out, nodes: nodes, dest: d };
     out.gain.setTargetAtTime((LEVEL[kind] || 0.03) * vol(), t, 0.7);
   }
   function sync() {
@@ -60,11 +66,19 @@ var WeatherSfx = (function () {
       var on = want !== 'off' && vol() > 0;
       if (!on) { stopBed(false); return; }
       var c = ctx(); if (!c || c.state === 'closed') return;
+      if (bed && bed.dest !== dest()) stopBed(true);   // the shared mix was rebuilt: start again on the new bus
       if (bed && bed.kind === want) { bed.out.gain.setTargetAtTime((LEVEL[want] || 0.03) * vol(), c.currentTime, 0.3); return; }
       stopBed(false); startBed(want);
     } catch (e) {}
   }
+  // offline audit (inside Snd._measure): one bed on that context, without touching the live one
+  function into(c, kind) {
+    var k = { ac: ac, noise: noise, bed: bed, own: own };
+    try { ac = c; noise = null; own = false; startBed(kind === 'wind' ? 'wind' : 'rain'); } catch (e) {}
+    ac = k.ac; noise = k.noise; bed = k.bed; own = k.own;
+  }
   return {
+    _into: into,
     set: function (kind) { want = kind === 'rain' || kind === 'wind' ? kind : 'off'; sync(); return want; },
     refresh: sync,
     kind: function () { return bed ? bed.kind : 'off'; }

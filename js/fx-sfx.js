@@ -8,23 +8,30 @@
 //   FxSfx.swish({delay})             a tiny air swish (a cube flying in the Goal replay)
 //   FxSfx.level()                    0..1, what the sounds are played at right now (0 = muted)
 //   FxSfx._offline(kind, sec)        renders one sound offline -> Promise<{peak, rms, sec}> (for checking levels)
-// Honours the same settings as js/sound.js: S.set.mute and the S.set.sfx volume (0..1, default 0.8).
-// js/sound.js does not share its audio context, so this file makes its own (like js/crowd-sfx.js does),
-// unlocked by the first tap or key press (iPad Safari needs a gesture). Its own output chain ends in a gentle
-// low-pass and a soft compressor, so nothing is sharp or loud.
+//   FxSfx._into(c, dest, kind, opts)  schedules one sound at time 0 into any context / node (offline audit)
+// Plays on the game's shared context through Snd.bus('sfx') (js/sound.js): Mute and the Effects volume apply, the
+// shared limiter guards the sum. Without js/sound.js it makes its own context, unlocked by the first tap.
+// Its own chain still ends in a gentle low-pass and a soft compressor, so nothing is sharp. At most 3 booms (and 3
+// launches) start within any quarter second, however many rockets a show sends. Levels audited (docs/handoff/sound.md):
+// a boom is about -22 LUFS, a launch -38, a swish -38.
 var FxSfx = (function () {
-  var ac = null, out = null, noise = null, hooked = false;
+  var ac = null, own = false, out = null, noise = null, hooked = false, recent = { boom: [], launch: [] };
+  var TR = { boom: 0.72, launch: 1.0, swish: 2.5 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
+  function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
   function level() {
+    if (sharedOK()) return Snd.level('sfx');
     var st = setg(); if (st.mute) return 0;
     var v = st.sfx; v = (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.8;
     return v;
   }
   function ctx() {
+    var sc = sharedOK() ? Snd.context() : null;
+    if (sc && sc !== ac) { ac = sc; own = false; out = null; }
     if (!ac) {
       var AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
       if (!AC) return null;
-      try { ac = new AC(); } catch (e) { ac = null; return null; }
+      try { ac = new AC(); own = true; } catch (e) { ac = null; return null; }
     }
     if (ac.state === 'suspended' && ac.resume) { try { var p = ac.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
     return ac;
@@ -34,19 +41,32 @@ var FxSfx = (function () {
     if (hooked || typeof document === 'undefined') return; hooked = true;
     ['pointerdown', 'touchend', 'keydown'].forEach(function (ev) { document.addEventListener(ev, unlock, { passive: true }); });
     document.addEventListener('visibilitychange', function () {
-      try { if (!ac) return; var p = document.hidden ? ac.suspend() : ac.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+      try { if (!ac || !own) return; var p = document.hidden ? ac.suspend() : ac.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
     });
   }
   hook();
   // output chain: gain -> low-pass (nothing harsh) -> soft compressor -> speakers
-  function chain(c) {
+  function chain(c, dest) {
     var g = c.createGain(), lp = c.createBiquadFilter(), cp = c.createDynamicsCompressor();
     lp.type = 'lowpass'; lp.frequency.value = 3800; lp.Q.value = 0.4;
     cp.threshold.value = -18; cp.knee.value = 12; cp.ratio.value = 4; cp.attack.value = 0.008; cp.release.value = 0.3;
-    g.connect(lp); lp.connect(cp); cp.connect(c.destination);
+    g.connect(lp); lp.connect(cp); cp.connect(dest || c.destination);
     return g;
   }
-  function bus(c) { if (c !== ac) return chain(c); if (!out || out.ctx !== ac) out = { ctx: ac, g: chain(ac) }; out.g.gain.value = level(); return out.g; }
+  function bus(c) {
+    var dest = (!own && sharedOK()) ? Snd.bus('sfx') : c.destination;
+    if (!out || out.ctx !== c || out.dest !== dest) out = { ctx: c, dest: dest, g: chain(c, dest) };
+    out.g.gain.value = own ? level() : 1; return out.g;
+  }
+  // a per-sound trim node in front of the chain (removed when the sound is over)
+  function trimmed(c, dest, kind, sec) { var g = c.createGain(); g.gain.value = TR[kind] || 1; g.connect(dest); setTimeout(function () { try { g.disconnect(); } catch (e) {} }, (sec + 3) * 1000); return g; }
+  // no machine-gunning: at most 3 of a kind start within any 0.25 s (times on the audio clock)
+  function crowded(kind, t) {
+    var r = recent[kind]; if (!r) return false;
+    for (var i = r.length - 1; i >= 0; i--) if (Math.abs(r[i] - t) > 4) r.splice(i, 1);
+    var near = 0; r.forEach(function (x) { if (Math.abs(x - t) < 0.25) near++; });
+    if (near >= 3) return true; r.push(t); return false;
+  }
   function noiseBuf(c) {
     if (noise && noise.ctx === c) return noise.b;
     var sr = c.sampleRate, b = c.createBuffer(1, Math.floor(sr * 2), sr), d = b.getChannelData(0), lp = 0;
@@ -104,10 +124,14 @@ var FxSfx = (function () {
       o = o || {};
       if (level() <= 0) return 0;
       var c = ctx(); if (!c || c.state !== 'running') return 0;
-      var sec = KINDS[kind](c, bus(c), c.currentTime + 0.01 + Math.max(0, o.delay || 0), o);
+      var t = c.currentTime + 0.01 + Math.max(0, o.delay || 0);
+      if (crowded(kind, t)) return 0;
+      var sec = KINDS[kind](c, trimmed(c, bus(c), kind, 3 + (o.delay || 0)), t, o);
       return Math.round(sec * 1000);
     } catch (e) { return 0; }
   }
+  // offline audit: one sound into any context / node, at time t (default 0.01), trims included, no volume applied
+  function into(c, dest, kind, o, t) { try { return KINDS[kind](c, trimmed(c, chain(c, dest), kind, 3), t == null ? 0.01 : t, o || {}); } catch (e) { return 0; } }
   // Renders one sound offline and measures it (no speakers). Level 1 (the sfx volume is applied on top when playing).
   function offline(kind, sec, o) {
     try {
@@ -127,6 +151,6 @@ var FxSfx = (function () {
     launch: function (o) { return play('launch', o); },
     swish: function (o) { return play('swish', o); },
     level: level,
-    _offline: offline
+    _offline: offline, _into: into, _trim: TR
   };
 })();

@@ -11,10 +11,24 @@
 //   setMood also accepts 'think' (sparse, calm bed for working out a Solution)
 // Recorded sounds can be dropped into assets/audio/ (see assets/audio/README.md): any name listed in
 // assets/audio/manifest.json is played from the file; otherwise the synthesized version plays.
+//
+// ONE SHARED AUDIO CONTEXT AND MIX BUS (docs/handoff/sound.md). Every sound file of the game plays through here, so
+// iPad Safari needs one unlock, the volume settings and Mute apply to everything, and one limiter guards the sum:
+//   Snd.context()      -> the game's AudioContext (made on first use; it starts running at the first tap)
+//   Snd.bus(category)  -> a GainNode to connect your sound's output to. category: 'music' | 'sfx' | 'ui' | 'crowd' |
+//                         'voice' | 'amb' ('fx' = 'sfx', 'ambience' = 'amb'). The bus applies the player's volume for that
+//                         category (S.set.music, S.set.sfx, S.set.mix.{crowd,voice,amb}) and Mute; do NOT multiply by the
+//                         volume settings yourself. Re-ask for the bus each time you start a sound (it can be rebuilt).
+//   Snd.level(category)-> 0..1.5, what that category plays at now (0 = muted / off): use it to skip work when silent
+//   Snd.duck(depth, sec)  lowers the music (and ambience) to `depth` (0..1) for `sec` seconds: call it when a voice speaks
+//   Snd.unlock()       call from a tap if you need sound right away (taps anywhere already do this)
+// Mix targets (loudest 400 ms, LUFS, at the default volumes): UI ticks -31, table sounds -26, ambience -45, music -29,
+// voices -21, crowd -24, chimes/stingers -21, fanfares/slam -17 (the loudest); the limiter ceiling is -1 dBFS.
 var Snd = (function () {
   var ctx = null, gestured = false, visHooked = false;
   var master, limiter, shaper, sfx, sfxRev, musMix, musRev, revIn, diceBus, stingBus;
   var voiceBus, crowdBus, ambOut, danceMix, danceBus;
+  var crowdIn, voiceIn, uiIn, extSfx, extMus, selfSuspend = false, warm = null, gen = 0;
   var defDest = null, defRev = null, trims = null;   // while set, synth helpers default to a level-trimmed bus (slam, fanfare)
   var noiseBuf = null, pinkBuf = null, bank = null;
   var voices = 0, diceVoices = 0, created = 0, peakVoices = 0;
@@ -27,6 +41,14 @@ var Snd = (function () {
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
   function vol(k, d) { var v = setg()[k]; return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : d; }
   function muted() { return !!setg().mute; }
+  // per-category balance on top of the Effects volume (Sound check sliders): S.set.mix = { crowd, voice, amb }, 0..1.5, default 1
+  function mixv(k) { var m = setg().mix, v = m && m[k]; return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1.5, v)) : 1; }
+  function catName(c) { c = String(c || 'sfx'); return c === 'fx' ? 'sfx' : c === 'ambience' ? 'amb' : c === 'voices' ? 'voice' : c; }
+  function level(c) {
+    c = catName(c); if (muted()) return 0;
+    if (c === 'music') return vol('music', 0.35);
+    var s = vol('sfx', 0.8); return (c === 'crowd' || c === 'voice' || c === 'amb') ? s * mixv(c) : s;
+  }
   function sfxOn() { return !!ctx && !muted() && vol('sfx', 0.8) > 0; }
   function musicActive() { return !!ctx && !muted() && vol('music', 0.35) > 0 && wantedMood !== 'off'; }
   function guard(fn) { return function () { try { return fn.apply(null, arguments); } catch (e) { return undefined; } }; }
@@ -38,20 +60,31 @@ var Snd = (function () {
 
   // ---------------------------------------------------------------- graph
   function build(c) {
-    ctx = c; lastDiceWhen = -1; diceVoices = 0; voices = 0; duckF = 1; sbufs = {}; sloading = {};
+    ctx = c; lastDiceWhen = -1; diceVoices = 0; voices = 0; duckF = 1; sbufs = {}; sloading = {}; gen++; warm = null;
     resetExtras();
     var sr = c.sampleRate;
+    // THE shared master: mute gain -> a fast, high-ratio compressor (a limiter in practice) -> a soft tanh clipper whose
+    // ceiling is 0.89 (-1 dBFS), so even a pile-up of fanfare + crowd + fireworks + voice never clips or crackles.
     master = c.createGain(); master.gain.value = 0.8;
     limiter = c.createDynamicsCompressor();
-    limiter.threshold.value = -9; limiter.knee.value = 8; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.2;
+    limiter.threshold.value = -10; limiter.knee.value = 6; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.25;
     shaper = c.createWaveShaper();
-    var curve = new Float32Array(2048), tn = Math.tanh(0.9) / 0.97;   // output ceiling 0.97 leaves headroom for 2x-oversampling overshoot
+    var curve = new Float32Array(2048), tn = Math.tanh(0.9) / 0.89;
     for (var i = 0; i < 2048; i++) { var x = i / 1023.5 - 1; curve[i] = Math.tanh(0.9 * x) / tn; }
     shaper.curve = curve; try { shaper.oversample = '2x'; } catch (e) {}
-    master.connect(limiter); limiter.connect(shaper); shaper.connect(c.destination);
+    // a gentle "glue" compressor first: single sounds pass almost untouched, a pile-up (win: fanfare + roar + cheer +
+    // fireworks + voice) is eased down 2-4 dB before the limiter has to grab it
+    var glue = c.createDynamicsCompressor();
+    glue.threshold.value = -20; glue.knee.value = 12; glue.ratio.value = 2.5; glue.attack.value = 0.02; glue.release.value = 0.35;
+    // (a WebAudio compressor adds its own make-up gain, about +5 dB for these settings: taken back out right after it)
+    var unmake = c.createGain(); unmake.gain.value = 0.56;
+    master.connect(glue); glue.connect(unmake); unmake.connect(limiter); limiter.connect(shaper); shaper.connect(c.destination);
 
     sfx = c.createGain(); sfx.connect(master);
     musMix = c.createGain(); musMix.connect(master);
+    extMus = c.createGain(); extMus.connect(musMix);   // Snd.bus('music'): follows the music volume and the ducking
+    extSfx = c.createGain(); extSfx.connect(sfx);      // Snd.bus('sfx')
+    uiIn = c.createGain(); uiIn.connect(sfx);          // Snd.bus('ui')
 
     // Reverb: generated stereo impulse, darkening as it decays, small pre-delay
     var conv = c.createConvolver(), len = Math.floor(sr * 1.9), ir = c.createBuffer(2, len, sr), pre = Math.floor(sr * 0.012);
@@ -69,9 +102,13 @@ var Snd = (function () {
     sfxRev = c.createGain(); sfxRev.connect(revIn);
     musRev = c.createGain(); musRev.connect(revIn);
 
-    diceBus = mkBus(0.07);
+    diceBus = mkBus(0.07); diceBus.gain.value = TRIM.dice;
     voiceBus = mkBus(0.1); crowdBus = mkBus(0.3);
-    // Per-sound level trims, set from offline loudness measurements (see README). Dry and reverb scale together.
+    // category inputs (the Sound check balance sliders): crowd gets a gentle low-pass so claps never hiss on small speakers
+    voiceIn = c.createGain(); voiceIn.connect(voiceBus);
+    crowdIn = c.createGain(); var ctone = c.createBiquadFilter(); ctone.type = 'lowpass'; ctone.frequency.value = 3800; ctone.Q.value = 0.5;
+    crowdIn.connect(ctone); ctone.connect(crowdBus);
+    // Per-sound level trims, set from offline loudness measurements (docs/handoff/sound.md). Dry and reverb scale together.
     trims = {};
     Object.keys(TRIM).forEach(function (k) { var d = c.createGain(), r = c.createGain(); d.gain.value = r.gain.value = TRIM[k]; d.connect(sfx); r.connect(sfxRev); trims[k] = { d: d, r: r }; });
     ambOut = c.createGain(); ambOut.gain.value = 1; ambOut.connect(sfx);
@@ -96,7 +133,15 @@ var Snd = (function () {
     buildMusicGraph();
     bank = makeBank();
     musVol = 0; refreshMus(0);
+    applyCats();
     applyLevels();
+    try { c.onstatechange = onState; } catch (e) {}
+  }
+  function applyCats() {
+    if (!ctx || !crowdIn) return;
+    var n = ctx.currentTime;
+    crowdIn.gain.setTargetAtTime(mixv('crowd'), n, 0.03); voiceIn.gain.setTargetAtTime(mixv('voice'), n, 0.03);
+    ambOut.gain.setTargetAtTime(mixv('amb'), n, 0.03);
   }
 
   function mkBus(rev) {
@@ -106,28 +151,57 @@ var Snd = (function () {
   }
 
   // ---------------------------------------------------------------- init / apply
+  // ---------------------------------------------------------------- the context: create, unlock, keep alive (iPad)
+  function quietResume() { try { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && ctx.resume) { var p = ctx.resume(); if (p && p.catch) p.catch(function () {}); } } catch (e) {} }
+  // make (but do not unlock) the context, so other files can build their sounds on it before the first tap
+  function ensure() {
+    if (ctx) return ctx;
+    try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; build(new AC()); hookLife(); loadManifest(); apply(); } catch (e) { ctx = null; }
+    return ctx;
+  }
   function init() {
     gestured = true;
     try {
-      if (ctx) { if (ctx.state === 'suspended' && ctx.resume) ctx.resume(); return; }
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      build(new AC());
-      if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
-      if (!visHooked && typeof document !== 'undefined') {
-        visHooked = true;
-        document.addEventListener('visibilitychange', function () {
-          try {
-            if (!ctx || !ctx.suspend) return;
-            var pr = document.hidden ? ctx.suspend() : (gestured ? ctx.resume() : null);
-            if (pr && pr.catch) pr.catch(function () {});
-          } catch (e) {}
-        });
-      }
-      loadManifest();
-      apply();
-    } catch (e) { ctx = null; }
+      if (!ensure()) return;
+      selfSuspend = false; quietResume();
+      // older iOS only fully unlocks Web Audio when a sound starts inside the tap: a one-sample silent buffer does it
+      // (repeated on each tap until the context runs: a touchstart alone does not count as a tap on newer iOS)
+      if (warm !== ctx || ctx.state !== 'running') { warm = ctx; var b = ctx.createBuffer(1, 1, ctx.sampleRate), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0); }
+      warmSpeech();
+    } catch (e) {}
   }
+  var retryT = null;
+  // iOS can suspend ('suspended') or interrupt ('interrupted': a phone call, Siri, an alarm) the context behind our back.
+  // When that happens while the page is visible, try to resume now, then every second for a while; the next tap also does.
+  function onState() {
+    try {
+      if (!ctx || ctx.state === 'running' || ctx.state === 'closed' || selfSuspend || document.hidden || !gestured) return;
+      quietResume();
+      if (retryT) return;
+      var n = 0;
+      retryT = setInterval(function () { n++; if (!ctx || ctx.state === 'running' || document.hidden || n > 15) { clearInterval(retryT); retryT = null; return; } quietResume(); }, 1000);
+    } catch (e) {}
+  }
+  function hookLife() {
+    if (visHooked || typeof document === 'undefined') return;
+    visHooked = true;
+    // every tap or key press anywhere: make sure sound is unlocked / resumed (one unlock for every sound file)
+    ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'keydown', 'click'].forEach(function (ev) {
+      document.addEventListener(ev, function () { try { if (!ctx || ctx.state !== 'running' || !gestured) init(); } catch (e) {} }, { capture: true, passive: true });
+    });
+    function hide() {
+      try {
+        stopSpeak(); // iOS cuts a sentence when the tab hides; cancel it cleanly so nothing is left half-queued
+        if (ctx && ctx.state === 'running' && ctx.suspend) { selfSuspend = true; var p = ctx.suspend(); if (p && p.catch) p.catch(function () {}); }
+      } catch (e) {}
+    }
+    function show() { if (!gestured) return; selfSuspend = false; quietResume(); onState(); }
+    document.addEventListener('visibilitychange', function () { if (document.hidden) hide(); else show(); });
+    window.addEventListener('pagehide', hide);
+    window.addEventListener('pageshow', function () { if (!document.hidden) show(); });   // back from the bfcache / app switcher
+    window.addEventListener('focus', function () { if (!document.hidden) show(); });
+  }
+  if (typeof document !== 'undefined') { try { hookLife(); } catch (e) {} }
   function apply() {
     try {
       if (!ctx) return;
@@ -135,11 +209,18 @@ var Snd = (function () {
       master.gain.setTargetAtTime(on ? 0.8 : 0, ctx.currentTime, 0.03);
       sfx.gain.setTargetAtTime(vol('sfx', 0.8), ctx.currentTime, 0.03);
       sfxRev.gain.setTargetAtTime(vol('sfx', 0.8), ctx.currentTime, 0.03);
+      applyCats();
       musVol = vol('music', 0.35) * 0.8; refreshMus(0.05);
       if (muted() || vol('sfx', 0.8) <= 0) { stopSpeak(); stopBabble(); }
       syncMusic(); syncAmb();
+      // the other sound files follow the same settings (their beds start or stop with the volume)
+      try { if (typeof WeatherSfx !== 'undefined' && WeatherSfx.refresh) WeatherSfx.refresh(); } catch (e) {}
+      applySession();
     } catch (e) {}
   }
+  // iPadOS 16.4+: S.set.playOnSilent === true lets the game play even with the ring/silent switch on ('playback');
+  // otherwise the system default applies (Web Audio follows the silent switch).
+  function applySession() { try { var a = navigator.audioSession; if (a && 'type' in a) { var want = setg().playOnSilent === true ? 'playback' : 'auto'; if (a.type !== want) a.type = want; } } catch (e) {} }
   function refreshMus(tc) {
     if (!ctx) return;
     var v = musVol * duckF;
@@ -214,8 +295,12 @@ var Snd = (function () {
     var sr = ctx.sampleRate, n = Math.max(1, Math.floor(sr * dur)), b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
     fn(d, sr, n);
     var m = 0, i; for (i = 0; i < n; i++) if (Math.abs(d[i]) > m) m = Math.abs(d[i]);
+    // remove any DC offset (lowpassed noise can drift), then normalise
+    var mean = 0; for (i = 0; i < n; i++) mean += d[i]; mean /= n; for (i = 0; i < n; i++) d[i] -= mean;
+    m = 0; for (i = 0; i < n; i++) if (Math.abs(d[i]) > m) m = Math.abs(d[i]);
     var k = m > 0 ? (peak || 0.9) / m : 1; for (i = 0; i < n; i++) d[i] *= k;
-    // 2 ms fade-out so no buffer ends on a click
+    // 0.7 ms fade-in and 2 ms fade-out so no buffer starts or ends on a click (too short to soften a knock)
+    var fi = Math.min(n, Math.floor(sr * 0.0007)); for (i = 0; i < fi; i++) d[i] *= i / fi;
     var fo = Math.min(n, Math.floor(sr * 0.002)); for (i = 0; i < fo; i++) d[n - 1 - i] *= i / fo;
     return b;
   }
@@ -462,7 +547,7 @@ var Snd = (function () {
     outs.push(out);
     var tail = out;
     if (pan && ctx.createStereoPanner) { var p = ctx.createStereoPanner(); p.pan.value = pan; out.connect(p); tail = p; outs.push(p); }
-    tail.connect(dest || sfx);
+    tail.connect(dest || defDest || sfx);
     track(o, outs);
     o.start(t); o.stop(t + dur + 0.05);
   }
@@ -496,36 +581,36 @@ var Snd = (function () {
     diceVoices++; var prev = src.onended; src.onended = function () { diceVoices--; prev(); };
   }
   function click() {
-    if (!sfxOn()) return;
-    if (sample('click', { vol: 0.7 })) return;
-    playBuf(bank.click[pickVariant('c', bank.click.length)], { vol: 0.85, rate: rnd(0.96, 1.05) });
+    if (!sfxOn() || !rl('click', 0.035)) return;
+    if (sample('click', { vol: 0.7, dest: uiIn })) return;
+    playBuf(bank.click[pickVariant('c', bank.click.length)], { vol: 0.85 * TRIM.click, rate: rnd(0.96, 1.05), dest: uiIn });
   }
   function pop() {
-    if (!sfxOn()) return;
-    if (sample('pop', { vol: 0.8 })) return;
-    playBuf(bank.pop, { vol: 0.75, rate: rnd(0.95, 1.1), dest: mkBusOnce('pop') });
+    if (!sfxOn() || !rl('pop', 0.05)) return;
+    if (sample('pop', { vol: 0.8, dest: uiIn })) return;
+    playBuf(bank.pop, { vol: 0.75 * TRIM.pop, rate: rnd(0.95, 1.1), dest: mkBusOnce('pop') });
   }
   var onceBuses = {};
-  function mkBusOnce(k) { if (!onceBuses[k] || onceBuses[k].ctx !== ctx) { onceBuses[k] = mkBus(0.12); onceBuses[k].ctx = ctx; } return onceBuses[k]; }
+  function mkBusOnce(k) { if (!onceBuses[k] || onceBuses[k].ctx !== ctx) { var b = ctx.createGain(); b.connect(k === 'pop' ? uiIn : sfx); var s = ctx.createGain(); s.gain.value = 0.12; b.connect(s); s.connect(sfxRev); b.ctx = ctx; onceBuses[k] = b; } return onceBuses[k]; }
   function pickup() {
-    if (!sfxOn()) return;
-    if (sample('pickup', { vol: 0.6 })) return;
-    playBuf(bank.pickup[pickVariant('p', bank.pickup.length)], { vol: 0.45, rate: rnd(0.95, 1.08), pan: rnd(-0.15, 0.15) });
+    if (!sfxOn() || !rl('pickup', 0.06)) return;
+    if (sample('pickup', { vol: 0.6, dest: uiIn })) return;
+    playBuf(bank.pickup[pickVariant('p', bank.pickup.length)], { vol: 0.45 * TRIM.pickup, rate: rnd(0.95, 1.08), pan: rnd(-0.15, 0.15), dest: uiIn });
   }
   function thunk() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('thunk', 0.03)) return;
     if (sample('thunk', { vol: 0.9 })) return;
-    playBuf(bank.thunk[pickVariant('t', bank.thunk.length)], { vol: 1.25, rate: rnd(0.94, 1.07), dest: mkBusOnce('thunk') });
+    playBuf(bank.thunk[pickVariant('t', bank.thunk.length)], { vol: 1.25 * TRIM.thunk, rate: rnd(0.94, 1.07), dest: mkBusOnce('thunk') });
     // a tiny felt-on-cube tick on top so it reads as a cube landing in a zone
-    playBuf(bank.felt[pickVariant('f', bank.felt.length)], { vol: 0.25, rate: rnd(1.0, 1.2), delay: 0.004 });
+    playBuf(bank.felt[pickVariant('f', bank.felt.length)], { vol: 0.25 * TRIM.thunk, rate: rnd(1.0, 1.2), delay: 0.004 });
   }
   function cupRattle() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('cupRattle', 0.25)) return;
     if (sample('cupRattle', { vol: 0.8 })) return;
-    playBuf(bank.cup[pickVariant('cup', bank.cup.length)], { vol: 0.7, rate: rnd(0.96, 1.04), dest: mkBusOnce('cup') });
+    playBuf(bank.cup[pickVariant('cup', bank.cup.length)], { vol: 0.7 * TRIM.cupRattle, rate: rnd(0.96, 1.04), dest: mkBusOnce('cup') });
   }
   function clatter() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('clatter', 0.25)) return;
     if (sample('clatter', { vol: 0.8 })) return;
     // Dice spilling and settling: hits cascade on the audio clock with fading strength and widening gaps
     var t = 0;
@@ -536,31 +621,36 @@ var Snd = (function () {
     }
   }
   function chime() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('chime', 0.15)) return;
     if (sample('chime', { vol: 0.9 })) return;
-    [784, 988, 1175, 1568].forEach(function (f, i) { bell(f, i * 0.09, 0.15, 1.7); });
-    hiss({ dur: 0.9, vol: 0.015, delay: 0.25, type: 'highpass', f: 6500, attack: 0.1, reverb: 0.4 });
+    withTrim('chime', function () {
+      [784, 988, 1175, 1568].forEach(function (f, i) { bell(f, i * 0.09, 0.15, 1.7); });
+      hiss({ dur: 0.9, vol: 0.01, delay: 0.25, type: 'highpass', f: 6500, attack: 0.1, reverb: 0.4 });
+    });
   }
   function boop() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('boop', 0.15)) return;
     if (sample('boop', { vol: 0.8 })) return;
     // Soft, rounded two-note "hmm, not quite": wooden-mallet tone, never harsh
-    [[392, 0], [330, 0.15]].forEach(function (n) {
+    withTrim('boop', function () { [[392, 0], [330, 0.15]].forEach(function (n) {
       note({ type: 'sine', f: n[0], dur: 0.38, vol: 0.2, delay: n[1], attack: 0.008, reverb: 0.3 });
       note({ type: 'sine', f: n[0] * 2, dur: 0.14, vol: 0.05, delay: n[1], attack: 0.006 });
       note({ type: 'triangle', f: n[0], dur: 0.22, vol: 0.05, delay: n[1], attack: 0.01, filter: { type: 'lowpass', f: 900 } });
-    });
+    }); });
   }
   function slam() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('slam', 1.2)) return;
     duck(0.45, 2.6);
     if (sample('slam', { vol: 0.95 })) return;
     withTrim('slam', slamBody);
   }
-  var TRIM = { slam: 0.4, fanfare: 0.55,
-    'theme.sloth': 0.4, 'theme.owl': 0.5, 'theme.wizard': 0.6, 'theme.penguin': 0.9, 'theme.fox': 3.0, 'theme.pip': 2.5,
-    'sting.card': 1.2, 'sting.vs': 0.55, 'sting.emote': 2.5, 'sting.levelup': 1.0 };
-  // Level trim: slam and fanfare measured about 5 dB hotter than the chime, so they were pulled down (see README)
+  // Level trims, from the offline loudness audit (docs/handoff/sound.md): each sound is pulled to its category target.
+  var TRIM = { slam: 0.35, fanfare: 0.39, chime: 0.41, boop: 0.76,
+    dice: 0.5, click: 2.2, pop: 0.87, pickup: 0.48, thunk: 0.5, cupRattle: 0.6, whistle: 0.62, roar: 0.54,
+    'theme.sloth': 0.28, 'theme.owl': 0.36, 'theme.wizard': 0.52, 'theme.penguin': 0.79, 'theme.fox': 2.46, 'theme.pip': 1.73,
+    'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 1.6, 'sting.levelup': 0.55 };
+  var REACT_TRIM = { ooh: 0.84, aww: 0.9, cheer: 0.62, gasp: 0.8, laugh: 1, clap: 0.4, chant: 1.0 };
+  var MOOD_GAIN = { challenge: 0.83, win: 0.84 };
   function withTrim(k, fn) { var tr = trims && trims[k]; if (tr) { defDest = tr.d; defRev = tr.r; } try { fn(); } finally { defDest = null; defRev = null; } }
   function slamBody() {
     var h = 0.4;
@@ -577,7 +667,7 @@ var Snd = (function () {
     [82, 116].forEach(function (f) { brass(f, h, 0.7, 0.06); brass(f * 2, h, 0.6, 0.03); });
   }
   function fanfare() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('fanfare', 2.0)) return;
     duck(0.45, 3.4);
     if (sample('fanfare', { vol: 0.95 })) return;
     withTrim('fanfare', fanfareBody);
@@ -596,11 +686,11 @@ var Snd = (function () {
     crash(0.45, 0.07, 0.9);
   }
   function crowd() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('roar', 3.0)) return;
     duck(0.4, 6);
-    if (sample('crowd', { vol: 0.9 })) return;
-    var D = 6, t0 = T(0), i, bus = ctx.createGain(); bus.gain.value = 1; bus.connect(sfx);
-    var rv = ctx.createGain(); rv.gain.value = 0.45; bus.connect(rv); rv.connect(sfxRev);
+    if (sample('crowd', { vol: 0.9, dest: crowdIn })) return;
+    var D = 6, t0 = T(0), i, bus = ctx.createGain(); bus.gain.value = TRIM.roar; bus.connect(crowdIn);
+    var rv = ctx.createGain(); rv.gain.value = 0.45 * TRIM.roar; bus.connect(rv); rv.connect(sfxRev);
     // roar: looped pink noise through a few vocal-range bands, with slow wobble like a moving crowd
     var roar = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain(), outs = [roar, lfo, lg, bus, rv];
     roar.gain.setValueAtTime(0.0001, t0); roar.gain.linearRampToValueAtTime(1, t0 + 1.0); roar.gain.setValueAtTime(1, t0 + 3.2); roar.gain.linearRampToValueAtTime(0.0001, t0 + D);
@@ -628,9 +718,9 @@ var Snd = (function () {
     setTimeout(function () { for (var k = 0; k < outs.length; k++) { try { outs[k].disconnect(); } catch (e) {} } }, (D + 1) * 1000);
   }
   function whistle() {
-    if (!sfxOn()) return;
+    if (!sfxOn() || !rl('whistle', 0.3)) return;
     if (sample('whistle', { vol: 0.8 })) return;
-    whistleAt(0, 2850, 0.16, 0.05); whistleAt(0.2, 2850, 0.55, 0.05);
+    whistleAt(0, 2850, 0.16, 0.05 * TRIM.whistle); whistleAt(0.2, 2850, 0.55, 0.05 * TRIM.whistle);
   }
 
   // ---------------------------------------------------------------- adaptive music
@@ -671,7 +761,8 @@ var Snd = (function () {
   function applyLevels() {
     if (!ctx || !L) return;
     var m = MOODS[wantedMood] || MOODS.off, on = musicActive(), now = ctx.currentTime;
-    for (var k in L) L[k].out.gain.setTargetAtTime(on ? m[k] : 0, now, on ? 0.55 : 0.12);
+    var mg = MOOD_GAIN[wantedMood] || 1;
+    for (var k in L) L[k].out.gain.setTargetAtTime(on ? m[k] * mg : 0, now, on ? 0.55 : 0.12);
   }
   function syncMusic() {
     if (!ctx) return;
@@ -861,36 +952,56 @@ var Snd = (function () {
     var sp = cut.lastIndexOf(' '); return (sp > 20 ? cut.slice(0, sp) : cut) + '.';
   }
   function stopSpeak() {
-    try { speakToken++; if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; } if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+    try {
+      var was = !!(window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending));
+      speakToken++; if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; } if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (was && ctx && duckF < 1) { duckToken++; duckF = 1; refreshMus(0.4); }
+    } catch (e) {}
   }
   function speak(text, who) {
     try {
       if (!gestured || typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') return false;
-      if (setg().voice === false || muted()) return false;
+      if (setg().voice === false || muted() || level('voice') <= 0) return false;
       var s = capText(cleanForSpeech(text), 160);
       if (!/[a-z0-9]/i.test(s)) return false;
       stopBabble();
       var cfg = VOICES_CFG[who] || VOICES_CFG.pip, ss = window.speechSynthesis, tok = ++speakToken;
       if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; }
       try { ss.cancel(); } catch (e) {}
-      // Chrome drops a speak() issued in the same tick as cancel(), so wait a beat
-      speakTimer = setTimeout(function () {
+      // Chrome drops a speak() issued in the same tick as cancel(), so wait a beat. The voice list often arrives late
+      // (Chrome, iPad Safari): if it is still empty, wait up to 1.2 s for it rather than speak in a random voice.
+      var waited = 0;
+      function go() {
         speakTimer = null;
-        if (tok !== speakToken) return;
+        if (tok !== speakToken || document.hidden) return;
+        if (!loadVoices().length && waited < 1200) { waited += 150; speakTimer = setTimeout(go, 150); return; }
         try {
-          var u = new window.SpeechSynthesisUtterance(s), v = chooseVoice(cfg.g);
+          var u = new window.SpeechSynthesisUtterance(s), v = chooseVoice(cfg.g), est = estSpeechMs(s, who);
           if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
-          u.pitch = cfg.pitch; u.rate = cfg.rate; u.volume = 1;
-          u.onstart = function () { if (tok === speakToken) duck(0.55, 12); };
+          // the Voices balance (and the Effects volume) set the loudness; iPad Safari ignores utterance volume (always full)
+          u.pitch = cfg.pitch; u.rate = cfg.rate; u.volume = Math.max(0, Math.min(1, (vol('sfx', 0.8) / 0.8) * mixv('voice')));
+          // music ducks well under a spoken line; if 'end' never comes (iOS sometimes drops it) the duck still lifts
+          u.onstart = function () { if (tok === speakToken) duck(0.35, est / 1000 + 1.5); };
           u.onend = u.onerror = function () { if (tok === speakToken && ctx) { duckToken++; duckF = 1; refreshMus(0.5); } };
+          try { if (ss.paused) ss.resume(); } catch (e) {}   // Safari can come back from the background "paused"
           ss.speak(u);
         } catch (e) {}
-      }, 60);
+      }
+      speakTimer = setTimeout(go, 60);
       return true;
     } catch (e) { return false; }
   }
+  // iOS only lets speech start from a tap the first time: speak an empty, silent line inside the first tap
+  var speechWarm = false;
+  function warmSpeech() {
+    try {
+      if (speechWarm || setg().voice !== true || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') return;
+      speechWarm = true; var u = new window.SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
   try {
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.addEventListener) window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    loadVoices();
   } catch (e) {}
 
   // ================================================================ character voices, crowd, themes, stingers
@@ -968,12 +1079,13 @@ var Snd = (function () {
   var CAP_MS = 2500;
   // base Hz, span (pitch spread), blip/gap seconds, sub/body/shim gains, q and fs (formant sharpness and scale), glide (start-pitch ratio), slow (pause scale), tail (end-of-sentence stretch)
   var BAB = {
-    pip:     { base: 640, span: 0.8,  blip: 0.052, gap: 0.04,  wave: 'triangle', saw: 0.6, sub: 0,    body: 0.2, shim: 0,    q: 5,   fs: 1.18, glide: 0.82, vol: 0.5,  slow: 0.8, tail: 1.3 },
-    sloth:   { base: 104, span: 0.55, blip: 0.125, gap: 0.095, wave: 'sawtooth', saw: 0.5, sub: 0.45, body: 0.7, shim: 0,    q: 3,   fs: 0.86, glide: 1.1,  vol: 0.35,  slow: 1.6, tail: 1.9 },
-    penguin: { base: 360, span: 0.9,  blip: 0.046, gap: 0.032, wave: 'sawtooth', saw: 0.6, sub: 0,    body: 0.15, shim: 0,   q: 5,   fs: 1.1,  glide: 0.9,  vol: 0.55, slow: 0.75, tail: 1.3 },
-    fox:     { base: 270, span: 1.05, blip: 0.058, gap: 0.04,  wave: 'sawtooth', saw: 0.8, sub: 0,    body: 0.1, shim: 0,    q: 8,   fs: 1.16, glide: 1.0,  vol: 0.8, slow: 0.9, tail: 1.2 },
-    owl:     { base: 196, span: 0.6,  blip: 0.095, gap: 0.07,  wave: 'triangle', saw: 0.3, sub: 0.5,  body: 0.9, shim: 0,    q: 2.5, fs: 0.86, glide: 1.12, vol: 0.3,  slow: 1.2, tail: 1.7 },
-    wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.4,  slow: 1.4, tail: 1.8 }
+    // vol: audited so every creature talks at about -21 LUFS (they measured -15 to -18, louder than the fanfare)
+    pip:     { base: 640, span: 0.8,  blip: 0.052, gap: 0.04,  wave: 'triangle', saw: 0.6, sub: 0,    body: 0.2, shim: 0,    q: 5,   fs: 1.18, glide: 0.82, vol: 0.3,  slow: 0.8, tail: 1.3 },
+    sloth:   { base: 104, span: 0.55, blip: 0.125, gap: 0.095, wave: 'sawtooth', saw: 0.5, sub: 0.45, body: 0.7, shim: 0,    q: 3,   fs: 0.86, glide: 1.1,  vol: 0.27,  slow: 1.6, tail: 1.9 },
+    penguin: { base: 360, span: 0.9,  blip: 0.046, gap: 0.032, wave: 'sawtooth', saw: 0.6, sub: 0,    body: 0.15, shim: 0,   q: 5,   fs: 1.1,  glide: 0.9,  vol: 0.45, slow: 0.75, tail: 1.3 },
+    fox:     { base: 270, span: 1.05, blip: 0.058, gap: 0.04,  wave: 'sawtooth', saw: 0.8, sub: 0,    body: 0.1, shim: 0,    q: 8,   fs: 1.16, glide: 1.0,  vol: 0.46, slow: 0.9, tail: 1.2 },
+    owl:     { base: 196, span: 0.6,  blip: 0.095, gap: 0.07,  wave: 'triangle', saw: 0.3, sub: 0.5,  body: 0.9, shim: 0,    q: 2.5, fs: 0.86, glide: 1.12, vol: 0.18,  slow: 1.2, tail: 1.7 },
+    wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.28,  slow: 1.4, tail: 1.8 }
   };
   var PSC = [0, 2, 4, 7, 9, 12, 14, 16];
   var VMAP = { a: 'ah', e: 'eh', i: 'ee', o: 'oh', u: 'oo', y: 'ee' };
@@ -1067,7 +1179,7 @@ var Snd = (function () {
       oscs.push(shim, tr); outs.push(hg, tr, trg); track(shim, [shim]); track(tr, [tr]); shim.start(t0); shim.stop(end + 0.1); tr.start(t0); tr.stop(end + 0.1);
     }
     eg.connect(bp1); eg.connect(bp2); eg.connect(body); bp1.connect(mix); bp2.connect(mix); body.connect(bg); bg.connect(mix);
-    mix.gain.value = 0.9; mix.connect(voiceBus);
+    mix.gain.value = 0.9; mix.connect(voiceIn);
     var att = 0.005 + (who === 'sloth' || who === 'owl' ? 0.01 : 0);
     for (i = 0; i < plan.blips.length; i++) {
       b = plan.blips[i];
@@ -1081,7 +1193,7 @@ var Snd = (function () {
       eg.gain.setValueAtTime(g0 * 0.85, tt + Math.max(att + 0.002, b.d * 0.5)); eg.gain.exponentialRampToValueAtTime(0.0001, tt + b.d);
     }
     track(main, outs); main.start(t0); main.stop(end + 0.1);
-    duck(0.6, plan.ms / 1000 + 0.35);
+    duck(0.5, plan.ms / 1000 + 0.35);
     curBab = { eg: eg, oscs: oscs, tok: duckToken };
     return plan.ms;
   }
@@ -1097,7 +1209,7 @@ var Snd = (function () {
   }
 
   // ---------------------------------------------------------------- ambience (very quiet looping bed)
-  var AMB = { stadium: 0.0125, room: 0.004 };
+  var AMB = { stadium: 0.018, room: 0.007 };
   function ambTarget() { if (!amb) return 0; return amb.level * (duckF < 1 ? Math.max(0.25, duckF * 0.7) : 1) * swellF; }
   function refreshAmb(tc) { try { if (amb && ctx) amb.out.gain.setTargetAtTime(ambTarget(), ctx.currentTime, tc || 0.3); } catch (e) {} }
   function stopAmb() {
@@ -1183,20 +1295,22 @@ var Snd = (function () {
     chant: function (cb) { // clap, clap, clap, clap, CLAP
       var ts = [0, 0.27, 0.54, 0.81, 1.08], vs = [0.8, 0.7, 0.7, 0.7, 1.0], i;
       for (i = 0; i < 5; i++) {
-        playBuf(bank.gclap[i % 3], { vol: vs[i] * 0.7, rate: rnd(0.95, 1.05), delay: ts[i], dest: cb });
+        playBuf(bank.gclap[i % 3], { vol: vs[i] * 0.4, rate: rnd(0.95, 1.05), delay: ts[i], dest: cb });
         crowdOf(2, { lo: 150, hi: 220, glide: 1, at: ts[i], spread: 0.02, d0: 0.15, d1: 0.18, vol: 0.04, v0: 'oh', v1: 'oh', att: 0.04, dest: cb });
       }
       ambSwell(1.5, 1.7);
     }
   };
+  var reactBus = {};
   function crowdReact(kind) {
     if (!sfxOn()) return 0;
     kind = String(kind || '');
     if (kind === 'roar') { crowd(); return CROWD_MS.roar; }
     var f = REACT[kind]; if (!f) return 0;
     if (!rl('react', 0.12) || !rl('react.' + kind, 0.35) || !roomFor(45)) return 0;
-    if (sample('crowd_' + kind, { vol: 0.9, dest: crowdBus })) return CROWD_MS[kind];
-    f(crowdBus); return CROWD_MS[kind];
+    if (!reactBus[kind] || reactBus[kind].ctx !== ctx) { var rb = ctx.createGain(); rb.gain.value = REACT_TRIM[kind] || 1; rb.connect(crowdIn); rb.ctx = ctx; reactBus[kind] = rb; }
+    if (sample('crowd_' + kind, { vol: 0.9, dest: reactBus[kind] })) return CROWD_MS[kind];
+    f(reactBus[kind]); return CROWD_MS[kind];
   }
 
   // ---------------------------------------------------------------- character themes (2 to 3 second entrance stings)
@@ -1268,7 +1382,7 @@ var Snd = (function () {
   ];
   var DSC = [72, 74, 76, 79, 81, 84, 86, 88];
   function refreshDance(tc) {
-    try { if (ctx && danceMix) danceMix.gain.setTargetAtTime((!muted() && vol('music', 0.35) > 0) ? vol('music', 0.35) * 1.0 : 0, ctx.currentTime, tc || 0.1); } catch (e) {}
+    try { if (ctx && danceMix) danceMix.gain.setTargetAtTime((!muted() && vol('music', 0.35) > 0) ? vol('music', 0.35) * 0.75 : 0, ctx.currentTime, tc || 0.1); } catch (e) {}
   }
   function danceBar(d, b) {
     var t = d.t0 + b * d.bar, st = d.bar / 16, c = DCH[b % 4], run = d.run, last = b === d.n - 1, now = ctx.currentTime, i;
@@ -1364,8 +1478,69 @@ var Snd = (function () {
     return Math.round(dur * 1000);
   }
 
+  // ---------------------------------------------------------------- shared bus for the other sound files
+  function bus(c) {
+    if (!ensure()) return null;
+    c = catName(c);
+    return c === 'music' ? extMus : c === 'ui' ? uiIn : c === 'crowd' ? crowdIn : c === 'voice' ? voiceIn : c === 'amb' ? ambOut : extSfx;
+  }
+  // Offline render through the real mix (limiter included), for the Sound check and the audit. fn(api) schedules sounds
+  // at time 0 (api.at(t, f) runs f at t seconds); the live sound is paused meanwhile and put back afterwards.
+  // opts.defaults: measure at the default volumes (music 0.35, effects 0.8, balance 1) instead of the player's.
+  var measuring = false;
+  function measure(fn, sec, opts) {
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC || measuring) return Promise.reject(new Error(measuring ? 'busy' : 'no OfflineAudioContext'));
+    opts = opts || {}; measuring = true;
+    var sr = opts.sampleRate || 48000, off = new OAC(2, Math.ceil(sr * (sec || 3)), sr), keepSet = null;
+    stopMusic(); if (ambTimer) { clearTimeout(ambTimer); ambTimer = null; } stopDance();
+    var saved = { ctx: ctx, master: master, limiter: limiter, shaper: shaper, sfx: sfx, sfxRev: sfxRev, musMix: musMix, musRev: musRev, revIn: revIn, diceBus: diceBus, stingBus: stingBus,
+      voiceBus: voiceBus, crowdBus: crowdBus, ambOut: ambOut, danceMix: danceMix, danceBus: danceBus, trims: trims, noiseBuf: noiseBuf, pinkBuf: pinkBuf, bank: bank, L: L,
+      crowdIn: crowdIn, voiceIn: voiceIn, uiIn: uiIn, extSfx: extSfx, extMus: extMus, onceBuses: onceBuses, reactBus: reactBus, gate: gate, curBab: curBab, amb: amb, ambWant: ambWant, clarWave: clarWave,
+      lastDiceWhen: lastDiceWhen, diceVoices: diceVoices, voices: voices, duckF: duckF, musVol: musVol, sbufs: sbufs, sloading: sloading, mood: wantedMood, warm: warm, gen: gen };
+    function restore() {
+      ctx = saved.ctx; master = saved.master; limiter = saved.limiter; shaper = saved.shaper; sfx = saved.sfx; sfxRev = saved.sfxRev; musMix = saved.musMix; musRev = saved.musRev; revIn = saved.revIn;
+      diceBus = saved.diceBus; stingBus = saved.stingBus; voiceBus = saved.voiceBus; crowdBus = saved.crowdBus; ambOut = saved.ambOut; danceMix = saved.danceMix; danceBus = saved.danceBus; trims = saved.trims;
+      noiseBuf = saved.noiseBuf; pinkBuf = saved.pinkBuf; bank = saved.bank; L = saved.L; crowdIn = saved.crowdIn; voiceIn = saved.voiceIn; uiIn = saved.uiIn; extSfx = saved.extSfx; extMus = saved.extMus;
+      onceBuses = saved.onceBuses; reactBus = saved.reactBus; gate = saved.gate; curBab = saved.curBab; amb = saved.amb; ambWant = saved.ambWant; clarWave = saved.clarWave; lastDiceWhen = saved.lastDiceWhen;
+      diceVoices = saved.diceVoices; voices = saved.voices; duckF = saved.duckF; musVol = saved.musVol; sbufs = saved.sbufs; sloading = saved.sloading; wantedMood = saved.mood; warm = saved.warm; gen = saved.gen;
+      if (keepSet && typeof S !== 'undefined') S.set = keepSet;
+      measuring = false; stopMusic();
+      try { if (ctx) apply(); } catch (e) {}
+    }
+    try {
+      if (opts.defaults && typeof S !== 'undefined' && S && S.set) { keepSet = S.set; var d = {}; for (var k in keepSet) d[k] = keepSet[k]; d.music = 0.35; d.sfx = 0.8; d.mute = false; d.mix = { crowd: 1, voice: 1, amb: 1 }; S.set = d; }
+      onceBuses = {}; reactBus = {}; wantedMood = 'off'; ambWant = 'off';
+      build(off); try { off.onstatechange = null; } catch (e) {}
+      musVol = vol('music', 0.35) * 0.8; refreshMus(0); applyCats(); master.gain.value = muted() ? 0 : 0.8; sfx.gain.value = sfxRev.gain.value = vol('sfx', 0.8);
+      var api = { ctx: off, bus: bus, at: function (t, f) { if (t <= 0) { f(); return; } off.suspend(t).then(function () { try { f(); } catch (e) {} off.resume(); }); },
+        bar: function (t, mood) { wantedMood = mood; applyLevels(); scheduleBar(t, barNo++); }, BAR: BAR };
+      fn(api);
+      stopMusic();   // bars are scheduled by api.bar only; no live scheduler on the offline context
+    } catch (e) { restore(); return Promise.reject(e); }
+    // the offline graph stays current while it renders (timed api.at() events need it); it takes well under a second
+    return off.startRendering().then(function (b) { restore(); return b; }, function (e) { restore(); throw e; });
+  }
+
   // ---------------------------------------------------------------- public API
   return {
+    // shared context and mix (docs/handoff/sound.md)
+    context: function () { try { return ensure(); } catch (e) { return null; } },
+    bus: function (c) { try { return bus(c); } catch (e) { return null; } },
+    level: function (c) { try { return level(c); } catch (e) { return 0; } },
+    duck: guard(function (depth, sec) { duck(Math.max(0, Math.min(1, +depth || 0.5)), Math.max(0.1, +sec || 1)); }),
+    unlock: guard(function () { init(); }),
+    state: function () { return { state: ctx ? ctx.state : 'none', sampleRate: ctx ? ctx.sampleRate : 0, baseLatency: ctx && ctx.baseLatency, outputLatency: ctx && ctx.outputLatency, gestured: gestured, duck: duckF, mood: wantedMood,
+      levels: { music: level('music'), sfx: level('sfx'), crowd: level('crowd'), voice: level('voice'), amb: level('amb') }, voices: voices, peakVoices: peakVoices, created: created, speechVoices: (vcache || []).length,
+      audioSession: (function () { try { return navigator.audioSession ? navigator.audioSession.type : null; } catch (e) { return null; } })() }; },
+    _measure: measure, _trim: TRIM, _reactTrim: REACT_TRIM,
+    // Settings -> Sound -> Sound check (js/soundcheck.js is loaded on demand)
+    soundCheck: function () {
+      try {
+        if (typeof SoundCheck !== 'undefined') { SoundCheck.open(); return; }
+        var s = document.createElement('script'); s.src = 'js/soundcheck.js'; s.onload = function () { try { SoundCheck.open(); } catch (e) {} }; document.head.appendChild(s);
+      } catch (e) {}
+    },
     init: init, apply: apply, musicOn: musicOn, musicOff: musicOff, setMood: setMood,
     getMood: function () { return wantedMood; },
     // One die hitting the table or another die (v: 0..1 = how hard)
