@@ -5,8 +5,13 @@
 //   mount(host, items, { onTap(item), quality: 'high'|'low' }) -> { select(id), resize(), dispose(), info() }
 //   items: [{ id, type: 'cup'|'crown'|'medal'|'pennant'|'plaque', won, ...per type: see js/cabinet.js }]
 //
-// Calm by design: nothing moves by itself. Drag turns the view, a wheel / pinch zooms, and a tapped item makes ONE
-// slow turn (2.6 s) and stops facing front again. It only draws when something changed (no render loop at rest).
+// Calm by design: when the room opens the camera glides in ONCE (2.6 s; a still cut with Reduce flashing or
+// prefers-reduced-motion), then nothing moves by itself. Drag turns the view, a wheel / pinch zooms, and a tapped item
+// is brought forward, turns once, slowly, and goes back to its place (3.7 s). It only draws when something changed
+// (no render loop at rest).
+// SHOWPIECES: brass lamps over the shelves, engraved plates under the cups (the date it was won, or a kind hint how to
+// win it), league shields and two framed photos on the back wall ("My best Solutions" drawn as cubes from js/replay.js
+// Album, and a team photo with the creatures he has beaten).
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
@@ -120,7 +125,7 @@ export function mount(host, items, opts) {
   function ghostify(g) {
     var lines = [];
     g.traverse(function (o) {
-      if (!o.isMesh) return;
+      if (!o.isMesh || o.userData.keep) return;
       o.material = ghostM;
       var e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 35), lineM);
       e.position.copy(o.position); e.rotation.copy(o.rotation); e.scale.copy(o.scale);
@@ -137,9 +142,9 @@ export function mount(host, items, opts) {
   var cupGeo = new THREE.LatheGeometry(cupProfile, low ? 28 : 48);
   function buildCup(it) {
     var g = new THREE.Group(), m = metal(it.metal ? it.metal[1] : '#ffc83d', 0.16);
-    var plinth = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.46), blackM); plinth.position.y = 0.07; g.add(plinth);
-    var plate = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.08), new THREE.MeshStandardMaterial({ map: canvasTex(256, 60, function (c, w, h) { c.fillStyle = it.won ? '#f4d27a' : '#666'; c.fillRect(0, 0, w, h); c.fillStyle = '#3a2a00'; c.textAlign = 'center'; c.textBaseline = 'middle'; fitText(c, it.title, w - 16, 34); c.fillText(it.title, w / 2, h / 2 + 2); }), metalness: 0.6, roughness: 0.3 }));
-    plate.position.set(0, 0.07, 0.231); g.add(plate);
+    var plinth = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.46), blackM); plinth.position.y = 0.07; plinth.userData.keep = !it.won; g.add(plinth);
+    var plate = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.11), new THREE.MeshStandardMaterial({ map: engraved(it.title, it.won ? (it.date ? 'Won ' + it.date : 'Won!') : (it.hint || 'Not won yet'), it.won), metalness: it.won ? 0.6 : 0.2, roughness: 0.35 }));
+    plate.position.set(0, 0.07, 0.231); plate.userData.keep = true; g.add(plate);
     var cup = new THREE.Mesh(cupGeo, m); cup.position.y = 0.14; g.add(cup);
     [-1, 1].forEach(function (s) {
       var h = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.02, 10, 24, Math.PI), m);
@@ -235,7 +240,106 @@ export function mount(host, items, opts) {
     }
     return g;
   }
-  var BUILD = { cup: buildCup, crown: buildCrown, medal: buildMedal, pennant: buildPennant, plaque: buildPlaque };
+  // an engraved brass plate: a name and a second line (the date it was won, or how to win it)
+  function engraved(top, bottom, won) {
+    return canvasTex(320, 88, function (c, w, h) {
+      var gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, won ? '#f8e19a' : '#5a5f6e'); gr.addColorStop(1, won ? '#c9a24a' : '#3b3f4b'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      c.strokeStyle = won ? 'rgba(90,60,0,.55)' : 'rgba(255,255,255,.25)'; c.lineWidth = 3; c.strokeRect(5, 5, w - 10, h - 10);
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = won ? '#3a2a00' : '#e9ecf5';
+      fitText(c, top, w - 24, 34); c.fillText(top, w / 2, h * 0.36);
+      c.fillStyle = won ? '#5c4300' : '#ffe9a8'; fitText(c, bottom, w - 24, 24, '800 '); c.fillText(bottom, w / 2, h * 0.74);
+    });
+  }
+  // a league shield: flat top, curved sides to a point; the league's colours, a ball, the name and CHAMPIONS
+  var SHIELD_COL = { c: ['#3fa34d', '#1d5e2a'], m: ['#8a4fd8', '#3d1f78'], l: ['#f2b12f', '#9a5b00'] };
+  var shieldShape = (function () { var sh = new THREE.Shape(); sh.moveTo(-0.15, 0.2); sh.lineTo(0.15, 0.2); sh.lineTo(0.15, 0.04); sh.quadraticCurveTo(0.15, -0.12, 0, -0.2); sh.quadraticCurveTo(-0.15, -0.12, -0.15, 0.04); sh.closePath(); return sh; })();
+  function buildShield(it) {
+    var g = new THREE.Group(), col = SHIELD_COL[it.lg] || SHIELD_COL.c;
+    var board = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.02), woodM); board.position.set(0, 0.17, -0.035); board.userData.keep = true; g.add(board);   // a wooden mount, so an empty place still shows
+    var geo = new THREE.ExtrudeGeometry(shieldShape, { depth: 0.025, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.01, bevelSegments: 2, curveSegments: low ? 8 : 14 });
+    var rim = new THREE.Mesh(geo, metal(it.won ? '#ffc83d' : '#888', 0.25)); rim.position.set(0, 0.22, -0.02); g.add(rim);
+    var face = new THREE.ShapeGeometry(shieldShape, low ? 8 : 14), uv = face.attributes.uv, ps = face.attributes.position;
+    for (var i = 0; i < uv.count; i++) uv.setXY(i, (ps.getX(i) + 0.15) / 0.3, (ps.getY(i) + 0.2) / 0.4);
+    var fm = new THREE.MeshStandardMaterial({ map: canvasTex(192, 256, function (c, w, h) {
+      var gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, col[0]); gr.addColorStop(1, col[1]); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      c.fillStyle = 'rgba(255,255,255,.14)'; for (var k = 0; k < 6; k++) if (k % 2) c.fillRect(k * w / 6, 0, w / 6, h);
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(w / 2, h * 0.42, 34, 0, 7); c.fill(); c.strokeStyle = '#16203c'; c.lineWidth = 4; c.stroke();
+      c.fillStyle = '#16203c'; c.beginPath(); for (var a = 0; a < 5; a++) { var an = -Math.PI / 2 + a * Math.PI * 2 / 5, r = 12; c.lineTo(w / 2 + Math.cos(an) * r, h * 0.42 + Math.sin(an) * r); } c.closePath(); c.fill();
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#fff';
+      fitText(c, (it.short || '').toUpperCase(), w - 30, 30); c.fillText((it.short || '').toUpperCase(), w / 2, h * 0.14);
+      fitText(c, 'CHAMPIONS', w - 50, 22, '800 '); c.fillText('CHAMPIONS', w / 2, h * 0.66);
+      if (it.count > 1) { fitText(c, 'x' + it.count, 60, 22, '800 '); c.fillText('x' + it.count, w / 2, h * 0.78); }
+    }), roughness: 0.55, metalness: 0.1 });
+    var fc = new THREE.Mesh(face, fm); fc.position.set(0, 0.22, 0.0175); g.add(fc);
+    if (!it.won) { var hint = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.08), new THREE.MeshBasicMaterial({ map: engraved(it.short || 'League', 'Finish 1st', false) })); hint.userData.keep = true; hint.position.set(0, -0.04, 0.02); g.add(hint); }
+    return g;
+  }
+  // a framed photo (wood frame): his best Solutions drawn as cubes, or the team photo
+  var CUBE_COL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'], none: ['#e9ecef', '#adb5bd'] };
+  function SHOWS(s) { return (window.Eq && Eq.SHOW && Eq.SHOW[s]) || s; }
+  function drawBest(c, w, h, list) {
+    c.fillStyle = '#16305c'; c.fillRect(0, 0, w, h);
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffe9a8'; fitText(c, 'MY BEST SOLUTIONS', w - 40, 34); c.fillText('MY BEST SOLUTIONS', w / 2, 34);
+    var names = { long: 'Longest', big: 'Biggest Goal', clever: 'Cleverest' };
+    list.slice(0, 3).forEach(function (e, r) {
+      var y = 112 + r * 102, n = e.syms.length, cell = Math.min(40, (w - 60) / Math.max(1, n + 2.4)), x = (w - (n + 2.4) * cell) / 2;
+      c.fillStyle = 'rgba(255,255,255,.72)'; c.textAlign = 'left'; var cap = (names[e.kind] || '') + (e.date ? ' · ' + e.date : '');
+      fitText(c, cap, w - 40, 18, '800 '); c.fillText(cap, 26, y - 34);
+      c.textAlign = 'center';
+      e.syms.forEach(function (sy, k) {
+        var cx = x + k * cell + cell / 2;
+        if (sy === '(' || sy === ')') { c.fillStyle = '#fff'; c.font = '900 ' + Math.round(cell) + 'px "Trebuchet MS", sans-serif'; c.fillText(sy, cx, y + 2); return; }
+        var cc = CUBE_COL[e.cols[k]] || CUBE_COL.none, gr = c.createLinearGradient(cx - cell / 2, y - cell / 2, cx + cell / 2, y + cell / 2); gr.addColorStop(0, cc[0]); gr.addColorStop(1, cc[1]);
+        c.fillStyle = gr; c.fillRect(cx - cell * 0.45, y - cell * 0.45, cell * 0.9, cell * 0.9);
+        c.fillStyle = e.cols[k] ? '#fff' : '#222'; c.font = '900 ' + Math.round(cell * 0.62) + 'px "Trebuchet MS", sans-serif'; c.fillText(SHOWS(sy), cx, y + 2);
+      });
+      c.fillStyle = '#ffd43b'; c.font = '900 ' + Math.round(cell * 0.75) + 'px "Trebuchet MS", sans-serif'; c.textAlign = 'left'; c.fillText('= ' + e.goal, x + n * cell + cell * 0.2, y + 2);
+    });
+  }
+  function drawTeam(c, w, h, it, imgs) {
+    var gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#0f2a5c'); gr.addColorStop(0.55, '#1d4f9a'); gr.addColorStop(0.56, '#2f8f3f'); gr.addColorStop(1, '#1f6b2c'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    var faces = it.faces || [], n = faces.length, cx = w / 2;
+    faces.forEach(function (f, k) {   // the creatures stand beside him, alternating left and right
+      var side = k % 2 ? 1 : -1, slot = Math.floor(k / 2) + 1, x = cx + side * slot * 92, y = h * 0.56, r = 44;
+      c.fillStyle = f.color || '#ffe8a3'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+      c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 4; c.stroke();
+      if (imgs && imgs[k]) { c.save(); c.beginPath(); c.arc(x, y, r - 2, 0, 7); c.clip(); c.drawImage(imgs[k], x - r, y - r, r * 2, r * 2); c.restore(); }
+      else { c.font = '52px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(f.emoji || '?', x, y + 4); }
+    });
+    // him in the middle, in his shirt with his number
+    var me = it.me || {}, sh = me.shirt || '#c9342c';
+    c.fillStyle = sh; c.beginPath(); c.moveTo(cx - 64, h); c.lineTo(cx - 58, h * 0.66); c.quadraticCurveTo(cx, h * 0.56, cx + 58, h * 0.66); c.lineTo(cx + 64, h); c.closePath(); c.fill();
+    c.fillStyle = '#f1c27d'; c.beginPath(); c.arc(cx, h * 0.44, 38, 0, 7); c.fill();
+    c.fillStyle = '#3b2314'; c.beginPath(); c.arc(cx, h * 0.41, 39, Math.PI, 0); c.fill();
+    c.fillStyle = '#16203c'; c.beginPath(); c.arc(cx - 13, h * 0.45, 4.5, 0, 7); c.arc(cx + 13, h * 0.45, 4.5, 0, 7); c.fill();
+    c.strokeStyle = '#16203c'; c.lineWidth = 4; c.beginPath(); c.arc(cx, h * 0.47, 14, 0.3, Math.PI - 0.3); c.stroke();
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '900 50px "Trebuchet MS", sans-serif'; c.fillText(String(me.jersey || '7'), cx, h * 0.84);
+    c.fillStyle = '#ffe9a8'; fitText(c, 'TEAM PHOTO', w - 40, 30); c.fillText('TEAM PHOTO', w / 2, 30);
+    if (!n) { c.fillStyle = 'rgba(255,255,255,.85)'; fitText(c, 'Beat a creature to join the photo', w - 60, 22, '800 '); c.fillText('Beat a creature to join the photo', w / 2, h * 0.2); }
+  }
+  function buildPhoto(it) {
+    var g = new THREE.Group(), FW = 1.0, FH = 0.75;
+    var frame = new THREE.Mesh(new THREE.BoxGeometry(FW + 0.08, FH + 0.08, 0.035), woodM); frame.position.y = FH / 2; frame.userData.keep = true; g.add(frame);
+    var W = 512, H = 384;
+    var tex = canvasTex(W, H, function (c, w, h) { if (it.kind === 'team') drawTeam(c, w, h, it, null); else if (it.album && it.album.length) drawBest(c, w, h, it.album); else { c.fillStyle = '#16305c'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffe9a8'; c.textAlign = 'center'; c.textBaseline = 'middle'; fitText(c, 'Your best Solution goes here', w - 60, 30); c.fillText('Your best Solution goes here', w / 2, h / 2); } });
+    var pic = new THREE.Mesh(new THREE.PlaneGeometry(FW - 0.04, FH - 0.04), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 })); pic.position.set(0, FH / 2, 0.019); pic.userData.keep = true; g.add(pic);
+    if (!it.won) pic.material.color.set('#9aa0ad');
+    if (it.kind === 'team' && it.portrait && it.faces && it.faces.length) {
+      var imgs = [], left = it.faces.length;
+      var redraw = function () { if (--left > 0 || disposed) return; var old = pic.material.map; pic.material.map = canvasTex(W, H, function (c, w, h) { drawTeam(c, w, h, it, imgs); }); pic.material.needsUpdate = true; if (old) old.dispose(); need(); };
+      it.faces.forEach(function (f, k) {
+        Promise.resolve(it.portrait(f)).then(function (url) {
+          if (!url || disposed) { redraw(); return; }
+          var im = new Image(); im.onload = function () { imgs[k] = im; redraw(); }; im.onerror = redraw; im.src = url;
+        }, redraw);
+      });
+    }
+    // a little brass picture light over it
+    var lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.5, 10), metal('#d9a441', 0.3)); lamp.rotation.z = Math.PI / 2; lamp.position.set(0, FH + 0.1, 0.07); lamp.userData.keep = true; g.add(lamp);
+    var glow = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.012), new THREE.MeshBasicMaterial({ color: '#fff3cf', side: THREE.DoubleSide })); glow.rotation.x = Math.PI / 2; glow.position.set(0, FH + 0.083, 0.07); glow.userData.keep = true; g.add(glow);
+    return g;
+  }
+  var BUILD = { cup: buildCup, crown: buildCrown, medal: buildMedal, pennant: buildPennant, plaque: buildPlaque, shield: buildShield, photo: buildPhoto };
 
   // ---------- placing everything ----------
   function place(it, x, y, z, ry, scale) {
@@ -248,7 +352,7 @@ export function mount(host, items, opts) {
     hit.position.copy(cn); hit.userData.item = it;
     holder.position.set(x, y, z); holder.rotation.y = ry || 0; if (scale) holder.scale.setScalar(scale);
     spin.add(body); holder.add(spin); holder.add(hit); scene.add(holder); hitBoxes.push(hit);
-    byId[it.id] = { it: it, spin: spin, holder: holder };
+    byId[it.id] = { it: it, spin: spin, holder: holder, hit: hit };
   }
   var cups = items.filter(function (i) { return i.type === 'cup'; }), crowns = items.filter(function (i) { return i.type === 'crown'; });
   var plaques = items.filter(function (i) { return i.type === 'plaque'; }), medals = items.filter(function (i) { return i.type === 'medal'; });
@@ -270,6 +374,19 @@ export function mount(host, items, opts) {
     var y = 2.02 - r * (rowsM.length > 4 ? 1.4 / (rowsM.length - 1) : 0.46);
     l.forEach(function (it, k) { var z = -0.85 - 1.45 + 2.9 * (l.length === 1 ? 0.5 : k / 13); place(it, ROOM.leftX + 0.1, y, z, Math.PI / 2, 1.05); });
   });
+  // SHOWPIECES: the back wall beside the cabinet: a framed photo on each side, the league shields under them
+  var colX = CW / 2 + (ROOM.w / 2 - CW / 2) / 2, wallZ = ROOM.backZ + 0.03;
+  items.filter(function (i) { return i.type === 'photo'; }).forEach(function (it) { place(it, it.kind === 'team' ? colX : -colX, 1.72, wallZ, 0, 1); });
+  var shields = items.filter(function (i) { return i.type === 'shield'; }), SH_POS = [[-colX, 1.0], [colX, 1.0], [-colX, 0.24], [colX, 0.24]];
+  shields.forEach(function (it, k) { var p = SH_POS[k] || SH_POS[3]; place(it, p[0], p[1], wallZ + 0.01, 0, 1.25); });
+  // brass lamps on the cabinet top, angled down at the shelves (just objects: the light is the room's spotlights)
+  var lampM = metal('#d9a441', 0.3), lampGlow = new THREE.MeshBasicMaterial({ color: '#fff0c8', side: THREE.DoubleSide });
+  [-1.6, 0, 1.6].forEach(function (x) {
+    var arm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.24, 8), lampM); arm.position.set(x, CH + 0.18, cz + CD / 2 - 0.02); arm.rotation.x = 0.7; scene.add(arm);
+    var hood = new THREE.Group(); hood.position.set(x, CH + 0.27, cz + CD / 2 + 0.07); hood.rotation.x = 2.4; scene.add(hood);
+    var shell = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.07, 0.11, 16, 1, true), lampM); hood.add(shell);
+    var bulb = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), lampGlow); bulb.position.y = -0.05; bulb.rotation.x = Math.PI / 2; hood.add(bulb);
+  });
   // pennants: rows of 6 on the right wall (facing -x), newest first
   pennants.forEach(function (it, k) {
     var r = Math.floor(k / 6), c = k % 6;
@@ -278,17 +395,45 @@ export function mount(host, items, opts) {
 
   // ---------- drawing on demand ----------
   var raf = 0, disposed = false, turning = null, lastDraw = 0, draws = 0;
-  function aim() {
-    var look = new THREE.Vector3(Math.sin(yaw) * -1 * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
-    camera.position.copy(EYE); camera.lookAt(EYE.clone().add(look));
+  function calm() {
+    try { if (window.A11y && A11y.calm && A11y.calm()) return true; } catch (e) {}
+    try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }
+  // the one-shot glide when the room opens: from the doorway (further back, a little higher, turned) to the seat
+  var glide = calm() || opts.glide === false ? null : { t0: 0, dur: 2600, z: 1.5, y: 0.22, yaw: 0.3, pitch: -0.1 };
+  var gk = 1;
+  function aim() {
+    var e = 1 - smooth(gk), yw = yaw + (glide ? glide.yaw * e : 0), pt = pitch + (glide ? glide.pitch * e : 0);
+    var look = new THREE.Vector3(Math.sin(yw) * -1 * Math.cos(pt), Math.sin(pt), -Math.cos(yw) * Math.cos(pt));
+    camera.position.copy(EYE); if (glide) { camera.position.z += glide.z * e; camera.position.y += glide.y * e; }
+    camera.lookAt(camera.position.clone().add(look));
+  }
+  var _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _dummy = new THREE.Object3D();
+  // a tapped item: forward to just in front of the camera (0.6 s), one slow turn (2.4 s), back to its place (0.7 s)
+  var T_FWD = 0.6, T_SPIN = 2.4, T_BACK = 0.7;
+  function home(tn) { tn.holder.position.copy(tn.p0); tn.holder.quaternion.copy(tn.q0); tn.holder.scale.setScalar(tn.s0); tn.spin.rotation.y = 0; }
   function draw(now) {
     raf = 0; if (disposed) return;
     var more = false;
+    if (glide) {
+      // the clock starts after the first picture (shaders compile then); a long frame gap pauses it, so it never jumps
+      if (!glide.t0) { glide.t0 = glide.first ? now : 0; glide.first = true; glide.last = now; }
+      else if (now - glide.last > 70) glide.t0 += now - glide.last - 17;
+      glide.last = now;
+      gk = glide.t0 ? (now - glide.t0) / glide.dur : 0;
+      if (gk >= 1) { gk = 1; glide = null; } else more = true;
+    }
     if (turning) {
-      var k = (now - turning.t0) / turning.dur;
-      if (k >= 1) { turning.spin.rotation.y = 0; turning = null; }
-      else { turning.spin.rotation.y = smooth(k) * Math.PI * 2; more = true; }
+      var t = (now - turning.t0) / 1000, tn = turning, f;
+      if (t < T_FWD) f = smooth(t / T_FWD);
+      else if (t < T_FWD + T_SPIN) f = 1;
+      else f = 1 - smooth((t - T_FWD - T_SPIN) / T_BACK);
+      tn.holder.position.lerpVectors(tn.p0, tn.pT, f);
+      tn.holder.quaternion.copy(tn.q0).slerp(tn.qT, f);
+      tn.holder.scale.setScalar(tn.s0 + (tn.sT - tn.s0) * f);
+      tn.spin.rotation.y = t > T_FWD ? smooth(Math.min(1, (t - T_FWD) / T_SPIN)) * Math.PI * 2 : 0;
+      if (t >= T_FWD + T_SPIN + T_BACK) { home(tn); turning = null; }
+      else more = true;
     }
     aim(); renderer.render(scene, camera); draws++; lastDraw = now;
     if (more) need();
@@ -312,6 +457,7 @@ export function mount(host, items, opts) {
   var YAW = 1.15, PMIN = -0.42, PMAX = 0.3;
   function clampView() { yaw = Math.max(-YAW, Math.min(YAW, yaw)); pitch = Math.max(PMIN, Math.min(PMAX, pitch)); }
   function onDown(e) {
+    if (glide) { glide = null; gk = 1; need(); }   // a touch ends the opening glide at once
     ptr[e.pointerId] = { x: e.clientX, y: e.clientY }; nP++;
     try { cv.setPointerCapture(e.pointerId); } catch (x) {}
     if (nP === 1) drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
@@ -352,8 +498,19 @@ export function mount(host, items, opts) {
   // one slow turn of the tapped item, then it stops facing front
   function select(id) {
     var b = byId[id]; if (!b) return false;
-    if (turning && turning.spin !== b.spin) turning.spin.rotation.y = 0;
-    turning = { spin: b.spin, t0: performance.now(), dur: 2600 };
+    if (turning) home(turning);
+    if (glide) { glide = null; gk = 1; }
+    aim(); camera.updateMatrixWorld();
+    var dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    var tn = { spin: b.spin, holder: b.holder, t0: performance.now(), p0: b.holder.position.clone(), q0: b.holder.quaternion.clone(), s0: b.holder.scale.x };
+    // how big it is (its tap box, in its own space) decides how much it grows: about 40% of the picture's height
+    var hb = b.hit.geometry.parameters, ht = Math.max(0.12, hb.height / 1.1, hb.width / 1.15 * 0.8) * tn.s0, k2 = 2 * Math.tan(camera.fov * Math.PI / 360), FR = 0.4;
+    var D = ht / (FR * k2); tn.sT = tn.s0;
+    if (D < 0.75) { tn.sT = tn.s0 * Math.min(3, (FR * k2 * 0.75) / ht); D = 0.75; } else if (D > 2.2) D = 2.2;
+    tn.pT = camera.position.clone().addScaledVector(dir, D);
+    tn.pT.y -= (b.hit.position.y) * tn.sT;                      // its middle (not its foot) in the middle of the picture
+    _dummy.position.copy(tn.pT); _dummy.lookAt(camera.position); tn.qT = _dummy.quaternion.clone();
+    turning = tn;
     need(); return true;
   }
   // look at an item (for the 2D list / tests): turns the view, no animation
@@ -385,7 +542,7 @@ export function mount(host, items, opts) {
     select: select, lookAt: lookAt, itemAt: itemAt,
     resize: resize, dispose: dispose, redraw: need,
     view: function (y, p, z) { if (y != null) yaw = y; if (p != null) pitch = p; if (z != null) { fovK = z; resize(); } clampView(); need(); },
-    info: function () { return { draws: draws, items: Object.keys(byId).length, turning: !!turning, yaw: yaw, pitch: pitch, fov: camera.fov, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; }
+    info: function () { return { draws: draws, items: Object.keys(byId).length, turning: !!turning, glide: !!glide, yaw: yaw, pitch: pitch, fov: camera.fov, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; }
   };
 }
 

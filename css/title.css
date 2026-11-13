@@ -16,6 +16,14 @@ body.t3on #t3title{display:block}
 /* a soft dark edge where the menu sits, so the text always reads on top of the floodlights */
 body.t3on #t3title::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(120% 90% at 30% 35%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
+/* SHOWPIECES: the floodlights and the bright stand sit behind the menu panel: a soft shade on that side keeps the
+   menu text reading on top (right side when wide, the bottom in portrait; only the 3D layer is shaded) */
+@media (min-aspect-ratio:11/10) and (min-width:700px){
+  body.t3on #t3title::after{background:linear-gradient(90deg,rgba(2,4,12,0) 52%,rgba(2,4,12,.5) 70%,rgba(2,4,12,.6) 100%),radial-gradient(120% 90% at 30% 35%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
+}
+@media (max-aspect-ratio:11/10),(max-width:699px){
+  body.t3on #t3title::after{background:linear-gradient(180deg,rgba(2,4,12,0) 40%,rgba(2,4,12,.45) 60%,rgba(2,4,12,.6) 100%),radial-gradient(120% 90% at 50% 25%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
+}
 
 /* visually hidden, still read out (the 3D cubes show the name; the h1 says it for screen readers) */
 #splash.t3 .logo,#title.t3 .t-logo{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}

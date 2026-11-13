@@ -7,9 +7,11 @@
 // back when the title is left. The table never draws while current !== 'game', so the two never fight.
 //
 // Style rule (Tata's): the opening plays ONCE (about 6 s the first time in a session, about 1.5 s after that, any tap
-// skips it), then the scene is calm: a very slow camera drift that ends after ~30 s, characters standing still apart
-// from a single blink now and then, and every 12-20 s one small one-off (a creature waves once, a cube rolls over once,
-// a shooting star). Nothing rhythmic, nothing looping. prefers-reduced-motion or S.set.titleFx === false: one still frame.
+// skips it), then the scene is a STILL picture behind the menu: no drift, no blinks, no one-offs; the render loop stops
+// (SHOWPIECES: the old rest-time drift / blinks / waves were taken out; Title3D._oneOff still works for checks).
+// The wordmark: the cube letters plus a knitted football scarf in his kit colours that unrolls once across the front of
+// the stage. prefers-reduced-motion (unless S.set.titleFx === true), Reduce flashing (A11y.calm) or
+// S.set.titleFx === false: one still frame.
 //
 //   Title3D.ok()                 the 3D title can run (WebGL, 3D switched on, the module built fine)
 //   Title3D.show(mode, opts)     mode 'splash' | 'title'; opts.intro 'full' | 'short' | 'none'. Returns true if it shows.
@@ -48,7 +50,8 @@ var T3 = window.T3;
   function save() { return (typeof S !== 'undefined' && S) ? S : { set: {}, cos: {} }; }
   function reduced() { if (window.Title3D && Title3D._forceMotion) return false; try { var s0 = save(); if (s0.set && s0.set.titleFx === true) return false; } catch (e0) {}   // the owner asked for the show: the game's own switch decides
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
-  function fxOn() { var s = save(); return !(s.set && s.set.titleFx === false) && !reduced(); }
+  function calmA11y() { try { return !!(window.A11y && A11y.calm && A11y.calm()); } catch (e) { return false; } }
+  function fxOn() { var s = save(); return !(s.set && s.set.titleFx === false) && !reduced() && !calmA11y(); }
   function sfx() { return window.TitleSfx || null; }
   function qLevel() { var n = T3.quality ? T3.quality() : 'high'; for (var i = 0; i < LEVELS.length; i++) if (LEVELS[i].name === n) return i; return 2; }
   function cur() { return typeof current !== 'undefined' ? current : ''; }
@@ -162,6 +165,27 @@ var T3 = window.T3;
     var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
 
+  // the scarf's knit: his shirt colour and trim in bands, a row of little cubes, the name in the middle, fringe at the ends
+  function scarfTex() {
+    var s0 = save(), kit = s0.kit || {}, a = kit.shirt || '#c9342c', b = kit.trim || '#2f8f7c', W = 2048, H = 128;
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var g = cv.getContext('2d'), FR = 70;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = a; g.fillRect(FR, 14, W - 2 * FR, H - 28);
+    g.fillStyle = '#ffffff'; g.fillRect(FR, 22, W - 2 * FR, 8); g.fillRect(FR, H - 30, W - 2 * FR, 8);
+    g.fillStyle = b; g.fillRect(FR, 30, W - 2 * FR, 6); g.fillRect(FR, H - 36, W - 2 * FR, 6);
+    for (var k = 0; k < 8; k++) { var x0 = FR + k * 40; g.fillStyle = k % 2 ? '#ffffff' : b; g.fillRect(x0, 14, 40, H - 28); g.fillRect(W - x0 - 40, 14, 40, H - 28); }   // end blocks
+    var cols = ['#ff6b6b', '#4dabf7', '#51cf66', '#ffd43b'];
+    for (var c = 0; c < 2; c++) for (var j = 0; j < 9; j++) { var cx = (c ? W - FR - 330 - 300 : FR + 330) + j * 34; g.fillStyle = cols[j % 4]; g.fillRect(cx, H / 2 - 12, 24, 24); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(cx + 3, H / 2 - 9, 18, 5); }
+    g.font = '400 58px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeText("TATA'S EQUATIONS", W / 2, H / 2 + 3); g.fillStyle = '#ffffff'; g.fillText("TATA'S EQUATIONS", W / 2, H / 2 + 3);
+    // knit: faint vertical stitches
+    g.globalAlpha = 0.12; g.fillStyle = '#000'; for (var x = FR; x < W - FR; x += 6) g.fillRect(x, 14, 2, H - 28); g.globalAlpha = 1;
+    // fringe
+    g.strokeStyle = a; g.lineWidth = 6; g.lineCap = 'round';
+    for (var f = 0; f < 9; f++) { var y = 20 + f * (H - 40) / 8; g.beginPath(); g.moveTo(FR, y); g.lineTo(8, y + (f % 2 ? 4 : -4)); g.stroke(); g.beginPath(); g.moveTo(W - FR, y); g.lineTo(W - 8, y + (f % 2 ? -4 : 4)); g.stroke(); }
+    var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return t;
+  }
+
   // ---------------------------------------------------------------- build the whole scene
   function build() {
     var t0 = performance.now(), qi = qLevel(), L = LEVELS[qi];
@@ -219,6 +243,13 @@ var T3 = window.T3;
     var glowT = softTexture(); owned.tex.push(glowT);
     var under = new THREE.Mesh(new THREE.PlaneGeometry(STAGE.w * 1.5, 13), new THREE.MeshBasicMaterial({ map: glowT, color: 0x5577ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     under.rotation.x = -Math.PI / 2; under.position.set(0, FY + 0.02, STAGE.z + 4.5); stageG.add(under);
+    // the scarf: a knitted football scarf in his kit colours, hung in a gentle sag across the front of the stage
+    var scarfT = scarfTex(); owned.tex.push(scarfT);
+    var SW = STAGE.w - 3.2, SH = 1.25, sg = new THREE.PlaneGeometry(SW, SH, 48, 1), sp0 = sg.attributes.position;
+    for (var si = 0; si < sp0.count; si++) { var sx = sp0.getX(si) / (SW / 2); sp0.setY(si, sp0.getY(si) - (1 - sx * sx) * 0.35); sp0.setZ(si, (1 - sx * sx) * 0.18); }
+    sg.computeVertexNormals();
+    var scarf = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ map: scarfT, transparent: true, alphaTest: 0.3, roughness: 0.95, side: THREE.DoubleSide }));
+    scarf.position.set(0, TOPY - 1.05, STAGE.z + STAGE.d / 2 + 0.08); scarf.receiveShadow = shadowsOn; stageG.add(scarf);
 
     // ----- the cubes: TATA'S on top of EQUATIONS, plus three loose game cubes on the pitch -----
     var colors = ['red', 'blue', 'green', 'black'], ck = 0, faces = (window.Eq && Eq.CUBE_FACES) || { red: ['0', '1', '2', '3', '+', '-'], blue: ['0', '1', '2', '3', '+', '-'], green: ['0', '1', '2', '3', '+', '-'], black: ['0', '1', '2', '3', '+', '-'] };
@@ -279,7 +310,7 @@ var T3 = window.T3;
     pts.push(new THREE.Vector3(kid.x, FY, kid.z + 0.8)); pts.push(new THREE.Vector3(kid.x, FY + kid.h + 0.2, kid.z));
 
     stats.builds++; stats.buildMs = Math.round(performance.now() - t0);
-    return { scene: scene, camera: camera, owned: owned, venue: venue, cubes: cubes, kid: kid, actors: actors, conf: conf, confP: null, flares: flares, towers: towers, glint: glint,
+    return { scene: scene, camera: camera, owned: owned, venue: venue, cubes: cubes, kid: kid, actors: actors, conf: conf, confP: null, flares: flares, towers: towers, glint: glint, scarf: scarf,
       shoot: shoot, stars: stars, pts: pts, qi: qi, shadowsOn: shadowsOn, key: key, specKey: specKey(spec), cast: kinds.join(','), compiled: false, confRest: 0 };
   }
 
@@ -693,6 +724,7 @@ var T3 = window.T3;
         }
       }
       if (stepFlares(t, kind)) busy = true;
+      if (B.scarf) { var su0 = kind === 'full' ? 2.8 : kind === 'short' ? 0.2 : -9, sk = sstep((t - su0) / (kind === 'full' ? 0.9 : 0.6)); B.scarf.scale.set(Math.max(0.001, sk), 0.4 + 0.6 * sstep((t - su0) / 0.3), 1); if (t < su0 + 1) busy = true; }
       if (kind === 'short' && !intro.skipped && !intro.fired.glint && t >= 0.85) { intro.fired.glint = true; intro.glintT = now; }
       if (t < intro.end) busy = true;
       else endIntro(now);
@@ -707,7 +739,7 @@ var T3 = window.T3;
       }
     }
     if (B.splashPush) {
-      var su = (now - B.splashPush.t0) / B.splashPush.dur;
+      var su = (now - B.splashPush.t0) / B.splashPush.dur;   // (once: 6 s)
       if (su >= 1) B.splashPush = null; else { camState.dist = lerp(B.splashPush.d0, B.splashPush.d1, sstep(su)); applyCamera(); dirty = true; busy = true; if (now - stats.lastRender < 30) { raf = requestAnimationFrame(frame); return; } }
     }
     // the glint: a small bright light sweeping across the front of the cubes
@@ -720,7 +752,7 @@ var T3 = window.T3;
     if (mode === 'title' && stepKidBlink(now)) busy = true;
     if (stepConfetti(now, dt)) busy = true;
     if (B.venue && B.venue.step(now)) busy = true;
-    if (rest && fxOn()) {
+    if (rest && fxOn() && API._restLife) {   // (off: the rest is still; _restLife = true brings back the old blinks and one-offs)
       if (stepOneOffs(now)) busy = true;
       if (nextOneOff && now >= nextOneOff && mode === 'title') startOneOff(now);
       // next blinks
@@ -733,7 +765,7 @@ var T3 = window.T3;
     ensureSize();
     if (dirty) render(now);
     if (busy) raf = requestAnimationFrame(frame);
-    else if (running && rest && fxOn() && mode === 'title') {
+    else if (running && rest && fxOn() && mode === 'title' && API._restLife) {
       var nb = Math.min(B.kid.nextBlink, nextOneOff || 1e15); B.actors.forEach(function (a) { nb = Math.min(nb, a.nextBlink); });
       wake(nb - performance.now());
     }
@@ -766,16 +798,15 @@ var T3 = window.T3;
   }
   function endIntro(now) {
     var kind = intro.kind; intro = null; rest = true;
-    renderer.toneMappingExposure = 1.0; B.glint.intensity = 0;
+    renderer.toneMappingExposure = 1.0; B.glint.intensity = 0; if (B.scarf) B.scarf.scale.set(1, 1, 1);
     camState = { yaw: 0, pitch: PITCH, dist: 1, lift: 0 }; applyCamera();
     B.cubes.forEach(function (c) { if (c.anim) { c.m.position.copy(c.rest); c.m.quaternion.copy(c.restQ); c.m.scale.setScalar(1); c.anim = null; } });
     kidPose(B.kid, 'rest', 1, now);
     B.actors.forEach(function (a) { a.hop = null; a.armUp = 0; });
     stepFlares(99, 'none');
-    if (fxOn() && kind !== 'none') drift = { t0: now, dur: 32000, yaw: 2.4, dist: 0.985 };
+    drift = null;   // SHOWPIECES: the rest is a still picture (no slow drift)
     var hostT = document.getElementById('title'); if (hostT) hostT.classList.add('t3-rest');
     if (sfx()) sfx().ambience(true);
-    if (fxOn()) planNextOneOff(now);
     dirty = true;
     try { if (typeof API.onIntroEnd === 'function') API.onIntroEnd(kind); } catch (e) {}
   }
@@ -799,7 +830,7 @@ var T3 = window.T3;
     var was = mode; mode = m; running = true;
     document.body.classList.add('t3on'); host.classList.toggle('t3-low', B.qi === 0);
     borrow(); ensureSize();
-    if (!B.compiled) { B.compiled = true; try { if (renderer.compileAsync) renderer.compileAsync(B.scene, B.camera).then(function () { dirty = true; kick(); }, function () {}); } catch (e) {} }
+    if (!B.compiled) { B.compiled = true; try { if (renderer.compileAsync) { var Bc = B; Bc.compiling = true; renderer.compileAsync(B.scene, B.camera).then(function () { Bc.compiling = false; if (Bc.freeLater) freeScene(Bc); else { dirty = true; kick(); } }, function () { Bc.compiling = false; if (Bc.freeLater) freeScene(Bc); }); } } catch (e) {} }
     if (m === 'splash') {
       shownSplash = true; rest = false; intro = null; drift = null;
       renderer.toneMappingExposure = 0.78;
@@ -807,7 +838,7 @@ var T3 = window.T3;
       B.cubes.forEach(function (c) { c.anim = null; c.m.position.copy(c.rest); c.m.quaternion.copy(c.restQ); c.m.scale.setScalar(1); });
       stepFlares(-1, 'splash'); B.flares.forEach(function (f) { f.b.visible = false; });
       camState = { yaw: -4, pitch: -17, dist: 1.42, lift: 0 }; applyCamera();
-      if (fxOn()) B.splashPush = { t0: performance.now(), dur: 14000, d0: 1.42, d1: 1.3 };
+      if (fxOn()) B.splashPush = { t0: performance.now(), dur: 6000, d0: 1.42, d1: 1.3 };
       B.wasSplash = true;
     } else {
       var kind = opts.intro || 'short';
@@ -852,7 +883,7 @@ var T3 = window.T3;
     giveBack();
   }
   function endIntroQuiet() {
-    intro = null; B.glint.intensity = 0;
+    intro = null; B.glint.intensity = 0; if (B.scarf) B.scarf.scale.set(1, 1, 1);
     B.cubes.forEach(function (c) { c.anim = null; c.m.position.copy(c.rest); c.m.quaternion.copy(c.restQ); c.m.scale.setScalar(1); });
     kidPose(B.kid, 'rest', 1, performance.now()); B.actors.forEach(function (a) { a.hop = null; a.armUp = 0; a.wave = null; });
   }
@@ -867,6 +898,11 @@ var T3 = window.T3;
     clearTimeout(disposeT); disposeT = 0;
     if (!B) return;
     if (mode !== 'off') stop();
+    var Bd = B; B = null; fit = null;
+    if (Bd.compiling) { Bd.freeLater = true; return; }   // freed when its shaders have finished compiling
+    freeScene(Bd);
+  }
+  function freeScene(B) {
     var geos = new Set(), mats = new Set(), texs = new Set(B.owned.tex);
     B.scene.traverse(function (o) {
       if (o.geometry && !(o.geometry.userData && o.geometry.userData.shared)) geos.add(o.geometry);
@@ -879,7 +915,7 @@ var T3 = window.T3;
     try { if (B.venue && B.venue.dispose) B.venue.dispose(); } catch (e) {}
     geos.forEach(function (g) { g.dispose(); }); mats.forEach(function (m) { m.dispose(); }); texs.forEach(function (t) { if (t && t.dispose) t.dispose(); });
     if (B.conf.dispose) B.conf.dispose();
-    B = null; fit = null; stats.disposes++;
+    stats.disposes++;
   }
   function fail(e) {
     console.warn('Title3D', e); failed = true;
@@ -912,6 +948,8 @@ var T3 = window.T3;
     _dispose: disposeScene, _frame: function (now) { frame(now); },
     // checks: draw the opening as it is t seconds in (the loop keeps going from there unless rAF is stubbed)
     _oneOff: function (k) { if (!B || !rest) return false; startOneOff(performance.now(), k); kick(); return true; },
+    _restLife: false,
+    _scene: function () { return B ? { scene: B.scene, camera: B.camera, renderer: renderer } : null; },
     _at: function (t) { if (!intro) return false; intro.t0 = performance.now() - t * 1000; frame(performance.now()); return true; }
   };
   window.Title3D = API;

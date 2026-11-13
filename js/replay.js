@@ -55,15 +55,16 @@ var Replay = (function () {
     }
     try {
       last3d = null; lastFlat = null;
+      try { Album.note(r); } catch (e) {}   // the trophy room's photo wall (his own best Solutions)
       var p = on() && typeof G !== 'undefined' && G && G.mode !== 'tutorial' ? pick(r) : null;
       if (!p) { fin(); return false; }
       var three = typeof T3 !== 'undefined' && T3.active && T3.active() && T3.replay && (typeof current === 'undefined' || current === 'game') && !document.hidden;
       if (three) {
-        var h = T3.replay(p.sol.tokens, { goal: G.goal ? Eq.fmt(G.goal) : null, cubes: G.cubes, fractions: G.fractions, wild: wildOf(p.sol) }, fin);
+        var h = T3.replay(p.sol.tokens, { goal: G.goal ? Eq.fmt(G.goal) : null, goalV: G.goal || null, cubes: G.cubes, fractions: G.fractions, wild: wildOf(p.sol) }, fin);
         if (h) {
           last3d = r; live = h;
           unOverlay = overlay(function () { try { h.skip(); } catch (e) {} fin(); });
-          safety = setTimeout(fin, 6500);
+          safety = setTimeout(fin, Math.min(9000, ((h.duration || 5) + 1.2) * 1000));   // the module's own end + a little
           return true;
         }
       }
@@ -110,6 +111,31 @@ var Replay = (function () {
     document.addEventListener('click', function (e) { var b = e.target && e.target.closest && e.target.closest('.wh-replay'); if (b) b.classList.add('skip'); });
   }
   return { play: play, popupHTML: popupHTML, pick: pick, active: function () { return !!live; } };
+})();
+
+// Album: the kid's own best Solutions, kept for the framed "photos" in the trophy room (js/three/cabinet.js).
+// Three kinds, one of each, the best so far: the longest Solution, the biggest Goal, the most brackets/operations.
+// Saved in its own localStorage key (not the main save), symbols and cube colours only. Album.list() -> [{kind, syms, cols, goal, date}]
+var Album = (function () {
+  var KEY = 'tataEq.album';
+  function load() { try { var a = JSON.parse(localStorage.getItem(KEY) || '{}'); return a && typeof a === 'object' ? a : {}; } catch (e) { return {}; } }
+  function save(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) {} }
+  function today() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+  function note(r) {
+    if (!r || !r.sols || typeof G === 'undefined' || !G || G.mode === 'tutorial' || G.mode === 'online') return;
+    var s = r.sols[0]; if (!s || !s.ok || !Array.isArray(s.tokens)) return;
+    var syms = s.tokens.map(function (t) { return typeof t === 'string' ? t : t && t.s; });
+    var cols = s.tokens.map(function (t) { return t && typeof t === 'object' && t.id != null && G.cubes && G.cubes[t.id] ? G.cubes[t.id].color : ''; });
+    var cubes = cols.filter(function (c) { return c; }).length, goal = G.goal ? Eq.fmt(G.goal) : '', gAbs = G.goal ? Math.abs(G.goal.n / G.goal.d) : 0;
+    var ops = syms.filter(function (x) { return x === '(' || (window.Eq && Eq.OPDEF && Eq.OPDEF[x]); }).length;
+    var a = load(), entry = { syms: syms, cols: cols, goal: goal, date: today(), cubes: cubes, gAbs: gAbs, ops: ops }, changed = false;
+    [['long', 'cubes'], ['big', 'gAbs'], ['clever', 'ops']].forEach(function (k) {
+      var old = a[k[0]]; if (!old || entry[k[1]] > (old[k[1]] || 0)) { a[k[0]] = Object.assign({ kind: k[0] }, entry); changed = true; }
+    });
+    if (changed) save(a);
+  }
+  function list() { var a = load(); return ['long', 'big', 'clever'].map(function (k) { return a[k]; }).filter(function (x) { return x && Array.isArray(x.syms); }); }
+  return { note: note, list: list };
 })();
 
 var Fireworks = (function () {
