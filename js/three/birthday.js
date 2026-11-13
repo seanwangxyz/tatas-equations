@@ -329,7 +329,7 @@ var HMOVES = {
   // the heart: both hands up in front of his chin, wrists together at the bottom, fingers curved in to meet at the top
   heart: function (hm, u, A, mo, t) {
     var s = u * mo.dur, k = sstep(s / 0.5) * (1 - sstep((s - mo.dur + 0.6) / 0.6));
-    A.arm(0, -0.22, 2.08, 1.0, k); A.arm(1, 0.22, 2.08, 1.0, k); A.al[0] = A.al[1] = 0; A.open[0] = A.open[1] = 0.05;
+    A.arm(0, -0.1, 3.05, 0.22, k); A.arm(1, 0.1, 3.05, 0.22, k); A.al[0] = A.al[1] = 1.6; A.open[0] = A.open[1] = 0.35; // the big heart: arms curved over his head, fingertips together on top, elbows out (his head is the point)
     A.headX = 0.04 - 0.08 * k; A.bodyZ = 0.05 * Math.sin(s * 1.6) * k;
     A.face = { mouth: { smile: 0.4, big: 0.25 }, squint: 0.45 * k, browUp: 0.25 * k };
     if (!mo.st.glow && s > 0.55) { mo.st.glow = true; heartGlow(hm, t, mo.dur - 0.9); }
@@ -381,12 +381,16 @@ function heartGlow(hm, t, hold) {
   X.heart = { s: s, hm: hm, t0: t, hold: Math.max(1.2, hold) };
   if (H.sfx()) H.sfx().play('sparkle', 0, {}, true);
 }
+function handsMid(hm) {
+  var m = hm.model, a = m && m.arms; if (!a || !a[0] || !a[1] || !a[0].hand || !a[1].hand) return null;
+  var p = new THREE.Vector3(), q = new THREE.Vector3(); a[0].hand.getWorldPosition(p); a[1].hand.getWorldPosition(q); return p.add(q).multiplyScalar(0.5);
+}
 function stepHeart() {
   var h = X.heart; if (!h) return false;
   var s = h.s, u = X.t - h.t0, k = sstep(u / 0.45) * (1 - sstep((u - h.hold) / 0.5));
-  var hm = h.hm, y = H.FY + (hm.dims.TOP - hm.foot) * hm.s + 0.5 + 0.5 * sstep(u / 1.2);   // just above his head, rising a little
-  _v.set(0, 0, 0.5 * hm.s).applyAxisAngle(_Y, hm.yaw); s.position.set(hm.x + _v.x, y, hm.z + _v.z);
-  s.scale.setScalar(0.2 + 1.9 * k * (1 + 0.04 * Math.sin(u * 5))); s.material.opacity = k;
+  var hm = h.hm, hp = handsMid(hm), y = hp ? hp.y + 0.55 * hm.s : H.FY + (hm.dims.TOP - hm.foot + 0.6) * hm.s;   // just above where his hands meet over his head
+  if (hp) s.position.set(hp.x, y, hp.z); else { _v.set(0, 0, 1.6 * hm.s).applyAxisAngle(_Y, hm.yaw); s.position.set(hm.x + _v.x, y, hm.z + _v.z); }
+  s.scale.setScalar((0.15 + 0.85 * k) * hm.s * 0.75); s.material.opacity = k;
   if (!h.burst && u > 0.6) { h.burst = true; burst('heart', s.position.x, s.position.y + 0.3, s.position.z, 7); }
   if (u > h.hold + 0.55) { s.visible = false; X.bigHeart = null; X.heart = null; }
   return true;

@@ -1,5 +1,5 @@
 // Made by tools/build-precache.js. Do not edit by hand: run  node tools/build-precache.js  before publishing.
-self.PRECACHE = {"version":"949e9859648c","built":"2026-11-13T19:48:28.580Z","bytes":6901520,"files":[["assets/audio/manifest.json","3e0764579b268b42",19],
+self.PRECACHE = {"version":"fa4afba33294","built":"2026-11-13T19:54:47.136Z","bytes":6901981,"files":[["assets/audio/manifest.json","3e0764579b268b42",19],
 ["assets/creatures/monsters/imp.glb","f757472c429d62a6",564444],
 ["assets/creatures/monsters/manifest.json","af440c365ac36bbd",3211],
 ["assets/creatures/monsters/puglin.glb","5bfe89dcd218eedd",329956],
@@ -114,7 +114,7 @@ self.PRECACHE = {"version":"949e9859648c","built":"2026-11-13T19:48:28.580Z","by
 ["js/three/arenas/common.js","5e997a14b907ba37",13334],
 ["js/three/arenas/volcano.js","3caa535dc264e1a5",13040],
 ["js/three/bigscreen.js","d3c80257dd19edd0",20527],
-["js/three/birthday.js","10a38ca84f15159d",66897],
+["js/three/birthday.js","375647eb858ff7ea",67358],
 ["js/three/cabinet.js","1750d4b95c1593b4",47326],
 ["js/three/creatures.js","dc69c9aae384b555",65844],
 ["js/three/creatures/classic.js","d14fd611ae82d584",37220],
