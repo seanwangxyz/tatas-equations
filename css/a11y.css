@@ -1,0 +1,173 @@
+/* ===================================================================
+   A11Y: easier on the eyes (js/a11y.js sets the classes on <html>; notes: docs/handoff/a11y.md).
+   Loads last, so it overrides css/style.css and the others without editing them.
+     a11y-pat  colour helpers: a pattern per cube colour, solid / dashed / dotted zones, shapes on On-Sets dots
+     a11y-let  ... plus a small letter (R B G K) in the cube's corner
+     a11y-hc   high-contrast cube colours + text contrast fixes (WCAG AA where practical)
+     ts-l / ts-xl  larger text (token --ts: 1.15 / 1.3)
+     a11y-calm reduce flashing
+   Nothing here animates.
+   =================================================================== */
+:root{--ts:1}
+
+/* ---------- Keyboard focus: always visible (every focusable thing, not only .btn) ---------- */
+:where(button,a[href],input,select,textarea,summary,[tabindex]:not([tabindex="-1"]),[role="button"]):focus-visible{
+  outline:4px solid #fff;outline-offset:3px;box-shadow:0 0 0 7px #1f6feb}
+.setrow input[type=text]:focus-visible,.setrow select:focus-visible,textarea:focus-visible{outline:4px solid #1f6feb;outline-offset:2px}
+
+/* ---------- Colour helpers: flat cubes ---------- */
+html.a11y-pat .cube{--pk:255,255,255}
+html.a11y-pat .skin-candy .cube,html.a11y-pat .skin-gold .cube,html.a11y-hc.a11y-pat .skin-classic .cube.c-green{--pk:0,0,0}
+html.a11y-pat .cube>span{position:relative;z-index:1}
+html.a11y-pat .cube:is(.c-red,.c-blue,.c-green,.c-black)::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0}
+/* red: a solid corner triangle (top left) */
+html.a11y-pat .cube.c-red::before{background:linear-gradient(135deg,rgba(var(--pk),.85) 0 50%,transparent 50.5%) 9% 9%/37% 37% no-repeat}
+/* blue: horizontal stripes */
+html.a11y-pat .cube.c-blue::before{background:repeating-linear-gradient(180deg,rgba(var(--pk),.26) 0 6%,transparent 6% 15%);inset:6% 6%;border-radius:16%}
+/* green: dots */
+html.a11y-pat .cube.c-green::before{background:radial-gradient(circle,rgba(var(--pk),.42) 0 24%,transparent 27%) 50% 50%/20% 20%;inset:4%;border-radius:18%}
+/* black: a checked edge */
+html.a11y-pat .cube.c-black::before{background:repeating-conic-gradient(rgba(var(--pk),.55) 0 25%,transparent 0 50%) 0 0/16% 16%;inset:5%;padding:11%;border-radius:16%;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+/* letters, top right (not on locked cubes: their corner holds the lock; not on tiny cubes) */
+html.a11y-let .cube:is(.c-red,.c-blue,.c-green,.c-black):not(.locked):not(.tiny)::after{position:absolute;top:3%;right:6%;z-index:2;font-family:var(--font);font-weight:900;font-size:.33em;line-height:1;pointer-events:none;
+  color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 1px 0 #000}
+html.a11y-let .skin-gold .cube::after,html.a11y-hc.a11y-let .skin-classic .cube.c-green::after{color:#111;text-shadow:0 0 2px #fff,0 0 2px #fff}
+html.a11y-let .cube.c-red:not(.locked):not(.tiny)::after{content:"R"}
+html.a11y-let .cube.c-blue:not(.locked):not(.tiny)::after{content:"B"}
+html.a11y-let .cube.c-green:not(.locked):not(.tiny)::after{content:"G"}
+html.a11y-let .cube.c-black:not(.locked):not(.tiny)::after{content:"K"}
+/* the preview in Settings */
+.a11y-prev{display:inline-flex;gap:6px;flex-wrap:wrap}
+.a11y-prev .cube{cursor:default}
+
+/* ---------- Colour helpers: zones (flat mat, camp, daily, ways) ---------- */
+html.a11y-pat .zone.z-required{border-style:solid;border-width:4px}
+html.a11y-pat .zone.z-permitted{border-style:dashed;border-width:4px}
+html.a11y-pat .zone.z-forbidden{border-style:dotted;border-width:5px;background-image:repeating-linear-gradient(-45deg,rgba(255,168,168,.2) 0 5px,transparent 5px 16px)}
+html.a11y-pat .pool.forb{background-image:repeating-linear-gradient(-45deg,rgba(201,42,42,.08) 0 5px,transparent 5px 16px)}
+
+/* ---------- Colour helpers: other colour-only signals ---------- */
+/* a winning score line gets a star as well as the gold */
+html.a11y-pat .score-line.win>span:first-child:not(:has(svg))::before{content:"★ ";color:#b07800}
+/* the player whose go it is: a thick inner ring as well as the gold glow */
+html.a11y-pat .pl.turn{border-style:double;border-width:5px}
+/* season form: W / D / L already carry letters; give them shapes too (win round, tie square, loss flat) */
+html.a11y-pat .sea-f.fW{border-radius:50%}
+html.a11y-pat .sea-f.fD{border-radius:2px}
+html.a11y-pat .sea-f.fL{border-radius:6px 6px 2px 2px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
+/* the selected kit colour: a tick as well as the blue ring */
+html.a11y-pat .kit-dot.on{position:relative}
+html.a11y-pat .kit-dot.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:900 20px var(--font);color:#fff;text-shadow:0 0 3px #000,0 0 2px #000}
+
+/* ---------- Colour helpers: On-Sets (css/onsets.css dots get shapes: B circle, R square, G triangle, Y diamond) ---------- */
+html.a11y-pat :is(.os-card,.os-tilecards) .d-R,html.a11y-pat .os-dot.d-R{border-radius:12%}
+html.a11y-pat :is(.os-card,.os-tilecards) .d-G,html.a11y-pat .os-dot.d-G{border-radius:0;clip-path:polygon(50% 3%,98% 92%,2% 92%)}
+html.a11y-pat :is(.os-card,.os-tilecards) .d-Y,html.a11y-pat .os-dot.d-Y{border-radius:0;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+html.a11y-pat :is(.os-card,.os-tilecards) :is(.d-B,.d-R,.d-G,.d-Y),html.a11y-pat .os-dot{position:relative}
+html.a11y-let :is(.os-card,.os-tilecards) :is(.d-B,.d-R,.d-G,.d-Y)::after,html.a11y-let .os-dot::after{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font:900 .62em/1 var(--font);color:#fff;text-shadow:0 0 2px #000,0 0 2px #000;font-style:normal}
+html.a11y-let .os-card i{font-size:clamp(9px,1.6vw,14px)}
+html.a11y-let .os-tilecards i{font-size:8px}
+html.a11y-let .os-cube .os-dot{font-size:calc(var(--cube)*.42)}
+html.a11y-let .os-cube.mini .os-dot{font-size:calc(var(--mini)*.42)}
+html.a11y-let :is(.os-card,.os-tilecards) .d-B::after,html.a11y-let .os-dot.d-B::after{content:"B"}
+html.a11y-let :is(.os-card,.os-tilecards) .d-R::after,html.a11y-let .os-dot.d-R::after{content:"R"}
+html.a11y-let :is(.os-card,.os-tilecards) .d-G::after,html.a11y-let .os-dot.d-G::after{content:"G";padding-top:.35em}
+html.a11y-let :is(.os-card,.os-tilecards) .d-Y::after,html.a11y-let .os-dot.d-Y::after{content:"Y";color:#3a2a00;text-shadow:0 0 2px #fff,0 0 2px #fff}
+
+/* ---------- High-contrast colours ---------- */
+/* cube hues after the Okabe-Ito colour-blind-safe set, spread in lightness: black, blue, red-orange, light green */
+html.a11y-hc .skin-classic .c-red{background:linear-gradient(145deg,#ff8a3d,#c44d00)}
+html.a11y-hc .skin-classic .c-blue{background:linear-gradient(145deg,#3a66d8,#0f2a78)}
+html.a11y-hc .skin-classic .c-green{background:linear-gradient(145deg,#9af7d4,#2cc48f);color:#06302a;text-shadow:0 1px 0 rgba(255,255,255,.55)}
+html.a11y-hc .skin-classic .c-black{background:linear-gradient(145deg,#4a4a4a,#000)}
+html.a11y-hc .skin-galaxy .c-red,html.a11y-hc .skin-gold .c-red{border-color:#e66100}
+html.a11y-hc .skin-galaxy .c-blue,html.a11y-hc .skin-gold .c-blue{border-color:#2a5bd7}
+html.a11y-hc .skin-galaxy .c-green,html.a11y-hc .skin-gold .c-green{border-color:#3ee0a6}
+html.a11y-hc .skin-galaxy .c-black,html.a11y-hc .skin-gold .c-black{border-color:#000}
+html.a11y-hc .skin-galaxy .c-black{border-color:#e9ecef}
+html.a11y-hc .skin-lava .c-red{box-shadow:0 0 0 3px #e66100 inset,0 4px 10px rgba(255,80,0,.6)}
+html.a11y-hc .skin-lava .c-blue{box-shadow:0 0 0 3px #2a5bd7 inset,0 4px 10px rgba(255,80,0,.6)}
+html.a11y-hc .skin-lava .c-green{box-shadow:0 0 0 3px #3ee0a6 inset,0 4px 10px rgba(255,80,0,.6)}
+/* On-Sets colours (css/onsets.css reads these tokens) */
+html.a11y-hc{--osB:#1f4fbf;--osR:#e66100;--osG:#1fae7a;--osY:#ffd23f}
+/* text on coloured buttons and chips: white text needs a darker key (AA 4.5:1 at the lightest stop, so it holds for the 15 px small buttons too) */
+html.a11y-hc .btn.green{background:linear-gradient(#11864a,#0b6439)}
+html.a11y-hc .btn.blue{background:linear-gradient(#2a72d6,#1553b5)}
+html.a11y-hc .btn.orange{background:linear-gradient(#c45200,#9c4000)}
+html.a11y-hc .btn.pink{background:linear-gradient(#d43358,#b01d40)}
+html.a11y-hc .btn.purple{background:linear-gradient(#7d45ef,#5a22c8)}
+html.a11y-hc .btn.imp{background:linear-gradient(#7d45ef,#5420c0)}
+html.a11y-hc .btn.ghost{background:rgba(0,0,0,.45)}
+html.a11y-hc .empty{color:rgba(255,255,255,.88)}
+html.a11y-hc .checks .n{color:#5d6680}
+html.a11y-hc .checks .y,html.a11y-hc .b-live.good{color:#0f7a48}
+html.a11y-hc .sea-f.fW{background:#13784a}
+html.a11y-hc .sea-f.fD{background:#4e6a93}
+html.a11y-hc .sea-f.fL{background:#c9ced8;color:#3b4258}
+html.a11y-hc .os-tip,html.a11y-hc .os-none{color:#5d6680}
+html.a11y-hc .zone h3 small{opacity:1}
+html.a11y-hc .shake-no small{opacity:.95}
+
+/* ---------- Larger text ----------
+   css/style.css (and the other sheets) size everything in px, so a root rem token cannot reach them without a rewrite.
+   Pages and pop-ups are scaled as a whole (zoom: var(--ts)), which keeps their own proportions; the match screen
+   scales its text panels (scores, Goal, Pip's line, buttons), not the 3D picture. Browser zoom still works on top. */
+html.ts-l .screen:not(#game):not(#splash):not(#intro):not(#title),html.ts-xl .screen:not(#game):not(#splash):not(#intro):not(#title),
+html.ts-l #title .t-panel,html.ts-xl #title .t-panel,
+html.ts-l .modal,html.ts-xl .modal,
+html.ts-l #game>:not(#gMat),html.ts-xl #game>:not(#gMat),
+html.ts-l .toast,html.ts-xl .toast,html.ts-l .a11y-tip,html.ts-xl .a11y-tip{zoom:var(--ts)}
+html.ts-l #splash .btn,html.ts-xl #splash .btn{zoom:var(--ts)}
+/* the title's greeting bubble floats over the 3D scene: half the step, so it covers less of it */
+html.ts-l #title .t-greet,html.ts-xl #title .t-greet{zoom:calc(1 + (var(--ts) - 1) / 2)}
+/* A zoomed box sized against an unzoomed parent: its own px and vw lengths are multiplied by the zoom (and its
+   percentages come out short), so its width is written as (length / scale) to land on the same size as at Normal. */
+@media not all and (min-aspect-ratio:11/10),(max-width:699px){
+  html.ts-l #title.t3 .t-panel,html.ts-xl #title.t3 .t-panel{width:min(calc(600px / var(--ts)),calc((100vw - 32px) / var(--ts)));max-width:none}
+}
+html.ts-l .modal,html.ts-xl .modal{width:min(580px,calc(96vw / var(--ts)));max-height:calc(94vh / var(--ts));max-height:calc(94dvh / var(--ts))}
+html.ts-l .modal.wide,html.ts-xl .modal.wide{width:min(900px,calc(98vw / var(--ts)))}
+html.ts-l #title .mm,html.ts-xl #title .mm,html.ts-l #title .mm-me,html.ts-xl #title .mm-me{max-width:100%}
+html.ts-l #game>:is(#gTop,#gAct,#gGoal),html.ts-xl #game>:is(#gTop,#gAct,#gGoal){width:min(calc(1180px / var(--ts)),calc((100vw - 20px) / var(--ts)));max-width:none}
+html.ts-l #game.three>:is(#gTop,#gAct,#gGoal),html.ts-xl #game.three>:is(#gTop,#gAct,#gGoal){width:min(calc(1180px / var(--ts)),calc(100vw / var(--ts)))}
+@media (min-width:1100px) and (min-aspect-ratio:8/5){
+  html.ts-l #game.three>:is(#gTop,#gAct,#gGoal),html.ts-xl #game.three>:is(#gTop,#gAct,#gGoal){width:auto;max-width:none}
+}
+/* a zoomed page's own panels never get wider than the page (980 px x 1.3 would run off a 1280 window) */
+html.ts-l .screen:not(#title)>*,html.ts-xl .screen:not(#title)>*{max-width:100%}
+/* a bigger column for the bigger text on wide windows */
+@media (min-width:1100px) and (min-aspect-ratio:8/5){
+  html.ts-l #game.three.on{grid-template-columns:minmax(0,1fr) clamp(300px,26vw,400px)}
+  html.ts-xl #game.three.on{grid-template-columns:minmax(0,1fr) clamp(320px,29vw,440px)}
+}
+/* phones at the larger sizes: one column where two would squeeze the words */
+@media (max-width:560px){
+  html.ts-xl #title .mm-modes{grid-template-columns:1fr}
+  html.ts-xl #title .mm-stuff{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.ts-xl .opps{grid-template-columns:1fr}
+  html.ts-xl .sea-table .sea-p,html.ts-xl .sea-table td.team .avatar{display:none}
+  html.ts-l .game-top .pl :is(.jersey,.avatar),html.ts-xl .game-top .pl :is(.jersey,.avatar){display:none}   /* room for the names */
+  html.ts-l .game-top,html.ts-xl .game-top{gap:4px}
+  html.ts-xl .pl b{font-size:13px}
+  html.ts-xl .btn.now,html.ts-xl .btn.imp{font-size:18px;padding:6px 8px}
+}
+
+/* ---------- Reduce flashing (motion stays: this is about bright flashes) ---------- */
+html.a11y-calm .orbit-flash{display:none!important}
+html.a11y-calm .intro-glow .it-cube{animation:tumble 1s cubic-bezier(.2,.9,.3,1.3) both}
+html.a11y-calm .cube.hl{box-shadow:0 0 0 5px #ffe066}
+html.a11y-calm #fx{opacity:.7}
+
+/* ---------- Touch: 44 px targets on small screens ---------- */
+@media (pointer:coarse),(max-width:560px){
+  .kit-dot{width:44px;height:44px}
+  .kit-chip{min-height:44px}
+  .seg button{min-height:44px}
+  .btn.small{min-width:44px}
+  #game.three .acts .btn.big{min-height:44px}
+}
+
+/* ---------- Long-press name tip (js/a11y.js), static ---------- */
+.a11y-tip{position:fixed;z-index:120;display:none;background:#16203c;color:#fff;font:800 15px/1.2 var(--font);padding:7px 12px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,.35);pointer-events:none;max-width:240px;text-align:center}
