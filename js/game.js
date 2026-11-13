@@ -735,7 +735,7 @@ function endShake(r) {
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
   if (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
-  else Snd.chime();
+  else { Snd.chime(); crowdSay('clap'); } // CROWD: applause in two- and three-player games; ends the challenge lean-in
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
   // RESULTS (round 9): the end-of-shake card: every side's tile (points count up once), what happened, the Solutions as
   // cubes (each with Explain), what was earned, one clear button. Same content and hooks as before (<!--replay--> below).
