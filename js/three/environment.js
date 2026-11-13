@@ -6,6 +6,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildStadium } from './stadium.js';
 import { buildBeach } from './arenas/beach.js';
 import { buildVolcano } from './arenas/volcano.js';
+import { resetRig } from './lighting.js';
+import { createBigScreen } from './bigscreen.js';
+import { makeSky, makeBackdrop } from './sky.js';
 
 export var FLOOR_Y = -5;
 
@@ -236,13 +239,41 @@ function spaceScene(g, W, D, R) {
 export function buildEnvironment(name, W, D, aniso, layoutName, quality) {
   var lay = layoutName || (W < D ? 'tall' : 'wide'), q = quality || function () { return 2; };
   if (name === 'night') return buildStadium(W, D, aniso, lay, q, { night: true });
-  if (name === 'beach') return buildBeach(W, D, aniso, lay, q, FLOOR_Y);
-  if (name === 'volcano') return buildVolcano(W, D, aniso, lay, q, FLOOR_Y);
+  if (name !== 'night') resetRig(); // the stadium moves the sun and fill per time of day: every other venue gets them back
+  if (name === 'beach' || name === 'volcano') return dressVenue(name, name === 'beach' ? buildBeach(W, D, aniso, lay, q, FLOOR_Y) : buildVolcano(W, D, aniso, lay, q, FLOOR_Y), aniso);
   var g = new THREE.Group(), T = THEMES[name] || THEMES.felt, R = rng(name.length * 7919 + 13), size = 150;
   if (name === 'space') { spaceScene(g, W, D, R); return { group: g, legs: false }; }
   var mat = name === 'jungle' ? grassFloor(size, aniso) : name === 'ocean' ? waterFloor(size, aniso) : plankFloor(size, aniso);
   var floor = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat); floor.rotation.x = -Math.PI / 2; floor.position.y = FLOOR_Y; floor.receiveShadow = true; g.add(floor);
   if (name === 'jungle') jungleProps(g, W, D, R); else if (name === 'ocean') oceanProps(g, W, D, R); else feltRoomProps(g, W, D, R, aniso);
   return { group: g, legs: T.legs };
+}
+// Beach and volcano get the same storyteller scoreboard (bigscreen.js) on their own screen, a painted sky with still
+// clouds and a far horizon (islands on the sea, crater ridges). Their builders (arenas/) are not changed.
+function dressVenue(name, env, aniso) {
+  try {
+    var screen = null, area = 0;
+    env.group.traverse(function (o) {
+      var m = o.material, p = o.geometry && o.geometry.parameters;
+      if (o.isMesh && m && !Array.isArray(m) && m.isMeshBasicMaterial && m.map && m.toneMapped === false && o.geometry.type === 'PlaneGeometry' && p.width * p.height > area) { area = p.width * p.height; screen = o; }
+    });
+    if (screen) {
+      var p = screen.geometry.parameters, bs = createBigScreen({ w: p.width, h: p.height, venue: name, aniso: aniso });
+      var old = screen.material.map; screen.material.map = bs.texture; screen.material.needsUpdate = true; if (old) old.dispose();
+      screen.userData.board = true; env.board = screen;
+      env.setBoard = function (text) { bs.paint(text); };
+      var d0 = env.dispose; env.dispose = function () { bs.dispose(); if (d0) d0.apply(env, arguments); };
+    }
+    if (name === 'beach') {
+      env.group.add(makeSky({ stops: [[0, 0xe9f6fb], [0.1, 0xb6e3f6], [0.35, 0x74c1ec], [1, 0x2f8fd8]], low: 0x8fd0e8, haze: 0xf2fbff,
+        sun: { az: -2.6, el: 0.9, col: 0xfff4d6, halo: 70 }, clouds: { n: 12, kind: 'cumulus', lit: 0xffffff, shade: 0xc9dceb, rim: 0xffffff, seed: 71 } }));
+      env.group.add(makeBackdrop({ kind: 'islands', near: 0x3f8f7a, far: 0x9fd2dc, ground: 0x7cc6dc, seed: 5, y0: FLOOR_Y, r: 140, h: 22 }));
+    } else {
+      env.group.add(makeSky({ stops: [[0, 0xf3a072], [0.08, 0xc9708a], [0.3, 0x6e3f86], [1, 0x2a1748]], low: 0x4a2a44, haze: 0xffb27e,
+        sun: { az: 1.2, el: 0.12, col: 0xff8a4a, halo: 70 }, clouds: { n: 10, kind: 'mixed', lit: 0xffb08a, shade: 0x6a3f70, rim: 0xffd8b0, seed: 83 }, stars: 40 }));
+      env.group.add(makeBackdrop({ kind: 'ridges', near: 0x3a2236, far: 0x8a5070, ground: 0x5a3050, seed: 9, y0: FLOOR_Y, r: 140, h: 30 }));
+    }
+  } catch (e) {}
+  return env;
 }
 export { hexCss, shade };

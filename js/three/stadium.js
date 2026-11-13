@@ -15,7 +15,9 @@ import * as THREE from 'three';
 import { FLOOR_Y, softTexture } from './environment.js';
 import { keyLight, mergeGeos, mtx } from './arenas/common.js';
 import { makeBlockCrowd } from './crowd.js';
-import { stadiumTier, currentWeather, lookFor, applyLook, buildSig, noteBuilt, skyDome, rainbow, makeParticles, mistBanks } from './weather.js';
+import { stadiumTier, currentWeather, lookFor, applyLook, buildSig, noteBuilt, skyDome, farRing, rainbow, makeParticles, mistBanks, onMatchStart, matchNo } from './weather.js';
+import { createBigScreen } from './bigscreen.js';
+import { phoneLights, calm } from './lighting.js';
 
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function cvs(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
@@ -26,40 +28,84 @@ function ctex(cv, aniso, rep) {
 }
 
 var PITCH = 100, PPU = 20.48; // pitch plane size in units, canvas pixels per unit
+var litFor = -1; // the match number whose dusk floodlights have already come on (weather.js matchNo())
 
 // o.cols (optional): [stripe A, stripe B, trackside] for other venues; o.size: canvas size (default 2048)
 export function pitchTexture(aniso, o) {
   var S = o.size || 2048, c = cvs(S, S), g = c.getContext('2d'), R = rng(77), k = S / PITCH, cols = o.cols || ['#2f8a36', '#277a2d', '#25422a'];
-  var band = 3.6, z0 = o.lineZ - 40; // stripes run parallel to the touchline
-  for (var i = 0; i < 40; i++) { var z = z0 + i * band; g.fillStyle = i % 2 ? cols[0] : cols[1]; g.fillRect(0, (z + 50) * k, S, band * k + 1); }
-  for (var n = 0; n < 9000; n++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * S, R() * S, 2, 2); }
-  // everything behind the touchline is plain trackside
-  g.fillStyle = cols[2]; g.fillRect(0, 0, S, (o.lineZ + 50) * k);
-  g.strokeStyle = 'rgba(255,255,255,.88)'; g.lineWidth = 0.22 * k; g.lineCap = 'butt';
-  var X = function (x) { return (x + 50) * k; }, Z = function (z) { return (z + 50) * k; };
-  g.beginPath(); g.moveTo(X(-o.gx), Z(o.lineZ)); g.lineTo(X(o.gx), Z(o.lineZ)); g.stroke(); // touchline
-  if (o.goals) {
-    g.beginPath(); g.moveTo(X(-o.gx), Z(o.lineZ)); g.lineTo(X(-o.gx), Z(o.lineZ + 40)); g.moveTo(X(o.gx), Z(o.lineZ)); g.lineTo(X(o.gx), Z(o.lineZ + 40)); g.stroke(); // goal lines
-    [-1, 1].forEach(function (s) { // goal area and penalty box
-      g.strokeRect(s < 0 ? X(-o.gx) : X(o.gx - 3.2), Z(o.goalZ - 4.2), 3.2 * k, 8.4 * k);
-      g.strokeRect(s < 0 ? X(-o.gx) : X(o.gx - 7), Z(o.goalZ - 7.5), 7 * k, 15 * k);
-    });
-    g.beginPath(); g.arc(X(0), Z(o.goalZ + 14), 5 * k, 0, 6.2832); g.stroke(); // centre circle (partly under the table)
+  var band = 3.6, z0 = o.lineZ - 40; // mown stripes run parallel to the touchline
+  for (var i = 0; i < 40; i++) {
+    var z = z0 + i * band, y0 = (z + 50) * k, bh = band * k + 1;
+    g.fillStyle = i % 2 ? cols[0] : cols[1]; g.fillRect(0, y0, S, bh);
+    // the mower's sheen: each stripe a touch lighter toward one edge (the grass leans the way it was cut)
+    var sh = g.createLinearGradient(0, y0, 0, y0 + bh); sh.addColorStop(0, i % 2 ? 'rgba(255,255,230,.05)' : 'rgba(0,0,0,0)'); sh.addColorStop(1, i % 2 ? 'rgba(0,0,0,0)' : 'rgba(255,255,230,.035)');
+    g.fillStyle = sh; g.fillRect(0, y0, S, bh);
   }
-  // corner arcs at the two back corners
-  [[-o.gx, 0], [o.gx, 1]].forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Z(o.lineZ), 1.1 * k, p[1] ? Math.PI * 0.5 : 0, p[1] ? Math.PI : Math.PI * 0.5); g.stroke(); });
+  if (o.pattern === 'checker') { // a cross-cut on the bigger grounds: wide bands the other way, very soft
+    var cw = 4.8; for (var xx = -50, j = 0; xx < 50; xx += cw, j++) if (j % 2) { g.fillStyle = 'rgba(0,0,0,.045)'; g.fillRect((xx + 50) * k, 0, cw * k, S); }
+  }
+  for (var n = 0; n < 9000; n++) { g.fillStyle = R() < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)'; g.fillRect(R() * S, R() * S, 2, 2); }
+  // everything behind the touchline is plain trackside, with a soft worn strip where the linesman runs
+  g.fillStyle = cols[2]; g.fillRect(0, 0, S, (o.lineZ + 50) * k);
+  var X = function (x) { return (x + 50) * k; }, Z = function (z) { return (z + 50) * k; };
+  // lines: painted twice, a soft wide pass and a crisp core, so they read as paint on grass and not as wire
+  function lines(fn) {
+    g.lineCap = 'butt'; g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 0.4 * k; fn();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 0.2 * k; fn();
+  }
+  lines(function () {
+    g.beginPath(); g.moveTo(X(-o.gx), Z(o.lineZ)); g.lineTo(X(o.gx), Z(o.lineZ)); g.stroke(); // touchline
+    if (o.goals) {
+      g.beginPath(); g.moveTo(X(-o.gx), Z(o.lineZ)); g.lineTo(X(-o.gx), Z(o.lineZ + 40)); g.moveTo(X(o.gx), Z(o.lineZ)); g.lineTo(X(o.gx), Z(o.lineZ + 40)); g.stroke(); // goal lines
+      g.beginPath(); g.moveTo(X(0), Z(o.lineZ)); g.lineTo(X(0), Z(o.lineZ + 40)); g.stroke(); // halfway line (it runs under the table)
+      [-1, 1].forEach(function (s) { // goal area, penalty box and the arc outside it
+        g.strokeRect(s < 0 ? X(-o.gx) : X(o.gx - 3.2), Z(o.goalZ - 4.2), 3.2 * k, 8.4 * k);
+        g.strokeRect(s < 0 ? X(-o.gx) : X(o.gx - 7), Z(o.goalZ - 7.5), 7 * k, 15 * k);
+        var px = s * (o.gx - 5.2), a = Math.acos(1.8 / 4.5);
+        g.beginPath(); if (s < 0) g.arc(X(px), Z(o.goalZ), 4.5 * k, -a, a); else g.arc(X(px), Z(o.goalZ), 4.5 * k, Math.PI - a, Math.PI + a); g.stroke();
+      });
+      g.beginPath(); g.arc(X(0), Z(o.goalZ + 14), 5 * k, 0, 6.2832); g.stroke(); // centre circle (partly under the table)
+    }
+    // corner arcs at the two back corners
+    [[-o.gx, 0], [o.gx, 1]].forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Z(o.lineZ), 1.1 * k, p[1] ? Math.PI * 0.5 : 0, p[1] ? Math.PI : Math.PI * 0.5); g.stroke(); });
+  });
+  if (o.goals) { // penalty spots and the centre spot
+    g.fillStyle = 'rgba(255,255,255,.92)';
+    [[-(o.gx - 5.2), o.goalZ], [o.gx - 5.2, o.goalZ], [0, o.goalZ + 14]].forEach(function (p) { g.beginPath(); g.arc(X(p[0]), Z(p[1]), 0.22 * k, 0, 6.2832); g.fill(); });
+  }
   return ctex(c, aniso);
 }
 
+// Pitch-side ad boards: made-up maths-pun brands (no real companies), each with its own colours and a little mark.
+export var AD_BRANDS = [
+  { t: "TATA'S EQUATIONS", m: '★', bg: '#12306e', fg: '#ffd43b' },
+  { t: 'PI-ZZA PALACE', m: 'π', bg: '#e03131', fg: '#fff3bf' },
+  { t: 'SQUARE ROOT BEER', m: '√', bg: '#7a3e12', fg: '#ffe8cc' },
+  { t: 'PRIME TIME TV', m: '7', bg: '#5f3dc4', fg: '#ffffff' },
+  { t: 'FRACTION ACTION', m: '½', bg: '#f08c00', fg: '#1b1000' },
+  { t: 'ZERO HERO', m: '0', bg: '#1c7ed6', fg: '#ffffff' },
+  { t: 'TIMES TABLE TACOS', m: '×', bg: '#2f9e44', fg: '#fff9db' },
+  { t: 'GO FIGURE!', m: '?', bg: '#c2255c', fg: '#ffffff' },
+  { t: 'PLUS PLUSH TOYS', m: '+', bg: '#0b7285', fg: '#e3fafc' },
+  { t: 'DIVIDE & CONQUER', m: '÷', bg: '#343a40', fg: '#ffd43b' },
+  { t: 'MINUS MARKET', m: '−', bg: '#e8590c', fg: '#ffffff' },
+  { t: 'COUNT ON US', m: '123', bg: '#364fc7', fg: '#ffffff' }
+];
 function adTexture(aniso) {
-  var c = cvs(2048, 64), g = c.getContext('2d'), words = ['TATA', 'MATH', 'GOAL!', 'EQUATIONS', 'SOCCER', 'MATH', 'TATA', 'GOAL!'], cols = ['#e03131', '#1c7ed6', '#f08c00', '#2f9e44', '#7048e8', '#1c7ed6', '#e03131', '#f08c00'];
-  for (var i = 0; i < 8; i++) {
-    g.fillStyle = cols[i]; g.fillRect(i * 256, 0, 256, 64); g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(i * 256, 0, 256, 8);
-    g.font = '900 40px "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(words[i], i * 256 + 128, 35);
-    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(i * 256, 0, 3, 64);
-  }
+  var n = AD_BRANDS.length, pw = 256, ph = 80, c = cvs(n * pw, ph), g = c.getContext('2d');
+  AD_BRANDS.forEach(function (b, i) {
+    var x = i * pw, gr = g.createLinearGradient(0, 0, 0, ph); gr.addColorStop(0, b.bg); gr.addColorStop(1, shadeCss(b.bg, -0.12));
+    g.fillStyle = gr; g.fillRect(x, 0, pw, ph); g.fillStyle = 'rgba(255,255,255,.16)'; g.fillRect(x, 0, pw, 6);
+    // the mark in a circle, then the name fitted to the rest
+    g.beginPath(); g.arc(x + 36, ph / 2, 25, 0, 6.2832); g.fillStyle = b.fg; g.fill();
+    g.fillStyle = b.bg; g.textAlign = 'center'; g.textBaseline = 'middle'; var ms = b.m.length > 2 ? 20 : 34; g.font = '900 ' + ms + 'px "Trebuchet MS", sans-serif'; g.fillText(b.m, x + 36, ph / 2 + 2);
+    var size = 40; do { g.font = '900 ' + size + 'px "Trebuchet MS", sans-serif'; size -= 2; } while (g.measureText(b.t).width > pw - 82 && size > 14);
+    g.fillStyle = b.fg; g.textAlign = 'left'; g.fillText(b.t, x + 70, ph / 2 + 2);
+    g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(x, 0, 3, ph);
+  });
   return ctex(c, aniso);
 }
+function shadeCss(css, k) { var c = new THREE.Color(css); c.offsetHSL(0, 0, k); return '#' + c.getHexString(); }
 function netTexture() {
   var c = cvs(128, 128), g = c.getContext('2d');
   g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3;
@@ -86,12 +132,21 @@ function snowTexture() {
 }
 
 // Night: floodlit pool of light on the pitch, brightest round the table, fading toward the stands
-function lightPool() {
-  var c = cvs(128, 128), g = c.getContext('2d');
-  g.fillStyle = '#05070c'; g.fillRect(0, 0, 128, 128);
-  var gr = g.createRadialGradient(64, 66, 4, 64, 66, 30); // 100-unit plane: 30px is about 23 units
-  gr.addColorStop(0, '#e8efff'); gr.addColorStop(0.55, '#8e9bb8'); gr.addColorStop(1, 'rgba(5,7,12,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+// aims: [[x, z, towerX, towerZ], ...] in pitch units: one soft oval pool per floodlight, stretched toward its tower
+function lightPool(aims) {
+  var c = cvs(256, 256), g = c.getContext('2d'), k = 2.56, P = function (v) { return (v + 50) * k; };
+  g.fillStyle = '#05070c'; g.fillRect(0, 0, 256, 256);
+  g.globalCompositeOperation = 'lighter';
+  (aims || []).forEach(function (a) {
+    var ang = Math.atan2(a[3] - a[1], a[2] - a[0]);
+    g.save(); g.translate(P(a[0]), P(a[1])); g.rotate(ang); g.scale(1.55, 1);
+    var gr = g.createRadialGradient(0, 0, 2, 0, 0, 34); gr.addColorStop(0, 'rgba(120,128,150,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(-40, -40, 80, 80); g.restore();
+  });
+  g.globalCompositeOperation = 'source-over';
+  var gr2 = g.createRadialGradient(128, 132, 8, 128, 132, 60); // 100-unit plane: 60px is about 23 units
+  gr2.addColorStop(0, 'rgba(232,239,255,1)'); gr2.addColorStop(0.55, 'rgba(142,155,184,.9)'); gr2.addColorStop(1, 'rgba(5,7,12,0)');
+  g.fillStyle = gr2; g.fillRect(0, 0, 256, 256);
   var t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function stdm(color, rough, extra) { return new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness: rough == null ? 0.8 : rough, flatShading: true }, extra || {})); }
@@ -144,6 +199,22 @@ function bannerTexture(t, kit) {
   g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeText(label, 330, 134); g.fillStyle = '#fff'; g.fillText(label, 330, 134);
   return ctex(c, 4);
 }
+// the fans' banner for the kid: his shirt name (backName(), set in Settings) and number, in his kit colours
+function fanBannerTexture(kit) {
+  var c = cvs(512, 256), g = c.getContext('2d'), S = window.S || {};
+  var name = String(typeof window.backName === 'function' ? window.backName() : (S.name || '')).toUpperCase().slice(0, 12) || 'CHAMP', num = String(S.jersey || '7').slice(0, 2);
+  g.fillStyle = kit.shirt; g.fillRect(0, 0, 512, 256);
+  g.fillStyle = kit.trim; for (var x = -300; x < 600; x += 90) { g.beginPath(); g.moveTo(x, 256); g.lineTo(x + 34, 256); g.lineTo(x + 34 + 140, 0); g.lineTo(x + 140, 0); g.fill(); }
+  g.globalAlpha = 0.86; g.fillStyle = kit.shirt; g.fillRect(28, 28, 456, 200); g.globalAlpha = 1;
+  g.strokeStyle = '#ffffff'; g.lineWidth = 6; g.strokeRect(28, 28, 456, 200);
+  // the number in a circle, the name beside it, two stars
+  g.beginPath(); g.arc(112, 128, 70, 0, 6.2832); g.fillStyle = '#ffffff'; g.fill();
+  g.fillStyle = kit.shirt; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 ' + (num.length > 1 ? 74 : 92) + 'px "Trebuchet MS", sans-serif'; g.fillText(num, 112, 134);
+  var size = 66; do { g.font = '900 ' + size + 'px "Trebuchet MS", sans-serif'; size -= 3; } while (g.measureText(name).width > 280 && size > 22);
+  g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeText(name, 336, 112); g.fillStyle = '#fff'; g.fillText(name, 336, 112);
+  g.font = '900 30px "Trebuchet MS", sans-serif'; g.fillStyle = '#ffffff'; g.fillText('★  GO ' + (num ? '#' + num : '') + '  ★', 336, 176);
+  return ctex(c, 4);
+}
 function fasciaTexture(kit) {
   var c = cvs(1024, 96), g = c.getContext('2d'), name = String((window.S && window.S.name) || '').toUpperCase().slice(0, 14);
   var words = [name ? '★ HOME OF ' + name + ' ★' : '★ HOME OF THE CHAMPION ★', "★ TATA'S EQUATIONS ★"];
@@ -189,11 +260,15 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var floorCol = snow ? (L.dark ? 0x5c6676 : 0xdfe6ee) : night ? 0x0d2614 : wet ? 0x173f1e : 0x1d4d25;
   var floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: floorCol, roughness: 1 }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = FY - 0.04; g.add(floor);
-  var pitchMap = pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ, size: opts && opts.pitchSize }); // opts.pitchSize: smaller canvas (title screen on tablets)
-  // at night the pitch glows a little by itself (the floodlights), so it reads brighter than the stands. Rain: a wet
-  // sheen (lower roughness picks up the sky reflections). Snow: a white dusting on top.
-  var pm = night ? { map: pitchMap, color: 0x3c3c40, lightMap: lightPool(), lightMapIntensity: 7, roughness: 0.95 } : { map: pitchMap, roughness: 0.95 };
-  if (wet) { pm.roughness = 0.42; pm.envMapIntensity = 1.5; pm.color = night ? 0x34363c : 0xb4c2b4; }
+  var pitchMap = pitchTexture(aniso, { lineZ: lineZ, gx: gx, goals: goals, goalZ: goalZ, size: opts && opts.pitchSize, pattern: tier >= 3 ? 'checker' : 'stripes' }); // opts.pitchSize: smaller canvas (title screen on tablets)
+  // where the four floodlights stand and aim (the same numbers as the towers below): one pool of light under each
+  var tOut = TC.lights === 'mega' ? 2.5 : 1.5, TWR = [[-(backL / 2 + tOut), z0 - depthB - tOut], [backL / 2 + tOut, z0 - depthB - tOut], [-(standX + depthS + tOut), D / 2 + (TC.lights === 'mega' ? 5 : 4)], [standX + depthS + tOut, D / 2 + (TC.lights === 'mega' ? 5 : 4)]];
+  var pool = (night || dusk) ? lightPool(TWR.map(function (t) { return [t[0] * 0.25, t[1] * 0.25 + 1, t[0], t[1]]; })) : null;
+  // at night the pitch glows a little by itself (the floodlights), so it reads brighter than the stands; at dusk the same
+  // pools fade in when the floodlights come on. Rain: a wet sheen (lower roughness picks up the sky reflections). Snow: a white dusting on top.
+  var POOL_I = night ? 7 : 2.6;
+  var pm = night ? { map: pitchMap, color: 0x3c3c40, lightMap: pool, lightMapIntensity: POOL_I, roughness: 0.95 } : dusk ? { map: pitchMap, color: 0x9a9aa0, lightMap: pool, lightMapIntensity: POOL_I, roughness: 0.95 } : { map: pitchMap, roughness: 0.95 };
+  if (wet) { pm.roughness = 0.42; pm.envMapIntensity = 1.5; pm.color = night ? 0x34363c : dusk ? 0x8a8c92 : 0xb4c2b4; }
   var pitch = new THREE.Mesh(new THREE.PlaneGeometry(PITCH, PITCH), new THREE.MeshStandardMaterial(pm));
   pitch.rotation.x = -Math.PI / 2; pitch.position.y = FY; pitch.receiveShadow = true; g.add(pitch);
   if (snow) {
@@ -201,6 +276,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
     sn.rotation.x = -Math.PI / 2; sn.position.y = FY + 0.015; sn.renderOrder = 1; g.add(sn);
   }
   g.add(skyDome(L));
+  g.add(farRing(L, FY, tier)); // hills and a little town far beyond the stands (lit windows at dusk and night)
   if (w.rainbow && !night) g.add(rainbow(FY, z0 - depthB));
 
   // ----- Stands (each stand is a group: local +x points away from the pitch, +z runs along the stand) -----
@@ -232,12 +308,32 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var holes = [];
   function hole(x0, x1, za, zb, y1) { holes.push([Math.min(x0, x1), Math.max(x0, x1), Math.min(za, zb), Math.max(za, zb), y1]); }
 
+  // ----- Aisles: stairs up each stand every ~9 units (lighter treads, a yellow nosing on each step); nobody sits there -----
+  var aisleP = [], stepC = snow ? 0xe8eef5 : wet ? 0x8a93a3 : night ? 0x5a6274 : 0xb0b8c6, noseC = night ? 0xb8962a : 0xf2c230, AW = 0.85;
+  stands.forEach(function (st) {
+    var n = Math.max(1, Math.round(st.len / 9)), M = st.g.matrix;
+    for (var a = 1; a <= n; a++) {
+      var zc = a * st.len / (n + 1);
+      [[st.rows, rowD, rise, 0, 0], rowsU ? [rowsU, rowDU, riseU, st.u0, st.y0] : null].forEach(function (t) {
+        if (!t) return;
+        for (var r = 0; r < t[0]; r++) {
+          var u = t[3] + r * t[1], y = t[4] + (r + 1) * t[2];
+          aisleP.push({ geo: new THREE.BoxGeometry(t[1], 0.05, AW), color: stepC, m: M.clone().multiply(mtx(u + t[1] / 2, y + 0.025, zc)) });
+          aisleP.push({ geo: new THREE.BoxGeometry(0.1, 0.06, AW), color: noseC, m: M.clone().multiply(mtx(u + 0.05, y + 0.03, zc)) });
+        }
+      });
+      var c1 = new THREE.Vector3(-0.2, 0, zc - AW / 2 - 0.12).applyMatrix4(M), c2 = new THREE.Vector3(st.depth + 0.2, 0, zc + AW / 2 + 0.12).applyMatrix4(M);
+      hole(c1.x, c2.x, c1.z, c2.z, FY + 60);
+    }
+  });
+  if (aisleP.length) g.add(new THREE.Mesh(mergeGeos(aisleP), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true })));
+
   // ----- Scoreboard (jumbotron), in a gap in the back stand -----
   var boardW = TC.board[ti][0], boardH = TC.board[ti][1], boardX = tall ? -6.0 : 9.4;
   var bx0 = boardX - boardW / 2 - 0.3, bx1 = boardX + boardW / 2 + 0.3, bzA = z0 - 1.0 * rowD, boardY0 = FY + (tier <= 1 ? 0.9 : 1.2);
   hole(bx0, bx1, -1e3, bzA - 0.2, boardY0 + boardH + 0.4);
   var frameCol = tier >= 5 ? kit.trim : '#2b4a9a';
-  var bcv = cvs(1024, Math.round(1024 * boardH / boardW)), btex = ctex(bcv, aniso); paintBoard(bcv, '', frameCol);
+  var bigS = createBigScreen({ w: boardW, h: boardH, venue: night ? 'night' : 'stadium', frame: frameCol, aniso: aniso, detached: !!(opts && opts.detached) }), btex = bigS.texture; // bigscreen.js: the designed scoreboard
   var board = new THREE.Group(); board.position.set(boardX, boardY0 + boardH / 2, bzA); board.rotation.x = -0.32; g.add(board);
   var casing = new THREE.Mesh(new THREE.BoxGeometry(boardW + 0.7, boardH + 0.7, 0.5), stdm(tier >= 5 ? new THREE.Color(kit.shirt).multiplyScalar(0.55).getHex() : 0x1b2233, 0.5, { flatShading: false })); casing.position.z = -0.3; board.add(casing);
   var screen = new THREE.Mesh(new THREE.PlaneGeometry(boardW, boardH), new THREE.MeshBasicMaterial({ map: btex, toneMapped: false, fog: false })); screen.position.z = 0.0; screen.userData.board = true; board.add(screen);
@@ -278,20 +374,28 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   }
 
   // ----- Trophy banners draped over the front rows of the back stand (one per cup won, one for the crowns) -----
-  var tro = trophies(), bannerW = tall ? 2.6 : 3.2;
-  if (tro.length) {
+  // Also, from tier 2, a big banner in his kit colours with the name on his shirt (backName()) and his number.
+  var tro = trophies(), bannerW = tall ? 2.6 : 3.2, fan = tier >= 2 && !(opts && opts.detached);
+  if (tro.length || fan) {
     var slots = [], half = backL / 2 - bannerW / 2 - 0.6;
     for (var sx = -half; sx <= half + 1e-6; sx += bannerW + 0.5) {
       var lo = sx - bannerW / 2 - 0.2, hi = sx + bannerW / 2 + 0.2;
       if (hi > bx0 && lo < bx1) continue; if (TC.tunnel && hi > tunnelX - 2.0 && lo < tunnelX + 2.0) continue;
+      if (lo < -backL / 2 + 0.3 || hi > backL / 2 - 0.3) continue;
       slots.push(sx);
     }
+    var slope = Math.atan2(rise, rowD), items = [];
+    if (fan && slots.length) { // the fan banner: the free slot nearest a third of the way left (clear of the creature and the board)
+      var pref = tall ? 3.2 : -W * 0.36, best = -1;
+      slots.forEach(function (x, i) { if (Math.abs(x) > 2.4 && (best < 0 || Math.abs(x - pref) < Math.abs(slots[best] - pref))) best = i; });
+      if (best >= 0) { items.push({ x: slots[best], tex: fanBannerTexture(kit) }); slots.splice(best, 1); }
+    }
     slots.sort(function (a, b) { return Math.abs(a) - Math.abs(b); });
-    var slope = Math.atan2(rise, rowD);
-    tro.slice(0, slots.length).forEach(function (t, i) {
-      var x = slots[i], bm = new THREE.Mesh(new THREE.PlaneGeometry(bannerW, 1.6 * bannerW / 3.2 * 1.25), new THREE.MeshStandardMaterial({ map: bannerTexture(t, kit), roughness: 0.85, side: THREE.DoubleSide }));
-      // lying on rows 0-1, facing the pitch and up the slope
-      bm.position.set(x, FY + rise * 2 + 0.1, z0 - rowD * 1.0); // resting on the front edges of the steps bm.rotation.set(-(Math.PI / 2 - slope), 0, 0); g.add(bm);
+    tro.slice(0, slots.length).forEach(function (t, i) { items.push({ x: slots[i], tex: bannerTexture(t, kit) }); });
+    items.forEach(function (it) {
+      var x = it.x, bm = new THREE.Mesh(new THREE.PlaneGeometry(bannerW, 1.6 * bannerW / 3.2 * 1.25), new THREE.MeshStandardMaterial({ map: it.tex, roughness: 0.85, side: THREE.DoubleSide }));
+      // lying on rows 0-1, facing the pitch and up the slope, resting on the front edges of the steps
+      bm.position.set(x, FY + rise * 2 + 0.1, z0 - rowD); bm.rotation.set(-(Math.PI / 2 - slope), 0, 0); g.add(bm);
       hole(x - bannerW / 2 - 0.25, x + bannerW / 2 + 0.25, z0 - rowD * 2.2, z0 + 0.5, FY + rise * 3);
     });
   }
@@ -328,7 +432,7 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   pts = crowd.pts; var N = pts.length;
 
   // ----- Ad boards along the touchline, trackside -----
-  var adT = adTexture(aniso), adLen = TC.ads === 'short' ? Math.min(W + 6, backL - 4) : Math.min(backL - 6, W + 24); adT.wrapS = THREE.RepeatWrapping; adT.repeat.set(adLen / 16, 1);
+  var adT = adTexture(aniso), adLen = TC.ads === 'short' ? Math.min(W + 6, backL - 4) : Math.min(backL - 6, W + 24); adT.wrapS = THREE.RepeatWrapping; adT.repeat.set(adLen / (AD_BRANDS.length * 2.9), 1); // each brand ~2.9 units wide
   var ads = new THREE.Mesh(new THREE.BoxGeometry(adLen, 0.9, 0.22), new THREE.MeshBasicMaterial({ map: adT, toneMapped: false })); ads.position.set(0, FY + 0.45, lineZ - 1.0); g.add(ads);
 
   // ----- Floodlights: lamp posts (tier 1), poles (2), towers (3, 4), very tall towers (5). Static lamps and soft glows. -----
@@ -344,15 +448,19 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
     var head = new THREE.Group(); head.position.set(x, FY + h + LK.fh / 3, z); head.lookAt(0, FY + 3, 0); g.add(head); head.updateMatrix();
     var frame = new THREE.Mesh(new THREE.BoxGeometry(LK.fw, LK.fh, 0.4), headM); head.add(frame);
     var cw = LK.fw / LK.cols, rh = LK.fh / LK.rows; // the lamps of all four towers are merged into one mesh (one draw call)
+    var v0 = lampParts.length;
     for (var a = 0; a < LK.rows; a++) for (var b = 0; b < LK.cols; b++) lampParts.push({ geo: new THREE.BoxGeometry(cw * 0.78, rh * 0.75, 0.12), color: 0xffffff, m: head.matrix.clone().multiply(mtx(-LK.fw / 2 + cw * (b + 0.5), -LK.fh / 2 + rh * (a + 0.5), 0.26)) });
-    var gs = LK.glow * (night ? 1.6 : dusk ? 1.3 : 1), op = night ? 0.9 : Math.max(0.35, L.glowI);
+    var gs = LK.glow * (night ? 1.4 : dusk ? 1.3 : 1), op = night ? 0.78 : Math.max(0.35, L.glowI);
     var gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xdfeaff, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); gl.scale.set(gs, gs, 1); gl.position.copy(head.position); g.add(gl);
+    var bm2 = null;
     if (lit && beamGeo) { // a faint, static beam from the lamp head down to the pitch
       var top = head.position.clone(), aim = new THREE.Vector3(x * 0.25, FY, z * 0.25 + 1), len = top.distanceTo(aim);
-      var beam = new THREE.Mesh(beamGeo, beamMat); beam.scale.set(LK.fw / 4.2, len, LK.fw / 4.2); beam.position.copy(top).add(aim).multiplyScalar(0.5);
-      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), aim.clone().sub(top).normalize()); beam.renderOrder = 3; g.add(beam);
+      bm2 = new THREE.Mesh(beamGeo, beamMat.clone()); bm2.scale.set(LK.fw / 4.2, len, LK.fw / 4.2); bm2.position.copy(top).add(aim).multiplyScalar(0.5);
+      bm2.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), aim.clone().sub(top).normalize()); bm2.renderOrder = 3; g.add(bm2);
     }
+    lamps.push({ glow: gl, op: op, gs: gs, beam: bm2, beamOp: bm2 ? bm2.material.opacity : 0, parts: [v0, lampParts.length] });
   }
+  var lamps = [];
   var beamGeo = null, beamMat = null;
   if (lit) {
     var bc = cvs(4, 64), bg2 = bc.getContext('2d'), bgr = bg2.createLinearGradient(0, 0, 0, 64);
@@ -363,7 +471,54 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   var out = TC.lights === 'mega' ? 2.5 : 1.5, tx = backL / 2 + out, tz = z0 - depthB - out, fx = standX + depthS + out, fz = D / 2 + (TC.lights === 'mega' ? 5 : 4);
   var lampParts = [];
   tower(-tx, tz); tower(tx, tz); tower(-fx, fz); tower(fx, fz);
-  g.add(new THREE.Mesh(mergeGeos(lampParts), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, fog: false })));
+  var lampMesh = new THREE.Mesh(mergeGeos(lampParts), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, fog: false })); g.add(lampMesh);
+
+  // ----- Dusk: the floodlights come on ONCE, at kick-off -----
+  // Built dark; the first board change after the venue is built (newShake's board('') at kick-off) switches the four
+  // towers on one after another (about 2 s): each lamp strikes with a short bloom of its glow, the pools of light fade
+  // in on the pitch and the floodlight key light rises. Then everything is still. With calm / reduced motion they simply
+  // switch on. A new match in the same venue (no rebuild) switches them off again (weather.js onMatchStart).
+  // Each tower fires window event 'tata:floodlight' { i, n } as it comes on (for a clunk sound; see light.md).
+  var lights = { on: !dusk || !!(opts && opts.detached), seq: null, armed: false, boards: 0, wait: 0 };
+  var DARK = new THREE.Color(0x3a3f4c), WHITE = new THREE.Color(0xffffff);
+  function lampColor(i, col) {
+    var ca = lampMesh.geometry.attributes.color, r = lamps[i].parts; if (!ca) return;
+    for (var vtx = r[0] * 36; vtx < r[1] * 36 && vtx < ca.count; vtx++) ca.setXYZ(vtx, col.r, col.g, col.b);
+    ca.needsUpdate = true;
+  }
+  // k: 0 (dark) .. 1 (full) for tower i; flare: extra glow for the strike
+  function lampLevel(i, k, flare) {
+    var lp = lamps[i]; lp.glow.material.opacity = lp.op * Math.min(1.6, k + (flare || 0)); lp.glow.visible = lp.glow.material.opacity > 0.003;
+    lp.glow.scale.setScalar(lp.gs * (0.75 + 0.25 * k + 0.25 * (flare || 0)));
+    if (lp.beam) { lp.beam.material.opacity = lp.beamOp * k; lp.beam.visible = k > 0.003; }
+  }
+  function overall(k) { // the shared parts: pitch pools, the key light, the arena banner
+    if (pitch.material.lightMap) pitch.material.lightMapIntensity = POOL_I * (0.08 + 0.92 * k);
+    if (keyL) keyL.intensity = KEY_I * (0.18 + 0.82 * k);
+  }
+  function setDark() { for (var i = 0; i < lamps.length; i++) { lampColor(i, DARK); lampLevel(i, 0); } overall(0); lights.on = false; }
+  function setLit() { for (var i = 0; i < lamps.length; i++) { lampColor(i, WHITE); lampLevel(i, 1); } overall(1); lights.on = true; lights.seq = null; lights.armed = false; if (dusk && !(opts && opts.detached)) litFor = matchNo(); }
+  var SEQ_T0 = 0.25, SEQ_GAP = 0.42, SEQ_RISE = 0.55;
+  function stepLights(now) {
+    var s = lights.seq; if (!s) return false;
+    var t = (now - s.t0) / 1000, done = true, sum = 0;
+    for (var i = 0; i < lamps.length; i++) {
+      var ti = t - (SEQ_T0 + i * SEQ_GAP);
+      if (ti < 0) { done = false; continue; }
+      if (!s.fired[i]) { s.fired[i] = true; lampColor(i, WHITE); try { window.dispatchEvent(new CustomEvent('tata:floodlight', { detail: { i: i, n: lamps.length } })); } catch (e) {} }
+      var k = Math.min(1, ti / SEQ_RISE), e = k * k * (3 - 2 * k), flare = ti < 0.7 ? Math.sin(Math.min(1, ti / 0.7) * Math.PI) * 0.5 : 0;
+      lampLevel(i, e, flare); sum += e; if (ti < 0.7) done = false;
+    }
+    overall(sum / lamps.length);
+    if (done) { setLit(); return true; }
+    return true;
+  }
+  function startLights() {
+    if (lights.on || lights.seq) return;
+    lights.armed = false;
+    if (calm() || document.hidden) { setLit(); return; }
+    lights.seq = { t0: performance.now(), fired: {} };
+  }
 
   // ----- Corner flags (kit colours on the arena) -----
   var poleM = stdm(0xf8f9fa, 0.5), flagM = new THREE.MeshStandardMaterial({ color: TC.kitCorners ? new THREE.Color(kit.shirt) : 0xffd43b, roughness: 0.7, side: THREE.DoubleSide });
@@ -465,13 +620,25 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
   for (var q = 0; q < FN; q++) { var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: fT2, color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); sp.visible = false; sp.renderOrder = 4; g.add(sp); flashes.push({ sp: sp, t0: 0, dur: 0 }); }
 
   // night: the main light comes from the front-left floodlight tower (key light for the stage agent's shadows)
-  var keyL = null;
-  if (night) { keyL = keyLight(0xeef3ff, 1.35, -fx, FY + 30, D / 2 + 9, W, D); g.add(keyL); }
+  // dusk: the same floodlight key, built low and raised when the lights come on (no light is added later: no shader rebuild)
+  var keyL = null, KEY_I = night ? 1.35 : 1.1;
+  if (night || dusk) { keyL = keyLight(0xeef3ff, KEY_I, -fx, FY + 30, D / 2 + 9, W, D); g.add(keyL); }
+
+  // night: a few phone lights held up in the dark crowd (static)
+  if (night && N) { var ph = phoneLights(pts, [30, 60, 90][Math.max(0, Math.min(2, quality()))], 77); if (ph) g.add(ph); }
+
+  // the dusk floodlights: dark until kick-off, unless they already came on in this match (a rebuild mid-match)
+  var detachedV = !!(opts && opts.detached);
+  if (!lights.on) { if (litFor === matchNo()) setLit(); else { setDark(); lights.armed = true; } }
+  if (!detachedV) onMatchStart(function (n) { if (dusk && litFor !== n && !disposed) { setDark(); lights.armed = true; lights.boards = 1; lights.wait = 0; lights.seq = null; } });
+  var disposed = false;
 
   var flashing = false;
   var api = {
     group: g, legs: true, key: keyL, board: screen, tier: tier, weather: w,
-    setBoard: function (text) { paintBoard(bcv, text, frameCol); btex.needsUpdate = true; },
+    setBoard: function (text) { bigS.paint(text); lights.boards++; if (lights.armed && lights.boards >= 2) startLights(); },
+    lights: function () { return { on: lights.on, running: !!lights.seq, armed: lights.armed }; },
+    lightsOn: function (instant) { if (instant) setLit(); else startLights(); }, // tests: the dusk sequence by hand
     wave: function () { if (document.hidden || quality() < 1 || !N) return false; return crowd.react('wave'); },
     // crowd reactions: 'clap' | 'ooh' | 'gasp' | 'cheer' | 'aw' (see crowd.js); also reachable as T3.crowd(kind, opts)
     crowd: function (kind, opts) { if (document.hidden) return false; return crowd.react(kind, opts); },
@@ -487,6 +654,8 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
     },
     step: function (now) { // returns true while something is still moving (or a capped-rate weather frame is due)
       var busy = crowd.step(now);
+      if (lights.armed && !lights.seq) { if (window.G && window.G.rolling) startLights(); else if (!lights.wait) lights.wait = now; else if (now - lights.wait > 9000) startLights(); } // the cubes are being poured: kick-off // no kick-off board call came: switch on anyway
+      if (stepLights(now)) busy = true;
       if (flashing) {
         var live = false;
         for (var i = 0; i < FN; i++) {
@@ -503,7 +672,8 @@ export function buildStadium(W, D, aniso, layoutName, quality, opts) {
     },
     // for checks and the notes: what this build holds
     stats: function () { var c = crowd.stats(); return { tier: tier, weather: w, people: c.people, crowdDraws: c.draws, crowdTris: c.tris, particles: wx ? wx.stats() : null }; },
-    dispose: function () { crowd.reset(); flashing = false; if (wx) wx.dispose(); }
+    dispose: function () { disposed = true; crowd.reset(); flashing = false; if (wx) wx.dispose(); bigS.dispose(); }
   };
+  if (!detachedV && window.T3) window.T3._stadium = api; // tests and notes: the stadium on the table
   return api;
 }
