@@ -258,7 +258,7 @@ if (T3 && T3.ctx) (function () {
     // ---------- install / clear ----------
     function clearActor() {
       if (!actor) return;
-      abortTask(); endGesture(); talk = null; pendingMood = null;
+      abortTask(); endGesture(); talk = null; pendingMood = null; hold = null;   // (CUPTOSS: hold)
       ctx.scene.remove(actor.root); if (actor.dispose) actor.dispose();
       actor.root.traverse(function (o) { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { if (m.map) m.map.dispose(); m.dispose(); }); } });
       actor = null;
@@ -355,7 +355,7 @@ if (T3 && T3.ctx) (function () {
       var ans = partnerAnswer(m), o = partner();
       if (ans && o) setTimeout(function () { if (actor && gn === m && o.has() && o.free()) o.mood(ans); }, 380);
     };
-    self.free = function () { return !!actor && !hidden && !gn && !task; };
+    self.free = function () { return !!actor && !hidden && !gn && !task && !hold; };
     // a short look at something (T3.creatureLook, the big-Goal observer)
     self.look = function (what, ms) { if (!actor) return; look.what = what || null; look.until = performance.now() + (ms > 0 ? ms : 1400); wake(); ctx.startLoop(); };
     self.enter = function (done) {
@@ -436,6 +436,47 @@ if (T3 && T3.ctx) (function () {
     };
     self.stage = function () { return task ? task.stage : -1; };
     self.abort = function () { abortTask(); };
+    // ---------- CUPTOSS: both hands held by table.js (the roller dumps the cup, tosses cubes to reroll them) ----------
+    // h = { far: Vector3 (world: the farthest point the hands will need; the body leans / steps for it once),
+    //       fn: function (now, out) filling out.a / out.b (world hand spots or null), out.w (0..1: free pose -> spots),
+    //       out.open (0 fist .. 1 open), out.look (world point or null) }. null: let go (everything eases home).
+    var hold = null, HO = { a: null, b: null, w: 0, open: 0.5, look: null }, HL = [new THREE.Vector3(), new THREE.Vector3()];
+    self.hold = function (h) {
+      if (!actor || hidden) { hold = null; return false; }
+      if (h && h.fn) {
+        if (task) finishTask(true);
+        var S0 = actor.arms[1].baseShoulder || { y: 1.42, z: 0 }, a1 = actor.arms[1];
+        var nomF = h.far ? w2l(h.far.clone()) : new THREE.Vector3(0, 1, 2);
+        hold = { fn: h.fn, fake: { stage: 2, nom: nomF, H: nomF, fix: new THREE.Vector3(), arm: { baseShoulder: { x: 0, y: S0.y, z: S0.z || 0 }, L1: a1.L1, L2: a1.L2, k0: a1.k0 } } };
+      } else hold = null;
+      wake(); ctx.dirty(); ctx.startLoop(); return true;
+    };
+    self.holding = function () { return !!hold; };
+    // where the two hands really are (world), for checks
+    self.handsW = function () {
+      if (!actor) return null;
+      return actor.arms.map(function (a) { return l2w(a.pos.clone().applyMatrix4(actor.body.matrix)); });
+    };
+    self.grip = function () {
+      if (!actor || hidden) return null;
+      return { kind: 'creature', x: base.x, z: base.z, fx: 0, fz: 1, reach: armLen(actor.arms[1]) * SCALE, sy: (actor.arms[1].baseShoulder ? actor.arms[1].baseShoulder.y : 1.42) * SCALE + ROOT_Y,
+        hand: HOLD * SCALE, set: self.hold, hands: self.handsW, holding: self.holding };
+    };
+    function holdArms(now) {
+      HO.a = HO.b = HO.look = null; HO.w = 0; HO.open = 0.5;
+      try { hold.fn(now, HO); } catch (e) { console.warn('creature hold', e); hold = null; return; }
+      var w = clamp(HO.w, 0, 1), pts = [HO.a, HO.b].filter(function (p) { return !!p; });
+      if (!pts.length || w <= 0) return;
+      if (gn === 'enter') endGesture(); else if (gn && !fadeT0) fadeT0 = now;   // the hands are coming: a reaction eases out under them
+      // the spot on the creature's right (-x) goes to arm 0, the other to arm 1
+      if (pts.length === 2 && pts[0].x > pts[1].x) pts = [pts[1], pts[0]];
+      for (var i = 0; i < 2; i++) {
+        var p = pts.length === 2 ? pts[i] : (i === (pts[0].x < rp.x ? 0 : 1) ? pts[0] : null); if (!p) continue;
+        var st = armSt[i]; HL[i].set((p.x - rp.x) / SCALE, (p.y - rp.y) / SCALE, (p.z - rp.z) / SCALE);
+        st.goal.lerp(HL[i], w); st.open += (HO.open - st.open) * w; st.align += (0.9 - st.align) * w; st.yaw += (0 - st.yaw) * w;
+      }
+    }
+    // ---------- end CUPTOSS ----------
     // For short camera close-ups: the head's world position (follows steps, leans and entrances) and the creature's
     // standing height in world units. null when the creature is not at the table.
     self.focus = function () {
@@ -632,7 +673,7 @@ if (T3 && T3.ctx) (function () {
       if (document.hidden && (task || gn)) { if (task) finishTask(true); if (gn) endGesture(); if (hidden) return; }
       var o = partner(), pCube = o ? o.carried() : null, pTalk = !!(o && o.talking());
       var settling = pose > 0.002 || Math.abs(off.x) > 0.002 || Math.abs(off.z) > 0.002 || Math.abs(yld.x) > 0.002 || Math.abs(yld.z) > 0.002;
-      var busy = !!task || !!gn || !!talk || fx.live > 0 || settling || !!pCube || pTalk || !!(o && o.reaching()) || !!ahaT0 || now < look.until + 600 || now - blinkT0 < 400;
+      var busy = !!task || !!hold || !!gn || !!talk || fx.live > 0 || settling || !!pCube || pTalk || !!(o && o.reaching()) || !!ahaT0 || now < look.until + 600 || now - blinkT0 < 400;
       if (quiet) {
         // settled: wake only for something that happened (a cube moving, a reaction, a line, the camera moving)
         // (every 1.5 s it looks once more anyway, without drawing unless something really changed: a safety net)
@@ -692,7 +733,7 @@ if (T3 && T3.ctx) (function () {
       // ----- body help for far reaches, and the root transform (steps, entrances) -----
       var Tk = task;
       if (Tk && now > Tk.deadline) { finishTask(true); Tk = null; }
-      posture(Tk, dt);
+      posture(Tk || (hold && HO.w > 0.01 && hold.fake) || null, dt);   // (CUPTOSS: the hands held by table.js lean / step the body too)
       if (Tk && Tk.lean) P.lean += Tk.lean;
       var root = actor.root;
       root.position.set(base.x + P.rx, base.y + P.ry, base.z + P.rz); root.rotation.y = P.rYaw; root.scale.setScalar(SCALE * Math.max(0.001, P.rScale));
@@ -710,18 +751,21 @@ if (T3 && T3.ctx) (function () {
       }
       if (Tk) evalTask(Tk, now, dt);
       Tk = task;
+      if (hold && !Tk) holdArms(now);                               // (CUPTOSS)
 
       // ----- gaze: the eyes jump to what matters (one quick saccade), the head follows more slowly, then both are still -----
       var gm = 'cam';
       if (Tk) {
         var gs = Tk.stage; gm = (gs <= 3) ? 'cube' : (gs === 4 ? (clamp((now - Tk.t0) / 1000 / Tk.dur[4], 0, 1) < 0.55 ? 'die' : 'zone') : (gs === 5 || gs === 6) ? 'zone' : 'cam');
-      } else if (pCube) gm = 'partnerCube';                         // the other creature is carrying a cube: watch it go
+      } else if (hold && HO.look) gm = 'hold';                      // (CUPTOSS: watching the cup / the cubes in its hands)
+      else if (pCube) gm = 'partnerCube';                         // the other creature is carrying a cube: watch it go
       else if (now < mv.until) gm = mv.crowd ? 'table' : 'mover';
       else if (now < look.until && look.what) gm = 'look';
       else if (pTalk) gm = 'partner';                              // the other creature is talking: look its way
       if (gm === 'cube') tgt.set(Tk.m.position.x, Tk.m.position.y + 0.3, Tk.m.position.z);
       else if (gm === 'die') tgt.copy(Tk.m.position);
       else if (gm === 'zone') tgt.copy(Tk.zoneW);
+      else if (gm === 'hold') tgt.copy(HO.look);
       else if (gm === 'partnerCube') tgt.copy(pCube.position);
       else if (gm === 'partner') tgt.copy(ctx.camera.position).lerp(o.head(), 0.7);
       else if (gm === 'mover') { var mm = ctx.meshes[mv.id]; if (mm) tgt.copy(mm.position); else tgt.copy(ctx.camera.position); }
@@ -753,7 +797,7 @@ if (T3 && T3.ctx) (function () {
 
       // ----- only a real change is drawn; a settled creature goes quiet -----
       var change = signature(root);
-      if (change < 1.5e-4 && !Tk) {
+      if (change < 1.5e-4 && !Tk && !hold) {
         if (++quietFrames >= 6 && !busy && !moving) { quiet = true; quietT = now; camQ.copy(ctx.camera.position); }
         return;
       }
@@ -834,6 +878,9 @@ if (T3 && T3.ctx) (function () {
     crs.forEach(function (x) { x.place(); }); ctx.refit(); ctx.dirty(); ctx.startLoop();
   };
   T3.creatureStats = function (i) { return cr(i).stats(); };
+  // CUPTOSS: table.js asks a creature (seat i: 0 = the first, 1 = the second) to hold the cup / cubes with both hands
+  ctx.grips = ctx.grips || {};
+  ctx.grips.creature = function (i) { var c = crs[i ? 1 : 0]; return c && c.has() && c.visible() ? c.grip() : null; };
 
   // Watching the game without any hook in game.js: when the kid sets the Goal, the creatures look at it; a huge Goal
   // (50 or more, or four cubes and more) earns an 'impressed' reaction from each free creature (the second a beat later).
