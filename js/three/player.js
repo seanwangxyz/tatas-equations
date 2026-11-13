@@ -41,17 +41,18 @@
 // outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
 // for his head (the extents hook marks those points 'soft', see table.js). If his head can't be on screen he stays
 // hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table.
-// Style rule (Tata's): at rest a person is completely still, apart from an occasional single blink (the creatures
-// blink too). Everything else is a one-shot in response to an event, and it settles back to rest.
+// Style rule (Tata's): at rest a person is perfectly still in a good pose (no idle sway, breathing or blink timer).
+// Everything else is one calm move in response to an event, ending in a held pose (see poses.js for the vocabulary).
 import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
 import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT, savedKit } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
 import { FLOOR_Y } from './environment.js';
+import { installPoses, TRAVEL } from './poses.js';
 
 var T3 = window.T3;
-var NAMES = ['wave', 'cheer', 'clap', 'think', 'aw', 'now', 'reach', 'nod'];
-var CELEBS = ['jump', 'spin', 'robot', 'slide'];
+var NAMES = ['wave', 'cheer', 'clap', 'think', 'aw', 'now', 'reach', 'nod', 'yes', 'proud', 'gg', 'proudClap', 'chinUp'];
+var CELEBS = ['jump', 'spin', 'robot', 'slide', 'plane', 'heel', 'brain', 'number'];
 if (T3 && !T3.ctx) {
   // no 3D: keep the API callable
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
@@ -64,7 +65,7 @@ if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
   var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
-  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl'];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl', 'bank', 'heel'];
   var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
   function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
@@ -72,7 +73,8 @@ if (T3 && T3.ctx) (function () {
   function makeAvatar(role) {
     return { role: role, model: null, key: '', who: '', dims: KID, shown: false, fits: false, placedOnce: false,
       place: { x: 0, y: -0.2, z: 0, s: 1, rot: Math.PI, hd: 0, drop: 0 }, P: zero(POSE), cur: zero(POSE), F: zero(FACE), Fc: zero(FACE, { lid: 0.95 }),
-      arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }),
+      arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35, cu: 0.15, dCu: 0.15, th: 0.15, dTh: 0.15 }; }),
+      st: { cur: 'rest', from: null, t0: 0, w: { rest: 1 } }, att: null, proud: null, shadow: null,
       g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, trip: null,
       wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
@@ -323,6 +325,8 @@ if (T3 && T3.ctx) (function () {
     if (!(w > 0)) return; tv.set(x, y, z); if (!raw) mapArm(A, tv);
     var R = A.arm[i]; R.des.lerp(tv, Math.min(1, w)); R.dAl += (al - R.dAl) * w; R.dOp += (op - R.dOp) * w;
   }
+  // fingers (c) and thumb (th) curled into the palm: 0 open .. 1 a fist (th defaults to c)
+  function curl(A, i, c, w, th) { if (!(w > 0)) return; var R = A.arm[i], k = Math.min(1, w); R.dCu += (c - R.dCu) * k; R.dTh += ((th == null ? c : th) - R.dTh) * k; }
   // add an expression, weighted (lid is a target, the rest are added)
   function face(A, f, w) { if (!(w > 0)) return; for (var k in f) { if (k === 'lid') A.F.lid += (f.lid - A.F.lid) * Math.min(1, w); else A.F[k] += f[k] * w; } }
   // where a world point is, in his chest space
@@ -457,6 +461,9 @@ if (T3 && T3.ctx) (function () {
     P.hop += 0.3 * hop * e; P.headPitch += -0.34 * up * e; P.lean += -0.06 * up * e;
     face(A, { big: 0.4 + 0.6 * up, squint: 0.4 * up, browUp: 0.3 + 0.4 * up }, e);
   } };
+  // the acting vocabulary (js/three/poses.js): stances held at the seat, new moods and celebrations
+  var PH = { GEST: GEST, setArm: setArm, face: face, curl: curl, win: win, ramp: ramp, clamp: clamp, lerp: lerp, sstep: sstep, easeIO: easeIO, easeOut: easeOut, TAU: TAU };
+  var STANCES = installPoses(PH).stances;
 
   // The hand goes toward the cube but stops short of the table: it must never cover the mat or a cube.
   function reachHand(A, o) {
@@ -474,6 +481,9 @@ if (T3 && T3.ctx) (function () {
     if (!A.model || !(A.shown || A.forced)) return false;   // (MATCHDAY: forced)
     var now = performance.now();
     if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
+    // Tata reacts as a proud dad: applause with a thumbs up, a calm "chin up" after a loss
+    if (A.who === 'tata') { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
+    A.proud = null; A.proudNext = m === 'cheer';             // a great shake: he ends with his hands on his hips
     var d = GEST[m]; if (!d) return false;
     if (document.hidden) return false;
     var o = opts ? Object.assign({}, opts) : {};
@@ -936,8 +946,112 @@ if (T3 && T3.ctx) (function () {
     }
   }
 
+  // ---------- held poses chosen by the game state (stances) ----------
+  // Read-only look at the game (G): whose turn it is decides how he stands at his seat. A change of stance is one eased
+  // move (ST_DUR); then the pose is held perfectly still.
+  var ST_DUR = 0.75;
+  function gameNow() { return (typeof G !== 'undefined' && G && typeof current !== 'undefined' && current === 'game') ? G : null; }
+  // which player index this avatar plays for (-1: none)
+  function playerOf(A, g) {
+    if (A === me) return 0;
+    if (g.team) return 0;
+    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) return i;
+    return -1;
+  }
+  function isMine(A, g, idx) { if (idx !== playerOf(A, g)) return false; if (g.team && idx === 0) return (g.team.cur === 0) === (A === me); return true; }
+  function stanceFor(A) {
+    var g = gameNow(); if (!g || A.trip || !g.players) return 'rest';
+    try { if (T3.replayActive && T3.replayActive()) return 'look'; } catch (e) {}
+    var ph = g.phase;
+    if (A.proud && A.proud.g === g && ph === A.proud.ph) return 'proud';
+    if (ph === 'move') return isMine(A, g, g.turn) && !g.carrying ? 'study' : (g.carrying ? 'wait' : (isMine(A, g, g.turn) ? 'study' : 'wait'));
+    if (ph === 'goal') return isMine(A, g, g.setter) ? 'study' : 'wait';
+    if (ph === 'challenge' || ph === 'lastwrite' || ph === 'lastcheck') return 'wait';
+    return 'rest';
+  }
+  // the stance weights for this frame (the eased cross-fade, exact at the end)
+  function stanceWeights(A, now) {
+    var S0 = A.st, want = stanceFor(A);
+    if (want !== S0.cur) { S0.from = Object.assign({}, S0.w); S0.cur = want; S0.t0 = now; }
+    if (S0.from) {
+      var k = clamp((now - S0.t0) / 1000 / ST_DUR, 0, 1), e = k * k * k * (k * (6 * k - 15) + 10), w = {};
+      Object.keys(S0.from).forEach(function (n) { w[n] = S0.from[n] * (1 - e); });
+      w[want] = (w[want] || 0) + e; S0.w = w;
+      if (k >= 1) { S0.from = null; S0.w = {}; S0.w[want] = 1; }
+    }
+    return S0.w;
+  }
+  // the two hand spots on the rail in front of him (chest space of the last drawn frame), or null when out of reach
+  var RL = new THREE.Vector3(), RR = new THREE.Vector3();
+  function railSpots(A) {
+    var L = ctx.layout; if (!L || !A.model) return null;
+    var ow = L.W / 2 + 0.55, od = L.D / 2 + 0.55, fx = Math.sin(A.wk.yaw), fz = Math.cos(A.wk.yaw), x = A.wk.x, z = A.wk.z, t = 1e9;
+    if (Math.abs(fx) > 1e-3) [ow, -ow].forEach(function (bx) { var tt = (bx - x) / fx; if (tt > 0 && Math.abs(z + fz * tt) <= od) t = Math.min(t, tt); });
+    if (Math.abs(fz) > 1e-3) [od, -od].forEach(function (bz) { var tt = (bz - z) / fz; if (tt > 0 && Math.abs(x + fx * tt) <= ow) t = Math.min(t, tt); });
+    var s = A.place.s, D = A.dims; if (t > (D.L1 + D.L2) * s * 1.05) return null;
+    var cx = x + fx * (t - 0.22), cz = z + fz * (t - 0.22), hw = D.SH_X * 0.95 * s, y = 0.62 + 0.27 * D.handS * s;
+    A.model.chest.updateMatrixWorld(); inv.copy(A.model.chest.matrixWorld).invert();
+    // his right hand (arm 0) is on the -x side of his body: to the right of the way he faces
+    RR.set(cx - fz * hw, y, cz + fx * hw).applyMatrix4(inv); RL.set(cx + fz * hw, y, cz - fx * hw).applyMatrix4(inv);
+    return { R: RR, L: RL };
+  }
+  // what he looks at: a cube someone else is carrying, the creature (or the other person) when it is their go, the cube
+  // he picked or the cubes on his go. Small changes are ignored, so a breathing creature never makes him sway.
+  var AT = new THREE.Vector3(), HP = new THREE.Vector3();
+  function attention(A, stance) {
+    var g = gameNow(); if (!g || A.trip) return null;
+    var mine = A.trip && A.trip.m, held = ctx.held != null && ctx.meshes[ctx.held];
+    if (held && held !== mine && held.visible) return { p: AT.copy(held.position), live: true };
+    if (stance === 'wait') {
+      var other = A === me ? mate : me;
+      if (other.shown && other.model && other.model.root.visible && other !== A && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
+      try { var f = T3.creatureFocus && T3.creatureFocus(); if (f && f.head) return { p: AT.copy(f.head) }; } catch (e) {}
+      return null;
+    }
+    if (stance === 'study') {
+      if (g.selected != null && ctx.meshes[g.selected] && ctx.meshes[g.selected].visible) return { p: AT.copy(ctx.meshes[g.selected].position) };
+      var L = ctx.layout, r = L && L.z && L.z.resources; if (r) return { p: AT.set(r[0] + r[2] / 2, 0.5, r[1] + r[3] / 2) };
+    }
+    return null;
+  }
+  // turn the head (and eyes) toward the attention point, weighted
+  function lookAt(A, tgt, w) {
+    var m = A.model; m.neck.getWorldPosition(HP); HP.y += (A.dims.HEAD_UP + 0.25) * A.place.s;
+    var dx = tgt.p.x - HP.x, dy = tgt.p.y - HP.y, dz = tgt.p.z - HP.z, yaw0 = A.wk.yaw;
+    var yaw = wrap(Math.atan2(dx, dz) - yaw0), pitch = Math.atan2(-dy, Math.hypot(dx, dz));
+    yaw = clamp(yaw, -0.85, 0.85); pitch = clamp(pitch, -0.5, 0.75);
+    var at = A.att;
+    if (!at || tgt.live || Math.abs(at.yaw - yaw) > 0.06 || Math.abs(at.pitch - pitch) > 0.06) A.att = at = { yaw: yaw, pitch: pitch };
+    A.P.headYaw += at.yaw * 0.85 * w; A.P.headPitch += (at.pitch - 0.22) * 0.7 * w;
+    face(A, { gazeX: clamp(at.yaw * 0.5, -0.6, 0.6), gazeY: clamp(-at.pitch * 0.5, -0.6, 0.6) }, w);
+  }
+
+  // ---------- contact shadow: a soft dark ellipse on the ground (or the felt) under him, smaller and lighter as he jumps
+  var shadowTex = null;
+  function makeShadow() {
+    if (!shadowTex) {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 64; var g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+      gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.3)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      shadowTex = new THREE.CanvasTexture(cv);
+    }
+    var geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+    var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 1 }));
+    mesh.renderOrder = 1; mesh.visible = false; ctx.scene.add(mesh); return mesh;
+  }
+  function placeShadow(A) {
+    var m = A.model; if (!m) return;
+    if (!A.shadow) A.shadow = makeShadow();
+    var sh = A.shadow, L = ctx.layout, R = m.root, s = A.place.s;
+    sh.visible = R.visible;
+    if (!sh.visible || !L) return;
+    var x = R.position.x, z = R.position.z, onT = Math.abs(x) < L.W / 2 + 0.55 && Math.abs(z) < L.D / 2 + 0.55;
+    var gy = onT ? 0.62 : FLOOR_Y + (A.trip && A.trip.script ? A.trip.up || 0 : 0);
+    var feet = R.position.y + A.dims.FOOT * s, hgt = Math.max(0, feet - gy) / s, k = 1 / (1 + 0.5 * hgt);
+    sh.position.set(x, gy + 0.03, z); sh.rotation.y = A.wk.yaw;
+    sh.scale.set(1.9 * A.dims.torsoX * s * k, 1, 1.5 * A.dims.torsoX * s * k); sh.material.opacity = clamp(k * k, 0.15, 1);
+  }
+
   // ---------- per frame ----------
-  function rnd(a, b) { return a + Math.random() * (b - a); }
   function update(now) {
     if (needPlace && ctx.layout) computePlace();   // right after a camera fit, even while hidden (the view has no offsets yet)
     if (mate.seat === 'far' && mate.shown && mate.model) {
@@ -947,20 +1061,29 @@ if (T3 && T3.ctx) (function () {
     step(me, now); step(mate, now);
   }
   function step(A, now) {
-    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); return; }
+    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
     if (document.hidden && A.trip) finishNow(A, true);
     var P = A.P, F = A.F, i, k, W = A.wk;
     for (k in P) P[k] = 0; P.headPitch = 0.22;
     for (k in F) F[k] = 0; F.lid = 0.95;
-    for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; }
+    for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; A.arm[i].dCu = 0.15; A.arm[i].dTh = 0.15; }
+    // a mood in progress (its envelope e), the held stance under it (faded out while the mood plays), and where he looks
+    var d = null, u = 0, me1 = 0;
     if (A.g) {
-      var d = GEST[A.g.n], u = (now - A.g.t0) / 1000, fd = 1;
+      d = GEST[A.g.n]; u = (now - A.g.t0) / 1000; var fd = 1;
       if (A.g.fade) fd = 1 - sstep((now - A.g.fade) / 450);
-      if (u > A.g.dur || fd <= 0) A.g = null;
-      else d.fn(A, u, env(u, A.g.dur, d.att, d.rel) * fd, A.g.opts);
+      if (u > A.g.dur || fd <= 0) { A.g = null; d = null; } else me1 = env(u, A.g.dur, d.att, d.rel) * fd;
     }
+    if (!A.g && A.proudNext) { A.proudNext = false; var gp = gameNow(); if (gp) A.proud = { g: gp, ph: gp.phase }; }   // after a great shake: hands on hips
+    var sw = stanceWeights(A, now), sk = A.trip ? 0 : 1 - me1 * (1 - ((d && d.keep) || 0)), rail = null, stName = A.st.cur;
+    if (sk > 0) {
+      if ((sw.study || 0) + (sw.look || 0) > 0) rail = railSpots(A);
+      for (var sn in sw) if (sw[sn] > 0 && STANCES[sn]) STANCES[sn].fn(A, sw[sn] * sk, { rail: rail });
+      var tg = attention(A, stName); if (tg && A.model) lookAt(A, tg, sk * (1 - me1 * 0.8)); else A.att = null;
+    }
+    if (d) d.fn(A, u, me1, A.g.opts);
     var T = A.trip;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; syncHome(A); }
@@ -968,10 +1091,15 @@ if (T3 && T3.ctx) (function () {
     // how fast he really moves (legs, arm swing) and which way he faces
     var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
     W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
-    W.ph += mv / (WALK.stride * A.place.s) * Math.PI;
+    // gait: the stride grows with the speed (a walk takes short steps, a run long ones with a little flight), so the
+    // feet keep pace with the ground instead of skating. Tata: longer, calmer steps, more upright, less bounce.
+    var grown = A.who === 'tata', vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
+    var stride = grown ? 3.0 + 0.09 * vU : 2.3 + 0.11 * vU;
+    if (!noGait) W.ph += mv / (stride * A.place.s) * Math.PI;
     var wy = wrap(W.yawT - W.yaw); W.yaw += wy * (1 - Math.exp(-(T ? 16 : 10) * dt)); if (Math.abs(wy) < 1e-4) W.yaw = W.yawT;
-    var run = clamp(W.spd / (0.5 * WALK.v * A.place.s), 0, 1);
-    P.lean += 0.16 * run; P.twist += 0.1 * run * Math.sin(W.ph); P.hop += 0.09 * run * Math.abs(Math.cos(W.ph));
+    var run = noGait ? 0 : clamp(W.spd / (0.5 * WALK.v * A.place.s), 0, 1);
+    P.lean += (grown ? 0.09 : 0.16) * run; P.twist += (grown ? 0.06 : 0.1) * run * Math.sin(W.ph); P.hop += (grown ? 0.05 : 0.09) * run * Math.abs(Math.cos(W.ph));
+    if (A.turnStep) { var ts = A.turnStep; P.hop += 0.04 * Math.abs(Math.sin(ts * TAU)); }   // turning on the spot: two little steps
     // smooth everything toward the targets (calm follow-through, never a snap; quicker while he moves a cube)
     var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-(T ? 18 : 10) * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T || W.spd > 0 || W.yaw !== W.yawT, cur = A.cur, Fc = A.Fc;
     while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
@@ -981,28 +1109,30 @@ if (T3 && T3.ctx) (function () {
       var AR = A.arm[i]; if (AR.goal.distanceToSquared(AR.des) > 1e-6) moving = true;
       AR.goal.lerp(AR.des, ka); AR.al += (AR.dAl - AR.al) * ka; AR.op += (AR.dOp - AR.op) * ka;
     }
-    // an occasional single blink (only when nothing else is going on with his eyes closed)
-    if (!A.nextBlink) A.nextBlink = now + rnd(2500, 6000);
-    if (now >= A.nextBlink) { A.blinkT0 = now; A.nextBlink = now + rnd(3800, 7500); }
-    var bt = (now - A.blinkT0) / 1000, blink = bt < 0 ? 0 : bt < 0.07 ? bt / 0.07 : bt < 0.11 ? 1 : bt < 0.24 ? 1 - (bt - 0.11) / 0.13 : 0;
-    if (blink > 0 || bt < 0.3) moving = true;
+    // (no idle blink timer: at rest he is perfectly still, the owner's rule)
+    var blink = 0;
+    for (i = 0; i < 2; i++) { var AQ = A.arm[i], dc = AQ.dCu - AQ.cu, dt2 = AQ.dTh - AQ.th; if (Math.abs(dc) > 1e-3 || Math.abs(dt2) > 1e-3) moving = true; AQ.cu += dc * ka; AQ.th += dt2 * ka; }
     // apply
     var m = A.model, R = m.root, D = A.dims, s = A.place.s, fl = clamp(cur.flop, 0, 1);
     // legs: a crouch bends hips and knees (feet stay put), a kneel folds the shins back onto the pitch; running swings
     // them (stride matched to the ground speed); lying on the table they fold up behind him, feet in the air
     var ca = clamp(cur.crouch, 0, 1) * 0.85, kn = clamp(cur.kneel, 0, 1) * Math.PI / 2;
     var dropL = (D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn);
-    var rl = run * (1 - fl), h0 = -0.75 * rl * Math.sin(W.ph), h1 = -h0, k0 = rl * (0.2 + 1.1 * Math.max(0, Math.cos(W.ph))), k1 = rl * (0.2 + 1.1 * Math.max(0, -Math.cos(W.ph)));
+    var rl = run * (1 - fl), amp = grown ? 0.5 + 0.18 * rl : 0.55 + 0.22 * rl, h0 = -amp * rl * Math.sin(W.ph), h1 = -h0, k0 = rl * (0.2 + 1.1 * Math.max(0, Math.cos(W.ph))), k1 = rl * (0.2 + 1.1 * Math.max(0, -Math.cos(W.ph)));
+    if (A.turnStep) { var tq = A.turnStep * TAU; k0 += 0.45 * Math.max(0, Math.sin(tq)); k1 += 0.45 * Math.max(0, -Math.sin(tq)); h0 -= 0.12 * Math.max(0, Math.sin(tq)); h1 -= 0.12 * Math.max(0, -Math.sin(tq)); }
+    // heel click: both legs swing out to his left, knees bent, heels meeting
+    var hc = clamp(cur.heel, 0, 1); k0 += 0.9 * hc; k1 += 0.9 * hc;
     // on his tummy: while his hips are still outside the rim his legs hang down the side of the table, feet off the
     // ground; further in, they lie out behind him with the feet up
     // thighs stay upright in the world (hanging down the table's side, or kneeling on the felt with the shins flat behind)
     var cr = clamp(cur.crawl, 0, 1), pit = Math.max(0, cur.pitch);
     m.setKnees(-ca + h0 - pit + 0.2 * fl, -ca + h1 - pit + 0.3 * fl, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr);
+    if (m.legs) { m.legs[0].rotation.z = 0.5 * hc; m.legs[1].rotation.z = 0.22 * hc; }
     var rot = W.yaw + cur.spin, fx = Math.sin(W.yaw), fz = Math.cos(W.yaw), fw = (clamp(cur.fwd, 0, 0.75) + Math.max(0, cur.slide)) * s, sw = cur.side * s;
     // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
     R.position.set(W.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL * (1 - fl) + Math.max(0, cur.lift)) * s + (A.trip && A.trip.script ? A.trip.up || 0 : 0), W.z + fz * fw - fx * sw);   // (MATCHDAY: up = standing on the podium)
     if (R.rotation.order !== 'YXZ') R.rotation.order = 'YXZ';
-    R.rotation.set(pit, rot, 0); R.scale.setScalar(s);
+    R.rotation.set(pit, rot, cur.bank); R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
     var hp = cur.headPitch;
     m.neck.rotation.set(hp * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
@@ -1010,8 +1140,11 @@ if (T3 && T3.ctx) (function () {
     for (i = 0; i < 2; i++) {
       var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
       a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);
+      // fingers and thumb curl in toward the palm (a fist, a grip, a thumbs-up)
+      if (a.padF) { a.padF.rotation.x = 1.25 * A.arm[i].cu; a.padT.rotation.x = 1.0 * A.arm[i].th; }
     }
     if (T && A.trip === T) tripArm(A, T, dt);
+    placeShadow(A);
     var lid = Fc.lid * (1 - blink);
     m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
     // only ask for frames while something is happening; at rest he is still
