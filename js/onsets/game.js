@@ -77,7 +77,8 @@ function osMulti() { return osHumans().length > 1; }
 function osThird(a, b) { if (osN() < 3) return null; var r = osIdx().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
 function osVsCreature() { return osAIs().length > 0 && !osIsAI(0); } // the device owner earns On-Sets stars only against creatures
 // which creature at the table plays for player i (two creatures: the first AI player is creature 0)
-function osSeat(i) { var n = -1; for (var j = 0; j <= i && j < OG.players.length; j++) if (OG.players[j].ai) n++; n = n < 0 ? 0 : n; return OG && OG.seatFlip && n < 2 ? 1 - n : n; } // CLOCKWISE: OG.seatFlip puts the first creature to play on the kid's left (wide table: creature seat 1)
+function osSeat(i) { var n = -1; for (var j = 0; j <= i && j < OG.players.length; j++) if (OG.players[j].ai) n++; n = n < 0 ? 0 : n; return n; } // (creatures in play order; js/onsets/view3d.js alone mirrors the figures' seats so play goes clockwise)
+// was: }  // CLOCKWISE: OG.seatFlip puts the first creature to play on the kid's left (wide table: creature seat 1)
 // the creature that is 'up' (speaks, is shown in the speech line)
 function osFocus(i) {
   if (!OG || !osIsAI(i)) return;
@@ -159,16 +160,7 @@ function osStartMatch(mode, oppIdx, cfg) {
 // seat 1 stands on the left (js/three/creatures.js PAIR) and on the tall one seat 0 does, so on the wide table the first
 // creature to play is given seat 1: osSeat() flips and the two kinds are set again in the opposite order (view3d.js
 // seats them in player order, and is not edited here). Same wide/tall test as js/three/table.js chooseLayout.
-function osClockwise() {
-  try {
-    var ais = OG.players.filter(function (p) { return p.ai; });
-    OG.seatFlip = false;
-    if (ais.length !== 2 || !window.T3 || !T3.setCreatures) return;
-    var m = document.getElementById('gMat'), w = (m && m.clientWidth) || innerWidth, h = (m && m.clientHeight) || innerHeight;
-    OG.seatFlip = !(w / Math.max(1, h) < 0.9);
-    if (OG.seatFlip) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }).reverse());
-  } catch (e) { OG.seatFlip = false; }
-}
+function osClockwise() { OG.seatFlip = false; } // the seat mirror lives in js/onsets/view3d.js (begin + seatOf); doing it here as well flipped it twice
 function osNewShake() {
   OG.universe = []; OG.cubes = []; OG.goal = null; OG.goalValue = null; OG.lastMover = null; OG.selected = null; OG.ch = null;
   OG.busy = false; OG.highlight = null; OG.hintUsed = false; OG.phase = 'setup'; OG.turn = OG.setter; OG.dealt = false;
