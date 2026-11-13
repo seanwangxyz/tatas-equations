@@ -12,7 +12,7 @@
 //   Every Solution a player writes is mapped to real cubes (Eq.cubeTokens) and re-checked with
 //   Eq.checkSolution under the card; the summary prints how many were wrong (should be 0).
 //   BONUS dice (house rule, js/bonus.js): add 'bonus' (all three dice) or 'bonus:big', 'bonus:power', 'bonus:twist',
-//   'bonus:big+power' … The Big-number / Power dice become cubes 24 and 25 with a random face each shake; the Twist die
+//   'bonus:big+power' … The Big-number / Power dice become cubes 24 and 25 with a random face each shake; the Twist deck
 //   switches on one of its variation cards (with its setting) about 3 shakes in 4 (its scoring twists don't change play).
 //   The summary prints how often Goals and Solutions used a bonus cube, by creature, and the same re-check.
 //   e.g. node tests/playtest.js 4 4 bonus     |  node tests/playtest.js 4 4 average bonus:power
@@ -147,7 +147,7 @@ function playShake(A0, B0, setter, stats) {
   const A = P[0], B = P[1];
   const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })), fractions: stage.fractions };
   G.cubes.forEach(c => { if (!Eq.isDigit(c.s) && stage.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; } });
-  // BONUS: the Big-number and Power dice join the roll as cubes 24, 25; the Twist die may pick this shake's card
+  // BONUS: the Big-number and Power dice join the roll as cubes 24, 25; the Twist deck may pick this shake's card
   G_HAS_BONUS = false;
   ['big', 'power'].forEach(d => { if (!BONUS.includes(d)) return; const f = Eq.CUBE_FACES[d].filter(s => d !== 'big' || stage.fractions || Eq.bigOf(s).d === 1); G.cubes.push({ id: G.cubes.length, color: d, s: f[Math.floor(Math.random() * f.length)], zone: 'resources', order: G.cubes.length, locked: false }); G_HAS_BONUS = true; });
   const TWISTCARDS = [['basem', { base: 8 }], ['basem', { base: 9 }], ['wild0'], ['upside'], ['sideways'], ['average'], ['multiops'], ['multk', { k: 6 }], ['multk', { k: 10 }], ['expo'], ['powbase'], ['twodigit'], ['remainder'], ['factorial'], ['nfactors']];
