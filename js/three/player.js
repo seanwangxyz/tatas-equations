@@ -8,7 +8,11 @@
 //                                'now' takes {kind:'impossible'} for the arms-out version.
 //                                'reach' takes {cube:id} or {x, z} (world) and gestures toward that spot.
 //                                Each mood also changes his face a little (eyes, brows, mouth), once.
-//   T3.playerCelebrate(name)     one of T3.playerCelebrations() ('jump', 'spin', 'robot', 'slide'), 2-3 s, once.
+//                                Also 'yes' (fist pump), 'proud' (hands on hips, held), 'gg' (sporting nod and claps),
+//                                'five' (high five); Tata turns 'clap' / 'aw' into 'proudClap' / 'chinUp' (poses.js).
+//                                Under the moods he holds a stance chosen by the game state (study / wait / proud / look).
+//   T3.playerCelebrate(name)     one of T3.playerCelebrations() ('jump', 'spin', 'robot', 'slide', 'plane', 'heel',
+//                                'brain', 'number'), 3-6 s, once; 'slide' / 'plane' run out beside the table and back.
 //                                No name: the one saved in S.kit.celebrate. Returns true if it plays.
 //   T3.playerMoods()             list of mood names
 //   T3.playerSet(o | null)       who stands at his spot and how he looks: { who: 'kid' | 'tata', kit, name, number }.
@@ -41,17 +45,18 @@
 // outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
 // for his head (the extents hook marks those points 'soft', see table.js). If his head can't be on screen he stays
 // hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table.
-// Style rule (Tata's): at rest a person is completely still, apart from an occasional single blink (the creatures
-// blink too). Everything else is a one-shot in response to an event, and it settles back to rest.
+// Style rule (Tata's): at rest a person is perfectly still in a good pose (no idle sway, breathing or blink timer).
+// Everything else is one calm move in response to an event, ending in a held pose (see poses.js for the vocabulary).
 import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
 import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT, savedKit } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
 import { FLOOR_Y } from './environment.js';
+import { installPoses, TRAVEL } from './poses.js';
 
 var T3 = window.T3;
-var NAMES = ['wave', 'cheer', 'clap', 'think', 'aw', 'now', 'reach', 'nod'];
-var CELEBS = ['jump', 'spin', 'robot', 'slide'];
+var NAMES = ['wave', 'cheer', 'clap', 'think', 'aw', 'now', 'reach', 'nod', 'yes', 'proud', 'gg', 'proudClap', 'chinUp'];
+var CELEBS = ['jump', 'spin', 'robot', 'slide', 'plane', 'heel', 'brain', 'number'];
 if (T3 && !T3.ctx) {
   // no 3D: keep the API callable
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
@@ -64,7 +69,7 @@ if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
   var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
-  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl'];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl', 'bank', 'heel'];
   var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
   function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
@@ -72,7 +77,8 @@ if (T3 && T3.ctx) (function () {
   function makeAvatar(role) {
     return { role: role, model: null, key: '', who: '', dims: KID, shown: false, fits: false, placedOnce: false,
       place: { x: 0, y: -0.2, z: 0, s: 1, rot: Math.PI, hd: 0, drop: 0 }, P: zero(POSE), cur: zero(POSE), F: zero(FACE), Fc: zero(FACE, { lid: 0.95 }),
-      arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35 }; }),
+      arm: [0, 1].map(function (i) { var r = new THREE.Vector3(REST0[i][0], REST0[i][1], REST0[i][2]); return { rest: r, des: r.clone(), goal: r.clone(), al: 0.2, op: 0.35, dAl: 0.2, dOp: 0.35, cu: 0.15, dCu: 0.15, th: 0.15, dTh: 0.15 }; }),
+      st: { cur: 'rest', from: null, t0: 0, w: { rest: 1 } }, att: null, proud: null, shadow: null,
       g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, trip: null,
       wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
@@ -323,6 +329,8 @@ if (T3 && T3.ctx) (function () {
     if (!(w > 0)) return; tv.set(x, y, z); if (!raw) mapArm(A, tv);
     var R = A.arm[i]; R.des.lerp(tv, Math.min(1, w)); R.dAl += (al - R.dAl) * w; R.dOp += (op - R.dOp) * w;
   }
+  // fingers (c) and thumb (th) curled into the palm: 0 open .. 1 a fist (th defaults to c)
+  function curl(A, i, c, w, th) { if (!(w > 0)) return; var R = A.arm[i], k = Math.min(1, w); R.dCu += (c - R.dCu) * k; R.dTh += ((th == null ? c : th) - R.dTh) * k; }
   // add an expression, weighted (lid is a target, the rest are added)
   function face(A, f, w) { if (!(w > 0)) return; for (var k in f) { if (k === 'lid') A.F.lid += (f.lid - A.F.lid) * Math.min(1, w); else A.F[k] += f[k] * w; } }
   // where a world point is, in his chest space
@@ -457,6 +465,9 @@ if (T3 && T3.ctx) (function () {
     P.hop += 0.3 * hop * e; P.headPitch += -0.34 * up * e; P.lean += -0.06 * up * e;
     face(A, { big: 0.4 + 0.6 * up, squint: 0.4 * up, browUp: 0.3 + 0.4 * up }, e);
   } };
+  // the acting vocabulary (js/three/poses.js): stances held at the seat, new moods and celebrations
+  var PH = { GEST: GEST, setArm: setArm, face: face, curl: curl, win: win, ramp: ramp, clamp: clamp, lerp: lerp, sstep: sstep, easeIO: easeIO, easeOut: easeOut, TAU: TAU };
+  var STANCES = installPoses(PH).stances;
 
   // The hand goes toward the cube but stops short of the table: it must never cover the mat or a cube.
   function reachHand(A, o) {
@@ -474,6 +485,9 @@ if (T3 && T3.ctx) (function () {
     if (!A.model || !(A.shown || A.forced)) return false;   // (MATCHDAY: forced)
     var now = performance.now();
     if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
+    // Tata reacts as a proud dad: applause with a thumbs up, a calm "chin up" after a loss
+    if (A.who === 'tata') { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
+    A.proud = null; A.proudNext = m === 'cheer';             // a great shake: he ends with his hands on his hips
     var d = GEST[m]; if (!d) return false;
     if (document.hidden) return false;
     var o = opts ? Object.assign({}, opts) : {};
@@ -719,6 +733,13 @@ if (T3 && T3.ctx) (function () {
   function walkSeg(path, v, endYaw, s, back) {
     return { k: 'walk', path: path, T: path.len < 0.05 ? 0 : path.len / v + 0.15, endYaw: endYaw, side: path.len < 1.6 * s, back: !!back };
   }
+  // before a walk that sets off at an angle to the way he faces: he turns on the spot first (two little steps)
+  function turnSeg(yaw0, path, s, quick) {
+    if (!path || path.len < 1.6 * s || path.pts.length < 2) return null;
+    var P0 = path.pts[0], P1 = path.pts[1], ty = Math.atan2(P1[0] - P0[0], P1[1] - P0[1]), d = Math.abs(wrap(ty - yaw0));
+    if (d < 0.9) return null;
+    return { k: 'turn', x: P0[0], z: P0[1], yaw: ty, T: (quick ? 0.1 : 0.16) + 0.06 * d };
+  }
 
   // ----- a move -----
   function buildTrip(A, id, zone, m, sl, rest, quick, fin) {
@@ -729,7 +750,7 @@ if (T3 && T3.ctx) (function () {
     if (!pl) return null;
     var q = quick ? WALK.quickT : 1, vq = runSpeed(A, quick), segs = [];
     var G1 = pl.G, P1 = pl.P;
-    if (G1.i >= 0) { var w1 = ringPath(pl, pl.iS, G1.i, pl.dSG.dir, pl.offS > 0.05 ? S : null, null); if (w1.len > 0.05) segs.push(walkSeg(w1, vq, G1.plan.yaw, s)); }
+    if (G1.i >= 0) { var w1 = ringPath(pl, pl.iS, G1.i, pl.dSG.dir, pl.offS > 0.05 ? S : null, null); if (w1.len > 0.05) { var t1 = turnSeg(A.wk.yaw, w1, s, quick); if (t1) segs.push(t1); segs.push(walkSeg(w1, vq, G1.plan.yaw, s)); } }
     segs.push({ k: 'grab', x: G1.p.x, z: G1.p.z, plan: G1.plan, T: (G1.plan.mode === 'flop' ? WALK.tGrabF : WALK.tGrab) * q, tgt: Tg });
     var w2 = G1.i < 0 ? ringPath(pl, pl.iS, P1.i, pl.dGP.dir, S, null) : ringPath(pl, G1.i, P1.i, pl.dGP.dir, null, null);
     if (w2.len > 0.05) segs.push(walkSeg(w2, vq, P1.plan.yaw, s));
@@ -805,7 +826,8 @@ if (T3 && T3.ctx) (function () {
     dir = ok[0] && (!ok[1] || dp <= dn) ? 1 : ok[1] ? -1 : (dp <= dn ? 1 : -1);
     var from = { x: A.wk.x, z: A.wk.z }, offH = Math.hypot(H.x - pts[iH].x, H.z - pts[iH].z);
     path = ringPath(ctxp, iS, iH, dir, from, offH > 0.05 ? { x: H.x, z: H.z } : null);
-    T.segs = [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
+    var tb = turnSeg(A.wk.yaw, path, s, false);
+    T.segs = tb ? [tb, walkSeg(path, WALK.vBack * s, H.yaw, s, true)] : [walkSeg(path, WALK.vBack * s, H.yaw, s, true)];
   }
   function tripEnd(A, T) {
     if (T.script) { endScript(A); return; }   // MATCHDAY: a scripted walk that ended at his seat
@@ -829,7 +851,17 @@ if (T3 && T3.ctx) (function () {
     var g = T.segs[T.i]; if (!g) return false;
     T.u = u; T.g = g;
     var W = A.wk, P = A.P, s = A.place.s, k = g.T > 0 ? clamp(u / g.T, 0, 1) : 1;
-    if (g.k === 'walk') {
+    A.turnStep = null;
+    if (g.k === 'turn') { W.x = g.x; W.z = g.z; W.yawT = g.yaw; A.turnStep = k; face(A, { smile: 0.3 }, 1); }
+    else if (g.k === 'act') {
+      // a celebration beat: in place, or gliding along a short path (the knee slide, the aeroplane loop)
+      if (g.path) {
+        pathAt(g.path, (g.ease ? g.ease(k) : k) * g.path.len, PA); W.x = PA.x; W.z = PA.z;
+        W.yawT = g.yaw != null ? g.yaw : ((PA.tx || PA.tz) ? Math.atan2(PA.tx, PA.tz) : W.yawT);
+        if (g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);
+      } else { W.x = g.x; W.z = g.z; if (g.yaw != null) W.yawT = g.yaw; }
+    }
+    else if (g.k === 'walk') {
       var r = Math.min(0.4, 0.15 / Math.max(g.T, 0.01)), vm = 1 / (1 - r), f;
       f = k < r ? 0.5 * vm * k * k / r : k > 1 - r ? 1 - 0.5 * vm * (1 - k) * (1 - k) / r : vm * (r / 2 + k - r);
       var d = f * g.path.len; pathAt(g.path, d, PA);
@@ -859,8 +891,10 @@ if (T3 && T3.ctx) (function () {
     for (var i = 0; i < 2; i++) {
       var ph = W.ph + i * Math.PI, AR = A.arm[i];
       if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
-      else if (!A.g) { tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - 0.65 * run * Math.sin(ph)); AR.des.copy(tv); }
+      else if (!A.g) { var sa = A.who === 'tata' ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
     }
+    if (g.k === 'walk' && g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);   // banking into the curve
+    if (g.fn && TRAVEL[g.fn]) TRAVEL[g.fn](A, u, k, PH);   // a celebration beat poses him on top
     return true;
   }
   // after the body is posed: the reaching hand goes straight to its target (anchored to the table), the free hand
@@ -936,8 +970,112 @@ if (T3 && T3.ctx) (function () {
     }
   }
 
+  // ---------- held poses chosen by the game state (stances) ----------
+  // Read-only look at the game (G): whose turn it is decides how he stands at his seat. A change of stance is one eased
+  // move (ST_DUR); then the pose is held perfectly still.
+  var ST_DUR = 0.75;
+  function gameNow() { return (typeof G !== 'undefined' && G && typeof current !== 'undefined' && current === 'game') ? G : null; }
+  // which player index this avatar plays for (-1: none)
+  function playerOf(A, g) {
+    if (A === me) return 0;
+    if (g.team) return 0;
+    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) return i;
+    return -1;
+  }
+  function isMine(A, g, idx) { if (idx !== playerOf(A, g)) return false; if (g.team && idx === 0) return (g.team.cur === 0) === (A === me); return true; }
+  function stanceFor(A) {
+    var g = gameNow(); if (!g || A.trip || !g.players) return 'rest';
+    try { if (T3.replayActive && T3.replayActive()) return 'look'; } catch (e) {}
+    var ph = g.phase;
+    if (A.proud && A.proud.g === g && ph === A.proud.ph) return 'proud';
+    if (ph === 'move') return isMine(A, g, g.turn) && !g.carrying ? 'study' : (g.carrying ? 'wait' : (isMine(A, g, g.turn) ? 'study' : 'wait'));
+    if (ph === 'goal') return isMine(A, g, g.setter) ? 'study' : 'wait';
+    if (ph === 'challenge' || ph === 'lastwrite' || ph === 'lastcheck') return 'wait';
+    return 'rest';
+  }
+  // the stance weights for this frame (the eased cross-fade, exact at the end)
+  function stanceWeights(A, now) {
+    var S0 = A.st, want = stanceFor(A);
+    if (want !== S0.cur) { S0.from = Object.assign({}, S0.w); S0.cur = want; S0.t0 = now; }
+    if (S0.from) {
+      var k = clamp((now - S0.t0) / 1000 / ST_DUR, 0, 1), e = k * k * k * (k * (6 * k - 15) + 10), w = {};
+      Object.keys(S0.from).forEach(function (n) { w[n] = S0.from[n] * (1 - e); });
+      w[want] = (w[want] || 0) + e; S0.w = w;
+      if (k >= 1) { S0.from = null; S0.w = {}; S0.w[want] = 1; }
+    }
+    return S0.w;
+  }
+  // the two hand spots on the rail in front of him (chest space of the last drawn frame), or null when out of reach
+  var RL = new THREE.Vector3(), RR = new THREE.Vector3();
+  function railSpots(A) {
+    var L = ctx.layout; if (!L || !A.model) return null;
+    var ow = L.W / 2 + 0.55, od = L.D / 2 + 0.55, fx = Math.sin(A.wk.yaw), fz = Math.cos(A.wk.yaw), x = A.wk.x, z = A.wk.z, t = 1e9;
+    if (Math.abs(fx) > 1e-3) [ow, -ow].forEach(function (bx) { var tt = (bx - x) / fx; if (tt > 0 && Math.abs(z + fz * tt) <= od) t = Math.min(t, tt); });
+    if (Math.abs(fz) > 1e-3) [od, -od].forEach(function (bz) { var tt = (bz - z) / fz; if (tt > 0 && Math.abs(x + fx * tt) <= ow) t = Math.min(t, tt); });
+    var s = A.place.s, D = A.dims; if (t > (D.L1 + D.L2) * s * 1.05) return null;
+    var cx = x + fx * (t - 0.22), cz = z + fz * (t - 0.22), hw = D.SH_X * 0.95 * s, y = 0.62 + 0.27 * D.handS * s;
+    A.model.chest.updateMatrixWorld(); inv.copy(A.model.chest.matrixWorld).invert();
+    // his right hand (arm 0) is on the -x side of his body: to the right of the way he faces
+    RR.set(cx - fz * hw, y, cz + fx * hw).applyMatrix4(inv); RL.set(cx + fz * hw, y, cz - fx * hw).applyMatrix4(inv);
+    return { R: RR, L: RL };
+  }
+  // what he looks at: a cube someone else is carrying, the creature (or the other person) when it is their go, the cube
+  // he picked or the cubes on his go. Small changes are ignored, so a breathing creature never makes him sway.
+  var AT = new THREE.Vector3(), HP = new THREE.Vector3();
+  function attention(A, stance) {
+    var g = gameNow(); if (!g || A.trip) return null;
+    var mine = A.trip && A.trip.m, held = ctx.held != null && ctx.meshes[ctx.held];
+    if (held && held !== mine && held.visible) return { p: AT.copy(held.position), live: true };
+    if (stance === 'wait') {
+      var other = A === me ? mate : me;
+      if (other.shown && other.model && other.model.root.visible && other !== A && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
+      try { var f = T3.creatureFocus && T3.creatureFocus(); if (f && f.head) return { p: AT.copy(f.head) }; } catch (e) {}
+      return null;
+    }
+    if (stance === 'study') {
+      if (g.selected != null && ctx.meshes[g.selected] && ctx.meshes[g.selected].visible) return { p: AT.copy(ctx.meshes[g.selected].position) };
+      var L = ctx.layout, r = L && L.z && L.z.resources; if (r) return { p: AT.set(r[0] + r[2] / 2, 0.5, r[1] + r[3] / 2) };
+    }
+    return null;
+  }
+  // turn the head (and eyes) toward the attention point, weighted
+  function lookAt(A, tgt, w) {
+    var m = A.model; m.neck.getWorldPosition(HP); HP.y += (A.dims.HEAD_UP + 0.25) * A.place.s;
+    var dx = tgt.p.x - HP.x, dy = tgt.p.y - HP.y, dz = tgt.p.z - HP.z, yaw0 = A.wk.yaw;
+    var yaw = wrap(Math.atan2(dx, dz) - yaw0), pitch = Math.atan2(-dy, Math.hypot(dx, dz));
+    yaw = clamp(yaw, -0.85, 0.85); pitch = clamp(pitch, -0.5, 0.75);
+    var at = A.att;
+    if (!at || tgt.live || Math.abs(at.yaw - yaw) > 0.06 || Math.abs(at.pitch - pitch) > 0.06) A.att = at = { yaw: yaw, pitch: pitch };
+    A.P.headYaw += at.yaw * 0.85 * w; A.P.headPitch += (at.pitch - 0.22) * 0.7 * w;
+    face(A, { gazeX: clamp(at.yaw * 0.5, -0.6, 0.6), gazeY: clamp(-at.pitch * 0.5, -0.6, 0.6) }, w);
+  }
+
+  // ---------- contact shadow: a soft dark ellipse on the ground (or the felt) under him, smaller and lighter as he jumps
+  var shadowTex = null;
+  function makeShadow() {
+    if (!shadowTex) {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 64; var g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+      gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.3)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      shadowTex = new THREE.CanvasTexture(cv);
+    }
+    var geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+    var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 1 }));
+    mesh.renderOrder = 1; mesh.visible = false; ctx.scene.add(mesh); return mesh;
+  }
+  function placeShadow(A) {
+    var m = A.model; if (!m) return;
+    if (!A.shadow) A.shadow = makeShadow();
+    var sh = A.shadow, L = ctx.layout, R = m.root, s = A.place.s;
+    sh.visible = R.visible;
+    if (!sh.visible || !L) return;
+    var x = R.position.x, z = R.position.z, onT = Math.abs(x) < L.W / 2 + 0.55 && Math.abs(z) < L.D / 2 + 0.55;
+    var gy = onT ? 0.62 : FLOOR_Y + (A.trip && A.trip.script ? A.trip.up || 0 : 0);
+    var feet = R.position.y + A.dims.FOOT * s, hgt = Math.max(0, feet - gy) / s, k = 1 / (1 + 0.5 * hgt);
+    sh.position.set(x, gy + 0.03, z); sh.rotation.y = A.wk.yaw;
+    sh.scale.set(1.9 * A.dims.torsoX * s * k, 1, 1.5 * A.dims.torsoX * s * k); sh.material.opacity = clamp(k * k, 0.15, 1);
+  }
+
   // ---------- per frame ----------
-  function rnd(a, b) { return a + Math.random() * (b - a); }
   function update(now) {
     if (needPlace && ctx.layout) computePlace();   // right after a camera fit, even while hidden (the view has no offsets yet)
     if (mate.seat === 'far' && mate.shown && mate.model) {
@@ -945,33 +1083,49 @@ if (T3 && T3.ctx) (function () {
       var f = !creatureHere(); if (f !== mate.fits) { mate.fits = f; applyVis(); }
     }
     step(me, now); step(mate, now);
+    // the high five waits until the kid's celebration has finished (and gives up after 12 s)
+    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && !mate.g) highFive(); }
   }
   function step(A, now) {
-    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); return; }
+    if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
     var dt = clamp((now - A.lastNow) / 1000, 0.001, 0.05); A.lastNow = now;
     if (document.hidden && A.g) A.g = null;
     if (document.hidden && A.trip) finishNow(A, true);
     var P = A.P, F = A.F, i, k, W = A.wk;
     for (k in P) P[k] = 0; P.headPitch = 0.22;
     for (k in F) F[k] = 0; F.lid = 0.95;
-    for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; }
+    for (i = 0; i < 2; i++) { A.arm[i].des.copy(A.arm[i].rest); A.arm[i].dAl = 0.2; A.arm[i].dOp = 0.35; A.arm[i].dCu = 0.15; A.arm[i].dTh = 0.15; }
+    // a mood in progress (its envelope e), the held stance under it (faded out while the mood plays), and where he looks
+    var d = null, u = 0, me1 = 0;
     if (A.g) {
-      var d = GEST[A.g.n], u = (now - A.g.t0) / 1000, fd = 1;
+      d = GEST[A.g.n]; u = (now - A.g.t0) / 1000; var fd = 1;
       if (A.g.fade) fd = 1 - sstep((now - A.g.fade) / 450);
-      if (u > A.g.dur || fd <= 0) A.g = null;
-      else d.fn(A, u, env(u, A.g.dur, d.att, d.rel) * fd, A.g.opts);
+      if (u > A.g.dur || fd <= 0) { A.g = null; d = null; } else me1 = env(u, A.g.dur, d.att, d.rel) * fd;
     }
-    var T = A.trip;
+    if (!A.g && A.proudNext) { A.proudNext = false; var gp = gameNow(); if (gp) A.proud = { g: gp, ph: gp.phase }; }   // after a great shake: hands on hips
+    var sw = stanceWeights(A, now), sk = A.trip ? 0 : 1 - me1 * (1 - ((d && d.keep) || 0)), rail = null, stName = A.st.cur;
+    if (sk > 0) {
+      if ((sw.study || 0) + (sw.look || 0) > 0) rail = railSpots(A);
+      for (var sn in sw) if (sw[sn] > 0 && STANCES[sn]) STANCES[sn].fn(A, sw[sn] * sk, { rail: rail });
+      var tg = attention(A, stName); if (tg && A.model) lookAt(A, tg, sk * (1 - me1 * 0.8)); else A.att = null;
+    }
+    if (d) d.fn(A, u, me1, A.g.opts);
+    var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; syncHome(A); }
     if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
     // how fast he really moves (legs, arm swing) and which way he faces
     var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
     W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
-    W.ph += mv / (WALK.stride * A.place.s) * Math.PI;
+    // gait: the stride grows with the speed (a walk takes short steps, a run long ones with a little flight), so the
+    // feet keep pace with the ground instead of skating. Tata: longer, calmer steps, more upright, less bounce.
+    var grown = A.who === 'tata', vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
+    var stride = grown ? 3.0 + 0.09 * vU : 2.3 + 0.11 * vU;
+    if (!noGait) W.ph += mv / (stride * A.place.s) * Math.PI;
     var wy = wrap(W.yawT - W.yaw); W.yaw += wy * (1 - Math.exp(-(T ? 16 : 10) * dt)); if (Math.abs(wy) < 1e-4) W.yaw = W.yawT;
-    var run = clamp(W.spd / (0.5 * WALK.v * A.place.s), 0, 1);
-    P.lean += 0.16 * run; P.twist += 0.1 * run * Math.sin(W.ph); P.hop += 0.09 * run * Math.abs(Math.cos(W.ph));
+    var run = noGait ? 0 : clamp(W.spd / (0.5 * WALK.v * A.place.s), 0, 1);
+    P.lean += (grown ? 0.09 : 0.16) * run; P.twist += (grown ? 0.06 : 0.1) * run * Math.sin(W.ph); P.hop += (grown ? 0.05 : 0.09) * run * Math.abs(Math.cos(W.ph));
+    if (A.turnStep) { var ts = A.turnStep; P.hop += 0.04 * Math.abs(Math.sin(ts * TAU)); }   // turning on the spot: two little steps
     // smooth everything toward the targets (calm follow-through, never a snap; quicker while he moves a cube)
     var kb = 1 - Math.exp(-(T ? 24 : 14) * dt), ka = 1 - Math.exp(-(T ? 18 : 10) * dt), kf = 1 - Math.exp(-12 * dt), moving = !!A.g || !!T || W.spd > 0 || W.yaw !== W.yawT, cur = A.cur, Fc = A.Fc;
     while (cur.spin - P.spin > Math.PI) cur.spin -= TAU; while (P.spin - cur.spin > Math.PI) cur.spin += TAU;   // a finished turn is the same as none
@@ -981,28 +1135,30 @@ if (T3 && T3.ctx) (function () {
       var AR = A.arm[i]; if (AR.goal.distanceToSquared(AR.des) > 1e-6) moving = true;
       AR.goal.lerp(AR.des, ka); AR.al += (AR.dAl - AR.al) * ka; AR.op += (AR.dOp - AR.op) * ka;
     }
-    // an occasional single blink (only when nothing else is going on with his eyes closed)
-    if (!A.nextBlink) A.nextBlink = now + rnd(2500, 6000);
-    if (now >= A.nextBlink) { A.blinkT0 = now; A.nextBlink = now + rnd(3800, 7500); }
-    var bt = (now - A.blinkT0) / 1000, blink = bt < 0 ? 0 : bt < 0.07 ? bt / 0.07 : bt < 0.11 ? 1 : bt < 0.24 ? 1 - (bt - 0.11) / 0.13 : 0;
-    if (blink > 0 || bt < 0.3) moving = true;
+    // (no idle blink timer: at rest he is perfectly still, the owner's rule)
+    var blink = 0;
+    for (i = 0; i < 2; i++) { var AQ = A.arm[i], dc = AQ.dCu - AQ.cu, dt2 = AQ.dTh - AQ.th; if (Math.abs(dc) > 1e-3 || Math.abs(dt2) > 1e-3) moving = true; AQ.cu += dc * ka; AQ.th += dt2 * ka; }
     // apply
     var m = A.model, R = m.root, D = A.dims, s = A.place.s, fl = clamp(cur.flop, 0, 1);
     // legs: a crouch bends hips and knees (feet stay put), a kneel folds the shins back onto the pitch; running swings
     // them (stride matched to the ground speed); lying on the table they fold up behind him, feet in the air
     var ca = clamp(cur.crouch, 0, 1) * 0.85, kn = clamp(cur.kneel, 0, 1) * Math.PI / 2;
     var dropL = (D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn);
-    var rl = run * (1 - fl), h0 = -0.75 * rl * Math.sin(W.ph), h1 = -h0, k0 = rl * (0.2 + 1.1 * Math.max(0, Math.cos(W.ph))), k1 = rl * (0.2 + 1.1 * Math.max(0, -Math.cos(W.ph)));
+    var rl = run * (1 - fl), amp = grown ? 0.5 + 0.18 * rl : 0.55 + 0.22 * rl, h0 = -amp * rl * Math.sin(W.ph), h1 = -h0, k0 = rl * (0.2 + 1.1 * Math.max(0, Math.cos(W.ph))), k1 = rl * (0.2 + 1.1 * Math.max(0, -Math.cos(W.ph)));
+    if (A.turnStep) { var tq = A.turnStep * TAU; k0 += 0.45 * Math.max(0, Math.sin(tq)); k1 += 0.45 * Math.max(0, -Math.sin(tq)); h0 -= 0.12 * Math.max(0, Math.sin(tq)); h1 -= 0.12 * Math.max(0, -Math.sin(tq)); }
+    // heel click: both legs swing out to his left, knees bent, heels meeting
+    var hc = clamp(cur.heel, 0, 1); k0 += 0.9 * hc; k1 += 0.9 * hc;
     // on his tummy: while his hips are still outside the rim his legs hang down the side of the table, feet off the
     // ground; further in, they lie out behind him with the feet up
     // thighs stay upright in the world (hanging down the table's side, or kneeling on the felt with the shins flat behind)
     var cr = clamp(cur.crawl, 0, 1), pit = Math.max(0, cur.pitch);
     m.setKnees(-ca + h0 - pit + 0.2 * fl, -ca + h1 - pit + 0.3 * fl, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr);
+    if (m.legs) { m.legs[0].rotation.z = 0.5 * hc; m.legs[1].rotation.z = 0.22 * hc; }
     var rot = W.yaw + cur.spin, fx = Math.sin(W.yaw), fz = Math.cos(W.yaw), fw = (clamp(cur.fwd, 0, 0.75) + Math.max(0, cur.slide)) * s, sw = cur.side * s;
     // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
     R.position.set(W.x + fx * fw + fz * sw, A.place.y + (cur.hop - dropL * (1 - fl) + Math.max(0, cur.lift)) * s + (A.trip && A.trip.script ? A.trip.up || 0 : 0), W.z + fz * fw - fx * sw);   // (MATCHDAY: up = standing on the podium)
     if (R.rotation.order !== 'YXZ') R.rotation.order = 'YXZ';
-    R.rotation.set(pit, rot, 0); R.scale.setScalar(s);
+    R.rotation.set(pit, rot, cur.bank); R.scale.setScalar(s);
     m.body.rotation.set(cur.lean + 0.25 * ca, cur.twist, 0);
     var hp = cur.headPitch;
     m.neck.rotation.set(hp * 0.45, cur.headYaw * 0.4, cur.headRoll * 0.4);
@@ -1010,8 +1166,11 @@ if (T3 && T3.ctx) (function () {
     for (i = 0; i < 2; i++) {
       var a = m.arms[i]; a.setShoulderLift(cur.shrug); a.open = A.arm[i].op;
       a.solve(A.arm[i].goal.x, A.arm[i].goal.y, A.arm[i].goal.z, A.arm[i].al, 0);
+      // fingers and thumb curl in toward the palm (a fist, a grip, a thumbs-up)
+      if (a.padF) { a.padF.rotation.x = 1.25 * A.arm[i].cu; a.padT.rotation.x = 1.0 * A.arm[i].th; }
     }
     if (T && A.trip === T) tripArm(A, T, dt);
+    placeShadow(A);
     var lid = Fc.lid * (1 - blink);
     m.setFace({ mouth: { big: Fc.big, smile: Fc.smile, hmm: Fc.hmm, o: Fc.o, shout: Fc.shout }, lid: lid, squint: Fc.squint, wide: Fc.wide, browUp: Fc.browUp, browTilt: Fc.browTilt, browAsym: Fc.browAsym, gazeX: Fc.gazeX, gazeY: Fc.gazeY });
     // only ask for frames while something is happening; at rest he is still
@@ -1034,6 +1193,77 @@ if (T3 && T3.ctx) (function () {
     }
   });
 
+  // ---------- celebrations that travel: a run out onto the pitch beside the table, the move there, the walk back ----------
+  // 'slide' (a real knee slide along the side of the table) and 'plane' (arms-out aeroplane loop). Only when the spot
+  // is on screen, nothing is in the way and motion is not reduced; otherwise the in-place version plays (a pose change).
+  function calmMotion() {
+    try { if (window.A11y && A11y.calm && A11y.calm()) return true; } catch (e) {}
+    try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  var celebWhy = '';
+  function celebTrip(A, name) {
+    celebWhy = 'not allowed';
+    if ((name !== 'slide' && name !== 'plane') || calmMotion() || A.trip || !A.model || !A.shown || !A.fits || !ctx.layout || document.hidden) return false;
+    if (A === mate && mate.seat === 'far') return false;
+    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && mate.shown && mate.seat === 'left')) ? 1 : -1;
+    if (A === mate) sd = -1;                                                       // the mate at the left seat uses the left side
+    var zs = R.od * 0.3, out = 0.45 * s, x0 = sd * (R.ow + R.c + out), pz = zs, len = (name === 'slide' ? 4.2 : 6.5) * s;
+    // the spots must be on screen (at head height) and clear of anyone else
+    setupProj();
+    var hy = FLOOR_Y + (A.dims.NECK_Y + A.dims.HEAD_UP - A.dims.FOOT) * s, ok = true;
+    [[x0, pz], [x0 + sd * (name === 'plane' ? 0.9 * s : 0), pz - len * 0.55]].forEach(function (q) { proj(q[0], hy, q[1], pp); if (pp[2] > 1 || Math.abs(pp[0]) > 0.95 || Math.abs(pp[1]) > 0.93) { ok = false; celebWhy = 'off screen ' + pp[0].toFixed(2) + ',' + pp[1].toFixed(2); } });
+    obstaclesFor(A).forEach(function (o) { if (inObs(o, x0, pz) || inObs(o, x0, pz - len)) { ok = false; celebWhy = 'blocked'; } });
+    if (!ok) return false;
+    celebWhy = '';
+    // the way out: along the ring to the side, then a few steps out onto the pitch
+    var N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
+    for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iT = Math.round(ringU(R, sd * (R.ow + R.c), pz) / h) % N;
+    var w = ringPath({ R: R, N: N, h: h, obs: obstaclesFor(A), pts: pts }, iS, iT, sd, { x: A.wk.x, z: A.wk.z }, { x: x0, z: pz });
+    var v = 0.6 * WALK.v * s, segs = [], tn = turnSeg(A.wk.yaw, w, s, false);
+    if (tn) segs.push(tn);
+    var ws = walkSeg(w, v, Math.PI, s); ws.fn = 'run'; segs.push(ws);
+    if (name === 'slide') {
+      segs.push({ k: 'act', path: mkPath([[x0, pz], [x0, pz - len]]), T: 1.0, ease: easeOut, yaw: Math.PI, fn: 'slide', noGait: true });
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: Math.PI, T: 1.0, fn: 'slideHold', noGait: true });
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: Math.PI, T: 0.55, fn: 'rise', noGait: true });
+    } else {
+      var bx = x0 + sd * 0.9 * s, loop = mkPath([[x0, pz], [x0 + sd * 0.6 * s, pz - 0.25 * len], [bx, pz - 0.55 * len], [x0 + sd * 0.5 * s, pz - 0.85 * len], [x0, pz - len]]);
+      var pl = { k: 'walk', path: loop, T: loop.len / (0.42 * WALK.v * s) + 0.15, endYaw: -sd * Math.PI / 2, fn: 'wings', bank: true };
+      segs.push(pl);
+      segs.push({ k: 'act', x: x0, z: pz - len, yaw: -sd * Math.PI / 2, T: 1.0, fn: 'vee' });
+    }
+    var T = { celeb: name, segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'move', arm: 0, picked: false, released: true, fin: function () {}, timer: 0 };
+    T.timer = setTimeout(function () { if (A.trip === T) finishNow(A, true); }, 12000);
+    A.g = null; A.trip = T; A.settled = false; ctx.dirty(); ctx.startLoop();
+    return true;
+  }
+
+  // ---------- high five: after the kid's win celebration, Tata (at the left seat, Team-up / 3 players) walks over, they
+  // high-five once, and he walks back. Started from update() once the celebration has finished.
+  var hf = { pend: 0 };
+  function highFiveLater() { hf.pend = mate.shown && mate.seat === 'left' && mate.fits ? performance.now() : 0; }
+  function highFive() {
+    hf.pend = 0;
+    var A = mate; if (!A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
+    var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 1.1;
+    var sx = me.wk.x + side * gap, szz = me.wk.z, N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
+    for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iT = Math.round(ringU(R, sx, szz) / h) % N, dp = (iT - iS + N) % N;
+    var w = ringPath({ R: R, N: N, h: h, obs: [], pts: pts }, iS, iT, dp <= N / 2 ? 1 : -1, { x: A.wk.x, z: A.wk.z }, { x: sx, z: szz });
+    var face0 = Math.atan2(me.wk.x - sx, me.wk.z - szz), segs = [], tn = turnSeg(A.wk.yaw, w, s, false);
+    if (tn) segs.push(tn);
+    var ws = walkSeg(w, 0.42 * WALK.v * s, face0, s); segs.push(ws);
+    segs.push({ k: 'act', x: sx, z: szz, yaw: face0, T: 1.2, fn: 'five' });
+    var T = { segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'move', arm: 0, picked: false, released: true, fin: function () {}, timer: 0 };
+    T.timer = setTimeout(function () { if (A.trip === T) finishNow(A, true); }, 9000);
+    A.g = null; A.trip = T; A.settled = false;
+    var arrive = segs.reduce(function (t, q) { return q.k === 'act' ? t : t + q.T; }, 0);
+    setTimeout(function () { if (A.trip === T) startMood(me, 'five'); }, Math.max(0, arrive * 1000 - 100));
+    ctx.dirty(); ctx.startLoop();
+    return true;
+  }
+
   // ---------- public API ----------
   T3.playerMoods = function () { return NAMES.slice(); };
   T3.playerCelebrations = function () { return CELEBS.slice(); };
@@ -1053,7 +1283,8 @@ if (T3 && T3.ctx) (function () {
   T3.playerMood = function (m, opts) { startMood(me, m, opts); };
   T3.playerCelebrate = function (name) {
     if (CELEBS.indexOf(name) < 0) { var s = save(); name = (s.kit && CELEBS.indexOf(s.kit.celebrate) >= 0) ? s.kit.celebrate : 'jump'; }
-    return startMood(me, name);
+    if (me.model && me.shown && celebTrip(me, name)) { highFiveLater(); return true; }
+    var ok = startMood(me, name); if (ok) highFiveLater(); return ok;
   };
   T3.mate = function (o) {
     var wasFar = mate.seat === 'far' && mate.shown;
@@ -1086,10 +1317,10 @@ if (T3 && T3.ctx) (function () {
   T3.playerState = function () {
     function st(A) {
       var T = A.trip, g = T && T.segs[T.i];
-      return { shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
+      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
         pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null };
     }
-    var o = st(me); o.rejected = why; o.quad = quad; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
   };
   // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
   T3.playerSeat = function (o) {

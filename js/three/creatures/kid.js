@@ -724,7 +724,9 @@ function hairGeometry(R, surf, st) {
       surf(d.x, d.y, d.z, o); o.multiplyScalar(1 + thk);
       // a fringe stands a little proud of the forehead so it reads from the side too
       if (st.lift && d.z > 0.2) o.z += st.lift * R * clamp(1 - (d.y - line) * 4, 0, 1);
-      const sh = clamp(shadeOf(d), 0.55, 1.35) * (0.9 + 0.1 * e);   // the cut ends a touch darker
+      // the cut ends a touch darker; a soft sheen band round the crown catches the light (reads from behind too)
+      const sheen = 1 + 0.16 * Math.exp(-Math.pow((d.y - 0.6) / 0.13, 2)) * (0.6 + 0.4 * Math.max(0, -d.z));
+      const sh = clamp(shadeOf(d) * sheen, 0.55, 1.45) * (0.9 + 0.1 * e);
       put(j, i, o.x, o.y, o.z, sh); if (j === NP) edgeTh = thk;
     }
     // rim: from the edge back under, into the scalp
@@ -1061,7 +1063,9 @@ export function buildHuman(spec) {
   const sockTop = -(0.12 * lr + 0.02);
   const sockPts = smoothProfile([0.168, 0.17, 0.174 + 0.02 * mus, 0.152 + 0.008 * mus, 0.122, 0.126].map((r) => r * lr), [0, 0.06, 0.28, 0.58, 0.88, 1], sockTop, -D.shin + 0.04, 16);
   sockPts.push([0.135 * lr, sockTop + 0.01]);                                                  // the top edge turns in (no hole)
-  const sockG = lathe(sockPts, 18, 0, (v, phi, j, t) => radial(v, phi, (0.022 + 0.012 * mus) * lr * gauss(t - 0.7, 0.18) * Math.max(0, -Math.cos(phi))));
+  // calf at the back; a shin pad under the sock at the front (a flat-topped rise with a clear edge)
+  const sockG = lathe(sockPts, 18, 0, (v, phi, j, t) => radial(v, phi, (0.022 + 0.012 * mus) * lr * gauss(t - 0.7, 0.18) * Math.max(0, -Math.cos(phi))
+    + 0.022 * lr * sstep01((t - 0.12) / 0.08) * (1 - sstep01((t - 0.55) / 0.08)) * Math.pow(Math.max(0, Math.cos(phi)), 2)));
   // boots: the upper in his colour, a contrasting sole with studs underneath, laces on top and a heel tab
   const soleM = std(0xf1f3f5, { roughness: 0.5 }), studM = std(0xadb5bd, { roughness: 0.4, metalness: 0.3 });
   const laceG = new THREE.BoxGeometry(0.11 * lr, 0.016, 0.024), studG = new THREE.CylinderGeometry(0.02 * lr, 0.026 * lr, 0.03, 8);
