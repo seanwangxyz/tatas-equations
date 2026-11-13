@@ -398,10 +398,12 @@ function install(T3, ctx) {
   }
   function pose(now) {
     var n = st.uni.length, cells = faceGeo.attributes.aCell, rims = faceGeo.attributes.aRim, d = st.deal, tr = st.tint.r, tg = st.tint.g, tb = st.tint.b;
+    var anyLift = false;
     for (var i = 0; i < n; i++) {
       var b = st.base[i]; if (!b) continue;
       var l = st.lift[i], s = st.s, x = b.x, y = CT * s / 2 + 0.004, z = b.z, yaw = 0, flip = 0, shk = 1, sc = s, a = d ? away(i, n, now, d) : null;
       if (a) { x = a.x; y = a.y; z = a.z; sc = a.sc; yaw = a.yaw; flip = a.flip; shk = a.sh; l = 0; }
+      if (l > 0.004) anyLift = true;
       P.set(x, y + l * 0.5 * sc, z); E.set(0.24 * l, yaw, flip); Q.setFromEuler(E); SC.set(sc, sc, sc);
       M.compose(P, Q, SC); bodies.setMatrixAt(i, M); faces.setMatrixAt(i, M);
       SC.setScalar(Math.max(0.0001, sc * l)); P.set(x, 0.02, z); Q.identity(); M.compose(P, Q, SC); halos.setMatrixAt(i, M);
@@ -412,6 +414,7 @@ function install(T3, ctx) {
       var dm = st.dim[i]; C.setRGB(1 - 0.32 * dm, 1 - 0.32 * dm, 1 - 0.29 * dm); faces.setColorAt(i, C);
       cells.setXY(i, (st.uni[i] % 4) * 0.25, 1 - (Math.floor(st.uni[i] / 4) + 1) * 0.2);
     }
+    halos.visible = anyLift; // (no glow under any card = no draw call for it)
     bodies.count = faces.count = halos.count = shades.count = n;
     bodies.instanceMatrix.needsUpdate = faces.instanceMatrix.needsUpdate = halos.instanceMatrix.needsUpdate = shades.instanceMatrix.needsUpdate = true;
     [shades, faces, halos].forEach(function (m) { if (m.instanceColor) m.instanceColor.needsUpdate = true; });
@@ -495,13 +498,17 @@ function install(T3, ctx) {
     })(i);
   }
 
+  // the colour-blind setting changed (or On-Sets was entered): redraw the cube faces and the cards that depend on it
+  function refreshArt() {
+    if (cubeAtlas.base && cubeAtlas.sig !== a11ySig()) { cubeAtlas.base.dispose(); cubeAtlas.base = null; registerKinds(); if (T3.retheme) T3.retheme(); }
+    faceMat.map = cardAtlasTex(); faceMat.needsUpdate = true;
+  }
+  try { window.addEventListener('a11ychange', function () { if (st.on) { refreshArt(); pose(performance.now()); ctx.dirty(); } }); } catch (e) {}
+
   T3.onsets = {
     ready: true,
     enter: function () {
-      st.on = true;
-      if (cubeAtlas.base && cubeAtlas.sig !== a11ySig()) { cubeAtlas.base.dispose(); cubeAtlas.base = null; registerKinds(); if (T3.retheme) T3.retheme(); } // the colour-blind setting changed
-      faceMat.map = cardAtlasTex(); faceMat.needsUpdate = true;
-      setUni([]);
+      st.on = true; refreshArt(); setUni([]);
     },
     exit: function () { finishForm(); st.deal = null; st.on = false; trayK = trayTgt = 0; setUni([]); group.visible = false; ctx.dirty(); },
     clear: function () { finishForm(); st.deal = null; trayK = trayTgt = 0; setUni([]); ctx.dirty(); },

@@ -60,10 +60,13 @@ var OS3D = (function () {
     return out;
   }
   function payload() {
-    return {
+    var p = {
       cubes: OG.cubes.map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: c.zone, order: c.order, locked: false }; }),
-      goalTokens: [], selected: OG.selected, highlight: OG.highlight, phase: OG.phase, slots: goalSlots(), onsets: true
+      goalTokens: [], selected: OG.selected, highlight: OG.highlight, phase: OG.phase, onsets: true
     };
+    // the slots are worked out each time the table reads them, so a window turned from wide to tall (T3 re-syncs the last payload) re-seats the Goal and the V / Λ plate
+    Object.defineProperty(p, 'slots', { enumerable: true, get: function () { try { return OG && OG.cubes ? goalSlots() : {}; } catch (e) { return {}; } } });
+    return p;
   }
   function render() {
     if (!on || !OG || !OG.cubes || !OG.universe) return;
