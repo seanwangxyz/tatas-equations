@@ -71,6 +71,11 @@ var BADGES = [
   { id: 'beat4', tier: 'gold', icon: '🧙', name: 'Wizard Tamer', hint: 'Win a match against the Math Wizard.', test: function () { return S.beaten[4]; } },
   { id: 'perfect', tier: 'gold', icon: '💯', name: 'Perfect Match', hint: 'Win a match where you were correct on every shake.', test: function (e) { return e.type === 'match' && e.won && e.perfect; } },
   { id: 'daily12', tier: 'gold', icon: '🗓️', name: 'Daily Dozen', hint: 'Solve 12 Daily Puzzles (any days you like).', test: function () { return S.stats.daily >= 12; } },
+  { id: 'beat10', tier: 'gold', icon: '🤖', name: 'Robot Rebooter', hint: 'Win a match against the Busy Robot.', test: function () { return S.beaten[10]; } },
+  { id: 'beat11', tier: 'gold', icon: '🦇', name: 'Bat Flipper', hint: 'Win a match against the Upside-down Bat.', test: function () { return S.beaten[11]; } },
+  { id: 'beat12', tier: 'gold', icon: '🐙', name: 'Eight-Arm Escape', hint: 'Win a match against the Eight-Armed Octopus.', test: function () { return S.beaten[12]; } },
+  { id: 'beat13', tier: 'gold', icon: '🐉', name: 'Treasure Keeper', hint: 'Win a match against the Treasure Dragon.', test: function () { return S.beaten[13]; } },
+  { id: 'beat14', tier: 'special', icon: '🦎', name: 'Legend', hint: 'Win a match against Chroma the Chameleon Queen.', test: function () { return S.beaten[14]; } },
   { id: 'lvl10', tier: 'gold', icon: '🌟', name: 'Level 10', hint: 'Reach Level 10.', test: function () { return level() >= 10; } },
   { id: 'allops', tier: 'gold', icon: '🔓', name: 'Every Operation', hint: 'Unlock every operation on the ladder.', test: function () { return S.ladder.stage >= STAGES.length - 1; } },
   // special

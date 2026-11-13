@@ -95,6 +95,7 @@ function humanGoal(tokens, val) {
   })();
 }
 function startMatch(mode, oppIdx, cfg) {
+  if (mode === 'ai' && window.Career && !(cfg && cfg.sigSeen) && Career.announce(oppIdx, function () { startMatch(mode, oppIdx, Object.assign({}, cfg || {}, { sigSeen: true })); })) return; // CAREER: a signature rule is announced first
   var shakes = S.set.shakes || 3;
   G = { mode: mode, oppIdx: oppIdx, cfg: cfg, shakes: shakes, shake: 1, setter: 0, players: [], trailed: false };
   var wx = T3.matchWeather ? T3.matchWeather() : null;   // this match's time of day and weather (stadium venues)
@@ -111,6 +112,7 @@ function startMatch(mode, oppIdx, cfg) {
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
   if (window.Parent) Parent.note('matchStart'); // PARENT page
+  if (window.Career) Career.matchStart(G); // CAREER: remember this match's signature rule
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -158,6 +160,7 @@ function newShake(fixedCubes) {
   G.ops = st.ops.slice(); G.fractions = st.fractions;
   G.cubes = (fixedCubes || Eq.roll()).map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false }; });
   if (window.Bonus) Bonus.onShake(G, !!fixedCubes); // BONUS (house rule): the earned bonus dice join the roll (js/bonus.js)
+  if (window.Career) Career.onShake(G, !!fixedCubes); // CAREER: a creature's bonus die (Nugget) joins the roll
   function lockOps() { G.cubes.forEach(function (c) { if (!Eq.isDigit(c.s) && G.ops.indexOf(c.s) < 0) { c.zone = 'forbidden'; c.locked = true; c.order = ++orderCounter; } }); }
   G.goalTokens = []; G.goal = null; G.lastMover = null; G.selected = null; G.hintUsed = false; G.turn = G.setter;
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
@@ -212,6 +215,7 @@ function speechHTML() {
 
 function startGoalPhase() {
   if (window.Bonus && Bonus.beforeGoal(startGoalPhase)) return; // BONUS: a newly earned die is celebrated, the Twist card is drawn (it may pick this shake's card)
+  if (window.Career && Career.beforeGoal(startGoalPhase)) return; // CAREER: the creature's signature card is dealt
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
   if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); setTimeout(aiSetGoal, 1100); }
@@ -724,6 +728,7 @@ function endMatch() {
       (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
       (seasonRes ? Season.lineHTML(seasonRes) : '');
+    html += (window.Career && won ? Career.bossLineHTML(idx, first) : ''); // CAREER: "League conquered!"
   } else {
     var top = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
     var winners = idxs().filter(function (i) { return G.players[i].score === top; });

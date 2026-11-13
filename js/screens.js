@@ -109,12 +109,14 @@ function renderSetup() {
       '<h3>' + esc(o.name) + ' <span class="jersey" style="font-size:13px;height:22px;min-width:24px">' + o.num + '</span></h3><div class="otitle">' + esc(o.title) + '</div><div class="stars">' + oppStars(o) + '</div>' +
       (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
       (o.taste ? '<div class="otitle" style="margin-top:4px;font-size:13px;line-height:1.25">🎲 Likes: ' + esc(o.taste) + '</div>' : '') +
+      (window.Career ? Career.tagHTML(i) : '') + // CAREER: "Special rule: Use It Again"
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
-  var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE).join('');
+  var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE, 2 * LEAGUE).join(''), legends = oppCards.slice(2 * LEAGUE).join(''); // CAREER
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
     '<div class="panel"><h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
+    (legends ? '<h3 class="tierh">🌟 Legend League <span style="font-weight:600;opacity:.7;font-size:14px">(each brings a special rule)</span> ' + (window.Career ? Career.buttonHTML('small') : '') + '</h3><div class="opps">' + legends + '</div>' : '') + // CAREER
     (window.Trio ? Trio.setupHTML() : '') +
     (window.Cup ? Cup.setupHTML() : '') +
     '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
@@ -155,7 +157,7 @@ function renderTrophies() {
   var html = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('trophy') + ' Trophy Room</h2></div><div class="panel">' +
     '<div class="profile"><div><div class="big">Level ' + L + '<small>' + esc(S.name) + '</small></div></div>' + xpBarHTML() + '<div class="big">' + n + '<small>of ' + BADGES.length + ' badges</small></div></div>';
   html += '<div class="row" style="justify-content:flex-start;margin:10px 0 2px">' +
-    (window.Cabinet ? Cabinet.buttonHTML('purple') : '') + (window.Fans ? Fans.buttonHTML('green') : '') + (window.Season ? Season.buttonHTML('blue') : '') + '</div>';
+    (window.Career ? Career.buttonHTML('yellow') : '') + (window.Cabinet ? Cabinet.buttonHTML('purple') : '') + (window.Fans ? Fans.buttonHTML('green') : '') + (window.Season ? Season.buttonHTML('blue') : '') + '</div>';
   tiers.forEach(function (t) {
     var list = BADGES.filter(function (b) { return b.tier === t[0]; }), got = list.filter(function (b) { return S.badges[b.id]; }).length;
     html += '<h3 class="tierh"><span class="medal tier-' + t[0] + '" style="margin:0;width:30px;height:30px;font-size:0;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)"></span> ' + t[1] + '<small>' + got + ' / ' + list.length + '</small></h3><div class="badges">' + list.map(function (b) {
