@@ -8,7 +8,11 @@
 //                                'now' takes {kind:'impossible'} for the arms-out version.
 //                                'reach' takes {cube:id} or {x, z} (world) and gestures toward that spot.
 //                                Each mood also changes his face a little (eyes, brows, mouth), once.
-//   T3.playerCelebrate(name)     one of T3.playerCelebrations() ('jump', 'spin', 'robot', 'slide'), 2-3 s, once.
+//                                Also 'yes' (fist pump), 'proud' (hands on hips, held), 'gg' (sporting nod and claps),
+//                                'five' (high five); Tata turns 'clap' / 'aw' into 'proudClap' / 'chinUp' (poses.js).
+//                                Under the moods he holds a stance chosen by the game state (study / wait / proud / look).
+//   T3.playerCelebrate(name)     one of T3.playerCelebrations() ('jump', 'spin', 'robot', 'slide', 'plane', 'heel',
+//                                'brain', 'number'), 3-6 s, once; 'slide' / 'plane' run out beside the table and back.
 //                                No name: the one saved in S.kit.celebrate. Returns true if it plays.
 //   T3.playerMoods()             list of mood names
 //   T3.playerSet(o | null)       who stands at his spot and how he looks: { who: 'kid' | 'tata', kit, name, number }.
