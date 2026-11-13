@@ -24,6 +24,9 @@
 //                Legend ladder (Messy -> Bleep -> ... -> Chroma), and Hex vs Messy as a yardstick.
 //     'old'    = only the first ten creatures' pairings and kids (to compare with numbers from before the Legend League).
 //   e.g. node tests/playtest.js 60 4 career sig
+//   TOURNEY (js/tourney.js): 'tourney' = tournament practice shakes, three creatures per table, every player picks a card (Elementary
+//     list); 'tourney:M' = the Middle list; 'tourney2' / 'tourney2:M' = two players (the non-setter picks two). Re-checks every
+//     Solution under the combined cards.   e.g. node tests/playtest.js 6 4 tourney
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..');
 const N = +process.argv[2] || 40, STAGE = process.argv[3] === undefined ? 0 : +process.argv[3], NOTASTE = process.argv.slice(4).includes('notaste');
@@ -32,7 +35,7 @@ const BONUS = BONUSARG ? (BONUSARG === 'bonus' ? ['big', 'power', 'twist'] : BON
 const FLAGS = ['notaste', 'sig', 'career', 'old']; // CAREER
 const SIG = process.argv.slice(4).includes('sig'), CAREER = process.argv.slice(4).includes('career'), OLD = process.argv.slice(4).includes('old');
 const ONLY = (process.argv.slice(4).find(a => /^only=/.test(a)) || '').replace('only=', '').split(',').filter(Boolean).map(p => p.split('-').map(Number)); // CAREER: only=9-14,9-10 runs just those pairings
-const CARD = process.argv.slice(4).find(a => FLAGS.indexOf(a) < 0 && !/^bonus/.test(a) && !/^only=/.test(a)) || null;
+const CARD = process.argv.slice(4).find(a => FLAGS.indexOf(a) < 0 && !/^bonus/.test(a) && !/^only=/.test(a) && !/^tourney/.test(a)) || null; // (TOURNEY: tourney / tourney:M / tourney2 run tournament shakes)
 
 // A fake browser, just enough for the scripts to load. Nothing is drawn.
 const store = {};
@@ -232,6 +235,101 @@ function playShake(A0, B0, setter, stats) {
     turn = 1 - turn;
   }
 }
+
+// ---- TOURNEY: tournament practice shakes (js/tourney.js). 'tourney' (Elementary list) or 'tourney:M' (Middle list). ----
+// Three creatures at a table (or two with 'tourney2' / 'tourney2:M'). Every shake: each player picks a card in the official
+// order (the Goal-setter first; with two players the other picks two) from the cards TourneyRules allows (AI.chooseTourneyCard),
+// the cards are combined into one math mode, the Goal-setter sets a Goal, players move in turn (bonus moves when not leading,
+// AI.turnT), anyone may challenge the latest Mover (the next player on its turn, the third player by AI.interject), the Third
+// Party may write, official scoring (Eq.scoreChallenge, last cube 4/2). Every Solution is re-checked under the combined cards.
+function tourneyPlaytest(arg) {
+  vm.runInContext(fs.readFileSync(path.join(root, 'js', 'tourney.js'), 'utf8'), ctx, { filename: 'tourney.js' });
+  const TR = vm.runInContext('TourneyRules', ctx);
+  const div = /:M$/.test(arg) ? 'M' : 'E', two = /^tourney2/.test(arg);
+  const tables = two ? [[2, 3], [4, 9], [6, 8], [3, 7], [1, 5]] : [[2, 3, 4], [4, 8, 9], [5, 6, 7], [3, 6, 9], [1, 2, 3]];
+  const pairCount = {}, cardCount = {}, ends = {}, matchPts = {};
+  let shakes = 0, slow = 0, totalMs = 0, bonusMoves = 0, illegalPicks = 0, picksTotal = 0;
+  const pickOne = a => a[Math.floor(Math.random() * a.length)];
+  tables.forEach(tb => {
+    const P = tb.map(i => OPPONENTS[i]), n = P.length, score = P.map(() => 0);
+    for (let k = 0; k < N; k++) {
+      const t1 = Date.now(), setter = k % n;
+      const G = { cubes: Eq.roll().map(c => ({ id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false })) };
+      // cards
+      const picks = [], ctxR = { res: G.cubes.map(c => ({ s: c.s, color: c.color })) };
+      TR.pickOrder(setter, n).forEach(pk => { for (let j = 0; j < pk.k; j++) {
+        const legal = TR.legalFor(div, picks, ctxR), c = AI.chooseTourneyCard(P[pk.p], legal);
+        if (!c) continue;
+        picksTotal++;
+        if (!TR.check(c.id, c.set, picks, ctxR, div).ok) illegalPicks++;
+        picks.push({ p: pk.p, id: c.id, set: c.set });
+      } });
+      const ids = picks.map(x => x.id), set = { div };
+      picks.forEach(x => { if (x.set) Object.assign(set, x.set); });
+      ids.forEach(id => cardCount[id] = (cardCount[id] || 0) + 1);
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) { const key = [ids[a], ids[b]].sort().join('+'); pairCount[key] = (pairCount[key] || 0) + 1; }
+      if (ids.includes('expo')) set.eids = G.cubes.filter(c => c.color === set.ecol && Eq.isDigit(c.s)).map(c => c.id);
+      let kept = Eq.mathMode(true, ids, null, set);
+      if (ids.includes('expo')) Object.defineProperty(G, 'fractions', { get: () => Object.assign({}, kept, { ex: Eq.expCounts(G.cubes, kept.ecol) }), set: v => { kept = v; } });
+      else G.fractions = kept;
+      // Goal
+      const free = zone(G, 'resources'), g = AI.chooseGoal(P[setter], free.map(c => ({ id: c.id, s: c.s })), G.fractions, 99);
+      if (!g) { ends['no Goal'] = (ends['no Goal'] || 0) + 1; continue; }
+      g.toks.forEach(t => { if (typeof t === 'object') G.cubes[t.id].zone = 'goal'; });
+      G.goal = g.value; G.fractions = Eq.withGoal(G.fractions, g.toks.map(x => typeof x === 'string' ? x : x.s));
+      const pts = P.map(() => 0);
+      let last = setter, turn = (setter + 1) % n, order = 100, how = '';
+      const third = (a, b) => n < 3 ? null : [0, 1, 2].find(i => i !== a && i !== b);
+      const doChallenge = (kind, ch) => {
+        const mv = last, tp = third(ch, mv), w = kind === 'now' ? ch : mv;
+        let wr;
+        if (kind === 'now') { const s0 = snap(G); wr = Eq.solve({ goal: G.goal, req: s0.req, opt: s0.perm, res: s0.res, mode: 'now', fractions: G.fractions, maxDigits: P[ch].maxDigits, timeMs: P[ch].timeMs }); recheck(G, wr, 'now'); }
+        else wr = write(G, P[mv], 'impossible');
+        let tpRes = null;
+        if (tp !== null) { const r = AI.thirdParty(P[tp], snap(G), G.goal, G.fractions, kind); if (r.found && Math.random() < P[tp].smart + 0.15) { recheck(G, r, kind); tpRes = { presented: true, ok: true }; } else tpRes = { presented: false }; }
+        const sc = Eq.scoreChallenge(kind, ch, mv, tp, !!(wr && wr.found), tpRes);
+        Object.keys(sc).forEach(i => pts[i] = sc[i]);
+        how = kind + (wr && wr.found ? (kind === 'now' ? ' (correct)' : ' (Solution shown)') : (kind === 'now' ? ' (failed)' : ' (correct)'));
+        void w;
+      };
+      for (let guard = 0; guard < 60 && !how; guard++) {
+        const o = P[turn], s = snap(G);
+        const nowOk = s.res.length >= 2 && s.req.length + s.perm.length > 0;
+        // the third player may interject first (3 players)
+        if (n === 3) { const others = [0, 1, 2].filter(i => i !== last && i !== turn); const hit = AI.interject(others.map(p => ({ p, o: P[p], nowOk })), s, G.goal, G.fractions); if (hit) { doChallenge(hit.d.kind, hit.p); break; } }
+        const mayBonus = s.res.length >= 2 && !TR.leading(score, turn);
+        const t = AI.turnT(o, s, zone(G, 'resources').map(c => ({ id: c.id, s: c.s })), G.goal, G.fractions, last !== turn, nowOk, mayBonus);
+        if (t.challenge) { doChallenge(t.challenge.kind, turn); break; }
+        if (t.bonus) { const bc = G.cubes[t.bonus.id]; bc.zone = 'forbidden'; bc.order = ++order; bonusMoves++; }
+        const mv = t.move; if (!mv) break;
+        const c = G.cubes[mv.id]; c.zone = zone(G, 'resources').length === 1 && mv.zone === 'forbidden' ? 'permitted' : mv.zone; c.order = ++order; last = turn;
+        if (zone(G, 'resources').length === 0) {
+          const opp = (turn + 1) % n;
+          if (AI.callsLastImpossible(P[opp], snap(G), G.goal, G.fractions)) { doChallenge('impossible', opp); break; }
+          P.forEach((p, i) => { pts[i] = write(G, p, 'last').found ? 4 : 2; }); how = 'last cube';
+          break;
+        }
+        turn = (turn + 1) % n;
+      }
+      ends[how || 'unfinished'] = (ends[how || 'unfinished'] || 0) + 1;
+      pts.forEach((x, i) => score[i] += x);
+      shakes++; const ms = Date.now() - t1; totalMs += ms; slow = Math.max(slow, ms);
+    }
+    const mp = TR.matchPoints(score);
+    P.forEach((p, i) => { const r = matchPts[p.name] || (matchPts[p.name] = { mp: 0, rounds: 0 }); r.mp += mp[i].pts; r.rounds++; });
+    console.log(`  table ${P.map(p => p.name).join(', ')}: shake points ${score.join(' / ')} -> match points ${mp.map(x => x.pts).join(' / ')}`);
+  });
+  console.log(`\n===== TOURNEY playtest: ${div === 'M' ? 'Middle' : 'Elementary'} list, ${two ? 2 : 3} players, ${shakes} shakes =====`);
+  console.log(`Cards picked (${picksTotal}, illegal: ${illegalPicks}): ` + Object.keys(cardCount).sort((a, b) => cardCount[b] - cardCount[a]).map(k => k + ' ' + cardCount[k]).join(', '));
+  console.log(`Pairs in play: ${Object.keys(pairCount).length} different; most common: ` + Object.keys(pairCount).sort((a, b) => pairCount[b] - pairCount[a]).slice(0, 8).map(k => k + ' ' + pairCount[k]).join(', '));
+  console.log('How shakes end: ' + Object.keys(ends).sort().map(k => k + ': ' + ends[k]).join('; '));
+  console.log(`Bonus moves by creatures: ${bonusMoves}`);
+  console.log(`Time per shake: average ${(totalMs / Math.max(1, shakes)).toFixed(0)}ms, slowest ${slow}ms`);
+  console.log(`Combination check: ${CHECK.sols} Solutions written, ${CHECK.bad} wrong under the shake's cards` + (CHECK.examples.length ? ': ' + CHECK.examples.join('; ') : ''));
+  process.exit(CHECK.bad || illegalPicks ? 1 : 0);
+}
+const TOURNEYARG = process.argv.slice(4).find(a => /^tourney/.test(a)) || null;
+if (TOURNEYARG) tourneyPlaytest(TOURNEYARG);
 
 const results = [];
 function pairing(A, B) {

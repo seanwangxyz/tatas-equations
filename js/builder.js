@@ -65,7 +65,7 @@ function renderBuilder() {
     else items.push([!/two-digit/.test(R), 'One-digit numbers only']);
     if (RU.basem) items.push([!/In base/.test(R), 'Base ' + RU.base + ' digits only (0 to ' + (RU.base - 1) + ')']);
     if (RU.three) items.push([(chk.ops || 0) >= 3, 'At least 3 operation signs (' + (chk.ops || 0) + ')']);
-    if (RU.fact) { var bu = Eq.bangsIn(B.tokens), ba = 2 - Eq.bangsIn(B.goalTokens); items.push([bu <= ba, '! signs: ' + bu + ' of ' + ba]); }
+    if (RU.fact && !RU.multi) { var bu = Eq.bangsIn(B.tokens), ba = 2 - Eq.bangsIn(B.goalTokens); items.push([bu <= ba, '! signs: ' + bu + ' of ' + ba]); }
     items.push([!!chk.equal, RU.multk ? 'Misses the Goal by a multiple of ' + RU.k : 'Equals the Goal']);
     checks = '<div class="checks">' + items.map(function (x) { return '<span class="' + (x[0] ? 'y' : 'n') + '">' + (x[0] ? '✔' : '○') + ' ' + x[1] + '</span>'; }).join('') + '</div>';
   }
@@ -86,14 +86,15 @@ function renderBuilder() {
   $('#builderBox').innerHTML = '<h2>' + B.title + '</h2>' + (window.Vari ? Vari.builderNote(B.fractions) : '') + (window.Bonus ? Bonus.builderNote(B) : '') + goalLine + // (BONUS: what a bonus cube means)
     '<div class="expr' + (mid ? ' vari-expr' : '') + '" id="bExpr" style="margin-top:8px">' + exprIn + '</div>' +
     '<div class="b-live ' + liveCls + '">' + live + '</div>' + checks +
-    '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button>' + bang + '<button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button>' + side + '</div>' +
+    (window.Tourney && G && G.mode !== 'tutorial' && G.mode !== 'online' ? '<div id="bJudge" class="b-judge" style="display:none"></div>' : '') + // TOURNEY: Judge Pip's answer
+    '<div class="b-tools"><button class="btn" data-act="bParen" data-arg="(">(</button><button class="btn" data-act="bParen" data-arg=")">)</button>' + bang + '<button class="btn" data-act="bBack">⌫</button><button class="btn small" data-act="bClear">Clear</button>' + side + (window.Tourney && G && G.mode !== 'tutorial' && G.mode !== 'online' ? '<button class="btn small" data-act="bJudge">' + Tourney.judgeFace(20) + ' Ask the Judge</button>' : '') + '</div>' + // (TOURNEY: Is this Goal legal? / Does this Solution count?)
     pools +
     '<div class="row" style="margin-top:12px">' + (B.kind === 'goal' ? '<button class="btn big green" data-act="bSubmit">' + ico('target') + ' Set this Goal!</button>' + (B.noCancel ? '' : '<button class="btn" data-act="bCancel">Cancel</button>')
       : '<button class="btn big green" data-act="bSubmit">' + ico('check') + ' Check my Solution!</button>' + (B.mode === 'daily' ? '<button class="btn" data-act="bCancel">Close</button>' : '<button class="btn" data-act="bGiveUp">I can\'t find one</button>')) + '</div>' +
     '<p style="text-align:center;font-size:14px;color:#868e96;margin:6px 0 0">' + (turnable ? 'Tip: tap a cube with ✕ to turn it or change what it means; the ✕ takes it back out. Tap any other cube to take it out.' : 'Tip: tap a cube in your expression to take it back out.') + '</p>';
 }
 // ---- Middle-tier variation cards (js/variations.js, RULES_SUMMARY.md section 6) ----
-function midCard(RU) { return RU.ud || RU.sw || RU.avg || RU.expo || RU.multk || RU.pob || RU.fact || RU.nfac || RU.sprime || RU.lcm || RU.gcf || RU.pct || RU.dec || RU.basem; }
+function midCard(RU) { return RU.div || RU.ud || RU.sw || RU.avg || RU.expo || RU.multk || RU.pob || RU.fact || RU.nfac || RU.sprime || RU.lcm || RU.gcf || RU.pct || RU.dec || RU.basem; }
 // What a placed cube may mean with the card in play, in tap order (the first is how the cube was placed):
 // a number cube upright / upside-down / sideways, a 1 as 10, 100, 1000, 0.1, 0.01, 0.001, an exponent-colour
 // digit as an exponent, √ as root / LCM / percent, ^ as power / GCF / decimal point. (+ is always an
@@ -102,10 +103,12 @@ function cycleOf(t) {
   if (!t || typeof t !== 'object') return [];
   var RU = Eq.rulesOf(B.fractions), c = B.cubes[t.id], face = c ? c.s : Eq.cubeOf(t.s);
   if (Eq.isDigit(face)) {
-    var d = +face, list = [face];
-    if (RU.ud && d) list.push(Eq.UD[d]);
-    if (RU.sw && d && RU.fr) list.push(Eq.SW[d]);
+    var d = +face, list = [face], wz = RU.wild && d === 0; // (TOURNEY: a wild 0 may be turned too, manual F2, F3)
+    if (RU.ud && (d || wz)) list.push(Eq.UD[d]);
+    if (RU.sw && (d || wz) && RU.fr) list.push(Eq.SW[d]);
+    if (RU.udsw && (d || wz) && RU.fr && B.kind === 'solution') list.push(Eq.NS[d]); // TOURNEY: both turns, Solution only (manual F1)
     if (RU.pob && face === '1') list = list.concat(['T', 'H', 'K', 't', 'h', 'k'].filter(function (k) { return RU.fr || Eq.POB[k] > 0; }));
+    if (RU.pobud && face === '1') list = list.concat(['ⅰ', 'ⅱ', 'ⅲ', 'Ⅰ', 'Ⅱ', 'Ⅲ'].filter(function (k) { return RU.fr || Eq.NPOB[k] > 0; })); // TOURNEY: manual F17
     if (RU.expo && RU.eids && RU.eids.indexOf(t.id) >= 0) list.push(Eq.EX[d]);
     return list;
   }
@@ -123,7 +126,7 @@ ACT.bCycle = function (el) {
 };
 // Factorial card: a ! sign (written in, not a cube). Two for the whole Equation (Goal and Solution together).
 ACT.bBang = function () {
-  var allowed = 2 - (B.kind === 'solution' ? Eq.bangsIn(B.goalTokens) : 0);
+  var allowed = (B.kind === 'solution' && Eq.rulesOf(B.fractions).multi) ? 99 : 2 - (B.kind === 'solution' ? Eq.bangsIn(B.goalTokens) : 0); // (TOURNEY: with Use It Again, any number of ! in a Solution, XIII-A-5)
   if (Eq.bangsIn(B.tokens) >= allowed) { Snd.boop(); var el = $('#builderBox .b-live'); if (el) el.textContent = allowed > 0 ? 'Only ' + allowed + ' ! sign' + (allowed > 1 ? 's' : '') + ' for this ' + (B.kind === 'goal' ? 'Goal' : 'Solution') + '.' : 'The Goal already used both ! signs.'; return; }
   B.tokens.push('!'); Snd.click(); renderBuilder();
 };
@@ -157,6 +160,7 @@ ACT.bSide = function () {
   }
   Snd.boop(); var el = $('#builderBox .b-live'); if (el) el.textContent = 'Put a ÷ cube in your Solution first, then turn it sideways.';
 };
+ACT.bJudge = function () { if (window.Tourney) Tourney.judgeBuilder(); }; // TOURNEY
 ACT.bRemove = function (el) { var i = +el.dataset.bi; B.tokens.splice(i, 1); Snd.click(); renderBuilder(); };
 ACT.bParen = function (el) { B.tokens.push(el.dataset.arg); Snd.click(); renderBuilder(); };
 ACT.bBack = function () { B.tokens.pop(); Snd.click(); renderBuilder(); };

@@ -1365,5 +1365,348 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
 }
 // ================= END BONUS DICE =================
 
+// ================= TOURNEY: SEVERAL VARIATION CARDS AT ONCE + TOURNAMENT RULES (RULES_SUMMARY.md section 8) =================
+// Hand-checked cases cite the 2026-27 rules PDF (section numbers) and the judges' manual (situation numbers such as
+// F1, A27, General Principle 11). Then: solver round trips under every supported pair (and some triples) of the
+// Elementary and Middle lists, an independent brute-force enumerator on small cube sets for every supported pair,
+// time caps, and the pure tournament rules in js/tourney.js (TourneyRules).
+{
+  const MMs = (vars, set, goal) => Eq.mathMode(true, vars, goal ? t(goal) : null, set);
+  const E = (vars, set, goal) => MMs(vars, Object.assign({ div: 'E' }, set || {}), goal);
+  const M = (vars, set, goal) => MMs(vars, Object.assign({ div: 'M' }, set || {}), goal);
+  const U = Eq.UD, SW = Eq.SW, NS = Eq.NS, X = Eq.EX;
+  const v = (expr, m, o) => { const r = Eq.evaluate([...expr], Object.assign({ fractions: m }, o || {})); return r.ok ? Eq.fmt(r.value) : 'ERR:' + r.code; };
+  const is = (label, expr, m, want, o) => { const got = v(expr, m, o); ok(`combo ${label}: ${expr} → ${want}`, got === want, got); };
+  // checkSolution: tokens from a string; a char followed by digits in braces reuses a cube id, e.g. '*{1}'. Plain: each char its own cube.
+  function sol(spec, goal, m, extra) {
+    const toks = []; let id = 0;
+    for (let i = 0; i < spec.length; i++) {
+      const s = spec[i];
+      if (s === '(' || s === ')' || s === '!') { toks.push(s); continue; }
+      if (spec[i + 1] === '{') { const j = spec.indexOf('}', i); toks.push({ s, id: +spec.slice(i + 2, j) }); i = j; continue; }
+      toks.push({ s, id: 100 + id++ });
+    }
+    return Eq.checkSolution(toks, Object.assign({ goal, zone: () => 'permitted', required: [], mode: 'impossible', fractions: m, label: x => String(x) }, extra || {}));
+  }
+  const found = (m, goal, cubes, extra) => Eq.solve(Object.assign({ goal, req: [], opt: cubes, res: [], mode: 'free', fractions: m, maxDigits: 6, timeMs: 3000 }, extra || {}));
+
+  // ---- Nothing changes without the tournament flag or a second card ----
+  ok('combo: a plain shake is still plain true/false (no division, no card)', Eq.mathMode(true, []) === true && Eq.mathMode(false, []) === false);
+  ok('combo: a tournament shake with no card keeps its division', Eq.rulesOf(Eq.mathMode(true, [], null, { div: 'M' })).mpow === true && Eq.rulesOf(Eq.mathMode(true, [], null, { div: 'E' })).nfmax === 200);
+  is('Elementary powers without the division flag', '(0-2)^2', MMs(['upside']), 'ERR:powwhole');
+
+  // ---- Sideways + Upside-down (XIII-A-2 comment (a), XIII-B-2 comment; manual F1) ----
+  const swud = E(['sideways', 'upside']);
+  is('F1 both turns', '6+' + NS[3], swud, '5 2/3');
+  is('F1 both turns, not in the Goal (XIII-A-2 comment (a))', NS[3], swud, 'ERR:bothgoal', { inGoal: true, multiDigit: true });
+  is('both turns need both cards', '6+' + NS[3], E(['sideways']), 'ERR:nocard');
+  is('both turns, a 0 never (1/0)', '6+' + NS[0], swud, 'ERR:sw0');
+  ok('combo F1: the solver uses a doubly turned cube: 3, +, 6 make 5 2/3 only with both cards', found(swud, F(17, 3), ['3', '+', '6']).found && !found(E(['sideways']), F(17, 3), ['3', '+', '6']).found && !found(E(['upside']), F(17, 3), ['3', '+', '6']).found);
+  ok('combo F1: Eq.cubeOf / orient know the doubly turned cube', Eq.cubeOf(NS[4]) === '4' && Eq.orient(NS[4]).o === 'n' && Eq.withOrient(4, 'n') === NS[4] && Eq.isNumSym(NS[4]));
+
+  // ---- 0 Wild + Sideways / Upside-down (manual F2, F3, General Principle 11) ----
+  const wsw = E(['wild0', 'sideways']), wud = E(['wild0', 'upside']), wboth = E(['wild0', 'sideways', 'upside']);
+  is('F2 a sideways wild 0 standing for 6', '1+' + SW[0], wsw, '1 1/6', { wild: 6 });
+  is('F3 an upside-down wild 0 standing for 6', '9+' + U[0], wud, '3', { wild: 6 });
+  is('F2 a sideways wild 0 standing for 0 is still 1/0', '1+' + SW[0], wsw, 'ERR:sw0', { wild: 0 });
+  ok('combo F2: every 0 stands for the same digit, each turned its own way: 0 + sideways 0 = 6 1/6 (both 0s are 6)', sol('0+' + SW[0], F(37, 6), wsw).ok && sol('0+' + SW[0], F(37, 6), wsw).wildAs === 6);
+  ok('combo F2 comment: three 0s, one upright, one sideways, one upside-down, all standing for 6: 0 × sideways 0 + upside-down 0 = −5', sol('0*' + SW[0] + '+' + U[0], F(-5), wboth).ok);
+  ok('combo F2: one 0 for 3 and another for 4 is still wrong (XIII-A-3 example (a))', !sol('0*' + SW[0], F(3, 4), wsw).ok);
+  {
+    const goalSyms = ['9', '-', '0'], m = E(['wild0', 'upside'], null, '9-0'), mPlain = E(['wild0'], null, '9-0');
+    ok('combo General Principle 11: with 0 Wild + Upside-down the Goal 9 − 0 may be read 9 − (−w): 5 + 7 = 12 counts (0 = 3)', sol('5+7', F(12), m).ok && sol('5+7', F(12), m).wildAs === 3);
+    ok('combo General Principle 11: with 0 Wild alone the same Equation is wrong (9 − 0 can not be 12)', !sol('5+7', F(12), mPlain).ok);
+    ok('combo General Principle 11: Eq.goalVals lists both readings', Eq.goalVals(goalSyms, 3, m).map(Eq.fmt).join(',') === '6,12' && Eq.goalVals(goalSyms, 3, mPlain).map(Eq.fmt).join(',') === '6');
+    ok('combo General Principle 11: the solver finds 12 too', found(m, F(12), ['5', '+', '7']).found && !found(mPlain, F(12), ['5', '+', '7']).found);
+    const r = found(wud, F(1), ['5', '+', '0']);
+    ok('combo F3: the solver turns a wild 0 and maps it to the 0 cube (5 + upside-down 0 = 1 with 0 = 4)', r.found && r.wild === 4 && r.tokens.includes(U[0]));
+  }
+
+  // ---- Factorial + Multiple Operations / Three Operations / turned cubes (XIII-A-4, A-5, A-6; manual F6, F7) ----
+  {
+    const fm = E(['factorial', 'multiops'], null, '9!/8!'), f = E(['factorial'], null, '9!/8!');
+    ok('combo XIII-A-4 example (b): both ! in the Goal leave none for the Solution …', !sol('3!+3', F(9), f).ok);
+    ok('combo XIII-A-5: … unless Multiple Operations is also chosen', sol('3!+3', F(9), fm).ok);
+    ok('combo XIII-A-5: with Multiple Operations a Solution may use three ! signs', sol('(3!)!/(3!)!+2', F(3), E(['factorial', 'multiops'])).ok);
+    ok('combo XIII-A-5: the Goal still has at most two', !Eq.checkGoal(t('3!!+1!'), E(['factorial', 'multiops'])).ok);
+    ok('combo XIII-A-5: the solver uses ! freely with both cards', found(E(['factorial', 'multiops'], null, '9!/8!'), F(9), ['3', '+', '3']).found && !found(E(['factorial'], null, '9!/8!'), F(9), ['3', '+', '3']).found);
+    const f3 = E(['factorial', 'threeops']);
+    ok('combo XIII-A-6: a ! counts as an operation sign (3! + 1 − 2 has three)', sol('3!+1-2', F(5), f3).ok && sol('3!+1-2', F(5), f3).ops === 3);
+    ok('combo XIII-A-6: 3! + 1 has only two', !sol('3!+1', F(7), f3).ok);
+    ok('combo XIII-A-6: without Factorial the count is unchanged (+ − only = 2)', sol('3!+1-2', F(5), E(['factorial'])).ops === 2);
+    is('F6 (1/3)! is not defined', '(' + SW[3] + ')!', E(['sideways', 'factorial']), 'ERR:factwhole');
+    is('F6 (8 × 1/2)! = 4! is fine', '(8*' + SW[2] + ')!', E(['sideways', 'factorial']), '24');
+    is('F7 (−3)! is not defined', '(' + U[3] + ')!', E(['upside', 'factorial']), 'ERR:factwhole');
+    is('F7 (1 + (−1))! = 0! = 1', '(1+' + U[1] + ')!', E(['upside', 'factorial']), '1');
+  }
+
+  // ---- Number of Factors + Multiple Operations / Sideways (manual F4, F5, F8) and the division limit ----
+  {
+    const nm = E(['nfactors', 'multiops']);
+    ok('combo F4: one × cube used as # factors twice and to multiply: ×{1}×{1}6 + 1 … (# of # of 6 = 3, +1 = 4)', sol('*{1}*{1}6+1', F(4), nm).ok);
+    ok('combo F4: without Multiple Operations the same cube twice is wrong', !sol('*{1}*{1}6+1', F(4), E(['nfactors'])).ok);
+    is('F5 #24 = 8 (Goal)', '*24', nm, '8', { multiDigit: true }); is('F5 ##24 = 4', '**24', nm, '4', { multiDigit: true }); is('F5 ###24 = 3', '***24', nm, '3', { multiDigit: true }); is('F5 ####24 = 2', '****24', nm, '2', { multiDigit: true });
+    ok('combo F5: the solver stacks # factors with one × cube (##8 = 3) only with Multiple Operations', found(nm, F(3), ['8', '*', '5']).found && !found(E(['nfactors']), F(3), ['8', '*', '5']).found);
+    is('F8 #(1/3) is not defined', '*' + SW[3], E(['nfactors', 'sideways']), 'ERR:nfacwhole');
+    is('F8 ##6 = 3', '**6', E(['nfactors', 'sideways']), '3');
+    is('XIII-A-11 example (f): #(5^4) is not defined in Elementary', '*(5^4)', E(['nfactors']), 'ERR:nfacbig200');
+    is('XIII-B-8 / XIII-A-11 (f): #(5^4) = 5 in Middle', '*(5^4)', M(['nfactors']), '5');
+    is('normal play keeps the old limit (1000)', '*(5^4)', MMs(['nfactors']), '5');
+  }
+
+  // ---- LCM / GCF + Multiple Operations (manual F10) ----
+  ok('combo F10: one √ cube as LCM and as a root: 6 lcm 4 + √9 = 15', sol('6l{1}4+r{1}9', F(15), E(['lcm', 'multiops'])).ok && !sol('6l{1}4+r{1}9', F(15), E(['lcm'])).ok);
+  ok('combo F10 comment: one ^ as GCF and as a power: 8 gcf 6 + 2^3 = 10', sol('8g{1}6+2^{1}3', F(10), E(['gcf', 'multiops'])).ok);
+  ok('combo XIII-A-6 comment: LCM and GCF count as operation signs (6 lcm 4 + 8 gcf 6 = 14 has three)', sol('6l4+8g6', F(14), E(['lcm', 'gcf', 'threeops'])).ok && sol('6l4+8g6', F(14), E(['lcm', 'gcf', 'threeops'])).ops === 3);
+  ok('combo XIII-A-6 comment: a remainder and a # factors count too (#6 + 7 rem 4 = 7 has three)', sol('*6+7m4', F(7), E(['nfactors', 'remainder', 'threeops'])).ok);
+
+  // ---- Base m with Sideways / Upside-down / Multiple of k / Powers of the Base / Exponent (F15, F16, F23, XIII-B-10, A27) ----
+  is('F15 two sideways cubes are not a two-digit numeral', SW[3] + SW[7], M(['basem', 'sideways'], { base: 8 }), 'ERR:flipnext');
+  is('F16 two upside-down cubes are not a two-digit numeral', U[1] + U[2], M(['basem', 'upside'], { base: 8 }), 'ERR:flipnext');
+  is('base 8: a sideways 9 does not exist', '1+' + SW[9], M(['basem', 'sideways'], { base: 8 }), 'ERR:basedigit');
+  is('base 8: an upside-down 7 is −7', '10+' + U[7], M(['basem', 'upside'], { base: 8 }), '1');
+  {
+    const m = M(['basem', 'multk'], { base: 8, k: 6 }), g = Eq.checkGoal(t('24'), m).value;
+    ok('combo F23: Goal 24 in base eight is twenty; Solutions equal to 26, 14, 2, −4 count, 20 does not', Eq.fmt(g) === '20' && [26, 14, 2, -4].every(x => Eq.multOk(F(x), g, 6)) && !Eq.multOk(F(20), g, 6) && sol('32', F(20), m).ok === true && Eq.fmt(sol('32', g, m).value) === '26');
+  }
+  is('XIII-B-10 example (b): base 8, a 1 may be eight', 'T', M(['basem', 'powbase'], { base: 8 }), '8');
+  is('XIII-B-10 example (b): base 8, sixty-four', 'H', M(['basem', 'powbase'], { base: 8 }), '64');
+  is('XIII-B-10 example (b): base 8, one-eighth', 't', M(['basem', 'powbase'], { base: 8 }), '1/8');
+  is('XIII-B-10 example (b): base 9, eighty-one', 'H', M(['basem', 'powbase'], { base: 9 }), '81');
+  is('XIII-B-10: base ten as before', 'H', M(['powbase']), '100');
+  is('A27: base 8, a black 8 can not be an exponent', '2' + X[8], M(['basem', 'expo'], { base: 8, ecol: 'black' }), 'ERR:basedigit');
+  is('base 8 + Exponent: 3² = 9', '3' + X[2], M(['basem', 'expo'], { base: 8, ecol: 'blue' }), '9');
+
+  // ---- Powers of the Base + Upside-down / Sideways (manual F17, F14) ----
+  const pu = M(['powbase', 'upside']);
+  is('F17 an upside-down 1 as −10', '5+ⅰ', pu, '−5'); is('F17 … as −0.1', 'Ⅰ', pu, '−1/10'); is('F17 … as −100', 'ⅱ', pu, '−100');
+  is('F17 comment: with Base 8 too, −8', 'ⅰ', M(['powbase', 'upside', 'basem'], { base: 8 }), '−8');
+  is('F17 needs both cards', 'ⅰ', M(['powbase']), 'ERR:nocard');
+  ok('combo F17: the solver makes −99 from 1, +, 1 only with both cards (−100 + 1)', found(pu, F(-99), ['1', '+', '1']).found && !found(M(['powbase']), F(-99), ['1', '+', '1']).found);
+  ok('combo F14: a sideways 1 adds no new value (0.1 is already a power of ten): 1/10 is found without it', found(M(['powbase', 'sideways']), F(1, 10), ['1', '*', '1']).found);
+
+  // ---- Middle-division powers and roots (section III-C), only with the Middle list ----
+  const mp = M([]);
+  is('III-C example (a): (−8)^(4/6) = (−8)^(2/3) = 4', '(0-8)^(4/6)', mp, '4');
+  is('III-C example (b): (−4)^(2/4) is not defined', '(0-4)^(2/4)', mp, 'ERR:evenneg');
+  is('III-C example (c): 3/6 √ (−9) = 81', '(3/6)r(0-9)', mp, '81');
+  is('III-C example (d): 8/2 √ (−5) is not defined', '(8/2)r(0-5)', mp, 'ERR:evenneg');
+  is('III-C-2-a: 0 √ a is not defined', '0r4', mp, 'ERR:rootindex');
+  is('III-C-2-b: 0 ^ (−1) is not defined', '0^(0-1)', mp, 'ERR:divzero');
+  is('III-B-2: (2+1) √ 8 = 2', '(2+1)r8', mp, '2');
+  is('III-B-2: 3√√9 is the sixth root of 9: not a fraction, so the game refuses it', '3rr9', mp, 'ERR:irrational');
+  is('Middle: 2^(−1) = 1/2', '2^(0-1)', mp, '1/2');
+  is('Middle: √(1/4) = 1/2', 'r(1/4)', mp, '1/2');
+  is('Middle + Upside-down (manual E53 kind): (−2)^2 = 4', '(' + U[2] + ')^2', M(['upside']), '4');
+  is('Elementary keeps the General Rule (XIII-A): (−2)^2 refused', '(' + U[2] + ')^2', E(['upside']), 'ERR:powwhole');
+  ok('combo Middle: the solver makes 1/2 from 2, ^, 0, −, 1 (2^(0−1)) only under Middle rules', found(mp, F(1, 2), ['2', '^', '0', '-', '1']).found && !found(E([]), F(1, 2), ['2', '^', '0', '-', '1']).found);
+
+  // ---- 3 cards at once (a sample) ----
+  {
+    const m3 = E(['sideways', 'upside', 'factorial']);
+    ok('combo triple: Sideways + Upside-down + Factorial: 3! + both-turned 2 = 5 1/2', Eq.fmt(Eq.evaluate(t('3!+' + NS[2]), { fractions: m3 }).value) === '5 1/2');
+    ok('combo triple: Base 8 + Multiple of 7 + Powers of the Base: T + 2 = 10 in tens (8 + 2), 7 away from the Goal 3', Eq.multOk(Eq.evaluate(t('T+2'), { fractions: M(['basem', 'multk', 'powbase'], { base: 8, k: 7 }) }).value, F(3), 7));
+  }
+
+  // ---- Ambiguity notes (TourneyRules, VII-B-6-c; manual E41, E46) ----
+  const tsrc = fs.readFileSync(path.join(root, 'js', 'tourney.js'), 'utf8');
+  const TR = new Function('Eq', tsrc + '\nreturn TourneyRules;')(Eq);
+  ok('rules E41: ×7! with Number of Factors + Factorial is flagged as ambiguous', TR.ambiguities(t('4+*7!'), E(['nfactors', 'factorial'])).length === 1);
+  ok('rules E46: √9! is flagged', TR.ambiguities(t('r9!'), E(['factorial'])).length === 1);
+  ok('rules: (√9)! and 2√9! (√ with an index) are not flagged', TR.ambiguities(t('(r9)!'), E(['factorial'])).length === 0 && TR.ambiguities(t('3*(r9)!'), E(['factorial'])).length === 0);
+
+  // ---- TourneyRules: the lists, picking legality, order, bonus moves, match points, first Goal-setter ----
+  const res = s => ({ res: [...s].map((x, i) => ({ s: x, color: Eq.COLORS[i % 4] })) });
+  ok('rules XIII 2026-27: Elementary list has 11 cards, Middle 10, every id a real engine card', TR.LISTS.E.length === 11 && TR.LISTS.M.length === 10 && TR.LISTS.E.concat(TR.LISTS.M).every(id => Eq.VARIATIONS.includes(id)));
+  ok('rules XIII: Average, Percent, Decimal Point, Smallest Prime are not on the 2026-27 lists', ['average', 'percent', 'decimal', 'sprime'].every(id => !TR.LISTS.E.includes(id) && !TR.LISTS.M.includes(id)));
+  const ctx1 = res('12345+-*/^r');
+  ok('rules II-B-2 example: 0 Wild with no 0 in Resources is illegal', TR.check('wild0', null, [], ctx1, 'E').code === 'noeffect');
+  ok('rules II-B-2: 0 Wild with a 0 is fine', TR.check('wild0', null, [], res('0123+-'), 'E').ok);
+  ok('rules II-B-2: a card already chosen can not be chosen again (even with another k)', TR.check('multk', { k: 9 }, [{ id: 'multk', set: { k: 7 } }], ctx1, 'M').code === 'already');
+  ok('rules: a card not on the list is refused', TR.check('average', null, [], ctx1, 'E').code === 'notlist');
+  ok('rules: Middle 0 Wild is not offered yet (no penalty code)', TR.check('wild0', null, [], res('0123'), 'M').code === 'notyet');
+  ok('rules: Exponent with Sideways / Upside-down / Powers of the Base / Factorial is not offered yet', ['sideways', 'upside', 'powbase', 'factorial'].every(id => TR.check('expo', { ecol: 'red' }, [{ id, set: null }], ctx1, 'M').code === 'notyet' && TR.check(id, null, [{ id: 'expo', set: { ecol: 'red' } }], ctx1, 'M').code === 'notyet'));
+  {
+    const c = { res: [{ s: '8', color: 'black' }, { s: '9', color: 'black' }, { s: '3', color: 'red' }, { s: '+', color: 'red' }] };
+    ok('rules A27: Base 8 then Black Exponent with only black 8s and 9s is illegal', TR.check('expo', { ecol: 'black' }, [{ id: 'basem', set: { base: 8 } }], c, 'M').code === 'noeffect' && TR.check('expo', { ecol: 'black' }, [], c, 'M').ok);
+    ok('rules XIII-B-9 comment (c): Exponent of a colour with no digits is illegal; settingsFor offers only colours with digits', TR.check('expo', { ecol: 'green' }, [], c, 'M').code === 'noeffect' && JSON.stringify(TR.settingsFor('expo', c, [])) === JSON.stringify([{ ecol: 'red' }, { ecol: 'black' }]));
+  }
+  ok('rules: Three Operations needs three signs that could be written (2 ops, but Factorial adds two ! → fine)', TR.check('threeops', null, [], res('123+-'), 'E').code === 'noeffect' && TR.check('threeops', null, [{ id: 'factorial' }], res('123+-'), 'E').ok && TR.check('threeops', null, [{ id: 'multiops' }], res('123+'), 'E').ok);
+  ok('rules II-B-1-c / A7: a card with a blank needs it filled in', TR.check('basem', null, [], ctx1, 'M').code === 'setting' && TR.check('basem', { base: 10 }, [], ctx1, 'M').ok && TR.check('basem', { base: 11 }, [], ctx1, 'M').code === 'setting');
+  ok('rules: legalFor lists only legal cards (no Middle 0 Wild, Powers of the Base only with a 1, 0 Wild only with a 0)', !TR.legalFor('M', [], res('0123+-*')).some(c => c.id === 'wild0') && TR.legalFor('M', [], res('1234+-*')).some(c => c.id === 'powbase') && !TR.legalFor('M', [], res('2345+-*')).some(c => c.id === 'powbase') && !TR.legalFor('E', [], res('1234+-*')).some(c => c.id === 'wild0'));
+  ok('rules II-B-1: three players pick in turn from the Goal-setter, one each', JSON.stringify(TR.pickOrder(2, 3)) === JSON.stringify([{ p: 2, k: 1 }, { p: 0, k: 1 }, { p: 1, k: 1 }]));
+  ok('rules II-B-3: two players: the Goal-setter picks one, the other picks two', JSON.stringify(TR.pickOrder(1, 2)) === JSON.stringify([{ p: 1, k: 1 }, { p: 0, k: 2 }]));
+  ok('rules IV-C-2 / V-C-2: the leader may not bonus; V-C comment (a): tied for the lead may', TR.leading([8, 6, 4], 0) && !TR.leading([8, 8, 4], 0) && !TR.leading([4, 8, 6], 0));
+  const mpts = sc => TR.matchPoints(sc).map(x => x.pts).join(',');
+  ok('rules XII-A three players: alone 6/4/2', mpts([14, 10, 6]) === '6,4,2');
+  ok('rules XII-A: two tied for first 5, 5, third 2', mpts([10, 10, 6]) === '5,5,2');
+  ok('rules XII-A: all three tied 4, 4, 4', mpts([8, 8, 8]) === '4,4,4');
+  ok('rules XII-A: first alone, two tied for second 6, 3, 3', mpts([14, 10, 10]) === '6,3,3');
+  ok('rules XII-A two players: 6/4, a tie 5/5', mpts([12, 8]) === '6,4' && mpts([8, 8]) === '5,5');
+  ok('rules I-D / A1: highest digit sets the first Goal', TR.rollRound([0, 1, 2], ['2', '3', '1']).winner === 1);
+  ok('rules I-D / A1: an operation sign is out', TR.rollRound([0, 1, 2], ['+', '0', '-']).winner === 1);
+  ok('rules I-D / A1: everyone rolled an operation: roll again', JSON.stringify(TR.rollRound([0, 1], ['+', '-']).again) === '[0,1]');
+  ok('rules I-D / A1: a tie for high rolls again (only the tied players)', JSON.stringify(TR.rollRound([0, 1, 2], ['3', '1', '3']).again) === '[0,2]');
+  ok('rules: every pair note and not-yet pair names real cards', Object.keys(TR.PAIR_NOTE).every(k => k.split('+').every(id => Eq.VARIATIONS.includes(id))) && TR.NOT_YET_PAIR.every(p => Eq.VARIATIONS.includes(p[0]) && Eq.VARIATIONS.includes(p[1])));
+
+  // ---- Supported pairs ----
+  const pairs = div => { const L = TR.LISTS[div].filter(id => !(TR.NOT_YET_CARD[div] && TR.NOT_YET_CARD[div][id])), out = []; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) if (!TR.notYetPair(L[i], L[j])) out.push([L[i], L[j]]); return out; };
+  const PE = pairs('E'), PM = pairs('M');
+  ok(`supported pairs: Elementary ${PE.length} (all 55), Middle ${PM.length} (36 minus 4 not offered yet)`, PE.length === 55 && PM.length === 32);
+  const SETS = { multk: { k: 7 }, basem: { base: 8 }, expo: { ecol: 'green' } };
+  const setFor = ids => Object.assign({}, ...ids.map(id => SETS[id] || {}));
+
+  // ---- Round trip: every solver Solution passes checkSolution after the game's cube mapping, under every pair ----
+  function roundTrip(ids, div, seed, rolls) {
+    const rand = Eq.rng(seed); let n = 0, good = 0, bad = [], worst = 0, incompleteOk = 0;
+    for (let k = 0; k < rolls; k++) {
+      const cubes = Eq.roll(rand).map(c => ({ id: c.id, s: c.s, color: c.color, zone: 'resources' }));
+      const order = cubes.slice().sort(() => rand() - 0.5);
+      order.slice(0, 2).forEach(c => c.zone = 'goal'); order.slice(2, 4).forEach(c => c.zone = 'required');
+      order.slice(4, 6).forEach(c => c.zone = 'permitted'); order.slice(6, 9).forEach(c => c.zone = 'forbidden');
+      const set = Object.assign({ div }, setFor(ids));
+      if (ids.includes('expo')) { set.eids = cubes.filter(c => c.color === set.ecol && Eq.isDigit(c.s)).map(c => c.id); set.ex = Eq.expCounts(cubes, set.ecol); }
+      const gs = order.slice(0, 2).map(c => c.s);
+      const mode = Eq.mathMode(true, ids, gs, set), z = nm => cubes.filter(c => c.zone === nm).map(c => c.s);
+      ['impossible', 'now'].forEach(md => {
+        const goal = rand() < 0.2 ? F(Math.floor(rand() * 9) - 4, 2) : F(1 + Math.floor(rand() * 40)), t0 = Date.now();
+        const r = Eq.solve({ goal, req: z('required'), opt: z('permitted'), res: z('resources'), mode: md, fractions: mode, maxDigits: 5, timeMs: 700 });
+        worst = Math.max(worst, Date.now() - t0);
+        if (!r.found) return;
+        n++;
+        const pool = cubes.filter(c => c.zone === 'required' || c.zone === 'permitted' || c.zone === 'resources');
+        const toks = Eq.cubeTokens(r.tokens, pool, mode);
+        const chk = Eq.checkSolution(toks, { goal, zone: i => cubes[i] ? cubes[i].zone : 'forbidden', required: cubes.filter(c => c.zone === 'required').map(c => c.id), mode: md, fractions: mode });
+        if (chk.ok) good++; else bad.push(r.expr + ' → ' + chk.reasons.join(' '));
+      });
+    }
+    return { n, good, bad, worst };
+  }
+  const TIMING = { worst: 0, pair: '' };
+  [['E', PE], ['M', PM]].forEach(([div, P]) => {
+    let n = 0, good = 0, bad = [], worst = 0, wp = '';
+    P.forEach(([a, b], i) => { const r = roundTrip([a, b], div, 7000 + i * 31 + (div === 'M' ? 5000 : 0), 4); n += r.n; good += r.good; if (r.bad.length) bad.push(a + '+' + b + ': ' + r.bad[0]); if (r.worst > worst) { worst = r.worst; wp = a + '+' + b; } });
+    if (worst > TIMING.worst) { TIMING.worst = worst; TIMING.pair = div + ' ' + wp; }
+    ok(`combo round trip (${div}, ${P.length} pairs): all ${n} solver Solutions pass checkSolution after cube mapping; slowest search ${worst}ms (${wp}), cap 700ms honoured`, n >= P.length && good === n && worst < 1100, bad.slice(0, 3));
+  });
+  {
+    const TRI = [['E', ['sideways', 'upside', 'wild0']], ['E', ['factorial', 'multiops', 'threeops']], ['E', ['nfactors', 'multiops', 'twodigit']], ['E', ['lcm', 'gcf', 'remainder']], ['E', ['sideways', 'upside', 'factorial']],
+      ['M', ['basem', 'multk', 'powbase']], ['M', ['sideways', 'upside', 'powbase']], ['M', ['factorial', 'multiops', 'nfactors']], ['M', ['expo', 'basem', 'multk']], ['M', ['upside', 'basem', 'multiops']]];
+    let n = 0, good = 0, bad = [], worst = 0;
+    TRI.forEach(([div, ids], i) => { const r = roundTrip(ids, div, 4400 + i, 4); n += r.n; good += r.good; worst = Math.max(worst, r.worst); if (r.bad.length) bad.push(ids.join('+') + ': ' + r.bad[0]); });
+    ok(`combo round trip (10 triples): all ${n} solver Solutions pass checkSolution; slowest ${worst}ms`, n >= 10 && good === n && worst < 1100, bad.slice(0, 3));
+  }
+
+  // ---- Brute force: on small cube sets, for EVERY supported pair, the solver agrees with an independent enumerator ----
+  // The enumerator builds expression trees directly from the items (each item at most once; with Multiple Operations each
+  // operation cube appears twice, so the enumerator sees a SUBSET of what the solver may do: then every value it reaches
+  // must be found, and every Solution the solver returns must pass checkSolution). It shares only the arithmetic
+  // (Eq.opCore / Eq.unCore) with the solver.
+  function bruteC(items, m, w) {
+    const RU = Eq.rulesOf(m), Bs = RU.basem ? RU.base : 10, three = RU.three, memo = new Map();
+    const pw = k => { let x = 1; for (let i = 0; i < Math.abs(k); i++) x *= Bs; return k > 0 ? F(x) : F(1, x); };
+    function leafVals(it) {
+      if (Eq.exOf(it.s) >= 0) { const d = Eq.exOf(it.s); return d < Bs ? [F(d)] : []; }
+      const val = (it.s === '0' && RU.wild) ? w : +it.s, out = [];
+      if (val >= Bs) return out;
+      out.push(F(val));
+      if (RU.ud && val) out.push(F(-val));
+      if (RU.sw && val) out.push(F(1, val));
+      if (RU.ud && RU.sw && val) out.push(F(-1, val));
+      if (RU.pob && it.s === '1') for (let k = -6; k <= 6; k++) if (k) { const p = pw(k); if (Math.abs(p.n) <= 1000000 && p.d <= 1000000) { out.push(p); if (RU.ud) out.push(F(-p.n, p.d)); } }
+      return out;
+    }
+    const binOf = { '+': ['+'], '-': ['-'], '*': ['*'], '/': ['/'].concat(RU.rem ? ['m'] : []), '^': ['^'].concat(RU.gcf ? ['g'] : []), r: ['r'].concat(RU.lcm ? ['l'] : []) };
+    const unOf = { r: ['sqrt'], '*': RU.nfac ? ['f'] : [], '!': ['!'] };
+    const add = (out, val, o) => { if (typeof val === 'string') return; const k = val.n + '/' + val.d + '#' + (three ? Math.min(3, o) : 0); if (!out.has(k)) out.set(k, val); };
+    function vals(mask) {
+      if (memo.has(mask)) return memo.get(mask);
+      const idx = items.map((x, i) => i).filter(i => (mask >> i) & 1), out = new Map();
+      const eachV = (mk, fn) => vals(mk).forEach((val, k) => fn(val, +k.split('#')[1]));
+      if (idx.length === 1 && Eq.isNumSym(items[idx[0]].s) || (idx.length === 1 && Eq.exOf(items[idx[0]].s) >= 0)) leafVals(items[idx[0]]).forEach(x => add(out, x, 0));
+      if (idx.length === 2 && (RU.two || RU.basem) && idx.every(i => Eq.isDigit(items[i].s))) {
+        const [a, b] = idx.map(i => (items[i].s === '0' && RU.wild) ? w : +items[i].s);
+        if (a < Bs && b < Bs) { add(out, F(a * Bs + b), 0); add(out, F(b * Bs + a), 0); }
+      }
+      idx.forEach(i => {
+        const s = items[i].s, rest = mask & ~(1 << i);
+        if (!rest) return;
+        if (Eq.exOf(s) >= 0 && Eq.exOf(s) < Bs) eachV(rest, (a, o) => add(out, Eq.opCore('^', a, F(Eq.exOf(s)), RU.fr, RU), o));
+        (unOf[s] || []).forEach(u => eachV(rest, (a, o) => add(out, u === 'sqrt' ? Eq.opCore('r', F(2), a, RU.fr, RU) : Eq.unCore(u, a, RU.fr, RU), o + 1)));
+        const ri = items.map((x, j) => j).filter(j => (rest >> j) & 1);
+        if (!binOf[s]) return;
+        for (let sub = 1; sub < (1 << ri.length) - 1; sub++) {
+          let A = 0; ri.forEach((j, b) => { if ((sub >> b) & 1) A |= 1 << j; });
+          const Bm = rest & ~A;
+          binOf[s].forEach(bo => eachV(A, (a, oa) => eachV(Bm, (b, ob) => add(out, Eq.opCore(bo, a, b, RU.fr, RU), oa + ob + 1))));
+        }
+      });
+      memo.set(mask, out);
+      return out;
+    }
+    const all = new Map();
+    for (let mask = 1; mask < (1 << items.length); mask++) {
+      const ids = new Set(items.filter((x, i) => (mask >> i) & 1 && x.id !== null).map(x => x.id));
+      if (ids.size < 2) continue;
+      vals(mask).forEach((val, k) => { if (!three || +k.split('#')[1] >= 3) all.set(val.n + '/' + val.d, val); });
+    }
+    return all;
+  }
+  // small cube sets: a few base cubes plus what each card needs
+  const NEED = { sideways: ['3'], upside: ['5'], wild0: ['0'], factorial: ['!', '!'], multiops: [], threeops: ['*'], remainder: ['/'], twodigit: ['1'],
+    lcm: ['r'], gcf: ['^'], nfactors: ['*'], basem: ['7'], multk: [], expo: ['X2'], powbase: ['1'] };
+  function itemsFor(ids) {
+    let syms = ['2', '+'];
+    ids.forEach(id => NEED[id].forEach(s => { if (syms.filter(x => x !== '!').length < 5 || s === '!') syms.push(s); }));
+    if (syms.filter(s => Eq.isDigit(s) || s === 'X2').length < 3) syms.push('4');
+    if (ids.includes('threeops') && syms.filter(s => !Eq.isDigit(s) && s !== 'X2').length < 3) syms.push('-');
+    const items = []; let id = 0;
+    syms.forEach(s => { if (s === '!') items.push({ s: '!', id: null }); else items.push({ s: s === 'X2' ? X[2] : s, id: id++ }); });
+    if (ids.includes('multiops')) items.filter(x => x.id !== null && !Eq.isNumSym(x.s) && Eq.exOf(x.s) < 0).forEach(x => items.push({ s: x.s, id: x.id }));
+    return items;
+  }
+  let bfBad = [], bfPairs = 0, bfGoals = 0, bfWorst = 0;
+  function bruteCheck(ids, div) {
+    const items = itemsFor(ids), set = Object.assign({ div }, setFor(ids));
+    const cubeSyms = []; const seen = new Set(); items.forEach(x => { if (x.id !== null && !seen.has(x.id)) { seen.add(x.id); cubeSyms.push(x.s); } });
+    if (ids.includes('expo')) set.eids = items.filter(x => Eq.exOf(x.s) >= 0).map(x => x.id);
+    const m = Eq.mathMode(true, ids, null, set), RU = Eq.rulesOf(m);
+    const reach = new Map();
+    (RU.wild ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : [undefined]).forEach(w => bruteC(items, m, w).forEach((val, k) => reach.set(k, val)));
+    const goals = []; let c = 0;
+    reach.forEach(val => { if (Math.abs(val.n) <= 2000 && val.d <= 1000 && c++ % 3 === 0) goals.push(val); });
+    for (let g = -6; g <= 30; g += 2) goals.push(F(g));
+    [F(1, 2), F(-1, 3), F(7, 3)].forEach(g => goals.push(g));
+    const fact = items.filter(x => x.s === '!').length;
+    goals.forEach(g => {
+      let want;
+      if (RU.multk) { want = false; reach.forEach(val => { if (Eq.multOk(val, g, RU.k)) want = true; }); }
+      else want = reach.has(g.n + '/' + g.d);
+      const t0 = Date.now(), r = Eq.solve({ goal: g, req: [], opt: cubeSyms, res: [], mode: 'free', fractions: m, maxDigits: 6, timeMs: 3000, tagged: true });
+      bfWorst = Math.max(bfWorst, Date.now() - t0); bfGoals++;
+      let agree;
+      if (RU.multi) {
+        // subset direction: everything the enumerator reaches is found; whatever the solver finds is checked
+        agree = (!want || r.found) && (r.found || r.complete);
+        if (r.found) {
+          const toks = r.tokens.map((s, i) => (s === '(' || s === ')' || s === '!') ? s : s);
+          const pool = cubeSyms.map((s, i) => ({ id: i, s: Eq.cubeOf(s) || s, zone: 'permitted', color: 'green' }));
+          const ct = Eq.cubeTokens(toks, pool, m), chk = Eq.checkSolution(ct, { goal: g, zone: () => 'permitted', required: [], mode: 'impossible', fractions: m });
+          if (!chk.ok) agree = false;
+        }
+      } else agree = r.found === want && (r.found || r.complete);
+      if (!agree && bfBad.length < 6) bfBad.push(ids.join('+') + ' [' + items.map(x => Eq.SHOW[x.s] || x.s).join(' ') + '] Goal ' + Eq.fmt(g) + ': brute ' + want + ', solver ' + r.found + (r.expr ? ' ' + r.expr : '') + (r.complete === false ? ' (incomplete)' : ''));
+    });
+    void fact; bfPairs++;
+  }
+  PE.forEach(p => bruteCheck(p, 'E'));
+  ok(`combo brute force (Elementary): solver and enumerator agree on every Goal for all ${bfPairs} pairs (${bfGoals} Goals)`, bfBad.length === 0, bfBad);
+  const eBad = bfBad.length; bfBad = []; bfPairs = 0; bfGoals = 0;
+  PM.forEach(p => bruteCheck(p, 'M'));
+  ok(`combo brute force (Middle): solver and enumerator agree on every Goal for all ${bfPairs} pairs (${bfGoals} Goals); slowest solve ${bfWorst}ms`, bfBad.length === 0, bfBad);
+  void eBad;
+  console.log(`  [tourney] slowest round-trip search ${TIMING.worst}ms (${TIMING.pair}); slowest brute-force solve ${bfWorst}ms (3000ms cap)`);
+}
+// ================= END TOURNEY =================
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

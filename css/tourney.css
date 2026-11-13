@@ -1,0 +1,49 @@
+/* ======================= TOURNAMENT PRACTICE + JUDGE PIP (js/tourney.js) ======================= */
+/* Judge Pip: Pip with a referee cap and a whistle drawn on top */
+.tj-face{position:relative;display:inline-block;vertical-align:middle;flex:0 0 auto}
+.tj-face .pip{position:absolute;left:0;top:0}
+.tj-face .tj-gear{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.btn .tj-face{margin-right:4px}
+.tj-h{display:flex;align-items:center;justify-content:center;gap:10px}
+.tj-say{display:flex;gap:10px;align-items:flex-start;background:#f1f3f5;color:#212529;border-radius:14px;padding:10px 12px;margin:8px 0;text-align:left;font-size:15px;line-height:1.35}
+.tj-say ul{margin:4px 0 0 18px;padding:0}
+.tj-ans{background:#f8f9fa;color:#212529;border-radius:14px;padding:10px 14px;margin:6px 0 10px;text-align:left;font-size:15px;line-height:1.4;max-height:52vh;overflow:auto}
+.tj-ul{margin:6px 0 4px 18px;padding:0}
+.tj-ul li{margin:3px 0}
+.tj-ref{color:#868e96;font-weight:700;font-size:12px}
+.tj-ex{background:#fff9db;border-radius:8px;padding:4px 8px;margin:4px 0}
+.tj-qs,.tj-rulings{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px 0}
+.tj-rulings{justify-content:flex-start}
+/* intro */
+.tj-intro{display:flex;gap:12px;align-items:center;text-align:left}
+.tj-intro h2{margin:0 0 4px}
+.tj-list{text-align:left;margin:6px 0 10px 4px;padding-left:18px;font-size:15px;line-height:1.4}
+.tj-list li{margin:4px 0}
+.tj-list.small{font-size:14px;opacity:.92}
+/* the first Goal-setter roll */
+.tj-roll{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;margin:8px 0}
+.tj-roll > small{width:100%;text-align:center;color:#868e96;font-weight:700}
+.tj-r{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:12px;background:#f1f3f5;color:#212529;min-width:64px}
+.tj-r.win{background:#d3f9d8;outline:3px solid #2f9e44}
+.tj-r.out{opacity:.55}
+.tj-r small{font-size:12px;color:#c92a2a;font-weight:800}
+/* card picking */
+.tj-card{position:relative}
+.tj-card.tj-no{opacity:.55;filter:grayscale(.6)}
+.tj-card .tj-why{display:block;font-size:12px;font-weight:900;color:#c92a2a;margin-top:2px}
+.tj-card .tj-ref{display:block;margin-top:2px}
+.tj-picks{background:#e7f5ff;color:#1c3d5a;border-radius:10px;padding:4px 8px}
+.tj-sum .vari-card{margin-bottom:6px}
+/* in the game */
+.tj-bonus{background:#fff3bf;color:#5c3c00}
+.tj-bonus.on{background:#ffd43b;outline:3px solid #f08c00}
+.tj-jbtn{background:#f8f9fa;color:#212529}
+.tj-top{display:flex;gap:8px;align-items:center;font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.28);border-radius:10px;padding:2px 8px;margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.tj-clock{background:#16203c;border-radius:8px;padding:1px 6px}
+.tj-clock.low{background:#c92a2a}
+.tj-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:15px}
+.tj-table th,.tj-table td{padding:5px 6px;border-bottom:1px solid #dee2e6;text-align:center}
+.tj-table th:first-child,.tj-table td:first-child{text-align:left}
+.tj-table tr.me td{font-weight:900;background:#fff9db}
+.b-judge{margin:6px 0}
+@media (max-width:560px){.tj-top{max-width:100%;margin:4px 0 0}.tj-intro{flex-direction:column;text-align:center}}
