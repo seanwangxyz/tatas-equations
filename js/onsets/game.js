@@ -821,7 +821,7 @@ function osActionsHTML() {
   if (osN() > 2 && OG.lastMover !== null && !OG.carrying) {
     var others = osHumans().filter(function (i) { return i !== OG.turn && i !== OG.lastMover; });
     if (others.length) out += '<div class="also">' + others.map(function (i) {
-      return '<span>' + osName(i) + ' can challenge too:</span><button class="btn small now" data-act="osNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="osImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
+      return '<span>' + (osMulti() ? osName(i) + ' can challenge too:' : 'Spot something? You can call too:') + '</span><button class="btn small now" data-act="osNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="osImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
     }).join('') + '</div>';
   }
   return out;
