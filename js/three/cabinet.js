@@ -388,3 +388,38 @@ export function mount(host, items, opts) {
     info: function () { return { draws: draws, items: Object.keys(byId).length, turning: !!turning, yaw: yaw, pitch: pitch, fov: camera.fov, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; }
   };
 }
+
+// ---------- MATCHDAY (js/three/matchday.js): the cabinet's cup and crown, for the trophy lift on the pitch ----------
+// buildTrophy({ type: 'cup' | 'crown', metal: [light, mid, dark], ribbon, color, cushion, gems }, { low }) -> Group
+// The same shapes and colours as the cabinet's buildCup / buildCrown (inside mount), standing on y = 0, facing +z,
+// about 0.85 (cup, plinth included) / 0.2 (crown) units tall; the caller scales it. Own materials and geometry:
+// dispose them with the group (traverse) when done. No name plate (there is no room for one in his hands).
+export function buildTrophy(it, opts) {
+  it = it || {}; var low = !!(opts && opts.low), g = new THREE.Group();
+  function metalM(col, rough) { return new THREE.MeshPhysicalMaterial({ color: col, metalness: 1, roughness: rough == null ? 0.2 : rough, clearcoat: 0.6, clearcoatRoughness: 0.15 }); }
+  function std(o) { return new THREE.MeshStandardMaterial(o); }
+  if (it.type === 'crown') {
+    var mc = metalM(it.color || '#ffc83d', 0.18), cushM = std({ color: it.cushion || '#c92a4a', roughness: 0.9 });
+    var band = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.115, 0.085, 32, 1, true), mc); band.material.side = THREE.DoubleSide; band.position.y = 0.04; g.add(band);
+    var cap = new THREE.Mesh(new THREE.SphereGeometry(0.105, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), cushM); cap.scale.y = 0.7; cap.position.y = 0.05; g.add(cap);
+    for (var k = 0; k < 6; k++) {
+      var a = k / 6 * Math.PI * 2, pt = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 10), mc);
+      pt.position.set(Math.sin(a) * 0.118, 0.125, Math.cos(a) * 0.118); g.add(pt);
+      var ball = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), mc); ball.position.set(Math.sin(a) * 0.118, 0.182, Math.cos(a) * 0.118); g.add(ball);
+      var gem = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 8), new THREE.MeshPhysicalMaterial({ color: (it.gems || ['#e03131', '#1c7ed6', '#2f9e44'])[k % 3], metalness: 0, roughness: 0.05, clearcoat: 1 }));
+      gem.position.set(Math.sin(a) * 0.123, 0.04, Math.cos(a) * 0.123); gem.scale.z = 0.6; gem.lookAt(new THREE.Vector3(Math.sin(a), 0.04, Math.cos(a)).multiplyScalar(2)); g.add(gem);
+    }
+    var orb = new THREE.Mesh(new THREE.SphereGeometry(0.024, 12, 8), mc); orb.position.y = 0.145; g.add(orb);
+    return g;
+  }
+  var p = [[0, 0], [0.2, 0], [0.205, 0.04], [0.16, 0.06], [0.07, 0.1], [0.045, 0.16], [0.04, 0.24], [0.06, 0.28], [0.045, 0.31], [0.1, 0.36], [0.2, 0.44], [0.25, 0.56], [0.265, 0.68], [0.28, 0.71], [0.262, 0.715], [0.245, 0.68], [0.23, 0.57], [0.18, 0.47], [0.08, 0.41], [0, 0.395]];
+  var m = metalM(it.metal ? it.metal[1] : '#ffc83d', 0.16);
+  var plinth = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.46), std({ color: '#1d1d24', roughness: 0.35, metalness: 0.2 })); plinth.position.y = 0.07; g.add(plinth);
+  var cup = new THREE.Mesh(new THREE.LatheGeometry(p.map(function (q) { return new THREE.Vector2(q[0], q[1]); }), low ? 28 : 48), m); cup.position.y = 0.14; g.add(cup);
+  [-1, 1].forEach(function (s) {
+    var h = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.02, 10, 24, Math.PI), m);
+    h.position.set(s * 0.255, 0.69, 0); h.rotation.z = s > 0 ? -Math.PI / 2 : Math.PI / 2; g.add(h);
+  });
+  var rib = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.066, 0.05, 24), std({ color: it.ribbon || '#2f8cff', roughness: 0.5 })); rib.position.y = 0.42; g.add(rib);
+  return g;
+}
