@@ -180,6 +180,14 @@ var AccountMerge = (function () {
       out.last = pickNewer(a.last, b.last, c) || 'c';
       return out;
     },
+    onsets: function (a, b, c) {
+      if (!isObj(a) || !isObj(b)) return clone(isObj(a) ? a : b);
+      var out = deepMax(a, b, c), seen = {}, be = [];
+      (Array.isArray(a.beaten) ? a.beaten : []).concat(Array.isArray(b.beaten) ? b.beaten : []).forEach(function (x, i) { if (x === true || x === false || x == null) return; if (!seen[x]) { seen[x] = 1; be.push(x); } });
+      if (Array.isArray(a.beaten) && Array.isArray(b.beaten) && a.beaten.concat(b.beaten).every(function (x) { return x === true || x === false || x == null; })) { be = []; for (var i = 0; i < Math.max(a.beaten.length, b.beaten.length); i++) be[i] = !!a.beaten[i] || !!b.beaten[i]; }
+      out.beaten = be; out.tutorialDone = !!a.tutorialDone || !!b.tutorialDone;
+      return out;
+    },
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
     fans: function (a, b) {
@@ -205,6 +213,7 @@ var AccountMerge = (function () {
     camp: 'per drill: the side that played more; done: highest', wx: 'count: highest; current sky: latest', puz: 'same day: furthest; else the later day',
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
     fans: 'union (earliest date, places from both)',
+    onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
     tour: 'tour stops seen on either device', parent: 'each counter and each day: highest'
   };
 

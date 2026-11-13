@@ -294,6 +294,7 @@ function gotoTitle() {
     '</div>' +
     '<div class="mm-foot"><button class="btn small ghost" data-act="settings" data-tile="settings">' + ico('gear') + ' Settings' + badge('settings') + '</button>' +
     '<button class="btn small ghost" data-act="tutorial" data-tile="howto">' + ico('cap') + ' How to Play</button></div>' +
+    (window.Onsets ? '<div class="mm-os" style="margin-top:8px">' + Onsets.tileHTML() + '</div>' : '') +
     '</nav>' +
     (storageOK ? '' : '<p class="white" style="font-size:14px">(Saving is turned off in this browser, so progress lasts until you close the page. Use Settings → Export to keep it.)</p>') +
     '</div>';
