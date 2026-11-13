@@ -987,6 +987,7 @@ var T3 = window.T3;
         var v = bday.vis || { kid: true, actors: [] };
         B.kid.model.root.visible = v.kid; B.actors.forEach(function (a, i) { a.actor.root.visible = v.actors[i] !== false; a.hop = null; a.wave = null; a.armUp = 0; applyActor(a, performance.now()); });
         kidPose(B.kid, 'rest', 1, performance.now());
+        try { B.venue.dispose(); } catch (e) {}   // the crowd straight back at rest
         B.confP = null; B.conf.visible = false; for (var i = 0; i < B.conf.count; i++) B.conf.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); B.conf.instanceMatrix.needsUpdate = true;
         camState = bday.mode === 'splash' ? { yaw: -4, pitch: -17, dist: 1.3, lift: 0 } : { yaw: 0, pitch: PITCH, dist: 1, lift: 0 };
         renderer.toneMappingExposure = bday.mode === 'splash' ? 0.78 : 1.0;

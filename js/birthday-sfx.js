@@ -61,10 +61,10 @@
     [o, o2].forEach(function (n) { n.start(t); n.stop(t + dur + 0.05); track(n); });
   }
 
-  function song(plan, delay) {
-    var c = ctx(); if (!c) return null;
-    try { if (c.state === 'suspended') c.resume(); } catch (e) {}
-    var o = out(c), t0 = c.currentTime + (delay || 0.12);
+  function song(plan, delay, into) {   // into: { ctx, dest, k } renders into any context (the offline level check)
+    var c = into ? into.ctx : ctx(); if (!c) return null;
+    try { if (!into && c.state === 'suspended') c.resume(); } catch (e) {}
+    var o = into ? { node: into.dest, k: into.k || 1 } : out(c), t0 = c.currentTime + (delay || 0.12);
     var h = { t0: t0, stop: function () { stopAll(); } };
     if (!o || !o.node) return h;
     var bus = c.createGain(); bus.gain.value = o.k; bus.connect(o.node); h.bus = bus; buses.push(bus);

@@ -77,10 +77,15 @@ function songPlan(beat) {
 }
 
 // ---------------------------------------------------------------- the stage plan (world units; the title's floor is FY)
-var KZ = 11.4;                       // where Tyson stands to watch (centre of the pitch, facing the stage)
-var ROW_FRONT_Z = 3.4, ROW_DZ = 1.55; // the message riser: front row on the grass, each row behind one step higher
-var CS = 1.12, CP = 1.25;
-var TATA_SPOT = { x: -1.9, z: 7.4 }; // where Tata makes the heart (a little to the side, so the camera sees him past Tyson)            // message cube size and pitch
+var KZ = 11.4;                       // where Tyson stands to watch (centre of the pitch, facing the stage); see layout()
+var ROW_FRONT_Z = 3.4, ROW_DZ = 1.55; // the message riser: each row one step higher and further back than the one in front
+var CS = 1.12, CP = 1.25;            // message cube size and pitch
+var TATA_SPOT = { x: -1.9, z: 7.4 }; // where Tata makes the heart (a little to the side, so the camera sees him past Tyson)
+// a phone held upright gets shorter rows (at most 10 cubes: bigger on screen), so more steps, set a little further forward
+function layout(nRows) {
+  ROW_DZ = nRows > 4 ? 1.25 : 1.55; ROW_FRONT_Z = Math.max(3.4, -1.0 + (nRows - 1) * ROW_DZ);
+  KZ = Math.max(11.4, ROW_FRONT_Z + 8); TATA_SPOT.z = KZ - 4;
+}
 var POD_FRONT = 0.85, POD_BACK = 1.5; // the party drums the creatures stand on (front row lower, back row higher: a choir)
 var CRE_H = 2.8;                     // a typical creature's height on its drum (all share one scale, as at the table)
 
@@ -399,7 +404,7 @@ function buildMessage(rows) {
       if (ch === ' ') return;
       var color = colors[ck++ % 4], f = faces[color] || faces.red, keys = [];
       for (var k = 0; k < 6; k++) keys.push(cell(color, f[(k + j) % f.length], false));
-      keys[4] = cell(color, ch, true); keys[2] = cell(color, ch, true);   // the letter in front and on top (it shows wherever it lands)
+      keys[4] = cell(color, ch, true);   // the letter on the front face (number and sign faces on the others, like a game cube)
       cubes.push({ ch: ch, color: color, keys: keys, r: r, j: j, slot: new THREE.Vector3((j - (n - 1) / 2) * CP, FY + (lvl + 1) * CS + CS / 2, ROW_FRONT_Z - lvl * ROW_DZ) });
     });
   });
@@ -525,17 +530,17 @@ function stepPicking(t) {
   X.msg.cubes.forEach(function (c) { if (c.cascade && c.state === 'ground' && t >= c.cascade) fly(c, c.cascade, 0.72, 2.8, TAU, true); });
 }
 
-// ---------------------------------------------------------------- fireworks over the far stand (night; never with Reduce flashing)
+// ---------------------------------------------------------------- fireworks over the side stands, in the picture (night; never with Reduce flashing)
 function fireworks(t0) {
   var shells = 5, per = H.qLevel() === 0 ? 70 : 120, N = shells * per, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
   var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  var m = new THREE.PointsMaterial({ size: 0.9, map: X.sh.g.dot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
+  var m = new THREE.PointsMaterial({ size: 2.3, map: X.sh.g.dot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
   var pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.renderOrder = 4; X.scene.add(pts); X.own.geo.push(g); X.own.mat.push(m);
   var PAL = [[1, 0.35, 0.4], [1, 0.82, 0.25], [0.35, 0.7, 1], [0.45, 0.95, 0.4], [0.8, 0.55, 1]], P = [];
   for (var s = 0; s < shells; s++) {
-    var cx = [-11, 9, -3, 13, 2][s], cy = H.FY + rnd(21, 26), cz = rnd(-16, -10), ts = t0 + [0, 0.7, 1.3, 1.9, 2.6][s], c = PAL[s % PAL.length];
+    var cx = [-14, 14, -15, 15, 0][s], cy = H.FY + [6.5, 7, 5.5, 6, 9][s], cz = [-3, -2, 2.5, 3, -9][s], ts = t0 + [0, 0.7, 1.3, 1.9, 2.6][s], c = PAL[s % PAL.length];
     for (var i = 0; i < per; i++) {
-      var th = rnd(0, TAU), ph = Math.acos(rnd(-1, 1)), sp = rnd(5.5, 7.5);
+      var th = rnd(0, TAU), ph = Math.acos(rnd(-1, 1)), sp = rnd(5, 6.8);
       P.push({ x: cx, y: cy, z: cz, vx: Math.sin(ph) * Math.cos(th) * sp, vy: Math.cos(ph) * sp, vz: Math.sin(ph) * Math.sin(th) * sp, t0: ts, life: rnd(1.5, 2.2), c: c });
     }
   }
@@ -596,7 +601,7 @@ function framings() {
   // the cube rain and the picking: higher, the riser, the scatter in front of Tyson and both groups of creatures
   P = []; v(-msgW, top + 0.3, backZ); v(msgW, top + 0.3, backZ); v(-10, FY, KZ - 2); v(10, FY, KZ - 2); v(0, FY, KZ + 1.6);
   if (!portrait) { v(-14.5, FY + 4.4, 8); v(14.5, FY + 4.4, 8); }
-  var cubes = fitView(P, -38, new THREE.Vector3(0, FY + 1.0, 6.5), W, H0, 0.12, 0.1);
+  var cubes = fitView(P, -38, new THREE.Vector3(0, FY + 1.0, KZ - 4.9), W, H0, 0.12, 0.1);
   return { show: show, tata: tata, cubes: cubes, final: fin };
 }
 
@@ -648,19 +653,21 @@ export function play(hooks) {
   X.own.mat = X.own.mat.concat(X.sh.m.drums, [X.sh.m.cap, X.sh.m.rim, X.sh.m.riser, X.sh.m.trim]);
   X.spr = sprites(); X.spr.forEach(function (s) { X.own.mat.push(s.material); });
   var narrow = X.W / X.H < 0.9;
-  X.msg = buildMessage(rowsFor(X.msgTxt.lines, narrow ? 14 : 22)); scatter(X.msg.cubes);
+  var rows = rowsFor(X.msgTxt.lines, narrow ? 10 : 22); layout(rows.length);
+  X.msg = buildMessage(rows); scatter(X.msg.cubes);
   X.kid = makeHuman('kid'); X.tata = makeHuman('tata');
   var c = B.camera; X.vTitle = { pos: c.position.clone(), look: new THREE.Vector3(0, H.FY + 4.6, H.STAGE.z + 1.5), ox: c.view && c.view.enabled ? c.view.offsetX : 0, oy: c.view && c.view.enabled ? c.view.offsetY : 0 };
   X.views = framings();
   if (X.kid) { var k0 = B.kid; X.kid.x = k0.x; X.kid.z = k0.z; X.kid.yaw = 0.16; X.kid.model.root.visible = true; X.kid.rest = 'hips'; walkTo(X.kid, 0, KZ, 0.4, 3.0, Math.PI, true); }
-  if (X.tata) { X.tata.x = 21; X.tata.z = 6; X.tata.yaw = -Math.PI / 2; }
+  if (X.tata) { X.tata.x = 21; X.tata.z = KZ - 5.4; X.tata.yaw = -Math.PI / 2; }
   timeline();
   readyMonsters(castList(H.qLevel()), 1800).then(function (list) { if (!X) return; buildCast(list); X.waiting = false; }, function () { if (X) { buildCast(castList(0)); X.waiting = false; } });
-  window.addEventListener('resize', onResize); document.addEventListener('visibilitychange', onResize);
+  window.addEventListener('resize', onResize); document.addEventListener('visibilitychange', onResize); document.addEventListener('keydown', onKey, true);
   X.last = performance.now(); X.raf = requestAnimationFrame(frame);
   return true;
 }
 function onResize() { if (X) { X.resized = true; kick(); } }
+function onKey(e) { if (!X || (e.key !== 'Escape' && e.key !== 'Enter' && e.key !== ' ')) return; if (e.target && e.target.closest && e.target.closest('#bdayLayer button')) return; e.preventDefault(); if (X.final) end(); else toFinal(); }
 
 // ---------------------------------------------------------------- the cast: two curved rows round Tyson, then the flanks
 function buildCast(list) {
@@ -682,7 +689,7 @@ function buildCast(list) {
   // flanks: fill each side from the inside front outwards
   [-1, 1].forEach(function (side) {
     var mine = X.cre.filter(function (p) { return p.side === side; }).sort(function (a, b) { return Math.abs(a.slot.x) - Math.abs(b.slot.x); });
-    mine.forEach(function (p, k) { var f = fl[Math.min(k, fl.length - 1)], x = side * f[0], z = f[1] + (k >= fl.length ? 1.2 : 0); p.flank = { x: x, z: z, yaw: Math.atan2(-x * 0.6, (KZ - 4) - z) }; });
+    mine.forEach(function (p, k) { var f = fl[Math.min(k, fl.length - 1)], x = side * f[0], z = f[1] + (KZ - 11.4) + (k >= fl.length ? 1.2 : 0); p.flank = { x: x, z: z, yaw: Math.atan2(-x * 0.6, (KZ - 4) - z) }; });
   });
   if (X.tata) X.tata.slot = { x: Math.sin(tataA) * 6.0, z: KZ - Math.cos(tataA) * 6.0 };
   // the parade: two lines hop in from the sides of the pitch
@@ -690,7 +697,7 @@ function buildCast(list) {
   [-1, 1].forEach(function (side) {
     var mine = X.cre.filter(function (p) { return p.side === side; }).sort(function (a, b) { return Math.abs(a.slot.x) - Math.abs(b.slot.x); });
     mine.forEach(function (p, k) {
-      var t0 = tp + k * 0.42 + (side > 0 ? 0.2 : 0); p.x = side * 21; p.z = 5.2 + (k % 2) * 1.4; p.yaw = -side * Math.PI / 2;
+      var t0 = tp + k * 0.42 + (side > 0 ? 0.2 : 0); p.x = side * 21; p.z = KZ - 6.2 + (k % 2) * 1.4; p.yaw = -side * Math.PI / 2;
       p.enter = t0; moveTo(p, p.slot.x, p.slot.z, t0, 3.0, p.slot.yaw, 7, 0.85);
     });
   });
@@ -727,7 +734,7 @@ function timeline() {
   var SM = SE + 1.6;
   at(SM, function () { X.cre.forEach(function (p, i) { sillyFor(p).forEach(function (mv, k) { queue(p, mv, SM + k * 1.45 + (i % 5) * 0.09, 1.3); }); }); caption(''); });
   if (X.tata) {
-    at(SM + 0.3, function () { walkTo(X.tata, TATA_SPOT.x, TATA_SPOT.z, SM + 0.3, 1.2, 0.22, false); });   // turned a little toward us, so the heart reads past Tyson
+    at(SM + 0.3, function () { walkTo(X.tata, TATA_SPOT.x, TATA_SPOT.z, SM + 0.3, 1.2, 0.22, false); });   /* turned a little toward us, so the heart reads past Tyson */
     at(SM + 1.6, function () { hq(X.tata, 'heart', SM + 1.6, 4.2); });
     if (X.kid) hq(X.kid, 'clap', SM + 3.2, 1.4);
   }
@@ -823,7 +830,7 @@ export function end(aborted) {
   if (!X) return;
   var x = X;
   if (x.raf) cancelAnimationFrame(x.raf); x.raf = 0;
-  window.removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onResize);
+  window.removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onResize); document.removeEventListener('keydown', onKey, true);
   if (x.songH && x.songH.stop) x.songH.stop(); else if (window.BirthdaySfx) BirthdaySfx.stopAll();
   try { var s = H.sfx(); if (s) s.cancel(); } catch (e) {}
   try { if (typeof Snd !== 'undefined' && Snd.stopBabble) Snd.stopBabble(); } catch (e) {}
@@ -837,7 +844,7 @@ export function end(aborted) {
   var m = H.renderer.info.memory; lastStats = { geometries: m.geometries - x.mem0.geometries, textures: m.textures - x.mem0.textures, renders: x.renders, creatures: x.stats ? x.stats.creatures : 0, monsters: x.stats ? x.stats.monsters : 0, seconds: +x.t.toFixed(1) };
 }
 var lastStats = null;
-// everything this show made: creatures (a glTF monster shares its geometry with the pack: only its materials are ours),
+// everything this show made: creatures (freed like creatures.js frees one; shared arm geometry is kept),
 // the two people, the cubes, the riser, sprites, fireworks; the shared bits last
 function freeAll(x) {
   var geos = new Set(x.own.geo), mats = new Set(x.own.mat), texs = new Set(x.own.tex);
@@ -845,10 +852,10 @@ function freeAll(x) {
     root.traverse(function (o) {
       if (o.skeleton && own) o.skeleton.dispose();
       if (own && o.geometry && !(o.geometry.userData && o.geometry.userData.shared)) geos.add(o.geometry);
-      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { mats.add(m); if (own) ['map', 'emissiveMap', 'normalMap', 'alphaMap', 'roughnessMap'].forEach(function (k) { if (m[k] && m[k].isTexture) texs.add(m[k]); }); });
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { mats.add(m); if (own) for (var k in m) { if (m[k] && m[k].isTexture) texs.add(m[k]); } });
     });
   }
-  x.cre.forEach(function (p) { if (p.g.parent) p.g.parent.remove(p.g); take(p.actor.root, p.pack !== 'monsters'); [p.g.children[0], p.g.children[1]].forEach(function (o) { if (o && o.material) mats.add(o.material); }); try { if (p.actor.dispose) p.actor.dispose(); } catch (e) {} });
+  x.cre.forEach(function (p) { if (p.g.parent) p.g.parent.remove(p.g); take(p.actor.root, true); [p.g.children[0], p.g.children[1]].forEach(function (o) { if (o && o.material) mats.add(o.material); }); try { if (p.actor.dispose) p.actor.dispose(); } catch (e) {} });
   [x.kid, x.tata].forEach(function (hm) { if (!hm) return; if (hm.model.root.parent) hm.model.root.parent.remove(hm.model.root); take(hm.model.root, true); });
   x.msg.cubes.forEach(function (c) { if (c.m.parent) c.m.parent.remove(c.m); geos.add(c.m.geometry); });
   if (x.msg.riser.parent) x.msg.riser.parent.remove(x.msg.riser);
@@ -860,5 +867,5 @@ function freeAll(x) {
 }
 export function stats() { return X ? { t: +X.t.toFixed(2), final: X.final, renders: X.renders, creatures: X.cre.length, cubes: X.msg.cubes.length, waiting: X.waiting } : { last: lastStats }; }
 // checks: jump the show clock to t seconds (events up to t fire in order)
-export function _seek(t) { if (!X) return false; X.waiting = false; X.noRender = true; while (X.t < t) { if (X.raf) cancelAnimationFrame(X.raf); X.raf = 0; X.last = performance.now() - 50; frame(performance.now()); if (!X) return false; } X.noRender = false; render(); return true; }
+export function _seek(t) { if (!X || !isFinite(t)) return false; t = Math.min(t, X.t + 120); X.waiting = false; X.noRender = true; while (X.t < t) { if (X.raf) cancelAnimationFrame(X.raf); X.raf = 0; X.last = performance.now() - 50; frame(performance.now()); if (!X) return false; } X.noRender = false; render(); return true; }
 window.TataBirthdayShow = { stats: stats, end: function () { end(); }, skip: function () { toFinal(); }, seek: _seek, _x: function () { return X; } };
