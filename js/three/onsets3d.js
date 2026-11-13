@@ -320,6 +320,36 @@ function install(T3, ctx) {
     g.textAlign = 'left'; g.font = '900 ' + fs + 'px ' + FONT; g.fillStyle = '#fff'; if (left) g.fillText(left, x, 88); g.fillStyle = GOLD; g.fillText(right, x + lw, 88);
     goalTex.needsUpdate = true; goalW = w / 768;
   }
+  // ---------------- the V / Λ tray: the Goal-setter's three white cubes get a little felt plate of their own ----------------
+  // (the slot maths below is the table's own gridSlots for 18 cubes: the plate sits at the right end of the last row of Resources)
+  function restrSlots() {
+    var r = zoneRect('resources'); if (!r) return [];
+    var a = { x: r[0] + 0.25, z: r[1] + 1.05, w: r[2] - 0.5, d: r[3] - 1.25 }, s = 1.25, cols, rows;
+    while (s > 0.45) { cols = Math.max(1, Math.floor(a.w / s)); rows = Math.max(1, Math.floor(a.d / s)); if (cols * rows >= 18) break; s -= 0.05; }
+    cols = Math.max(1, Math.floor(a.w / s)); rows = Math.ceil(18 / cols); var off = (a.w - cols * s) / 2, out = [];
+    for (var k = 0; k < 3; k++) out.push({ x: a.x + off + s / 2 + (cols - 3 + k) * s, z: a.z + s / 2 + (rows - 1) * s, scale: Math.min(1, s / 1.25) });
+    return out;
+  }
+  var trayCv = document.createElement('canvas'); trayCv.width = 768; trayCv.height = 416;
+  var trayTex = new THREE.CanvasTexture(trayCv); trayTex.colorSpace = THREE.SRGBColorSpace; trayTex.anisotropy = 4;
+  var trayMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: trayTex, transparent: true, depthWrite: false, fog: false, toneMapped: false }));
+  trayMesh.renderOrder = 1; trayMesh.visible = false; group.add(trayMesh);
+  var trayK = 0, trayTgt = 0, trayCap = null;
+  function paintTray(cap) {
+    var g = trayCv.getContext('2d'); g.clearRect(0, 0, 768, 416);
+    var h = cap ? 400 : 280, y0 = cap ? 8 : 68; rr(g, 8, y0, 752, h, 54); g.fillStyle = 'rgba(96,60,184,.30)'; g.fill();
+    g.save(); g.setLineDash([22, 14]); g.lineWidth = 6; g.strokeStyle = 'rgba(214,196,255,.85)'; rr(g, 22, y0 + 14, 724, h - 28, 42); g.stroke(); g.restore();
+    if (cap) { g.font = '800 44px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(255,255,255,.92)'; g.fillText('V = every card  ·  Λ = no card', 384, 338); }
+    trayTex.needsUpdate = true; trayCap = cap;
+  }
+  function placeTray() {
+    trayMesh.visible = trayK > 0.01; if (!trayMesh.visible) return;
+    var sl = restrSlots(); if (sl.length < 3) { trayMesh.visible = false; return; }
+    var cap = ctx.layoutName !== 'tall'; if (cap !== trayCap) paintTray(cap);
+    var w = 3 * 1.25 + 0.55, sc = 0.9 + 0.1 * trayK;
+    trayMesh.scale.set(w * sc, 1, (cap ? 2.4 : 1.55 * 416 / 280 * 0.9) * sc); trayMesh.material.opacity = trayK;
+    trayMesh.position.set(sl[1].x, 0.028, sl[1].z + (cap ? 0.38 : 0));
+  }
   // ---------------- state, layout and the pose of every card ----------------
   var st = { on: false, uni: [], base: [], s: 1, lift: [], liftT: [], dim: [], dimT: [], deal: null, layKey: '', lastNow: 0, form: null, side: 'near', tint: new THREE.Color(GOLD) };
   var M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), SC = new THREE.Vector3(), E = new THREE.Euler(0, 0, 0, 'YXZ'), C = new THREE.Color();
@@ -379,7 +409,7 @@ function install(T3, ctx) {
       // the contact shadow: widens a touch and pales as the card lifts; in the deck only the bottom card casts one
       SC.setScalar(Math.max(0.0001, sc * (1 + 0.12 * l))); P.y = 0.008; M.compose(P, Q, SC); shades.setMatrixAt(i, M);
       var sk = shk * (1 - 0.6 * l); C.setRGB(sk, sk, sk); shades.setColorAt(i, C);
-      var dm = st.dim[i]; C.setRGB(1 - 0.4 * dm, 1 - 0.4 * dm, 1 - 0.36 * dm); faces.setColorAt(i, C);
+      var dm = st.dim[i]; C.setRGB(1 - 0.32 * dm, 1 - 0.32 * dm, 1 - 0.29 * dm); faces.setColorAt(i, C);
       cells.setXY(i, (st.uni[i] % 4) * 0.25, 1 - (Math.floor(st.uni[i] / 4) + 1) * 0.2);
     }
     bodies.count = faces.count = halos.count = shades.count = n;
@@ -388,12 +418,12 @@ function install(T3, ctx) {
     cells.needsUpdate = true; rims.needsUpdate = true;
     label.material.opacity = labelK; label.visible = labelK > 0.01;
     if (label.visible) labelPos();
-    placeGoal();
+    placeGoal(); placeTray();
   }
   function labelPos() {
     var r = zoneRect(labelAt === 'goal' ? 'goal' : 'universe'); if (!r) return;
     label.position.set(r[0] + r[2] / 2, labelAt === 'goal' ? 2.7 : 2.3, r[1] + (labelAt === 'goal' ? r[3] * 0.45 : 0.45));
-    var w = Math.min(r[2] + 1, 7.5) * (labelAt === 'goal' ? 1.05 : 1) * (0.93 + 0.07 * labelK); label.scale.set(w, w * 192 / 1024, 1);
+    var w = Math.min(r[2] + 1, 9) * (labelAt === 'goal' ? 1.05 : 1) * (0.93 + 0.07 * labelK); label.scale.set(w, w * 192 / 1024, 1);
   }
   // the Goal label lies on the felt: under the Goal cubes (wide table) or to their right (tall table)
   function placeGoal() {
@@ -422,6 +452,7 @@ function install(T3, ctx) {
     }
     var dlb = labelTgt - labelK; if (Math.abs(dlb) > 0.004) { labelK += dlb * (1 - Math.exp(-dt * 9)); moving = true; } else if (dlb) { labelK = labelTgt; moving = true; }
     var dgl = goalTgt - goalK; if (Math.abs(dgl) > 0.004) { goalK += dgl * (1 - Math.exp(-dt * 8)); moving = true; } else if (dgl) { goalK = goalTgt; moving = true; }
+    var dtr = trayTgt - trayK; if (Math.abs(dtr) > 0.004) { trayK += dtr * (1 - Math.exp(-dt * 8)); moving = true; } else if (dtr) { trayK = trayTgt; moving = true; }
     if (st.deal) { moving = true; if (now >= st.deal.endAt) finishDeal(now); }
     if (moving) { pose(now); ctx.dirty(); }
   });
@@ -472,8 +503,8 @@ function install(T3, ctx) {
       faceMat.map = cardAtlasTex(); faceMat.needsUpdate = true;
       setUni([]);
     },
-    exit: function () { finishForm(); st.deal = null; st.on = false; setUni([]); group.visible = false; ctx.dirty(); },
-    clear: function () { finishForm(); st.deal = null; setUni([]); ctx.dirty(); },
+    exit: function () { finishForm(); st.deal = null; st.on = false; trayK = trayTgt = 0; setUni([]); group.visible = false; ctx.dirty(); },
+    clear: function () { finishForm(); st.deal = null; trayK = trayTgt = 0; setUni([]); ctx.dirty(); },
     // the dealer's deck slides in from their side of the table ('near' | 'far' | 'left' | 'right'), then the cards leave it one by one
     deal: function (uni, side, done) {
       if (st.deal) finishDeal(performance.now());
@@ -489,13 +520,16 @@ function install(T3, ctx) {
       finishForm(); var now = performance.now(), n = st.uni.length;
       if (st.deal) finishDeal(now);
       if (!st.on || !n || document.hidden || !ctx.layout) { setUni([]); ctx.dirty(); if (done) done(); return; }
-      var c = calm(); labelTgt = 0; goalTgt = 0;
+      var c = calm(); labelTgt = 0; goalTgt = 0; trayTgt = 0;
       for (var i = 0; i < n; i++) { st.lift[i] = st.liftT[i] = st.dim[i] = st.dimT[i] = 0; }
       var d = st.deal = { kind: 'tidy', t0: now, gap: c ? 40 : 55, dur: c ? 320 : 460, calm: c, hold: 120, leaveDur: 380, from: deckFrom(st.side), done: done };
       var allIn = now + (n - 1) * d.gap + d.dur; d.leaveAt = allIn + d.hold; d.endAt = c ? allIn + 60 : d.leaveAt + d.leaveDur; dealSounds(d, n);
       ctx.dirty(); ctx.startLoop();
     },
     highlight: function (mask, text) { if (!st.on || st.form || st.deal) return; highlight(mask, text); },
+    // where the three white V / Λ cubes sit (and the plate under them): the caller puts them there through its cube slots
+    restrSlots: restrSlots,
+    tray: function (on) { if (!st.on) return; trayTgt = on ? 1 : 0; if (on && calm()) trayK = 1; ctx.dirty(); ctx.startLoop(); },
     // the Goal's label on the felt ("2 × 3 = 6"), popped in once; null takes it away
     goal: function (text) {
       if (!st.on) return;
