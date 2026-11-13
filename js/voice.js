@@ -3,7 +3,7 @@
 // Full write-up: docs/handoff/voice.md. In short:
 //   - Peer-to-peer WebRTC between the people in one online room (a mesh: up to 3 devices, so at most 2 links each).
 //     Sound and pictures go straight from device to device. NOTHING but the small "how to connect" notes (offers,
-//     answers, network candidates) goes through Firebase, under rooms/<CODE>/rtc/<my seat>/…, and only the sender
+//     answers, network candidates) goes through Firebase, under rtc/<CODE>/<my seat>/…, and only the sender
 //     writes its own notes. The notes are removed when someone hangs up / leaves / closes the page.
 //   - Public STUN only (Google's stun.l.google.com:19302 and stun1, Cloudflare's stun.cloudflare.com:3478). There is
 //     no TURN relay, so some networks (strict company / school / mobile networks) can't connect: after 10 s the
@@ -19,8 +19,8 @@
 //     control, the video bubbles, the talking rings, stats, failure detection, wake lock, device changes.
 //
 // Signalling layout (all values are short JSON strings):
-//   rooms/<CODE>/rtc/<seat>/hi         {s: session id, cam: bool, mic: bool}     "I'm in the call" (this page load)
-//   rooms/<CODE>/rtc/<seat>/<to>/<n>   {t:'desc'|'cand', s: my session, r: their session, d | c}
+//   rtc/<CODE>/<seat>/hi               {s: session id, cam: bool, mic: bool}     "I'm in the call" (this page load)
+//   rtc/<CODE>/<seat>/<to>/<n>         {t:'desc'|'cand', s: my session, r: their session, d | c}
 // A message is used only if s is the sender's current session and r is mine, so notes from before a reload never
 // confuse a new connection, in any order.
 
@@ -58,7 +58,7 @@ var VoiceCore = (function () {
     return null;
   }
 
-  // Turns a snapshot of rooms/<CODE>/rtc into what changed since the last snapshot, for seat `me`:
+  // Turns a snapshot of rtc/<CODE> into what changed since the last snapshot, for seat `me`:
   //   joins [{slot, sid}]: someone is in the call (a new session: a first join, or after a reload)
   //   leaves [slot]: someone's session ended (hung up, left, reloaded: a reload is a leave + a join)
   //   msgs {slot: [msg…]}: new notes for me from their CURRENT session to MY session, oldest first
@@ -164,7 +164,7 @@ var VoiceCore = (function () {
   }
 
   // Everything one device does in the call.
-  // o: { me: seat, sid?, write(relPath, value) -> Promise   (relPath is under rooms/<CODE>/rtc/)
+  // o: { me: seat, sid?, write(relPath, value) -> Promise   (relPath is under rtc/<CODE>/)
   //      makePc(slot, starts) -> pc   (the starter adds its transceivers there, which makes it offer)
   //      onPeer(slot, link|null, info)   a link opened / closed
   //      onInfo(slot, {cam, mic})   their flags changed
@@ -278,7 +278,7 @@ var VoiceChat = (typeof window === 'undefined') ? null : (function () {
   function lsSet(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function allowed() { return lsGet(ALLOW_KEY) === '1'; }
   function supported() { return !!(window.RTCPeerConnection && (FAKE || (navigator.mediaDevices && navigator.mediaDevices.getUserMedia))); }
-  function base() { return 'rooms/' + R.code + '/rtc/'; }
+  function base() { return 'rtc/' + R.code + '/'; } // its own subtree: only this room's members may read it (firebase-rules-v4)
   function name(s) { try { return (R && R.names && R.names(+s)) || 'Player'; } catch (e) { return 'Player'; } }
   function others() { return Object.keys(peers); }
   function log(a, b) { if (window.console && (TEST || window.TATA_VOICE_DEBUG)) console.log('[voice]', a, b === undefined ? '' : (b && b.message) || b); }
@@ -295,7 +295,9 @@ var VoiceChat = (typeof window === 'undefined') ? null : (function () {
   }
   function watch() {
     if (!R || unsub || !NetX) return;
-    unsub = NetX.subscribe(base().slice(0, -1), onTree);
+    // a refused read (rules not live yet, or this device's seat is not written yet) ends the listener: try again a few times
+    var tries = 0;
+    (function sub() { unsub = NetX.subscribe(base().slice(0, -1), onTree, function () { unsub = null; if (R && tries++ < 4) setTimeout(function () { if (R && !unsub) sub(); }, 2500); }); })();
     if (NetX.connection) offConn = NetX.connection(function (ok) {
       if (!ok) { wasOffline = true; return; }
       if (wasOffline && sess) { log('back online: new session'); sess.renew(); armDisconnect(); }

@@ -153,8 +153,8 @@ var Net = (function () {
       transaction: function (path, fn) {
         return db.ref(path).transaction(function (cur) { return fn(cur); }, null, false).then(function (r) { return !!r.committed; });
       },
-      subscribe: function (path, cb) {
-        var ref = db.ref(path), h = ref.on('value', function (s) { cb(s.val()); }, function (e) { if (window.console) console.warn('[online] read refused', path, e && e.code); });
+      subscribe: function (path, cb, onErr) { // onErr: VOICE (the read was refused and the listener has ended)
+        var ref = db.ref(path), h = ref.on('value', function (s) { cb(s.val()); }, function (e) { if (window.console) console.warn('[online] read refused', path, e && e.code); if (onErr) { try { onErr(e); } catch (x) {} } });
         return function () { ref.off('value', h); };
       },
       presence: function (path, me, cb) {
@@ -180,7 +180,7 @@ var Net = (function () {
     available: function () { return !!kind(); }, kind: kind, test: TEST, profile: PROFILE,
     init: function () { return I().init(); },
     read: function (p) { return I().read(p); }, write: function (p, v) { return I().write(p, v); }, create: function (p, v) { return I().create(p, v); },
-    transaction: function (p, f) { return I().transaction(p, f); }, subscribe: function (p, cb) { return I().subscribe(p, cb); },
+    transaction: function (p, f) { return I().transaction(p, f); }, subscribe: function (p, cb, onErr) { return I().subscribe(p, cb, onErr); },
     presence: function (p, me, cb) { return I().presence(p, me, cb); }, stamp: function () { return I().stamp(); },
     connection: function (cb) { return I().connection(cb); },
     drop: function (on) { return I().drop(on); }
@@ -203,7 +203,7 @@ var Net = (function () {
 // /ACCOUNT
 
 // VOICE (docs/handoff/voice.md): two helpers for talking inside the game (js/voice.js). Its notes live under
-// rooms/CODE/rtc/<seat>; no sound or picture ever goes through the database.
+// rtc/CODE/<seat> (their own subtree, readable only by that room's members); no sound or picture ever goes through the database.
 //   Net.rtcWrite(path, val) -> Promise   like Net.write, but rejects when the database refuses (rules without the
 //                                        rtc part). Testing: ?onlinetest=1&rtcrules=0 refuses the same way.
 //   Net.rtcOnDisconnect(path) -> cancel  remove path when this device disconnects (Firebase onDisconnect; local: pagehide)

@@ -243,3 +243,19 @@ Not verified (honestly):
 - iOS Safari before 16.4 has no `navigator.audioSession`: the game's sounds may go quieter / to the earpiece while
   the mic is on (Apple's default "play and record" routing). Untested either way.
 - If two people hang up and rejoin many times in one game, note numbers keep counting within a session (cap 9999).
+
+## Lead's change after review: members-only notes (rules v4 replace v3)
+
+The owner chose to tighten reading before switching voice on. The notes moved out of the room into their own
+top-level subtree, `rtc/<CODE>/<seat>/…` (js/voice.js `base()`), so the `rooms` rules stay byte-for-byte as in v2 and
+`docs/handoff/firebase-rules-v4.json` = v2 + one top-level `rtc` block:
+- **read** `rtc/$code`: only the three members of that room (the uid in `rooms/$code/host`, `guests/1` or `guests/2`).
+  Guessing a room code no longer shows the connection notes (which contain the devices' network addresses).
+- **write** `rtc/$code/$from`: as in v3 (only the person in that seat; the host may delete a seat's notes).
+- **delete** `rtc/$code`: the host, or anyone signed in once the room itself is gone (cleans leftovers).
+- Size caps as in v3 (seats 0–2, `hi` up to 200 characters, numbered notes up to 16,000 characters).
+`Net.subscribe(path, cb, onErr)` now reports a refused read, and voice.js retries the listener a few times (a guest's
+seat may be written a moment after the room screen opens). v3 is kept only for the record: do not publish it.
+Checked on the local test back end with fake media: three players, all six connection ends `connected` with bytes
+both ways, notes only under `rtc/<CODE>`, nothing left after hanging up. NOT checked: the real rules in Firebase
+(not simulated, not published), real devices and networks.

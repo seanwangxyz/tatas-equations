@@ -67,7 +67,7 @@ Restore points (git tags): `before-night-2026-11-13` (start), `live-2026-11-13` 
 `night-1-nine-items`, `night-2-creative-round-1`, `night-3-creative-round-2`, `night-4-gameplay`, `night-5-polish`.
 Every helper's piece is also its own merge commit, so one piece can be undone with `git revert -m 1 <merge>`.
 - Nine items: Explain this Solution; creatures that remember (S.rivals); voice/video in online rooms (OFF until
-  docs/handoff/firebase-rules-v3.json is published: needs Tata's OK; rooms/$code/rtc); install as an app + offline
+  docs/handoff/firebase-rules-v4.json is published: needs Tata's OK; notes live at rtc/$code, members only); install as an app + offline
   (run `node tools/build-precache.js` before every publish; the offline cache is off on localhost unless ?sw=1);
   colour helpers, text size, reduce flashing; On-Sets in 3D with three players; tournament practice + Judge Pip
   (several variation cards at once; RULES_SUMMARY.md section 8); one audio bus, Sound check, speed overlay (?perf=1);
@@ -81,7 +81,7 @@ Every helper's piece is also its own merge commit, so one piece can be undone wi
 - Layout: the match side column now also on iPad landscape (min-width 1000px, aspect 5:4); compact phone panel.
 - Tests: engine 948, explain 4558, rivals 2110, account 595, parent 75, onsets 152, voice 61, missions 603, why 4910.
 - Still to do: Tata's 5-minute device and sound checklist (docs/handoff/device-checklist.md); nobody has heard the
-  new music or sounds; real iPad/Safari; real Google sign-in; publish Firebase rules v3 before voice works;
+  new music or sounds; real iPad/Safari; real Google sign-in; publish docs/handoff/firebase-rules-v4.json (members-only voice notes; v3 is superseded) together with the code before voice works;
   camera hooks kickoff/hero/final from docs/handoff/light.md not applied (the walk-out covers kick-off);
   handshake with the creature and Tata on the podium; On-Sets poster on the title; a second figure for three
   humans online in 3D.
