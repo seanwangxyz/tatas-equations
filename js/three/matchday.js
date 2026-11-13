@@ -477,8 +477,10 @@ function install(T3, ctx) {
     try { T3.playerScript('me', { path: [[px, pz]], stay: true, yaw: 0, force: true, up: Hp }); } catch (e) {}
     try { T3.playerMood('lift'); } catch (e) {}
     try { if (T3.orbit && T3.orbit.active()) T3.orbit.reset(); } catch (e) {}
-    var look0 = V(px, FY + Hp + 0.6 * H, pz), dirC = V(tall ? 0.18 : 0.42, 0.2, 1).normalize();
-    var aspect = ctx.camera.aspect || 1.5, fh = 1.7 * H, fw = 1.6 * H, tn = Math.tan(ctx.camera.fov * Math.PI / 360);
+    // the frame: from the podium to the top of the cup held over his head (Tata's grown-up build reaches ~1.3x higher)
+    var Hf = H * (ps.who === 'tata' ? 1.3 : 1);
+    var look0 = V(px, FY + Hp + 0.78 * Hf, pz), dirC = V(tall ? 0.18 : 0.42, 0.2, 1).normalize();
+    var aspect = ctx.camera.aspect || 1.5, fh = 2.1 * Hf, fw = 1.6 * Hf, tn = Math.tan(ctx.camera.fov * Math.PI / 360);
     var dfit = Math.max(fh / 2 / tn, fw / 2 / (tn * aspect));
     var camA = look0.clone().addScaledVector(dirC, dfit * 1.32), camB = look0.clone().addScaledVector(dirC, dfit), lookA = look0.clone().add(V(0, -0.1 * H, 0));
     var t0 = performance.now(), last = t0, ended = false, held = false, fired = {}, hw0 = V(0, 0, 0), hw1 = V(0, 0, 0), mid = V(0, 0, 0), camNow = V(0, 0, 0), lookNow = V(0, 0, 0), confLive = true;
