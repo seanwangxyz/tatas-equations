@@ -150,7 +150,7 @@ function randomSave() {
   for (let i = ri(8); i > 0; i--) s.dailyDone[date()] = true;
   s.camp = { quizRow: ri(3), add: { lvl: 1 + ri(5), row: 0, miss: 0, done: ri(30) } };
   s.wx = { n: ri(50) }; s.cards = {}; ['c1', 'c2', 'c3'].forEach(c => { if (coin()) s.cards[c] = date(); });
-  s.stadiumTierSeen = 1 + ri(4); s.puz = { date: date(), cur: ri(4), extra: ri(3) };
+  s.stadiumTierSeen = 1 + ri(4); s.parent = { v: 1, tot: { sol: ri(50), ok: ri(40) }, days: { [date()]: { min: ri(30), sol: ri(9) } } }; s.puz = { date: date(), cur: ri(4), extra: ri(3) };
   s.season = { v: 1, last: 'c', c: lg(1 + ri(3), ri(11), ri(21)), m: lg(1 + ri(3), ri(11), ri(21)), hist: Array.from({ length: ri(4) }, (_, i) => ({ lg: coin() ? 'c' : 'm', n: i + 1, date: date(), place: 1 + ri(6) })), won: { gold: ri(3), silver: ri(3), bronze: ri(3), blue: ri(3) }, cer: null };
   s.fans = { v: 1, k: {} }; ['chef', 'cat', 'wizard'].forEach(k => { if (coin()) s.fans.k[k] = { d: date(), at: ['stadium'] }; });
   return s;
