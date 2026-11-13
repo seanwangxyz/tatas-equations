@@ -1242,7 +1242,7 @@ if (T3 && T3.ctx) (function () {
   function highFive() {
     hf.pend = 0;
     var A = mate; if (!A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
-    var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 0.55;
+    var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 1.1;
     var sx = me.wk.x + side * gap, szz = me.wk.z, N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
     for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
     var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N, iT = Math.round(ringU(R, sx, szz) / h) % N, dp = (iT - iS + N) % N;

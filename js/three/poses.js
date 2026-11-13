@@ -128,12 +128,14 @@ export function installPoses(H) {
     setArm(A, 1, 0.98, 0.62, -0.05, e * (temple + point) * 0.9, 0.5, 0.3);
     face(A, { hmm: 0.6 * temple, browAsym: 0.4 * temple, gazeX: 0.3 * temple, gazeY: 0.4 * temple, big: 0.9 * point, squint: 0.4 * point }, e);
   } };
-  // That's Me!: both thumbs up over his shoulders at the name and number on his back, chin up, a turn to show it. 3.0 s.
+  // That's Me!: fists to his chest, then arms open wide and low, chin up, a turn to show the name and number. 3.0 s.
   GEST.number = { dur: 3.0, att: 0.2, rel: 0.6, fn(A, u, e) {
-    const P = A.P, up = ramp(u, 0.1, 0.45) * (1 - ramp(u, 2.2, 2.55)), show = bump(u, 0.75, 1.1);
-    setArm(A, 0, -0.62, 2.0, 0.42, e * up, 0.0, 0.0); setArm(A, 1, 0.62, 2.0, 0.42, e * up, 0.0, 0.0);
-    curl(A, 0, 1, e * up, 0); curl(A, 1, 1, e * up, 0);
-    P.headPitch += -0.2 * up * e; P.lean += -0.06 * up * e; P.twist += 0.32 * show * e; P.headYaw += 0.3 * show * e;
+    // both fists to his chest ("me!"), then the arms open wide and low, chest out, a turn to show the back of the shirt
+    const P = A.P, chest = win(u, 0.1, 0.85, 0.18), wide = ramp(u, 0.8, 1.1) * (1 - ramp(u, 2.2, 2.55)), show = bump(u, 1.0, 1.1);
+    setArm(A, 0, -0.32, 1.32, 0.98, e * chest, 0.3, 0.0); setArm(A, 1, 0.32, 1.32, 0.98, e * chest, 0.3, 0.0);
+    curl(A, 0, 1, e * chest, 0.2); curl(A, 1, 1, e * chest, 0.2);
+    setArm(A, 0, -1.65, 0.85, 0.35, e * wide, 0.1, 1); setArm(A, 1, 1.65, 0.85, 0.35, e * wide, 0.1, 1);
+    P.headPitch += (0.1 * chest - 0.22 * wide) * e; P.lean += -0.08 * wide * e; P.shrug += 0.05 * wide * e; P.twist += 0.32 * show * e; P.headYaw += 0.25 * show * e;
     face(A, { big: 0.9, squint: 0.45, browUp: 0.4 }, e);
   } };
   // Aeroplane (in place; the full version runs a loop on the pitch beside the table): arms out like wings, a bank one
@@ -148,7 +150,7 @@ export function installPoses(H) {
   // High five, the kid's half: his left hand up and out to the side where Tata comes in, head turned to him. 1.7 s.
   GEST.five = { dur: 1.7, att: 0.2, rel: 0.5, fn(A, u, e) {
     const P = A.P, up = ramp(u, 0.0, 0.3) * (1 - ramp(u, 1.0, 1.3)), hit = bump(u, 0.38, 0.22);
-    setArm(A, 1, 1.4 + 0.08 * hit, 2.45 - 0.1 * hit, 0.35, e * up, 0.0, 1);
+    setArm(A, 1, 1.55 + 0.1 * hit, 2.95 - 0.1 * hit, 0.2, e * up, 0.0, 1);
     P.headYaw += 0.55 * e; P.twist += 0.18 * up * e; P.hop += 0.12 * hit * e;
     face(A, { big: 1, squint: 0.45, browUp: 0.5 }, e);
   } };
@@ -188,7 +190,7 @@ export const TRAVEL = {
   // High five, Tata's half (he has walked up beside the kid, facing him): right hand up and forward, one clap of hands
   five(A, u, k, H) {
     const up = H.sstep(u / 0.3) * (1 - H.sstep((u - 0.85) / 0.25)), hit = Math.max(0, Math.sin(H.clamp((u - 0.38) / 0.22, 0, 1) * Math.PI));
-    H.setArm(A, 0, -0.55, 2.45 - 0.12 * hit, 1.05 + 0.1 * hit, up, 0.0, 1);
+    H.setArm(A, 0, -0.35, 1.95 - 0.12 * hit, 1.35 + 0.1 * hit, up, 0.0, 1);
     A.P.headPitch += 0.15 * up; H.face(A, { smile: 1, squint: 0.4 }, 1);
   },
   // the end of a run: stop, face the table, both arms up in a V for a moment
