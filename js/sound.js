@@ -222,7 +222,7 @@ var Snd = (function () {
   // otherwise the system default applies (Web Audio follows the silent switch).
   function applySession() { try { var a = navigator.audioSession; if (a && 'type' in a) { var want = setg().playOnSilent === true ? 'playback' : 'auto'; if (a.type !== want) a.type = want; } } catch (e) {} }
   function refreshMus(tc) {
-    if (!ctx) return;
+    if (!ctx || !musMix) return;
     var v = musVol * duckF * talkF;
     musMix.gain.setTargetAtTime(v, ctx.currentTime, tc || 0.05);
     musRev.gain.setTargetAtTime(v, ctx.currentTime, tc || 0.05);
@@ -657,7 +657,7 @@ var Snd = (function () {
     if (!sfxOn() || !rl('card.' + kind, 0.06)) return;
     var p = rnd(-0.25, 0.25);
     withTrim('card', function () {
-      if (kind === 'place') { hiss({ dur: 0.07, vol: 0.06, type: 'lowpass', f: 1100, attack: 0.003, pan: p }); note({ f: 180, f2: 140, dur: 0.08, vol: 0.03, attack: 0.002 }); }
+      if (kind === 'place') { hiss({ dur: 0.07, vol: 0.09, type: 'lowpass', f: 1100, attack: 0.003, pan: p }); note({ f: 180, f2: 140, dur: 0.08, vol: 0.045, attack: 0.002 }); }
       else if (kind === 'flip') { hiss({ dur: 0.09, vol: 0.09, type: 'bandpass', f: 1400, f2: 2200, q: 0.8, attack: 0.01, pan: p }); hiss({ dur: 0.05, vol: 0.08, delay: 0.07, type: 'lowpass', f: 1000, attack: 0.003, pan: p }); }
       else { hiss({ dur: 0.16, vol: 0.07, type: 'bandpass', f: 700, f2: 1500, q: 0.9, attack: 0.04, pan: p, pink: true }); note({ f: mtof(76), f2: mtof(79), glide: 0.1, dur: 0.18, vol: 0.025, delay: 0.03, attack: 0.01 }); }
     });
@@ -734,7 +734,7 @@ var Snd = (function () {
     dice: 0.5, click: 0.31, pop: 0.19, pickup: 0.48, thunk: 0.2, cupRattle: 0.6, whistle: 0.62, roar: 0.54,
     'theme.sloth': 0.28, 'theme.owl': 0.36, 'theme.wizard': 0.52, 'theme.penguin': 0.79, 'theme.fox': 2.46, 'theme.pip': 1.73,
     'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 0.64, 'sting.levelup': 0.55,
-    readout: 0.7, slide: 20, card: 13 };
+    readout: 0.7, slide: 20, card: 4.2 };
   var REACT_TRIM = { ooh: 0.84, aww: 0.9, cheer: 0.62, gasp: 0.8, laugh: 1, clap: 0.4, chant: 1.0 };
   var MOOD_GAIN = { challenge: 0.83, win: 0.84 };
   function withTrim(k, fn) { var tr = trims && trims[k]; if (tr) { defDest = tr.d; defRev = tr.r; } try { fn(); } finally { defDest = null; defRev = null; } }
@@ -1223,16 +1223,16 @@ var Snd = (function () {
     wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.28,  slow: 1.4, tail: 1.8 },
     // Monster League: gruff, careful, crackly, sly, blustery
     grub:    { base: 120, span: 0.5,  blip: 0.09,  gap: 0.06,  wave: 'sawtooth', saw: 0.7, sub: 0.5,  body: 0.8, shim: 0,    q: 3,   fs: 0.8,  glide: 1.15, vol: 0.22, slow: 1.1, tail: 1.6, soft: 1 },
-    splosh:  { base: 210, span: 0.4,  blip: 0.08,  gap: 0.075, wave: 'triangle', saw: 0.4, sub: 0.2,  body: 0.5, shim: 0,    q: 3.5, fs: 0.95, glide: 0.96, vol: 0.32, slow: 1.3, tail: 1.5, soft: 1 },
-    blaze:   { base: 330, span: 1.1,  blip: 0.04,  gap: 0.025, wave: 'sawtooth', saw: 0.9, sub: 0,    body: 0.1, shim: 0,    q: 7,   fs: 1.12, glide: 1.2,  vol: 0.4,  slow: 0.6, tail: 1.1 },
+    splosh:  { base: 210, span: 0.4,  blip: 0.08,  gap: 0.075, wave: 'triangle', saw: 0.4, sub: 0.2,  body: 0.5, shim: 0,    q: 3.5, fs: 0.95, glide: 0.96, vol: 0.38, slow: 1.3, tail: 1.5, soft: 1 },
+    blaze:   { base: 330, span: 1.1,  blip: 0.04,  gap: 0.025, wave: 'sawtooth', saw: 0.9, sub: 0,    body: 0.1, shim: 0,    q: 7,   fs: 1.12, glide: 1.2,  vol: 0.5,  slow: 0.6, tail: 1.1 },
     hex:     { base: 250, span: 1.2,  blip: 0.065, gap: 0.045, wave: 'sawtooth', saw: 0.7, sub: 0,    body: 0.2, shim: 0,    q: 6,   fs: 1.05, glide: 0.75, vol: 0.42, slow: 1.0, tail: 1.4 },
-    zog:     { base: 98,  span: 0.8,  blip: 0.1,   gap: 0.07,  wave: 'sawtooth', saw: 0.6, sub: 0.5,  body: 0.7, shim: 0,    q: 3.5, fs: 0.78, glide: 1.08, vol: 0.28, slow: 1.2, tail: 1.9, soft: 1 },
+    zog:     { base: 98,  span: 0.8,  blip: 0.1,   gap: 0.07,  wave: 'sawtooth', saw: 0.6, sub: 0.5,  body: 0.7, shim: 0,    q: 3.5, fs: 0.78, glide: 1.08, vol: 0.26, slow: 1.2, tail: 1.9, soft: 1 },
     // Legend League: a robot, a bat, an octopus, a dragon, a queen
     bleep:   { base: 300, span: 0.25, blip: 0.06,  gap: 0.05,  wave: 'square',   saw: 0.5, sub: 0,    body: 0.3, shim: 0,    q: 9,   fs: 1.0,  glide: 1.0,  vol: 0.3,  slow: 0.9, tail: 1.0 },
-    flip:    { base: 560, span: 0.9,  blip: 0.04,  gap: 0.035, wave: 'triangle', saw: 0.5, sub: 0,    body: 0.15, shim: 0,   q: 6,   fs: 1.25, glide: 0.85, vol: 0.32, slow: 0.8, tail: 1.2 },
-    squiggle:{ base: 300, span: 1.0,  blip: 0.07,  gap: 0.05,  wave: 'sine',     saw: 0.5, sub: 0,    body: 0.6, shim: 0.15, q: 4,   fs: 0.9,  glide: 1.25, vol: 0.4,  slow: 1.0, tail: 1.5 },
-    nugget:  { base: 115, span: 0.65, blip: 0.11,  gap: 0.075, wave: 'sawtooth', saw: 0.55, sub: 0.55, body: 0.8, shim: 0,   q: 3,   fs: 0.8,  glide: 1.05, vol: 0.27, slow: 1.3, tail: 1.8, soft: 1 },
-    chroma:  { base: 300, span: 0.95, blip: 0.08,  gap: 0.06,  wave: 'triangle', saw: 0.55, sub: 0,   body: 0.3, shim: 0,    q: 5,   fs: 1.12, glide: 0.9,  vol: 0.36, slow: 1.1, tail: 1.6 }
+    flip:    { base: 560, span: 0.9,  blip: 0.04,  gap: 0.035, wave: 'triangle', saw: 0.5, sub: 0,    body: 0.15, shim: 0,   q: 6,   fs: 1.25, glide: 0.85, vol: 0.5,  slow: 0.8, tail: 1.2 },
+    squiggle:{ base: 300, span: 1.0,  blip: 0.07,  gap: 0.05,  wave: 'sine',     saw: 0.5, sub: 0,    body: 0.6, shim: 0.15, q: 4,   fs: 0.9,  glide: 1.25, vol: 0.22, slow: 1.0, tail: 1.5 },
+    nugget:  { base: 115, span: 0.65, blip: 0.11,  gap: 0.075, wave: 'sawtooth', saw: 0.55, sub: 0.55, body: 0.8, shim: 0,   q: 3,   fs: 0.8,  glide: 1.05, vol: 0.23, slow: 1.3, tail: 1.8, soft: 1 },
+    chroma:  { base: 300, span: 0.95, blip: 0.08,  gap: 0.06,  wave: 'triangle', saw: 0.55, sub: 0,   body: 0.3, shim: 0,    q: 5,   fs: 1.12, glide: 0.9,  vol: 0.29, slow: 1.1, tail: 1.6 }
   };
   var BAB_ALIAS = { snoozy: 'sloth', penny: 'penguin' };
   function babCfg(who) { var id = creatureId(who); return BAB[id] || BAB[BAB_ALIAS[id]] || BAB[who] || BAB.pip; }

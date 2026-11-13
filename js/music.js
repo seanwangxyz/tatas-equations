@@ -365,7 +365,7 @@ var Music = (function () {
   function thinkMelody(b, F, key, ch, mul, dest, t, beat, len) {
     if (R() > 0.42) return;
     var inst = F.lead === 'pizz' ? 'marimba' : F.lead, base = leadBase(inst, key), name = Rp(['arch', 'rise', 'lean', 'head']);
-    var ns = cellNotes(name, nearestChordDeg(lastLead, ch[0]), R() < 0.3, 2, 4).slice(0, 1 + Math.floor(R() * 3)), at = t + R() * 1.5 * beat;
+    var ns = cellNotes(name, nearestChordDeg(Math.max(-4, Math.min(2, lastLead)), ch[0]), R() < 0.3, 2, 4).slice(0, 1 + Math.floor(R() * 3)), at = t + R() * 1.5 * beat;
     ns.forEach(function (x) { var tt = at + x[0] * beat * (0.85 + 0.3 * R()); if (tt - t < len * 1.9) play(inst, tt, deg(x[1], F.mode, base), x[2] * beat, 0.6 * mul, dest); lastLead = x[1]; });
   }
   function percBar(F, beat, mul, dest, bt, tens) {
@@ -457,7 +457,7 @@ var Music = (function () {
     chroma: { inst: 'harp', bpm: 120, n: [[0, 65, 0.4], [0.33, 69, 0.4], [0.66, 72, 0.4], [1, 76, 0.8], [1.8, 65, 0.4], [2.13, 68, 0.4], [2.46, 72, 0.4], [2.8, 75, 0.4], [3.2, 76, 1.2]], ch: 3, vol: 1 } // rise, changing colour
   };
   // level trims from the offline audit (docs/handoff/music.md): each motif about -21 LUFS
-  var MTRIM = { snoozy: 0.6, bleep: 2.2 };
+  var MTRIM = { pip: 2.57, snoozy: 0.67, penny: 1.46, fox: 2.8, owl: 1.45, wizard: 0.9, splosh: 1.51, blaze: 1.74, hex: 1.88, zog: 0.72, bleep: 2.2, flip: 1.15, squiggle: 1.84, nugget: 1.3 };
   function motifId(id) { return MOTIFS[id] ? id : (KIND_ID[id] || 'pip'); }
   function motif(id, how) {
     if (!H || !C()) return 0;

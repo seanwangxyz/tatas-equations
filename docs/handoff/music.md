@@ -69,11 +69,62 @@ short sounds in title-sfx.js (it has its own compressor), fx-sfx.js, and the old
 
 ## 3. Measurements (settled meter, 48 or 24 kHz, default volumes)
 
-MEAS_TABLE
+This is a representative subset, measured with one render each. The full catalogue is on the Sound check screen
+("Measure every sound"). M-max = loudest 400 ms (LUFS); peak in dBFS; >4k = share of energy above 4 kHz. No new or
+changed sound clips or has a "hard stop"; click and thunk keep their designed "hard start" (a knock).
+
+| Sound | Target | M-max | Peak | >4k % |
+|---|---|---|---|---|
+| music.menu (the whole theme) | about -32 | -32.0 | -23.1 | 0 |
+| music.play (Classic, day) | about -32 | -32.0 | -20.9 | 0.7 |
+| music.think | about -32 (calm) | -32.8 | -23.3 | 0 |
+| music.challenge | about -32 | -31.7 | -22.3 | 0 |
+| music.win | about -32 | -32.5 | -20.7 | 0.2 |
+| music.messy / legend | about -32 | -33.0 / -31.4 | -22.3 / -22.4 | 0.6 / 0.2 |
+| music.night / beach / volcano | about -32 | -32.1 / -33.5 / -32.2 | -21.5 / -21.6 / -20.6 | 0.4 / 0.5 / 0.2 |
+| music.late (lullaby, softer on purpose) | -35 | -35.5 | -24.1 | 0 |
+| music.onsets (waltz) | about -32 | -33.1 | -22.1 | 0 |
+| music.tension (Resources almost gone) | -32 + a little | -30.7 | -20.4 | 0.4 |
+| coda.win / coda.loss | -30 to -26 | -25.9 / -27.6 | -17.6 / -20.0 | 0 |
+| coda.shakeGood / shakeKind | -30 to -26 | -29.7 / -31.0 | -22.1 / -22.5 | 0 |
+| coda.challengeRight / Wrong | -30 to -26 | -28.5 / -29.4 | -21.2 / -21.5 | 0 |
+| 16 leitmotifs (motif.*) | about -21 | -21.9 to -19.9 | -17 to -10.4 | 0 |
+| 16 babble voices | about -21 | -22.0 to -20.2 | -11.6 to -5.7 | 0 to 0.2 |
+| click (was really -20.3, peak -2.6) | -32 to -30 | -30.6 | -12.1 | 0 |
+| pop (was really -20.0) | -32 to -30 | -32.2 | -17.3 | 0 |
+| thunk (was really -20.4) | -28 to -23 | -27.0 | -10.5 | 0 |
+| thunk per skin (plastic / candy / stone / glass / metal) | as thunk | within 0.5 dB of each other | | 0 |
+| dice knock per skin | quiet, many at once | within 1.8 dB of each other | | 0.2 to 15.5 (glass) |
+| boop (was really -22.7) | -28 to -23 | -25.9 | -15.3 | 0 |
+| sting.emote (was really -24.6) | -32 to -30 | -32.3 | -16.8 | 0 |
+| crowd.clap (was really -24.8) | -27 | -27.9 | -9.4 | 1.0 |
+| readout | about -21 | -22.1 | -13.2 | 0.2 |
+| slide | UI, -32 | -30.9 | -13.4 | 0.4 |
+| card.lift / place / flip | UI, -32 | -32.1 / -30.6 / -33.9 | -17 / -10.9 / -15.4 | 0 / 0 / 4.9 |
+| crowd.chant / roar (theme chant) | -24 / -21 | -24.9 / -21.5 | -8.5 / -12.9 | 0.8 / 2.6 |
+| chime, babble.pip, fanfare (unchanged) | -21 / -21 / -18 | -21.2 / -21.3 / -17.7 | | |
+
+The thunk-per-skin and dice rows were measured before the meter fix (the material differs by timbre, not level). They
+were re-trimmed only through the shared thunk trim.
 
 ## 4. CPU and nodes
 
-NODES_TABLE
+This was a simulated 10-minute session: the moods changed every 40 s (menu, play, think, play, challenge, play,
+think, win, menu, play, think, challenge, play, win, off), and the bars were scheduled one ahead exactly as the live
+scheduler does. I counted the live sources (oscillators and buffer players; each brings 1-2 gain/filter nodes) at
+every bar.
+
+| State | Live sources, average | Peak | About this many nodes at the peak |
+|---|---|---|---|
+| menu | 11 | 17 | 45 |
+| play | 12 | 17 | 45 |
+| think | 8.5 | 17 (12 typical) | 35 |
+| challenge | 7 | 16 | 40 |
+| win (bed + coda) | 16.5 | 24 | 65 |
+
+**No growth**: play averaged 12.4 sources at minute 1 and 11.2 at minute 9, and it was back to 0 after the render.
+The shared pad and drone filters are disconnected by `HOST.release` once their notes end. The old bed peaked at about
+29 sources (sound.md), so the new score costs less. Leitmotifs add about 10-25 short voices for 2-3 s.
 
 ## 5. API
 
@@ -124,7 +175,40 @@ up by `node tools/build-precache.js` (it scans js/) for offline play: run that b
 
 ## 7. Note events (for a musician)
 
-NOTE_EVENTS
+These are dumped with `Music._log` (times in seconds from the downbeat; Classic at 88 bpm, so a beat is 0.68 s).
+
+**The theme** (menu, kalimba), 8 bars, 4/4:
+G4 C5 E5. D5 E5 | G5 - E5 C5 | A4 C5 F5. E5 F5 | A5 - G5 - | E5 G5 A5 G5 | F5 A5 C6 - | B5 G5 B5 D6 B5 | C6 - - -
+(dotted pairs as 8th + 8th, the first note of bars 1 and 3 a dotted quarter). Chords per half bar:
+C C | C Am | F F | Dm G | C Am | F F | G G | C C. Voicings come out as C4 E4 G4, A3 C4 E4, F3 A3 C4, F3 A3 D4, G3 B3 D4.
+
+**Legend League** (Lydian): bar 3 becomes A4 C5 F#5. E5 F#5 over a D bass (D2), then A5 G5. The F sharp is sung
+over D major instead of a diminished F sharp chord.
+
+**Messy, play** (bass line): C2 G2 | Bb2 F3 (A2 passing) | F2 C3 (E2 passing) | C2 G2: the B flat of Mixolydian.
+
+**Challenge ostinato** (A minor, the theme's head): A2 D3 F3 E3 F3 at 0, 0.71, 1.07, 1.79, 2.14 s, triangle,
+low-passed, under a drone on A1.
+
+**On-Sets waltz** (3/4, 116 bpm): bass on beat 1 (C2, C2, F2, D2), the theme's notes re-timed into three beats
+(E4 ... G4 E4 C4 | F4 ... A4 G4), a soft harp "pah-pah" on beats 2 and 3.
+
+**Thinking**: chords held two bars (F3 A3 C4, then G3 B3 D4); 1-3 kalimba notes per bar at most, off the grid, at
+0.98 and 2.45 s, then nothing for 6 s, then two more (after this dump the range is clamped to G4 to E6).
+
+**Win coda** (100 bpm, starting 1.9 s after the fanfare): celesta F5 A5 C6 | B5 G5 B5 D6 | C6 (held) doubled an octave
+down by a soft horn; bass F2 G2 C2; harp C5 E5 G5 C6 E6 rising at the end.
+
+**Loss coda** (84 bpm, music box): G4 C5 E5. D5 E5 | A5 G5 E5 (held); chords C, F, C; it ends on the third (E), up.
+
+**Leitmotifs** (midi in `MOTIFS`, js/music.js): Pip G5 C6 E6 (chirps); Snoozy G2 C3 E3 then a glide to D3 (tuba);
+Penny E5 D5 E5 G5 (xylophone); Rusty G4 C5 D#5-E5 (pizzicato, a grace note); Ollie E4 G4 A4 G4 (clarinet); Mondo
+F4 A4 C5 E5 over F2 (celesta); Grub C3 G2 Bb2 (bassoon); Splosh C4 D4 E4 . C4 (marimba); Blaze G4 C5 E5 G5 quick
+(muted horn); Hex E4 D4 E4 Bb4 (accordion); King Messy C3 G3 E3 C3 with pizz G4 Bb4 G4 (oom-pah); Bleep C5 E5 G5 C6
+C6-C6 (bleeps); Flip C6 G5 E5 (flute); Squiggle E4 G4 A4 G4 (wobble); Nugget G3 C4 E4 with timpani C2 (horn); Chroma
+F4 A4 C5 E5 then F4 Ab4 C5 Eb5 then E5 (harp, changing colour). An entrance plays the motif and a softer echo over a
+soft chord; "won a shake" is a fourth higher and 12 % faster; "beaten" is 18 % slower with a friendly major-sixth harp
+chord at the end.
 
 ## 8. Verified vs not
 
