@@ -307,7 +307,7 @@
 
   // ---- offline rendering (never blocks the page: the graph is small and the render runs on the audio render thread)
   var PAD = 0.3;                      // the buffer starts this long before beat 0 (room for the first breath)
-  var TARGET_RMS = 0.075;             // loudness of the rendered song (before the music bus): the level of the old choir
+  var TARGET_RMS = 0.08;              // loudness of the rendered song (before the music bus): the level of the old choir
   function now() { return window.performance ? performance.now() : Date.now(); }
   function renderOff(sec, build, post) {
     var O = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!O) return Promise.resolve(null);

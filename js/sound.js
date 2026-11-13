@@ -59,7 +59,7 @@ var Snd = (function () {
   function pickVariant(key, n) { var i = Math.floor(Math.random() * n); if (n > 1 && i === lastVariant[key]) i = (i + 1) % n; lastVariant[key] = i; return i; }
 
   // ---------------------------------------------------------------- graph
-  function build(c) {
+  function build(c, reuse) {   // reuse: a snap() whose noise and buffer bank are used as they are (a bake: no regeneration)
     ctx = c; lastDiceWhen = -1; diceVoices = 0; voices = 0; duckF = 1; sbufs = {}; sloading = {}; gen++; warm = null;
     resetExtras();
     var sr = c.sampleRate;
@@ -68,10 +68,14 @@ var Snd = (function () {
     master = c.createGain(); master.gain.value = 0.8;
     limiter = c.createDynamicsCompressor();
     limiter.threshold.value = -10; limiter.knee.value = 6; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.25;
+    // AUDIO2: the clipper is exactly linear up to 0.6 (-4.4 dBFS) and only bends above it, smoothly, towards the 0.89
+    // ceiling. (Before: tanh all the way, which bent every loud sound a little and added intermodulation when sounds
+    // piled up.) 4x oversampling keeps the bend from folding back as hiss.
     shaper = c.createWaveShaper();
-    var curve = new Float32Array(2048), tn = Math.tanh(0.9) / 0.89;
-    for (var i = 0; i < 2048; i++) { var x = i / 1023.5 - 1; curve[i] = Math.tanh(0.9 * x) / tn; }
-    shaper.curve = curve; try { shaper.oversample = '2x'; } catch (e) {}
+    // (the old curve's small-signal gain, 1.125, is kept so every sound stays at its measured level)
+    var curve = new Float32Array(4096), KN = 0.6, CE = 0.89, G0 = 1.125;
+    for (var i = 0; i < 4096; i++) { var x = i / 2047.5 - 1, ax = Math.abs(x) * G0; curve[i] = (ax <= KN ? ax : KN + (CE - KN) * Math.tanh((ax - KN) / (CE - KN))) * (x < 0 ? -1 : 1); }
+    shaper.curve = curve; try { shaper.oversample = '4x'; } catch (e) {}
     // a gentle "glue" compressor first: single sounds pass almost untouched, a pile-up (win: fanfare + roar + cheer +
     // fireworks + voice) is eased down 2-4 dB before the limiter has to grab it
     var glue = c.createDynamicsCompressor();
@@ -117,6 +121,7 @@ var Snd = (function () {
     stingBus = c.createGain(); stingBus.connect(musMix); var sr2 = c.createGain(); sr2.gain.value = 0.5; stingBus.connect(sr2); sr2.connect(musRev);
 
     // Noise sources (reused by every hiss)
+    if (reuse && reuse.noiseBuf && reuse.bank) { noiseBuf = reuse.noiseBuf; pinkBuf = reuse.pinkBuf; buildMusicGraph(); bank = reuse.bank; musVol = 0; refreshMus(0); applyCats(); applyLevels(); return; }
     noiseBuf = c.createBuffer(1, sr * 2, sr);
     var nd = noiseBuf.getChannelData(0); for (var j = 0; j < nd.length; j++) nd[j] = Math.random() * 2 - 1;
     pinkBuf = c.createBuffer(1, sr * 4, sr);
@@ -142,6 +147,7 @@ var Snd = (function () {
     var n = ctx.currentTime;
     crowdIn.gain.setTargetAtTime(mixv('crowd'), n, 0.03); voiceIn.gain.setTargetAtTime(mixv('voice'), n, 0.03);
     ambOut.gain.setTargetAtTime(mixv('amb'), n, 0.03);
+    applyBake();
   }
 
   function mkBus(rev) {
@@ -153,10 +159,18 @@ var Snd = (function () {
   // ---------------------------------------------------------------- init / apply
   // ---------------------------------------------------------------- the context: create, unlock, keep alive (iPad)
   function quietResume() { try { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && ctx.resume) { var p = ctx.resume(); if (p && p.catch) p.catch(function () {}); } } catch (e) {} }
+  // AUDIO2: on touch devices (iPad, phones) ask for a 'balanced' output buffer instead of the smallest one. A tiny
+  // buffer ('interactive', the default) gives the audio thread ~3 ms to fill each block; a busy older iPad then misses
+  // a block now and then, which is heard as a crackle. 'balanced' gives it more room for ~10-20 ms more latency, which
+  // nobody notices on a tap sound. Laptops keep 'interactive'. (Safari may ignore the hint; it never hurts.)
+  function newCtx(AC) {
+    var touch = false; try { touch = (navigator.maxTouchPoints || 0) > 0 && !(window.matchMedia && matchMedia('(pointer: fine)').matches); } catch (e) {}
+    try { return new AC({ latencyHint: touch ? 'balanced' : 'interactive' }); } catch (e) { return new AC(); }
+  }
   // make (but do not unlock) the context, so other files can build their sounds on it before the first tap
   function ensure() {
     if (ctx) return ctx;
-    try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; build(new AC()); hookLife(); loadManifest(); loadMusic(); apply(); } catch (e) { ctx = null; }
+    try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; build(newCtx(AC)); hookLife(); loadManifest(); loadMusic(); apply(); } catch (e) { ctx = null; }
     return ctx;
   }
   function init() {
@@ -168,6 +182,7 @@ var Snd = (function () {
       // (repeated on each tap until the context runs: a touchstart alone does not count as a tap on newer iOS)
       if (warm !== ctx || ctx.state !== 'running') { warm = ctx; var b = ctx.createBuffer(1, 1, ctx.sampleRate), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0); }
       warmSpeech();
+      if (!bakeAll.started) { bakeAll.started = true; setTimeout(function () { try { bakeAll(); } catch (e) {} }, 2500); }   // AUDIO2
     } catch (e) {}
   }
   var retryT = null;
@@ -238,7 +253,7 @@ var Snd = (function () {
   // ---------------------------------------------------------------- voices: notes, noise, buffers
   function track(src, outs) {
     voices++; created++; if (voices > peakVoices) peakVoices = voices;
-    src.onended = function () { voices--; for (var i = 0; i < outs.length; i++) { try { outs[i].disconnect(); } catch (e) {} } };
+    src.onended = function () { if (voices > 0) voices--; for (var i = 0; i < outs.length; i++) { try { outs[i].disconnect(); } catch (e) {} } };
   }
   // Shaped oscillator note. o: {type, f, f2, glide, dur, vol, delay, attack, dest, reverb, filter:{type,f,q,f2}, detune, pan}
   function note(o) {
@@ -756,6 +771,7 @@ var Snd = (function () {
     if (!sfxOn() || !rl('fanfare', 2.0)) return;
     duck(0.45, 3.4);
     if (sample('fanfare', { vol: 0.95 })) return;
+    if (playBaked('fanfare', 'sfx')) return;            // AUDIO2: one buffer instead of ~260 live nodes
     withTrim('fanfare', fanfareBody);
   }
   function fanfareBody() {
@@ -775,6 +791,12 @@ var Snd = (function () {
     if (!sfxOn() || !rl('roar', 3.0)) return;
     duck(0.4, 6);
     if (sample('crowd', { vol: 0.9, dest: crowdIn })) return;
+    roarTurn = 1 - roarTurn;
+    if (playBaked('roar.' + roarTurn, 'crowd') || playBaked('roar.' + (1 - roarTurn), 'crowd')) return;   // AUDIO2: pre-rendered
+    roarBody();
+  }
+  var roarTurn = 0;
+  function roarBody() {
     var D = 6, t0 = T(0), i, bus = ctx.createGain(); bus.gain.value = TRIM.roar; bus.connect(crowdIn);
     var rv = ctx.createGain(); rv.gain.value = 0.45 * TRIM.roar; bus.connect(rv); rv.connect(sfxRev);
     // roar: looped pink noise through a few vocal-range bands, with slow wobble like a moving crowd
@@ -1327,7 +1349,11 @@ var Snd = (function () {
       hg.gain.value = cfg.shim; shim.connect(hg); hg.connect(eg); tr.frequency.value = 6.2; trg.gain.value = cfg.shim * 0.8; tr.connect(trg); trg.connect(hg.gain);
       oscs.push(shim, tr); outs.push(hg, tr, trg); track(shim, [shim]); track(tr, [tr]); shim.start(t0); shim.stop(end + 0.1); tr.start(t0); tr.stop(end + 0.1);
     }
-    eg.connect(bp1); eg.connect(bp2); eg.connect(body); bp1.connect(mix); bp2.connect(mix); body.connect(bg); bg.connect(mix);
+    // AUDIO2: a gentle low-pass on the source before the formants. A low sawtooth (Snoozy 104 Hz, Wizard 92 Hz, the
+    // Monster League) keeps its sharp edge through the low-Q band-passes: on iPad speakers (no bass) that edge is heard
+    // as a rasp of ~100 clicks a second (the checker counted 125-145 "spikes" per line). Soft above 2.6 kHz now.
+    var slp = ctx.createBiquadFilter(); slp.type = 'lowpass'; slp.frequency.value = 2600; slp.Q.value = 0.5; outs.push(slp);
+    eg.connect(slp); slp.connect(bp1); slp.connect(bp2); slp.connect(body); bp1.connect(mix); bp2.connect(mix); body.connect(bg); bg.connect(mix);
     mix.gain.value = 0.9; mix.connect(voiceIn);
     var att = 0.005 + (who === 'sloth' || who === 'owl' || cfg.soft ? 0.01 : 0);
     for (i = 0; i < plan.blips.length; i++) {
@@ -1657,6 +1683,61 @@ var Snd = (function () {
   // at time 0 (api.at(t, f) runs f at t seconds); the live sound is paused meanwhile and put back afterwards.
   // opts.defaults: measure at the default volumes (music 0.35, effects 0.8, balance 1) instead of the player's.
   var measuring = false;
+  // the whole mix state, so a render can build its graph on an offline context and the live game get its own back
+  function snap() {
+    return { ctx: ctx, master: master, limiter: limiter, shaper: shaper, sfx: sfx, sfxRev: sfxRev, musMix: musMix, musRev: musRev, revIn: revIn, diceBus: diceBus, stingBus: stingBus,
+      voiceBus: voiceBus, crowdBus: crowdBus, ambOut: ambOut, danceMix: danceMix, danceBus: danceBus, trims: trims, noiseBuf: noiseBuf, pinkBuf: pinkBuf, bank: bank, L: L,
+      crowdIn: crowdIn, voiceIn: voiceIn, uiIn: uiIn, extSfx: extSfx, extMus: extMus, onceBuses: onceBuses, reactBus: reactBus, gate: gate, curBab: curBab, amb: amb, ambWant: ambWant, clarWave: clarWave,
+      lastDiceWhen: lastDiceWhen, diceVoices: diceVoices, voices: voices, duckF: duckF, musVol: musVol, sbufs: sbufs, sloading: sloading, mood: wantedMood, warm: warm, gen: gen, bakeOut: bakeOut };
+  }
+  function unsnap(saved) {
+    ctx = saved.ctx; master = saved.master; limiter = saved.limiter; shaper = saved.shaper; sfx = saved.sfx; sfxRev = saved.sfxRev; musMix = saved.musMix; musRev = saved.musRev; revIn = saved.revIn;
+    diceBus = saved.diceBus; stingBus = saved.stingBus; voiceBus = saved.voiceBus; crowdBus = saved.crowdBus; ambOut = saved.ambOut; danceMix = saved.danceMix; danceBus = saved.danceBus; trims = saved.trims;
+    noiseBuf = saved.noiseBuf; pinkBuf = saved.pinkBuf; bank = saved.bank; L = saved.L; crowdIn = saved.crowdIn; voiceIn = saved.voiceIn; uiIn = saved.uiIn; extSfx = saved.extSfx; extMus = saved.extMus;
+    onceBuses = saved.onceBuses; reactBus = saved.reactBus; gate = saved.gate; curBab = saved.curBab; amb = saved.amb; ambWant = saved.ambWant; clarWave = saved.clarWave; lastDiceWhen = saved.lastDiceWhen;
+    diceVoices = saved.diceVoices; voices = saved.voices; duckF = saved.duckF; musVol = saved.musVol; sbufs = saved.sbufs; sloading = saved.sloading; wantedMood = saved.mood; warm = saved.warm; gen = saved.gen; bakeOut = saved.bakeOut;
+  }
+
+  // ---------------------------------------------------------------- AUDIO2: pre-rendered heavy pieces
+  // The fanfare (~260 nodes) and the win roar (~300 nodes, 7 s) are fixed pieces that land in the busiest moment of
+  // the game (a win: + crowd, fireworks, music, a creature). Each is rendered once, offline, at idle after the first
+  // tap, into a buffer of what it sends to the master (reverb included, at unity volume), and then played as ONE
+  // buffer source into the same place in the mix. Variation: the roar has 2 renders, played in turn. Until a render
+  // is ready (or without OfflineAudioContext), the live version plays as before.
+  var baked = {}, bakeQ = [], baking = false, bakeOut = {}, BAKE_MS = {};
+  var BAKES = [['fanfare', 4.2, 'sfx', function () { withTrim('fanfare', fanfareBody); }], ['roar.0', 7.4, 'crowd', function () { roarBody(); }], ['roar.1', 7.4, 'crowd', function () { roarBody(); }]];
+  function bakeDest(cat) {   // where a baked buffer goes: after its category's balance, before the master
+    if (!bakeOut[cat] || bakeOut[cat].context !== ctx) { var g = ctx.createGain(); g.connect(cat === 'music' ? musMix : sfx); bakeOut[cat] = g; applyBake(); }
+    return bakeOut[cat];
+  }
+  function applyBake() { try { if (bakeOut.crowd && bakeOut.crowd.context === ctx) bakeOut.crowd.gain.setTargetAtTime(mixv('crowd'), ctx.currentTime, 0.03); } catch (e) {} }
+  function playBaked(key, cat) { var b = baked[key]; if (!b || !ctx || b.sampleRate !== ctx.sampleRate) return false; playBuf(b, { dest: bakeDest(cat) }); return true; }
+  function bakeOne(item) {
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC || !ctx || measuring || isOffline(ctx)) return Promise.resolve(null);
+    var sr = ctx.sampleRate, off = new OAC(2, Math.ceil(sr * item[1]), sr), saved = snap(), t = performance.now();
+    var d0 = dance, s0 = swellF; dance = null;           // build() resets these: keep a dance that is playing
+    try {
+      build(off, saved); try { off.onstatechange = null; } catch (e) {}
+      // unity: no mute/volume/balance (the live buses apply them when the buffer plays); no glue/limiter (the live master does that)
+      [master, sfx, sfxRev, musMix, musRev, crowdIn, voiceIn, ambOut].forEach(function (g) { g.gain.cancelScheduledValues(0); g.gain.value = 1; });
+      master.disconnect(); master.connect(off.destination);
+      item[3]();
+    } catch (e) { unsnap(saved); dance = d0; swellF = s0; return Promise.resolve(null); }
+    unsnap(saved); dance = d0; swellF = s0;               // the graph is built: the live game gets its mix back right away
+    return off.startRendering().then(function (b) { baked[item[0]] = b; BAKE_MS[item[0]] = Math.round(performance.now() - t); return b; }, function () { return null; });
+  }
+  function bakeAll() {
+    if (baking || !ctx || isOffline(ctx)) return; baking = true;
+    bakeQ = BAKES.filter(function (b) { return !baked[b[0]]; });
+    (function next() {
+      var it = bakeQ.shift(); if (!it) { baking = false; return; }
+      // one at a time, each when the page is idle (never during a busy frame); render threads do the heavy work
+      var go = function () { bakeOne(it).then(function () { setTimeout(next, 200); }); };
+      if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 3000 }); else setTimeout(go, 300);
+    })();
+  }
+
   function measure(fn, sec, opts) {
     var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!OAC || measuring) return Promise.reject(new Error(measuring ? 'busy' : 'no OfflineAudioContext'));
@@ -1667,16 +1748,9 @@ var Snd = (function () {
     var PRE = opts.preroll == null ? 0.5 : Math.max(0, +opts.preroll || 0);
     var sr = opts.sampleRate || 48000, off = new OAC(2, Math.ceil(sr * ((sec || 3) + PRE)), sr), keepSet = null;
     stopMusic(); if (ambTimer) { clearTimeout(ambTimer); ambTimer = null; } stopDance();
-    var saved = { ctx: ctx, master: master, limiter: limiter, shaper: shaper, sfx: sfx, sfxRev: sfxRev, musMix: musMix, musRev: musRev, revIn: revIn, diceBus: diceBus, stingBus: stingBus,
-      voiceBus: voiceBus, crowdBus: crowdBus, ambOut: ambOut, danceMix: danceMix, danceBus: danceBus, trims: trims, noiseBuf: noiseBuf, pinkBuf: pinkBuf, bank: bank, L: L,
-      crowdIn: crowdIn, voiceIn: voiceIn, uiIn: uiIn, extSfx: extSfx, extMus: extMus, onceBuses: onceBuses, reactBus: reactBus, gate: gate, curBab: curBab, amb: amb, ambWant: ambWant, clarWave: clarWave,
-      lastDiceWhen: lastDiceWhen, diceVoices: diceVoices, voices: voices, duckF: duckF, musVol: musVol, sbufs: sbufs, sloading: sloading, mood: wantedMood, warm: warm, gen: gen };
+    var saved = snap();
     function restore() {
-      ctx = saved.ctx; master = saved.master; limiter = saved.limiter; shaper = saved.shaper; sfx = saved.sfx; sfxRev = saved.sfxRev; musMix = saved.musMix; musRev = saved.musRev; revIn = saved.revIn;
-      diceBus = saved.diceBus; stingBus = saved.stingBus; voiceBus = saved.voiceBus; crowdBus = saved.crowdBus; ambOut = saved.ambOut; danceMix = saved.danceMix; danceBus = saved.danceBus; trims = saved.trims;
-      noiseBuf = saved.noiseBuf; pinkBuf = saved.pinkBuf; bank = saved.bank; L = saved.L; crowdIn = saved.crowdIn; voiceIn = saved.voiceIn; uiIn = saved.uiIn; extSfx = saved.extSfx; extMus = saved.extMus;
-      onceBuses = saved.onceBuses; reactBus = saved.reactBus; gate = saved.gate; curBab = saved.curBab; amb = saved.amb; ambWant = saved.ambWant; clarWave = saved.clarWave; lastDiceWhen = saved.lastDiceWhen;
-      diceVoices = saved.diceVoices; voices = saved.voices; duckF = saved.duckF; musVol = saved.musVol; sbufs = saved.sbufs; sloading = saved.sloading; wantedMood = saved.mood; warm = saved.warm; gen = saved.gen;
+      unsnap(saved);
       if (keepSet && typeof S !== 'undefined') S.set = keepSet;
       measuring = false; stopMusic(); if (Score) Score.reset();
       try { if (ctx) apply(); } catch (e) {}
@@ -1714,6 +1788,7 @@ var Snd = (function () {
       levels: { music: level('music'), sfx: level('sfx'), crowd: level('crowd'), voice: level('voice'), amb: level('amb') }, voices: voices, peakVoices: peakVoices, created: created, speechVoices: (vcache || []).length,
       audioSession: (function () { try { return navigator.audioSession ? navigator.audioSession.type : null; } catch (e) { return null; } })() }; },
     _measure: measure, _trim: TRIM, _reactTrim: REACT_TRIM,
+    _bake: guard(function () { bakeAll.started = true; bakeAll(); }), _baked: function () { return { keys: Object.keys(baked), ms: BAKE_MS, busy: baking }; },
     // Settings -> Sound -> Sound check (js/soundcheck.js is loaded on demand)
     duckTalk: function (on) { talkF = on ? 0.55 : 1; refreshMus(on ? 0.25 : 0.9); }, // VOICE (js/voice.js): someone is talking online
     soundCheck: function () {
