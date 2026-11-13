@@ -76,7 +76,7 @@ function osMulti() { return osHumans().length > 1; }
 function osThird(a, b) { if (osN() < 3) return null; var r = osIdx().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
 function osVsCreature() { return osAIs().length > 0 && !osIsAI(0); } // the device owner earns On-Sets stars only against creatures
 // which creature at the table plays for player i (two creatures: the first AI player is creature 0)
-function osSeat(i) { var n = -1; for (var j = 0; j <= i && j < OG.players.length; j++) if (OG.players[j].ai) n++; return n < 0 ? 0 : n; }
+function osSeat(i) { var n = -1; for (var j = 0; j <= i && j < OG.players.length; j++) if (OG.players[j].ai) n++; n = n < 0 ? 0 : n; return OG && OG.seatFlip && n < 2 ? 1 - n : n; } // CLOCKWISE: OG.seatFlip puts the first creature to play on the kid's left (wide table: creature seat 1)
 // the creature that is 'up' (speaks, is shown in the speech line)
 function osFocus(i) {
   if (!OG || !osIsAI(i)) return;
@@ -147,15 +147,29 @@ function osStartMatch(mode, oppIdx, cfg) {
   for (var i = 0; i < OG.players.length; i++) if (OG.players[i].ai) { OG.act = i; break; }
   OG.three = !!(window.OS3D && OS3D.can());
   Onsets.view = 'game';
-  if (OG.three) OS3D.begin(); else go('onsets');
+  if (OG.three) { OS3D.begin(); osClockwise(); } else go('onsets');
   Snd.setMood('play');
   osNewShake();
   var first = osAI();
   if (first) { var hi = osTalk(first, 'greet'); if (hi) setTimeout(function () { if (OG && OG.phase === 'setup') osSay('opp', hi); }, 300); }
 }
+// CLOCKWISE (two creatures): play goes kid -> the creature on his left -> the one on his right. On the wide table creature
+// seat 1 stands on the left (js/three/creatures.js PAIR) and on the tall one seat 0 does, so on the wide table the first
+// creature to play is given seat 1: osSeat() flips and the two kinds are set again in the opposite order (view3d.js
+// seats them in player order, and is not edited here). Same wide/tall test as js/three/table.js chooseLayout.
+function osClockwise() {
+  try {
+    var ais = OG.players.filter(function (p) { return p.ai; });
+    OG.seatFlip = false;
+    if (ais.length !== 2 || !window.T3 || !T3.setCreatures) return;
+    var m = document.getElementById('gMat'), w = (m && m.clientWidth) || innerWidth, h = (m && m.clientHeight) || innerHeight;
+    OG.seatFlip = !(w / Math.max(1, h) < 0.9);
+    if (OG.seatFlip) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }).reverse());
+  } catch (e) { OG.seatFlip = false; }
+}
 function osNewShake() {
   OG.universe = []; OG.cubes = []; OG.goal = null; OG.goalValue = null; OG.lastMover = null; OG.selected = null; OG.ch = null;
-  OG.busy = false; OG.highlight = null; OG.hintUsed = false; OG.phase = 'setup'; OG.turn = OG.setter; OG.dealt = false; OG.wait = false;
+  OG.busy = false; OG.highlight = null; OG.hintUsed = false; OG.phase = 'setup'; OG.turn = OG.setter; OG.dealt = false;
   OG.lit = null; OG.carrying = false; OG.looked = -1;
   if (os3d()) OS3D.newShake();
   osRender();
@@ -255,7 +269,7 @@ function osSetGoal(goal, value) {
 }
 
 // ======================= MOVES =======================
-function osHumanTurn() { return OG && OG.phase === 'move' && !OG.busy && !OG.wait && !osIsAI(OG.turn); }
+function osHumanTurn() { return OG && OG.phase === 'move' && !OG.busy && !osIsAI(OG.turn); }
 function osNowCheck(p) {
   if (OG.lastMover === null || OG.lastMover === p) return 'There is no move to challenge yet.';
   if (osCubes('resources').length < 2) return 'Now! needs at least two cubes left in Resources.';
@@ -264,35 +278,34 @@ function osNowCheck(p) {
 }
 function osNextTurn(quiet) {
   if (!OG || OG.phase !== 'move') return;
-  if (osInterject()) return;
-  // (untimed) with two creatures, the kid gets to look at one creature's move before the other one plays
-  if (osIsAI(OG.turn) && OG.mode === 'ai3' && OG.lastMover !== null && osIsAI(OG.lastMover)) {
-    OG.wait = true; OG.busy = false;
-    osSay('pip', '<b>' + osName(OG.lastMover) + '</b> moved. Spot something? Call <b>Now!</b> or <b>Impossible!</b> Or tap <b>Go on</b> to let ' + osName(OG.turn) + ' play. Take your time!');
-    osRender(); return;
-  }
+  osInterject(); // RACE: a creature that is not moving may call after its reaction time (it never holds up the turn)
   if (osIsAI(OG.turn)) { setTimeout(osAITurn, 500); return; }
   var last = osCubes('resources').length === 1, name = osMulti() ? '<b>' + osName(OG.turn) + '</b>, your' : 'Your';
   if (last) osSay('pip', name + ' turn. Only ONE cube left! Move it to <b>Required</b> or <b>Permitted</b>, or call <b>Impossible!</b> if nobody can make the Goal.', 'think');
   else if (!quiet) osSay('pip', name + ' turn! Tap a Resource cube, then tap a section. Or challenge: <b>Now!</b> or <b>Impossible!</b>');
   osRender();
 }
-// Three players: a creature that is NOT next may still challenge the move just made (anyone may challenge, rules V).
+// RACE (three players, no "Go on" pause): after every move, everyone except the mover may challenge, and it is a race.
+// A creature that spots something calls after its own reaction time (stronger creatures are quicker, nobody sees a timer);
+// a person can beat it to the button. Any new move or challenge cancels a call that has not happened yet (osStill), and the
+// mover can never challenge their own move. Same idea as aiInterject / reactMs in js/game.js (Pace is Equations-only).
+function osReactMs(p) { var o = (OG.players[p] && OG.players[p].ai) || {}, s = o.stars || 3, f = o.fire || 0; return Math.max(1800, 6800 - s * 900 - f * 450) + Math.random() * 1200; }
 function osInterject() {
   if (osN() < 3 || OG.lastMover === null) return false;
   var cands = osIdx().filter(function (i) { return osIsAI(i) && i !== OG.lastMover && i !== OG.turn; });
-  if (!cands.length || OG.looked === osOrder) return false;
-  OG.looked = osOrder; OG.busy = true; osRender();
+  if (!cands.length || OG.looked === osOrder) return false; // already looked at this move
+  OG.looked = osOrder;
   var sit = osSit(), list = cands.map(function (p) { return { p: p, o: OG.players[p].skill, nowOk: !osNowCheck(p) }; });
   osThink('interject', [list, osSnap(), OG.goalValue, OG.universe], 300).then(function (hit) {
-    if (!osStill(sit)) return;
-    OG.busy = false;
-    if (hit) { if (hit.d.kind === 'now') OG.aiPlan = hit.d.plan; osChallenge(hit.d.kind, hit.p); }
-    else osNextTurn();
+    if (!hit || !osStill(sit)) return;
+    setTimeout(function () {
+      if (!osStill(sit) || OG.carrying || OG.phase !== 'move') return; // someone moved or called first
+      if (hit.d.kind === 'now') OG.aiPlan = hit.d.plan;
+      OG.busy = false; osChallenge(hit.d.kind, hit.p);
+    }, osReactMs(hit.p));
   }).catch(osOops);
   return true;
 }
-ACT.osGoOn = function () { if (!OG || !OG.wait || OG.phase !== 'move') return; OG.wait = false; Snd.click(); osAITurn(); };
 // tapping a Resource cube: pick it up (select). A colour, V or Λ cube also lifts the cards in its set.
 ACT.osCube = function (el) {
   if (!OG) return;
@@ -340,15 +353,20 @@ function osPlace(id, zone, who) {
 }
 function osAITurn() {
   if (!OG || OG.phase !== 'move' || !osIsAI(OG.turn)) return;
-  OG.wait = false;
   var me = OG.turn, P = OG.players[me], o = P.ai;
   osFocus(me);
   OG.busy = true; osSay('opp', (S.set.trash !== false && o.talk && Math.random() < 0.25) ? osTalk(o, 'trash') : pick(o.think)); osRender();
   var sit = osSit(), canCh = OG.lastMover !== null && OG.lastMover !== me, nowOk = !osNowCheck(me);
   if (osCubes('resources').length === 1) nowOk = false;
-  osThink('turn', [P.skill, osSnap(), osRes(), OG.goalValue, OG.universe, canCh, nowOk], 900 + Math.random() * 600).then(function (t) {
+  var pause = osN() > 2 ? 2300 + Math.random() * 1300 : 900 + Math.random() * 600, t0 = performance.now(); // RACE: with three at the table, a moment for the others to call first
+  osThink('turn', [P.skill, osSnap(), osRes(), OG.goalValue, OG.universe, canCh, nowOk], pause).then(function (t) {
     if (!osStill(sit) || OG.turn !== me) return;
-    if (t.challenge) { OG.busy = false; if (t.challenge.kind === 'now') OG.aiPlan = t.challenge.plan; osChallenge(t.challenge.kind, me); return; }
+    if (t.challenge) {
+      var d = t.challenge, callIt = function () { if (!osStill(sit) || OG.turn !== me || OG.carrying) return; OG.busy = false; if (d.kind === 'now') OG.aiPlan = d.plan; osChallenge(d.kind, me); };
+      var wait = osN() > 2 ? osReactMs(me) - (performance.now() - t0) : 0; // a call waits its reaction time, so a person can beat it
+      if (wait > 0) { OG.busy = false; osRender(); setTimeout(callIt, wait); } else callIt();
+      return;
+    }
     var mv = t.move, c = OG.cubes[mv.id];
     osSay('opp', 'I\'ll put the ' + osCubeWord(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.');
     if (os3d() && OS3D.canCarry(me)) {
@@ -365,7 +383,7 @@ function osCubeWord(s) { return OSE.isColor(s) ? '<b class="os-w-' + s + '">' + 
 function osChallengerFrom(el) { return (el && el.dataset && el.dataset.arg !== undefined && el.dataset.arg !== '') ? +el.dataset.arg : OG.turn; }
 function osCanChallenge(p) {
   if (!OG || OG.phase !== 'move' || osIsAI(p) || OG.lastMover === null || p === OG.lastMover || OG.carrying) return false;
-  return p === OG.turn ? (osHumanTurn() || OG.wait) : true;
+  return p === OG.turn ? osHumanTurn() : true;
 }
 ACT.osNow = function (el) {
   if (!OG) return;
@@ -394,7 +412,7 @@ ACT.osHint = function () {
 };
 function osChallenge(kind, who) {
   var mover = OG.lastMover, tp = osThird(who, mover);
-  OG.phase = 'challenge'; OG.ch = { kind: kind, challenger: who, mover: mover, tp: tp }; OG.selected = null; OG.busy = false; OG.wait = false; osLitFor(null);
+  OG.phase = 'challenge'; OG.ch = { kind: kind, challenger: who, mover: mover, tp: tp }; OG.selected = null; OG.busy = false; osLitFor(null);
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', OG.players[who].name + ' challenges!');
   if (Snd.slam) Snd.slam(); Snd.setMood('challenge');
   if (os3d()) OS3D.challenge(kind, who, mover);
@@ -629,7 +647,7 @@ function osReplayPick(r, sample) {
   return sample ? { tokens: sample, who: 'One way', ok: true, sample: true } : null;
 }
 function osEndShake(r) {
-  OG.phase = 'over'; OG.busy = false; OG.carrying = false; OG.wait = false; Snd.setMood('play');
+  OG.phase = 'over'; OG.busy = false; OG.carrying = false; Snd.setMood('play');
   osIdx().forEach(function (i) { var v = r.pts[i] || 0; OG.players[i].score += v; OG.players[i].list.push(v); });
   var best = Math.max.apply(null, OG.players.map(function (p) { return p.score; }));
   if (OG.players[0].score < best) OG.trailed = true;
@@ -738,21 +756,20 @@ function osActionsHTML() {
     return (osMulti() ? '<div class="os-whose">' + osName(OG.setter) + ' sets the Goal</div>' : '') + '<button class="btn big green" data-act="osBuildGoal">' + ico('target') + ' Build the Goal</button><button class="btn" data-act="osNoGoal">No Goal possible</button>';
   if (OG.phase !== 'move') return '';
   var out = '';
-  if (osHumanTurn() || (OG.wait && !osIsAI(0))) {
-    var p = osHumanTurn() ? OG.turn : 0, nc = osNowCheck(p);
-    out += (osMulti() && osHumanTurn() ? '<div class="os-whose">' + osName(OG.turn) + ': your turn!</div>' : '') +
+  if (osHumanTurn()) {
+    var p = OG.turn, nc = osNowCheck(p);
+    out += (osMulti() ? '<div class="os-whose">' + osName(OG.turn) + ': your turn!</div>' : '') +
       '<button class="btn now" data-act="osNow" data-arg="' + p + '"' + (nc ? ' title="' + esc(nc) + '"' : '') + '>' + ico('bolt') + ' Now!</button>' +
       '<button class="btn imp" data-act="osImp" data-arg="' + p + '">' + ico('ban') + ' Impossible!</button>' +
       (osHumanTurn() ? '<button class="btn" data-act="osHint">' + ico('bulb') + ' Hint</button>' : '');
   }
   // three players: the other people at the table may challenge the move just made too
   if (osN() > 2 && OG.lastMover !== null && !OG.carrying) {
-    var others = osHumans().filter(function (i) { return i !== OG.turn && i !== OG.lastMover && !(OG.wait && i === 0); });
+    var others = osHumans().filter(function (i) { return i !== OG.turn && i !== OG.lastMover; });
     if (others.length) out += '<div class="also">' + others.map(function (i) {
       return '<span>' + osName(i) + ' can challenge too:</span><button class="btn small now" data-act="osNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="osImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
     }).join('') + '</div>';
   }
-  if (OG.wait) out += '<button class="btn big green" data-act="osGoOn">Go on ▶</button>';
   return out;
 }
 function osRender() {
