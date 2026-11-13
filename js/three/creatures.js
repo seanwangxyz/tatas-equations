@@ -10,10 +10,14 @@
 //   T3.creatureWith(i, fn)               runs fn() with creature i in use, then puts the previous choice back
 //   T3.creatureCount()                   how many creatures are at the table (0, 1 or 2)
 //   T3.creatureEnter(done?) / T3.creatureExit(done?)   arrive at / leave the table with a greeting or a goodbye; done fires once
-//   T3.creatureMood(name|null, {variant}?)   one-shot reactions, see T3.creatureMoods(); `dance` has 3 variants per creature
+//   T3.creatureMood(name|null, {variant}?)   one-shot reactions, see T3.creatureMoods(); `dance` has 3 variants per creature.
+//                                        Each of the 15 opponents plays its own version (js/three/acting.js). 'think' is held
+//                                        until the creature moves (then it has an "aha" beat first) or reacts.
 //   T3.creatureMoods() -> array of supported mood names (unknown names are ignored; null eases back to rest)
-//   T3.creatureTalk(ms)   the mouth moves (with small head gestures) for about ms, then closes; a mood interrupts it
-//   T3.creatureIdleFlair(on?)   rare, subtle in-character idle one-shots (default on, all creatures); no argument: the setting
+//   T3.creatureTalk(ms)   the mouth moves for about ms (the line's length), then closes; the head tilts in once and holds
+//   T3.creatureIdleFlair(on?)   kept for compatibility: idle flairs are gone (nothing moves at rest); always false
+//   T3.creatureLook(what, ms?)   the creature in use looks at 'kid' | 'goal' | 'table' | 'cam' | 'partner' for ms (default 1400)
+//   T3.creatureQuiet(i?) -> true when the creature in use (or i) has settled and asks for no frames (for tests)
 //   T3.creatureMove(cubeId, zoneName, done)   reach, grab, carry, soft release; done() fires exactly once. The arm stretches
 //                                             at most ARM_STRETCH (1.25x); the body shuffles, leans and steps for the rest
 //   T3.creatureFocus(i?) -> { head: Vector3 (world), height } | null   for camera close-ups (the creature in use by default)
@@ -36,12 +40,15 @@
 //                         monsterrig.js drives their skeleton (IK arms, spine, head) from the same pose struct P and hand targets
 //                         the classic creatures use, monsterwear.js builds their jersey / scarf / armband
 // The one-shot gestures themselves (moods, dances, entrances, flairs) live in creatures/gestures.js.
-// Style rule: at rest a creature only breathes and blinks. Everything else here is a one-shot that returns to rest.
+// Style rule (the owner's): at rest NOTHING moves: no breathing, no blink timer, no idle flair. Every motion is a reaction to
+// something that just happened, one calm move that settles into a still pose. When nothing changes, a creature asks for
+// no frames at all (the render loop idles): see `quiet` in update().
 import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeBack, easeOut } from './creatures/common.js';
 import { buildClassic, HOLD, restPos } from './creatures/classic.js';
 import { MonstersPack } from './creatures/gltfpack.js';
 import { GEST, MOOD_NAMES } from './creatures/gestures.js';
+import { whoOf, restOf, specFor, partnerAnswer, perform } from './acting.js';
 
 var T3 = window.T3;
 if (T3 && T3.ctx) (function () {
@@ -84,7 +91,10 @@ if (T3 && T3.ctx) (function () {
     var id = packId || (typeof S !== 'undefined' && S && S.cos && S.cos.pack) || 'classic';
     return (packs[id] && packs[id].available) ? id : 'classic';
   }
-  var flairOn = true;
+  // Settings "calm" (js/a11y.js) or the system's reduced-motion setting: reactions become plain pose changes
+  var mqReduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function calmMode() { try { return (typeof A11y !== 'undefined' && A11y.calm && A11y.calm()) || !!(mqReduce && mqReduce.matches); } catch (e) { return false; } }
+  function qualityLevel() { try { var q = T3.quality ? T3.quality() : 'high'; return q === 'low' ? 0 : q === 'medium' ? 1 : 2; } catch (e) { return 2; } }
 
   // ---------- star sparkles (wizard magic): one pool shared by the creatures ----------
   var fx = { sprites: null, live: 0, tex: null };
@@ -102,7 +112,7 @@ if (T3 && T3.ctx) (function () {
       fx.tex = starTexture(); fx.sprites = [];
       for (var i = 0; i < 24; i++) { var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: fx.tex, transparent: true, depthWrite: false, fog: false, toneMapped: false })); s.visible = false; s.renderOrder = 5; ctx.scene.add(s); s.userData = { life: 0, t0: 0 }; fx.sprites.push(s); }
     }
-    var made = 0;
+    var made = 0, ql = qualityLevel(); n = ql === 0 ? Math.ceil(n * 0.4) : ql === 1 ? Math.ceil(n * 0.7) : n;
     for (var j = 0; j < fx.sprites.length && made < n; j++) {
       var sp = fx.sprites[j], u = sp.userData; if (sp.visible) continue;
       var a = rnd(0, TAU), r = rnd(0.2, 0.9), up = rnd(0.5, 1.7);
@@ -148,6 +158,10 @@ if (T3 && T3.ctx) (function () {
   }
   function armLen(A) { return (A.L1 + A.L2) * (A.k0 || 1); }
 
+  // the pose values that, when they change, need a new frame
+  var SIGKEYS = ['lean', 'hop', 'slide', 'turn', 'sway', 'headYaw', 'headPitch', 'headRoll', 'eyeX', 'eyeY', 'lid', 'blink', 'lidAsym', 'browRaise', 'browTilt', 'browAsym',
+    'smile', 'open', 'shrug', 'happyAmt', 'sadAmt', 'eyeWide', 'pupil', 'mouthW', 'sweat', 'sweatT', 'gulp', 'earL', 'earR', 'earUp', 'hatTilt', 'hatLift', 'cry', 'cryT', 'steam', 'steamT',
+    'angry', 'breath', 'glow', 'tint', 'eyeSplit', 'eyeAddX', 'eyeAddY'];
   var crs = [], use = 0, squeeze = 1;   // squeeze: set by the camera fit when the heads would not fit on a wide, short screen
   function pairOn() { return !!(crs[0] && crs[1] && crs[0].has() && crs[1].has()); }
 
@@ -162,14 +176,19 @@ if (T3 && T3.ctx) (function () {
     var P = { breath: 0, breathAmp: 1, lean: 0, hop: 0, slide: 0, turn: 0, sway: 0, headYaw: 0, headPitch: 0, headRoll: 0, eyeX: 0, eyeY: 0, eyeAddX: 0, eyeAddY: 0, lid: 0.9, blink: 0, lidAsym: 0,
       browRaise: 0, browTilt: 0, browAsym: 0, smile: 0, open: 0, shrug: 0, happyAmt: 0, sadAmt: 0, dt: 0.016,
       rx: 0, ry: 0, rz: 0, rYaw: 0, rScale: 1, eyeWide: 0, pupil: 0, mouthW: 1, sweat: 0, sweatT: 0, gulp: 0, earL: 0, earR: 0, earUp: 0, hatTilt: 0, hatLift: 0, armRate: 9,
-      gazeThink: 0, gazeSad: 0, gazeCam: 0, cry: 0, cryT: 0, steam: 0, steamT: 0, angry: 0, pitchAdd: 0, tailLift: 0, beardSway: 0, talk: 0, talkT: 0, task: 0 };
+      gazeThink: 0, gazeSad: 0, gazeCam: 0, cry: 0, cryT: 0, steam: 0, steamT: 0, angry: 0, pitchAdd: 0, tailLift: 0, beardSway: 0, talk: 0, talkT: 0, task: 0,
+      glow: 0, tint: 0, eyeSplit: 0, lookMode: null, lookW: 0 };
+    var who = 'pip', restP = null;                                 // which of the 15 opponents this is (js/three/acting.js), its resting posture
     var task = null;
-    var nextBlink = 0, blinkT0 = -1e9;
+    var blinkT0 = -1e9;                                            // blinks happen only as part of something (a head turn, a surprise)
     var pose = 0;                                                  // 0..1 how far the body leans/slides/steps for a far reach
     var off = { x: 0, z: 0, px: 0, pz: 0, ph: 0 };                 // smoothed world-space step offsets while reaching
     var yld = { x: 0, z: 0 };                                      // smoothed step back / aside, making room for the other creature
-    var idleSince = 0, nextFlair = 0;
     var talk = null, lastDance = {};
+    var look = { what: null, until: 0 };                           // a short look asked for from outside (T3.creatureLook) or by an observer
+    var ahaT0 = 0, ahaDur = 0, ahaFired = 0;                                     // the "aha" beat before a reach that follows a think
+    var lastGm = null, quietT = 0, quiet = false, lastSig = new Float32Array(64), sigOK = false, quietFrames = 0;   // settled: no frames asked for
+    var eyeG = new THREE.Vector3(), eyeInit = false, lastTgt = new THREE.Vector3(), lastTgtOK = false;
     var mv = { id: -1, until: 0, crowd: false }, lastPos = new Float32Array(24 * 3), lastPosOK = false;
     var gaze = new THREE.Vector3(), gazeInit = false, tgt = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), tmpA = new THREE.Vector3(), DD = new THREE.Vector3();
     var armSt = [mkArm(), mkArm()], aAlign = [0.55, 0.55], aOpen = [0.3, 0.3];
@@ -180,7 +199,8 @@ if (T3 && T3.ctx) (function () {
 
     // current gesture (a mood, dance, entrance/exit or idle flair): only one at a time per creature
     var gn = null, gv = 0, gT0 = 0, gDur = 0, gTempo = 1, gDone = null, gFired = 0, gSide = 1, gTimer = 0, fadeT0 = 0, pendingMood = null, gTimerSerial = 0;
-    var C = { P: P, u: 0, un: 0, e: 0, sty: null, kind: '', v: 0, side: 1, out: 15, amp: 1, turns: 1, rest: [{ x: -1.6, y: 1.2, z: 1.2 }, { x: 1.6, y: 1.2, z: 1.2 }], arm: null, fx: null, once: null };
+    var C = { P: P, u: 0, un: 0, e: 0, sty: null, kind: '', who: 'pip', v: 0, side: 1, out: 15, amp: 1, turns: 1, calm: false, rest: [{ x: -1.6, y: 1.2, z: 1.2 }, { x: 1.6, y: 1.2, z: 1.2 }], arm: null, fx: null, once: null, blink: null,
+      geo: { hc: new THREE.Vector3(0, 2.36, 0.1), hr: 1, sy: 1.42, sx: 1, fz: 0.8 } };
 
     function partner() { var o = crs[1 - idx]; return o && o.has() && o.visible() ? o : null; }
     // world <-> creature space. Nominal = relative to where the creature normally stands (ignores its current step offsets).
@@ -196,10 +216,21 @@ if (T3 && T3.ctx) (function () {
     };
     C.once = function (bit, cond) { if (cond && !(gFired & bit)) { gFired |= bit; return true; } return false; };
     C.fx = function (n, h) { fxBurst(n, h, rp, SCALE); };
+    C.blink = function () { blink(performance.now()); };
+    function blink(now) { if (now - blinkT0 > 900) blinkT0 = now; }
+    // head and shoulder measurements in the creature's own units, for the arm poses in acting.js
+    function measure() {
+      var g = C.geo, a = actor.arms[1], hc = actor.faceC || actor.headC;
+      g.hc.copy(hc);
+      g.sx = Math.abs(a.baseShoulder ? a.baseShoulder.x : 1) || 1; g.sy = a.baseShoulder ? a.baseShoulder.y : 1.42;
+      g.hr = actor.headR || clamp((hc.y - g.sy) * 1.05, 0.45, 1.6);
+      g.fz = actor.chestZ != null ? actor.chestZ : 0.8 * g.sx;
+    }
 
     // ---------- placement ----------
     function place() {
       if (!actor || !ctx.layout) return;
+      wake(); sigOK = false;                                          // a new seat or scale: draw the pose again from here
       var D = ctx.layout.D, W = ctx.layout.W, ln = ctx.layoutName === 'tall' ? 'tall' : 'wide', fr = FRAME[ln] || FRAME.wide;
       var pr = pairOn() ? PAIR[ln] : null, seatX = pr ? pr.x[idx] : 0;
       SCALE = clamp((fr.topH - fr.rootY) / (actor.top || 4), fr.min, fr.max) * (actor.fit || 1) * squeeze * (pr ? pr.s : 1);
@@ -234,8 +265,8 @@ if (T3 && T3.ctx) (function () {
     }
     function install(a, kind, packId) {
       clearActor(); actor = a; cur = { kind: kind, pack: packId };
-      ctx.scene.add(a.root); gazeInit = false; lastPosOK = false; gn = null; leanReset(); hidden = false; a.root.visible = true; C.sty = a.style; C.kind = a.styleKey || kind;
-      nextBlink = performance.now() + 1200 + idx * 1700; idleSince = 0; place(); ctx.refit(); ctx.dirty(); ctx.startLoop();
+      ctx.scene.add(a.root); gazeInit = false; eyeInit = false; lastTgtOK = false; lastPosOK = false; gn = null; leanReset(); hidden = false; a.root.visible = true; C.sty = a.style; C.kind = a.styleKey || kind;
+      C.who = who; restP = restOf(who); measure(); wake(); sigOK = false; place(); ctx.refit(); ctx.dirty(); ctx.startLoop();
     }
     function leanReset() { tiltX = tiltZ = 0; pose = 0; off.x = off.z = 0; yld.x = yld.z = 0; }
     // The classic stand-in is showing while a model loads: swap the real one in once it is ready and the creature is idle
@@ -252,6 +283,7 @@ if (T3 && T3.ctx) (function () {
       var my = ++serial;
       if (!kind) { clearActor(); cur = { kind: null, pack: 'classic' }; return; }
       var want = packId || (typeof S !== 'undefined' && S && S.cos && S.cos.pack) || 'classic';
+      who = whoOf(kind, want);
       var pid = resolvePack(packId), pk = packs[pid];
       if (pid !== 'classic' && !pk.has(kind)) pid = 'classic';
       try {
@@ -278,7 +310,8 @@ if (T3 && T3.ctx) (function () {
     self.actor = function () { return actor; };
 
     // ----- gestures -----
-    function setHidden(h) { hidden = h; if (actor) actor.root.visible = !h; ctx.dirty(); }
+    function setHidden(h) { hidden = h; if (actor) actor.root.visible = !h; wake(); ctx.dirty(); }
+    function wake() { quiet = false; quietFrames = 0; }
     function startGesture(n, v, done, now) {
       endGesture();
       var d = GEST[n], sty = actor.style;
@@ -286,9 +319,11 @@ if (T3 && T3.ctx) (function () {
       // next to another creature it comes and goes on its own side, so the two never cross
       if ((n === 'enter' || n === 'exit') && pairOn()) gSide = base.x < (crs[1 - idx].baseX()) ? -1 : 1;
       gTempo = n === 'dance' ? clamp(sty.moodScale, 0.85, 1.15) : sty.moodScale;
-      gDur = d.abs ? d.dur(actor.styleKey || cur.kind) : d.dur * gTempo;
-      if (n !== 'flair' && talk && !talk.cut) talk.cut = now;                  // a reaction interrupts talking
-      if (!d.raw && n !== 'flair' && actor.playMood) actor.playMood(n);
+      C.calm = calmMode();
+      gDur = d.abs ? d.dur(actor.styleKey || cur.kind, who, C.calm) : (typeof d.dur === 'function' ? d.dur(who, gv) : d.dur) * gTempo;
+      if (n === 'exit' && talk && !talk.cut) talk.cut = now;                   // leaving ends a line; reactions let the mouth finish it
+      if (!d.raw && actor.playMood) actor.playMood(n);
+      wake();
       if (gDone) { var my = ++gTimerSerial; gTimer = setTimeout(function () { if (gn && my === gTimerSerial) endGesture(); }, gDur * 1000 + 1500); }
       ctx.dirty(); ctx.startLoop();
     }
@@ -297,7 +332,9 @@ if (T3 && T3.ctx) (function () {
       var d = gDone, n = gn, pm = pendingMood; gDone = null; gn = null; fadeT0 = 0; pendingMood = null;
       if (n === 'exit') setHidden(true);
       if (d) { try { d(); } catch (e) { console.warn(e); } }
+      if (n === 'enter' && actor) blink(performance.now());             // arrived: one blink as it settles
       if (n === 'enter' && pm && actor && !gn && !hidden) self.mood(pm.m, pm.o);
+      wake();
     }
     self.mood = function (m, opts) {
       if (!actor) return;
@@ -314,7 +351,13 @@ if (T3 && T3.ctx) (function () {
         lastDance[cur.kind] = v;
       }
       startGesture(m, v, null, now);
+      // the other creature at the table answers a beat later (a glance, a nod, a jealous look) if it is free
+      var ans = partnerAnswer(m), o = partner();
+      if (ans && o) setTimeout(function () { if (actor && gn === m && o.has() && o.free()) o.mood(ans); }, 380);
     };
+    self.free = function () { return !!actor && !hidden && !gn && !task; };
+    // a short look at something (T3.creatureLook, the big-Goal observer)
+    self.look = function (what, ms) { if (!actor) return; look.what = what || null; look.until = performance.now() + (ms > 0 ? ms : 1400); wake(); ctx.startLoop(); };
     self.enter = function (done) {
       var fired = false;
       function fin() { if (fired) return; fired = true; if (done) { try { done(); } catch (e) { console.warn(e); } } }
@@ -335,10 +378,11 @@ if (T3 && T3.ctx) (function () {
     self.talk = function (ms) {
       if (!actor || hidden) return;
       if (!(ms > 0)) { if (talk) talk.cut = performance.now(); return; }
-      talk = { t0: performance.now(), dur: ms / 1000, cut: 0 }; ctx.dirty(); ctx.startLoop();
+      talk = { t0: performance.now(), dur: ms / 1000, cut: 0 }; wake(); ctx.dirty(); ctx.startLoop();
     };
     self.dances = function () { return actor ? actor.style.dances.slice() : []; };
-    self.resetIdle = function () { idleSince = 0; };
+    self.resetIdle = function () { wake(); };
+    self.quiet = function () { return !actor || hidden || quiet; };
 
     // what the other creature needs to know
     self.baseX = function () { return base.x; };
@@ -358,6 +402,7 @@ if (T3 && T3.ctx) (function () {
       var m = ctx.meshes[id], r = ctx.layout && ctx.layout.z[zone];
       if (!actor || hidden || !r || document.hidden || !m) { fin(); return; }
       if (gn === 'enter') endGesture();                              // get to the table first: the entrance gives way instantly
+      var fromThink = gn === 'think' && !calmMode();                 // it was thinking: an "aha" beat first, then the reach
       if (gn && !fadeT0) fadeT0 = performance.now();                 // a reaction in progress eases out so the carry can start
       if (task) finishTask(true);                                  // a new move cuts off any return still in progress
       // the other creature lets go of this cube if it still has it (it never should: moves come one after the other)
@@ -380,6 +425,9 @@ if (T3 && T3.ctx) (function () {
       T.arcH = clamp(0.5 + 0.05 * d1, 0.5, 1.5); T.apex = clamp(1.3 + 0.06 * d2, 1.3, 2.7);
       T.dur = [sty.anticipate, clamp(0.34 + 0.03 * d1, 0.4, 0.85), 0.2, 0.17, clamp(0.5 + 0.04 * d2, 0.6, 1.1), 0.22, 0.16, 0.6].map(function (x) { return x * s; });
       T.dur[0] = Math.max(T.dur[0], 0.28 * s);
+      if (fromThink) { var ah = specFor(who, 'aha'); ahaT0 = now; ahaFired = 0; ahaDur = ah ? ah.dur : 0; T.dur[0] += Math.min(0.42, ahaDur * 0.45) * sty.moodScale; }
+      else ahaT0 = 0;
+      wake();
       T.align0 = st.align; T.open0 = st.open;
       T.timer = setTimeout(function () { if (task === T) finishTask(true); else if (!T.ended) { T.ended = true; releaseCube(T); T.fin(); } }, 13000 * (T3.creatureTempo || 1));
       stats.max = 0;
@@ -402,7 +450,7 @@ if (T3 && T3.ctx) (function () {
       if (actor && o && o.fit) actor.fit = o.fit;
       if (actor && o && o.fitY != null) actor.fitY = o.fitY;
     };
-    self.stats = function () { return { maxStretch: stats.max, offX: off.x, offZ: off.z, yieldX: yld.x, yieldZ: yld.z, pose: pose, gesture: gn, err: task ? task.err : 0, fixZ: task ? task.fix.z : 0 }; };
+    self.stats = function () { return { maxStretch: stats.max, offX: off.x, offZ: off.z, yieldX: yld.x, yieldZ: yld.z, pose: pose, gesture: gn, err: task ? task.err : 0, fixZ: task ? task.fix.z : 0, who: who, quiet: quiet, gm: lastGm, tgt: [tgt.x, tgt.y, tgt.z], head: [headW.x, headW.y, headW.z], headPitch: P.headPitch, headYaw: P.headYaw, lean: P.lean, open: P.open, eyeX: P.eyeX, eyeY: P.eyeY }; };
     function setStage(T, s, now) { T.stage = s; T.t0 = now; if (s === 6) releaseCube(T); }
     function releaseCube(T) {
       if (T.released) return; T.released = true;
@@ -549,59 +597,95 @@ if (T3 && T3.ctx) (function () {
     }
 
     // ---------- per-frame ----------
+    // The pose is rebuilt every frame (rest + this creature's own posture + the current reaction + talking + the reach),
+    // then compared with what was last drawn: only a real change asks for a frame. Once settled the creature is "quiet":
+    // it then only checks, cheaply, whether something has happened that it should react to (nothing moves at rest).
+    var SIG = new Float32Array(64), camQ = new THREE.Vector3();
+    function lookTarget(mode, out, o) {
+      var sg = gSide || 1;
+      switch (mode) {
+        // (the seat camera is just behind the kid: looking at him and at the camera are nearly the same, so the face stays readable)
+        case 'kid': { var ps = T3.playerState ? T3.playerState() : null; out.copy(ctx.camera.position); if (ps && ps.visible && ps.pos) { tmpA.set(ps.pos[0], 2.8, ps.pos[1]); out.lerp(tmpA, 0.3); } return out; }
+        case 'goal': { var r = ctx.layout && ctx.layout.z.goal; if (r) out.set(r[0] + r[2] / 2, 0.5, r[1] + r[3] / 2); else out.set(0, 0.5, 0); return out.lerp(ctx.camera.position, 0.35); }
+        // looking at the table / down: aimed between the cubes and the camera, so the head dips a little and the face stays in view
+        case 'table': return out.set(base.x * 0.4, 0.5, 1.0).lerp(ctx.camera.position, 0.45);
+        case 'down': return out.set(headW.x, 0.5, headW.z + 8).lerp(ctx.camera.position, 0.3);
+        case 'up': return out.set(headW.x - 3.5 * sg, headW.y + 4, headW.z + 5);
+        case 'sky': return out.set(headW.x, headW.y + 9, headW.z + 3);
+        case 'side': return out.set(headW.x + 5 * sg, headW.y + 0.3, headW.z + 3.5);
+        case 'away': { var aw = o ? (o.rootX() > base.x ? -1 : 1) : sg; return out.set(headW.x + 6 * aw, headW.y + 0.8, headW.z + 2.5); }
+        case 'partner': return o ? out.copy(o.head()) : out.copy(ctx.camera.position);
+        default: return out.copy(ctx.camera.position);
+      }
+    }
+    function signature(root) {
+      var g = SIG, n = 0, keys = SIGKEYS;
+      for (var k = 0; k < keys.length; k++) g[n++] = P[keys[k]] || 0;
+      g[n++] = root.position.x; g[n++] = root.position.y; g[n++] = root.position.z; g[n++] = root.rotation.y; g[n++] = root.scale.x;
+      for (var i = 0; i < 2; i++) { var st = armSt[i]; g[n++] = st.goal.x; g[n++] = st.goal.y; g[n++] = st.goal.z; g[n++] = st.open; g[n++] = st.align; g[n++] = st.yaw; }
+      var d = 0; for (var j = 0; j < n; j++) { var x = Math.abs(g[j] - lastSig[j]); if (x > d) d = x; }
+      return sigOK ? d : 1;
+    }
     self.update = function (now) {
       if (!actor || hidden) { lastNow = now; return; }
       var moving = scanMovers(now, Math.min(0.1, (now - lastScan) / 1000)); lastScan = now;
       if (document.hidden && (task || gn)) { if (task) finishTask(true); if (gn) endGesture(); if (hidden) return; }
       var o = partner(), pCube = o ? o.carried() : null, pTalk = !!(o && o.talking());
       var settling = pose > 0.002 || Math.abs(off.x) > 0.002 || Math.abs(off.z) > 0.002 || Math.abs(yld.x) > 0.002 || Math.abs(yld.z) > 0.002;
-      var busy = !!task || !!gn || !!talk || fx.live > 0 || settling || !!pCube || pTalk || !!(o && o.reaching());
-      // a rare idle flair, only when nothing else has happened for a while (and never while the other creature is in one)
-      if (busy) idleSince = 0;
-      else {
-        if (!idleSince) { idleSince = now; nextFlair = now + rnd(25000, 45000); }
-        if (flairOn && now >= nextFlair) { if (!moving && !document.hidden && !(o && o.gesturing())) { startGesture('flair', 0, null, now); busy = true; } else nextFlair = now + 3000; }
+      var busy = !!task || !!gn || !!talk || fx.live > 0 || settling || !!pCube || pTalk || !!(o && o.reaching()) || !!ahaT0 || now < look.until + 600 || now - blinkT0 < 400;
+      if (quiet) {
+        // settled: wake only for something that happened (a cube moving, a reaction, a line, the camera moving)
+        // (every 1.5 s it looks once more anyway, without drawing unless something really changed: a safety net)
+        if (!busy && !moving && camQ.distanceToSquared(ctx.camera.position) < 1e-6 && now - quietT < 1500) { lastNow = now; return; }
+        wake();
       }
-      if (!busy && !moving && now - lastUpdate < 32) return;       // idle (breathing/blinking only): ~30 fps is plenty
-      var dt = clamp((now - lastNow) / 1000, 0.001, 0.05); lastNow = now; lastUpdate = now; P.dt = dt;
+      var dt = clamp((now - lastNow) / 1000, 0.001, 0.05); lastNow = now; P.dt = dt;
       var sty = actor.style, i, a, st;
 
-      // ----- reset the pose; gestures then add to it -----
-      P.lean = BASE_LEAN + (actor.lean || 0); P.headYaw = 0; P.hop = 0; P.slide = 0; P.turn = seatTurn; P.sway = 0; P.headRoll = 0; P.lid = 0.9; P.lidAsym = 0; P.breathAmp = 1;
+      // ----- reset the pose; this creature's own resting posture, then gestures add to it -----
+      P.lean = BASE_LEAN + (actor.lean || 0); P.headYaw = 0; P.hop = 0; P.slide = 0; P.turn = seatTurn; P.sway = 0; P.headRoll = 0; P.lid = 0.9; P.lidAsym = 0; P.breathAmp = 1; P.breath = 0;
       P.browRaise = 0; P.browTilt = 0; P.browAsym = 0; P.smile = 0; P.open = 0; P.shrug = 0; P.happyAmt = 0; P.sadAmt = 0; P.cry = 0; P.cryT = 0; P.steam = 0; P.steamT = 0; P.angry = 0; P.pitchAdd = 0;
-      P.rx = 0; P.ry = 0; P.rz = 0; P.rYaw = 0; P.rScale = 1; P.eyeWide = 0; P.pupil = 0; P.mouthW = 1; P.sweat = 0; P.gulp = 0; P.earL = 0; P.earR = 0; P.earUp = 0; P.hatTilt = 0; P.hatLift = 0;
+      P.rx = 0; P.ry = 0; P.rz = 0; P.rYaw = 0; P.rScale = 1; P.eyeWide = 0; P.pupil = 0; P.mouthW = 1; P.sweat = 0; P.sweatT = 0; P.gulp = 0; P.earL = 0; P.earR = 0; P.earUp = 0; P.hatTilt = 0; P.hatLift = 0;
       P.eyeAddX = 0; P.eyeAddY = 0; P.armRate = 9; P.gazeThink = 0; P.gazeSad = 0; P.gazeCam = 0; P.talk = 0; P.task = task ? task.ai + 1 : 0;
+      P.glow = 0; P.tint = 0; P.eyeSplit = 0; P.lookMode = null; P.lookW = 0;
+      if (restP) { P.lean += restP.lean || 0; P.pitchAdd += restP.pitch || 0; P.headRoll += restP.roll || 0; }
       for (i = 0; i < 2; i++) { a = actor.arms[i]; armSt[i].des.copy(a.rest); aAlign[i] = 0.55; aOpen[i] = 0.3; }
-      // blinks
-      if (now >= nextBlink) { blinkT0 = now; nextBlink = now + rnd(sty.blink.g[0], sty.blink.g[1]) * 1000; }
+      // a blink: only when something asked for one (a big head turn, an arrival, a reaction)
       var bt = (now - blinkT0) / 1000, bc = sty.blink.c, bo = sty.blink.o;
       P.blink = bt < 0 ? 0 : bt < bc ? bt / bc : bt < bc + 0.03 ? 1 : bt < bc + 0.03 + bo ? 1 - (bt - bc - 0.03) / bo : 0;
 
-      // ----- the current gesture (each plays once) -----
+      // ----- the current gesture (each plays once; 'think' is held) -----
       if (gn) {
         var gd = GEST[gn], u = (now - gT0) / 1000, fd = 1;
         if (fadeT0) { fd = 1 - sstep((now - fadeT0) / fadeTime); if (fd <= 0) { endGesture(); u = -1; } }
         if (u > gDur) { endGesture(); u = -1; }
         if (gn && u >= 0) {
           var rx0 = P.rx;
-          C.u = u; C.un = u / gTempo; C.v = gv; C.side = gSide; C.sty = sty; C.kind = actor.styleKey || cur.kind; C.amp = sty.danceAmp; C.turns = sty.turns || 1;
+          C.u = u; C.un = u / gTempo; C.v = gv; C.side = gSide; C.sty = sty; C.kind = actor.styleKey || cur.kind; C.who = who; C.amp = sty.danceAmp; C.turns = sty.turns || 1;
           C.out = (ctx.layout ? ctx.layout.W / 2 : 9) + 6;
-          C.e = (gd.raw ? 1 : env(u, gDur, (gd.att || 0.3) * gTempo, gd.rel || 0.8)) * fd;
+          C.e = (gd.raw || gd.own ? 1 : env(u, gDur, (gd.att || 0.3) * gTempo, gd.rel || 0.8)) * fd;
           gd.fn(C);
-          // next to another creature, dances and other reactions sway less far sideways, so the two never bump
+          // next to another creature, reactions sway less far sideways, so the two never bump
           if (!gd.raw && pairOn()) P.rx = rx0 + (P.rx - rx0) * 0.55;
         }
       }
-      P.breath = Math.sin(now / 1000 * Math.PI * 2 / sty.breath) * P.breathAmp;
-      // ----- talking: the mouth opens and closes in a natural rhythm, with small head gestures, on top of the current expression -----
+      // ----- the "aha" beat right before a reach that follows a think -----
+      if (ahaT0) {
+        var au = (now - ahaT0) / 1000 / sty.moodScale, ah = specFor(who, 'aha');
+        if (!ah || au > ahaDur) ahaT0 = 0;
+        else { var gf = gFired; gFired = ahaFired; C.un = au; C.u = au; C.e = 1; C.v = 0; C.who = who; C.calm = false; perform(C, ah); ahaFired = gFired; gFired = gf; }
+      }
+      // ----- talking: the mouth follows the line (opens and closes in a speech rhythm) and stops when it ends; the head
+      // tilts in once and holds while it speaks. Creatures without a mouth (the glTF monsters) nod a touch on the syllables.
       if (talk) {
         var tt = (now - talk.t0) / 1000, cf = talk.cut ? 1 - sstep((now - talk.cut) / 160) : 1;
         if (tt > talk.dur || cf <= 0) talk = null;
         else {
           var te = env(tt, talk.dur, 0.15, 0.3) * cf, wg = sstep((Math.sin(tt * TAU * 1.15 + 0.4) + 0.45) * 2.2), syl = 0.5 + 0.5 * Math.sin(tt * TAU * 4.3 + 0.8 * Math.sin(tt * 2.3));
-          P.talk = te; P.talkT = tt;                                  // packs without a face use these for head bobs and hand gestures
+          P.talk = te; P.talkT = tt;                                  // packs without a face use these
           P.open = Math.min(1, P.open + te * wg * (0.1 + 0.5 * syl * (0.65 + 0.35 * Math.sin(tt * 7.1))));
-          P.pitchAdd += 0.05 * Math.sin(tt * TAU * 1.15 + 1) * te * wg; P.headYaw += 0.07 * Math.sin(tt * TAU * 0.7) * te; P.browRaise += 0.22 * te * wg * Math.max(0, Math.sin(tt * TAU * 1.15 + 2.6));
+          P.headRoll += 0.06 * (idx ? -1 : 1) * te; P.browRaise += 0.15 * te;
+          if (actor.mouthless) P.pitchAdd += 0.03 * te * wg * syl;
         }
       }
 
@@ -622,16 +706,18 @@ if (T3 && T3.ctx) (function () {
         if (!st.init) { st.goal.copy(a.rest); st.init = true; }
         if (Tk && Tk.ai === i) continue;
         st.goal.lerp(st.des, kk); st.align += (aAlign[i] - st.align) * kk; st.open += (aOpen[i] - st.open) * kk; st.yaw += (0 - st.yaw) * kk;
+        if (st.goal.distanceToSquared(st.des) < 1e-8) st.goal.copy(st.des);
       }
       if (Tk) evalTask(Tk, now, dt);
       Tk = task;
 
-      // ----- gaze -----
+      // ----- gaze: the eyes jump to what matters (one quick saccade), the head follows more slowly, then both are still -----
       var gm = 'cam';
       if (Tk) {
         var gs = Tk.stage; gm = (gs <= 3) ? 'cube' : (gs === 4 ? (clamp((now - Tk.t0) / 1000 / Tk.dur[4], 0, 1) < 0.55 ? 'die' : 'zone') : (gs === 5 || gs === 6) ? 'zone' : 'cam');
       } else if (pCube) gm = 'partnerCube';                         // the other creature is carrying a cube: watch it go
       else if (now < mv.until) gm = mv.crowd ? 'table' : 'mover';
+      else if (now < look.until && look.what) gm = 'look';
       else if (pTalk) gm = 'partner';                              // the other creature is talking: look its way
       if (gm === 'cube') tgt.set(Tk.m.position.x, Tk.m.position.y + 0.3, Tk.m.position.z);
       else if (gm === 'die') tgt.copy(Tk.m.position);
@@ -640,21 +726,38 @@ if (T3 && T3.ctx) (function () {
       else if (gm === 'partner') tgt.copy(ctx.camera.position).lerp(o.head(), 0.7);
       else if (gm === 'mover') { var mm = ctx.meshes[mv.id]; if (mm) tgt.copy(mm.position); else tgt.copy(ctx.camera.position); }
       else if (gm === 'table') tgt.set(0, 0.5, 0.6);
+      else if (gm === 'look') lookTarget(look.what, tgt, o);
       else tgt.copy(ctx.camera.position);
-      if (P.gazeThink > 0) { tmp.set(headW.x - 4, headW.y + 4, headW.z + 5); tgt.lerp(tmp, P.gazeThink); }
-      if (P.gazeSad > 0) { tmp.set(headW.x, headW.y - 3, headW.z + 5); tgt.lerp(tmp, P.gazeSad); }
+      // a reaction may ask to look somewhere (at the kid, down, away, at the other creature...) unless it is reaching
+      lastGm = gm;
+      if (P.lookW > 0 && P.lookMode && !Tk) { lookTarget(P.lookMode, tmp, o); tgt.lerp(tmp, P.lookW); }
       if (P.gazeCam) tgt.copy(ctx.camera.position);
       if (!gazeInit) { gaze.copy(tgt); gazeInit = true; }
-      gaze.lerp(tgt, 1 - Math.exp(-sty.look * dt));
+      if (!eyeInit) { eyeG.copy(tgt); eyeInit = true; }
+      // a big, sudden change of where to look carries a blink with it (as real eyes do on a big turn)
+      tmp2.copy(eyeG).sub(headW); tmpA.copy(tgt).sub(headW);
+      if (!Tk && tmp2.angleTo(tmpA) > 0.55) blink(now);
+      eyeG.lerp(tgt, 1 - Math.exp(-26 * dt)); if (eyeG.distanceToSquared(tgt) < 1e-6) eyeG.copy(tgt);
+      gaze.lerp(tgt, 1 - Math.exp(-sty.look * dt)); if (gaze.distanceToSquared(tgt) < 1e-6) gaze.copy(tgt);
       var dx = gaze.x - headW.x, dy = gaze.y - headW.y, dz = gaze.z - headW.z, hd = Math.sqrt(dx * dx + dz * dz) || 1e-3;
       // the head keeps looking at its target while the body turns (not during full spins)
       var tn = P.turn % TAU; if (tn > Math.PI) tn -= TAU; else if (tn < -Math.PI) tn += TAU;
       var comp = tn * (1 - sstep((Math.abs(tn) - 0.9) / 0.5));
       var yaw = Math.atan2(dx, dz) - comp, pitch = Math.atan2(-dy, hd);
       yaw = clamp(yaw, -1.1, 1.1);
-      var hy = clamp(yaw * sty.headGain, -0.75, 0.75), hp = clamp(pitch * sty.headGain, -0.55, 0.6);
+      var hy = clamp(yaw * sty.headGain, -0.75, 0.75), hp = clamp(pitch * sty.headGain, actor.pitchMin != null ? actor.pitchMin : -0.55, 0.6);
       P.headYaw += hy; P.headPitch = hp - P.lean * (0.5 + 0.35 * pose) + P.pitchAdd;   // leaning far: keep the face up, eyes on the cube
-      P.eyeX = clamp((yaw - hy) / 0.55, -1, 1); P.eyeY = clamp(-(pitch - hp + P.lean * 0.4) / 0.5, -1, 1);
+      var ex = eyeG.x - headW.x, ey = eyeG.y - headW.y, ez = eyeG.z - headW.z, eh = Math.sqrt(ex * ex + ez * ez) || 1e-3;
+      var yawE = clamp(Math.atan2(ex, ez) - comp, -1.4, 1.4), pitchE = Math.atan2(-ey, eh);
+      P.eyeX = clamp((yawE - hy) / 0.55, -1, 1); P.eyeY = clamp(-(pitchE - hp + P.lean * 0.4) / 0.5, -1, 1);
+
+      // ----- only a real change is drawn; a settled creature goes quiet -----
+      var change = signature(root);
+      if (change < 1.5e-4 && !Tk) {
+        if (++quietFrames >= 6 && !busy && !moving) { quiet = true; quietT = now; camQ.copy(ctx.camera.position); }
+        return;
+      }
+      quietFrames = 0; lastSig.set(SIG); sigOK = true;
 
       // ----- apply to the character -----
       actor.apply(P, now);
@@ -714,7 +817,9 @@ if (T3 && T3.ctx) (function () {
   T3.creatureExit = function (done) { cr().exit(done); };
   T3.creatureVisible = function (i) { return cr(i).visible(); };
   T3.creatureTalk = function (ms) { cr().talk(ms); };
-  T3.creatureIdleFlair = function (on) { if (on === undefined) return flairOn; flairOn = !!on; crs.forEach(function (c) { c.resetIdle(); }); return flairOn; };
+  T3.creatureIdleFlair = function () { return false; };     // idle flairs are gone: nothing moves at rest (kept so old callers do not break)
+  T3.creatureLook = function (what, ms) { cr().look(what, ms); };
+  T3.creatureQuiet = function (i) { return cr(i).quiet(); };
   T3.creatureMove = function (id, zone, done) { cr().move(id, zone, done); };
   T3.creatureStage = function (i) { return cr(i).stage(); };   // debugging: 0 anticipate .. 7 return, -1 idle
   T3.creatureFocus = function (i) { return cr(i).focus(); };
@@ -730,8 +835,28 @@ if (T3 && T3.ctx) (function () {
   };
   T3.creatureStats = function (i) { return cr(i).stats(); };
 
+  // Watching the game without any hook in game.js: when the kid sets the Goal, the creatures look at it; a huge Goal
+  // (50 or more, or four cubes and more) earns an 'impressed' reaction from each free creature (the second a beat later).
+  var seenGoal = null;
+  function watchGoal() {
+    var Gm = (typeof G !== 'undefined') ? G : null;
+    if (!Gm || !Gm.players) { seenGoal = null; return; }
+    var key = Gm.goal != null && Gm.goalTokens && Gm.goalTokens.length ? Gm.shake + ':' + Gm.goal + ':' + Gm.goalTokens.length : null;
+    if (key === seenGoal) return;
+    var was = seenGoal; seenGoal = key;
+    if (!key || was === undefined) return;
+    var setter = Gm.players[Gm.setter]; if (!setter || setter.ai || Gm.phase === 'goal') return;
+    var cubes = 0; for (var i = 0; i < Gm.goalTokens.length; i++) if (typeof Gm.goalTokens[i] === 'object') cubes++;
+    var big = Math.abs(Gm.goal) >= 50 || cubes >= 4;
+    crs.forEach(function (c, k) {
+      if (!c.free()) return;
+      if (big) setTimeout(function () { if (c.free()) c.mood('impressed'); }, 250 + k * 450);
+      else c.look('goal', 1300);
+    });
+  }
   var lastFx = 0;
   ctx.hooks.frame.push(function (now) {
+    try { watchGoal(); } catch (e) { /* the game state is not ours: never let it break the frame */ }
     crs[0].update(now); crs[1].update(now);
     var dt = clamp((now - lastFx) / 1000, 0.001, 0.05); lastFx = now;
     if (fx.live) { fxUpdate(now, dt); ctx.dirty(); }

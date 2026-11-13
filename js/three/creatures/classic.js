@@ -163,7 +163,7 @@ export function buildClassic(kind) {
     const tail = new THREE.Group(); tail.position.set(1.0, 0.35, -0.85); tail.rotation.set(-0.35, 0.2, -0.9); body.add(tail);
     sph(1, or, tail, 0, 0.7, 0, 0.55, 0.95, 0.55); sph(1, wm, tail, 0, 1.45, 0, 0.42, 0.55, 0.42);
     bodyParts.tail = tail;
-    ex.push((P, now) => { tail.rotation.z = -0.9 + Math.sin(now / 1400) * 0.04 + P.tailLift * 0.35; });
+    ex.push((P) => { tail.rotation.z = -0.9 + P.tailLift * 0.35; });
     ex.push((P) => { for (let i = 0; i < 2; i++) { const e = ears[i], f = e.s < 0 ? P.earL : P.earR; e.g.rotation.z = e.z - e.s * (f - 0.16 * P.earUp + 0.4 * P.sadAmt); e.g.rotation.x = e.x - 0.3 * P.sadAmt + 0.12 * P.earUp; } });
   }
   if (kind === 'owl') {
@@ -193,14 +193,14 @@ export function buildClassic(kind) {
     cone(0.5, 1.2, purple2, tip, 0, 0.45, 0, 28);
     const sg = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.11 : 0.26; sg[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
     const star = mesh(new THREE.ExtrudeGeometry(sg, { depth: 0.05, bevelEnabled: false }), std(0xffe066, { emissive: 0x806000, roughness: 0.4 }), hat, 0, 0.75, 0.82); star.rotation.x = -0.18;
-    ex.push((P, now) => { hat.rotation.z = P.hatTilt; hat.position.y = 0.84 + P.hatLift; star.rotation.y = Math.sin(now / 2200) * 0.15; mus.rotation.z = P.smile * 0.12; mus.position.y = -0.3 + P.smile * 0.03; beard.rotation.x = Math.PI + 0.12 + P.beardSway; });
+    ex.push((P) => { hat.rotation.z = P.hatTilt; hat.position.y = 0.84 + P.hatLift; mus.rotation.z = P.smile * 0.12; mus.position.y = -0.3 + P.smile * 0.03; beard.rotation.x = Math.PI + 0.12 + P.beardSway; });
   }
   if (kind === 'pip') {
     on(sph(1, std(0xff9a3d), head, 0, 0, 0, 0.16, 0.1, 0.05), 0.8, -0.2, 0.08); on(sph(1, std(0xff9a3d), head, 0, 0, 0, 0.16, 0.1, 0.05), -0.8, -0.2, 0.08);
     const ant = new THREE.Group(); ant.position.set(0, H[1] * 0.92, 0); head.add(ant);
     mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.62, 8), std(0xe8590c), ant, 0, 0.31, 0);
     const ball = sph(0.17, std(0xff5a5a, { emissive: 0x4a0000, roughness: 0.3 }), ant, 0, 0.68, 0);
-    ex.push((P, now) => { ant.rotation.z = Math.sin(now / 1900) * 0.05 - P.headRoll * 0.6 + P.hatTilt; ant.rotation.x = P.headPitch * -0.3 + Math.sin(now / 2300) * 0.03; });
+    ex.push((P) => { ant.rotation.z = -P.headRoll * 0.6 + P.hatTilt; ant.rotation.x = P.headPitch * -0.3; });
   }
   // ----- CAREER: Legend League details -----
   // a tapered tube along a curve (tentacles, tails): radius r at the root, r * tip at the end
@@ -221,8 +221,8 @@ export function buildClassic(kind) {
     const ant = new THREE.Group(); ant.position.set(0, H[1] * 0.95, 0); head.add(ant);
     mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.12, 16), metal, ant, 0, 0.04, 0);
     mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.62, 8), metal, ant, 0, 0.38, 0);
-    const bulb = sph(0.16, std(0xff6b6b, { emissive: 0x5c0000, roughness: 0.25 }), ant, 0, 0.74, 0);
-    ex.push((P) => { ant.rotation.z = -P.headRoll * 0.7 + P.hatTilt; ant.rotation.x = -P.headPitch * 0.3 - 0.1 * P.earUp; bulb.material.emissive.setRGB(0.36 + 0.5 * P.happyAmt + 0.4 * P.angry, 0.02 * P.happyAmt, 0.3 * P.sadAmt); });
+    const bulb = sph(0.16, std(0xa34848, { emissive: 0x1a0000, roughness: 0.25 }), ant, 0, 0.74, 0);   // the antenna light: dim at rest, it comes on to think (P.glow)
+    ex.push((P) => { ant.rotation.z = -P.headRoll * 0.7 + P.hatTilt; ant.rotation.x = -P.headPitch * 0.3 - 0.1 * P.earUp; const gl = clamp(P.glow || 0, 0, 1.5); bulb.material.emissive.setRGB(0.1 + 1.2 * gl + 0.3 * P.happyAmt + 0.4 * P.angry, 0.02 * P.happyAmt + 0.55 * gl, 0.3 * P.sadAmt + 0.15 * gl); });
   }
   if (kind === 'bat') {
     const pink = std(0xf3a6c8), dk = std(0x4a3b58), wingM = std(0x4a3b58, { side: THREE.DoubleSide, roughness: 0.8 });
@@ -295,10 +295,10 @@ export function buildClassic(kind) {
     taper(tp, 0.26, 0.3, furP, tail);
     // her colours change with her mood (one-shots only, never on a loop): warmer when happy, cooler when sad, paler when nervous
     const base = new THREE.Color(sp.color), warm = new THREE.Color(0xffd43b), cool = new THREE.Color(0x74c0fc), pale = new THREE.Color(0xd3f9d8), cc = new THREE.Color();
-    ex.push((P) => { cc.copy(base).lerp(warm, 0.55 * P.happyAmt).lerp(cool, 0.5 * P.sadAmt).lerp(pale, 0.6 * Math.min(1, P.sweat * 1.5)); fur.color.copy(cc); furP.color.copy(cc); tail.rotation.z = -0.05 * P.happyAmt + 0.01 * P.breath; });
+    ex.push((P) => { const ti = P.tint || 0; cc.copy(base).lerp(warm, Math.min(1, 0.55 * P.happyAmt + 0.6 * Math.max(0, ti))).lerp(cool, Math.min(1, 0.5 * P.sadAmt + 0.55 * Math.max(0, -ti))).lerp(pale, 0.6 * Math.min(1, P.sweat * 1.5)); fur.color.copy(cc); furP.color.copy(cc); tail.rotation.z = -0.05 * P.happyAmt + 0.01 * P.breath; });
   }
   const steamM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), puffGeo = new THREE.SphereGeometry(1, 12, 10);
-  const puffs = [];
+  const puffs = [], puffAt = kind === 'dragon' ? [0, -0.12, 1.5] : null;
   [-1, 1].forEach((s) => { for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(puffGeo, steamM); m.visible = false; head.add(m); puffs.push({ m, s, k }); } });
   // sweat drop (nervous): one bead that forms on the temple and runs down
   const sweat = new THREE.Group(); head.add(sweat); sweat.visible = false;
@@ -335,7 +335,7 @@ export function buildClassic(kind) {
     kind, root, body, arms, style: STYLE[kind], top: sp.top, headC: new THREE.Vector3(0, 1.7 + 0.66, 0.1), invBody,
     // P: pose from the performer (see creatures.js)
     apply(P, now) {
-      P.tailLift = P.happyAmt || 0; P.beardSway = Math.sin(now / 2600) * 0.02 + (P.sadAmt || 0) * 0.08;
+      P.tailLift = P.happyAmt || 0; P.beardSway = (P.sadAmt || 0) * 0.08;
       const br = P.breath;
       body.position.set(0, P.hop, P.slide); body.rotation.set(P.lean, P.turn, P.sway); body.updateMatrix(); invBody.copy(body.matrix).invert();
       torso.scale.set(1 + 0.012 * br, 1 + 0.02 * br, 1 + 0.014 * br);
@@ -345,6 +345,8 @@ export function buildClassic(kind) {
       for (let i = 0; i < 2; i++) {
         let e = eyes[i], ex_ = P.eyeX * E.er * 0.42, ey = P.eyeY * E.er * 0.4;
         ex_ += P.eyeAddX * E.er * 0.3; ey += P.eyeAddY * E.er * 0.3;
+        // eyes that look two ways (the chameleon thinking): the left eye wanders up and out on its own
+        if (P.eyeSplit && i === 0) { ex_ = ex_ * (1 - P.eyeSplit) - 0.55 * E.er * P.eyeSplit; ey = ey * (1 - P.eyeSplit) + 0.45 * E.er * P.eyeSplit; }
         e.pu.position.set(ex_, ey, eyeZ(ex_, ey) * 0.98); e.pu.rotation.set(-ey / E.er * 0.7, ex_ / E.er * 0.7, 0);
         e.g.scale.setScalar(1 + 0.2 * P.eyeWide); { const ps = 1 + P.pupil * 0.6; e.pp.scale.set(ps, ps, 0.3); }
         const o = clamp(P.lid * lidBase / 0.9 * (1 - P.blink) + (e.side > 0 ? P.lidAsym : 0), 0, 1);
@@ -362,18 +364,24 @@ export function buildClassic(kind) {
       if (jaw) { jaw.rotation.x = op * 0.5; if (beakTop) beakTop.rotation.x = Math.PI / 2 + (kind === 'owl' ? 0.35 : 0) - op * 0.14 - sm * 0.06; }
       for (let i = 0; i < ex.length; i++) ex[i](P, now);
       // tears (cry) and steam puffs (tantrum), flush of anger on the head
+      // (each forms once and goes: one tear per eye, one bead of sweat, one rising puff; nothing repeats)
       for (let i = 0; i < 2; i++) for (let k = 0; k < 2; k++) {
         const t = eyes[i].tears[k];
-        if (P.cry > 0.03) {
-          const ph = (P.cryT * 0.9 + k * 0.5 + i * 0.2) % 1, sz = P.cry * Math.min(1, ph / 0.12) * (1 - Math.max(0, (ph - 0.75) / 0.25));
+        if (P.cry > 0.03 && k === 0 && P.cryT * 0.6 - i * 0.18 > 0 && P.cryT * 0.6 - i * 0.18 < 1) {
+          const ph = P.cryT * 0.6 - i * 0.18, sz = P.cry * Math.min(1, ph / 0.12) * (1 - Math.max(0, (ph - 0.75) / 0.25));
           t.visible = sz > 0.02; t.position.set(eyes[i].side * 0.04, -E.er * 0.6 - ph * 0.9, E.er * 0.4 - ph * 0.3); t.scale.set(E.er * 0.4 * sz, E.er * 0.6 * sz, E.er * 0.4 * sz);
         } else t.visible = false;
       }
       for (let i = 0; i < puffs.length; i++) {
         const p = puffs[i];
-        if (P.steam > 0.03) { const ph = (P.steamT * 1.3 + p.k * 0.33) % 1, sz = P.steam * (0.12 + ph * 0.3) * (1 - ph * ph * ph); p.m.visible = true; p.m.position.set(p.s * (1.15 + ph * 0.35), 0.75 + ph * 1.3, 0); p.m.scale.setScalar(sz); } else p.m.visible = false;
+        const ph = clamp((P.steamT || 0) * 0.85 - p.k * 0.14, 0, 1);
+        if (P.steam > 0.03 && ph > 0 && ph < 1) {
+          const sz = P.steam * (0.12 + ph * 0.3) * (1 - ph * ph * ph); p.m.visible = true; p.m.scale.setScalar(sz);
+          if (puffAt) p.m.position.set(puffAt[0] + p.s * (0.17 + ph * 0.2), puffAt[1] + ph * 1.1, puffAt[2] + ph * 0.2);   // from the nostrils
+          else p.m.position.set(p.s * (1.15 + ph * 0.35), 0.75 + ph * 1.3, 0);
+        } else p.m.visible = false;
       }
-      if (P.sweat > 0.03) { const ph = Math.min(1, (P.sweatT % 1.5) / 1.1); sweat.visible = true; sweat.scale.setScalar(P.sweat * Math.min(1, ph * 6) * (1 - Math.max(0, (ph - 0.8) / 0.2))); sweat.children[0].position.y = -ph * 0.7; sweat.children[1].position.y = 0.17 - ph * 0.7; } else sweat.visible = false;
+      if (P.sweat > 0.03 && (P.sweatT || 0) < 1.4) { const ph = Math.min(1, (P.sweatT || 0) / 1.4); sweat.visible = true; sweat.scale.setScalar(P.sweat * Math.min(1, ph * 6) * (1 - Math.max(0, (ph - 0.8) / 0.2))); sweat.children[0].position.y = -ph * 0.7; sweat.children[1].position.y = 0.17 - ph * 0.7; } else sweat.visible = false;
       fur.emissive.setRGB(0.28 * P.angry, 0.02 * P.angry, 0);
       // arms
       for (let i = 0; i < 2; i++) arms[i].setShoulderLift(P.shrug * 0.12 + br * 0.015);
