@@ -8,6 +8,7 @@ import { createQuality, LEVELS } from './quality.js';
 import { createShots } from './shots.js';
 import { createPostFx } from './postfx.js';
 import { createOrbit, createOrbitUI, photoCanvas, savePhoto } from './orbit.js';
+import { variRow, anyVari, createLabels, bangTex, heldTurn } from './varilabels.js'; // VARI3D: turned cubes and labels for the variation cards
 import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture, gradientBg, rectShadowTexture, feltBumpTile, paintFelt, woodTexture, buildEnvironment } from './environment.js';
 
 (function () {
@@ -34,6 +35,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.touchAction = 'none';
   scene.add(camera); // the vignette is a child of the camera
+  var vplan = null, vlab = createLabels({ camera: camera, renderer: renderer, scene: scene }); // VARI3D (js/three/varilabels.js)
 
   // ----- Quality tiers (js/three/quality.js measures frame times and steps down if frames get slow) -----
   // qual is the numeric level (0 low, 1 medium, 2 high) that the venues and effects read.
@@ -754,17 +756,21 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     });
     // Goal: cubes plus parentheses in one centred row
     parenSprites.forEach(function (sp) { sp.visible = false; });
-    var gt = G.goalTokens || [], a = zoneArea('goal'), widths = gt.map(function (t) { return (t === '(' || t === ')') ? 0.55 : 1.2; });
+    var gt = G.goalTokens || [], a = zoneArea('goal'), vr = G.vari ? variRow(gt, G.fractions) : null, vlist = []; // VARI3D: vr = turns, exponents, "!" and labels
+    if (vr && !anyVari(vr)) vr = null;
+    var widths = gt.map(function (t, i) { return (t === '(' || t === ')') ? 0.55 : vr && vr[i].bang ? 0.5 : vr && vr[i].exp ? 0.62 : 1.2; });
     var total = widths.reduce(function (x, y) { return x + y; }, 0), gs = Math.min(1, a.w / Math.max(total, 1)), x = a.x + (a.w - total * gs) / 2, pi = 0;
     gt.forEach(function (t, i) {
       var cx = x + widths[i] * gs / 2;
-      if (typeof t === 'object') targets[t.id] = { x: cx, z: a.z + a.d / 2, scale: Math.min(1, gs) };
-      else if (t === '(' || t === ')') {
+      var v = vr && vr[i]; // VARI3D: an exponent sits raised, smaller, top-right of the slot before it; a turned cube rests turned
+      if (typeof t === 'object') { targets[t.id] = v ? { x: cx - (v.exp ? 0.12 * gs : 0), z: a.z + a.d / 2 - (v.exp ? 0.28 * gs : 0), scale: Math.min(1, gs) * (v.exp ? 0.58 : 1), y: v.exp ? 0.98 * gs : null, turn: v.turn } : { x: cx, z: a.z + a.d / 2, scale: Math.min(1, gs) }; if (v && v.cap && meshes[t.id]) vlist.push({ mesh: meshes[t.id], text: v.cap }); }
+      else if (t === '(' || t === ')' || (v && v.bang)) {
         if (!parenSprites[pi]) { parenSprites[pi] = new THREE.Sprite(new THREE.SpriteMaterial({ map: null, depthTest: true })); scene.add(parenSprites[pi]); }
-        var sp = parenSprites[pi++]; sp.material.map = spriteTex(t, 110); sp.material.needsUpdate = true; sp.scale.set(1.1 * gs, 1.1 * gs, 1); sp.position.set(cx, 0.6, a.z + a.d / 2); sp.visible = true;
+        var sp = parenSprites[pi++]; sp.material.map = v && v.bang ? bangTex() : spriteTex(t, 110); sp.material.needsUpdate = true; sp.scale.set((v && v.bang ? 0.62 : 1.1) * gs, (v && v.bang ? 1.24 : 1.1) * gs, 1); sp.position.set(cx, v && v.bang ? 0.66 : 0.6, a.z + a.d / 2); sp.visible = true;
       }
       x += widths[i] * gs;
     });
+    if (vr || vlab.count()) vlab.set(vlist, gt.filter(function (t) { return typeof t === 'object' && meshes[t.id]; }).map(function (t) { return meshes[t.id]; })); // VARI3D
     var tz = api.handlers.targetZones ? api.handlers.targetZones() : [];
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, tz.indexOf(z) >= 0 ? 0.3 : 0); });
     pulseId = G.highlight != null ? G.highlight : null;
@@ -777,12 +783,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (ctx.held === c.id) return;
       if (tumble && tumble.ids[c.id] !== undefined) return; // rolling again (T3.reroll): it lands first
       var lift = (G.selected === c.id) ? 0.8 : 0;
-      var pos = new THREE.Vector3(t.x, restY(m) * t.scale + lift, t.z), q = slotQuat(c, m), u = m.userData; // (BONUS: restY)
+      var pos = new THREE.Vector3(t.x, (t.y != null ? t.y : restY(m) * t.scale) + lift, t.z), q = slotQuat(c, m), u = m.userData; // (BONUS: restY)
+      if (t.turn) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.turn)); // VARI3D: a turned Goal cube
       m.userData.lock.visible = !!c.locked;
       tint(m, c.locked ? 0x9a9a9a : 0xffffff, G.selected === c.id ? 0x6b5200 : G.highlight === c.id ? 0x665200 : 0x000000);
       var same = u.tpos && u.tpos.distanceTo(pos) < 0.01 && Math.abs(u.tscale - t.scale) < 0.01 && u.tq && u.tq.angleTo(q) < 0.01;
       if (same && !force) return;
       var moved = u.zone && u.zone !== c.zone, fromPour = u.fromPour, dropped = u.dropped, toss = u.toss; u.dropped = false; u.toss = false;
+      if (u.vturn) { var vq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), u.vturn).multiply(m.quaternion); if (vq.angleTo(q) < m.quaternion.angleTo(q)) m.quaternion.copy(vq); u.vturn = 0; } // VARI3D: turned in the hand, stays turned
       u.tpos = pos.clone(); u.tq = q.clone(); u.tscale = t.scale; u.zone = c.zone; u.fromPour = false;
       if (force && same) { m.position.copy(pos); m.quaternion.copy(q); m.scale.setScalar(t.scale); return; }
       // toss: let go of from a hand short of the slot (the kid's player), a quick lob that lands with the usual thunk
@@ -836,7 +844,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
     cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake
     if (twistMesh) { twistMesh.visible = false; twistMesh.userData.tpos = null; } twistFaceK = null; twistOn = twistNext; twistNext = false;
-    anims = []; parenSprites.forEach(function (sp) { sp.visible = false; });
+    anims = []; parenSprites.forEach(function (sp) { sp.visible = false; }); vlab.clear(); vplan = null; // (VARI3D)
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, 0, true); });
     var W = layout.W, D = layout.D, side = layoutName === 'tall';
     var ids = cubes.map(function (c) { return c.id; }).filter(function (i) { return !!meshes[i]; }); // (BONUS: the cubes in play, not every mesh)
@@ -1187,17 +1195,25 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var busy = dirty;
     watchTalk();
     hooks.frame.forEach(function (f) { f(now); });
+    if (vplan || ctx.held != null) { var vh = ctx.held != null && vplan && api.lastG && api.lastG.phase === 'goal' ? vplan[ctx.held] || 0 : 0; heldTurn(vh ? meshes[ctx.held] : null, vh, now); } // VARI3D: a Goal cube turns in the hand
     // only the per-frame hooks asked for this frame, and nobody is doing anything: an ambient (low-rate) redraw
     if (dirty && !busy && hooksQuiet(now)) { dirty = false; amb = true; }
     if (!dirty && amb && now - ambLast >= AMB_MS) dirty = true;
     if (dirty) ambLast = now;
     var rendered = false;
-    if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') { renderNow(); rendered = true; }
+    if (dirty && host && document.body.contains(renderer.domElement) && current === 'game') { vlab.frame(!!pour || !!tumble || ctx.held != null || !!(dragS && dragS.on) || !!(api.replayActive && api.replayActive()), function (m) { return anims.some(function (a) { return a.m === m; }); }); renderNow(); rendered = true; } // (VARI3D labels)
     if (Q) Q.sample(now, rendered, fromWatchdog);
     if (current !== 'game' && !pour) { looping = false; return; }
     if (!fromWatchdog) requestAnimationFrame(frame);
   }
   api.kick = function () { dirty = true; startLoop(); };
+  // VARI3D: T3.goalPlan(tokens) before a Goal is carried in cube by cube (js/game.js humanGoal / aiSetGoal): each turned
+  // cube turns in the hand on the way, so it lands already turned. null forgets it (a new shake forgets it too).
+  api.goalPlan = function (tokens) {
+    vplan = null; var G = api.lastG;
+    if (!tokens || !G || !G.vari) return;
+    variRow(tokens, G.fractions).forEach(function (v, i) { if (v.turn && typeof tokens[i] === 'object') (vplan = vplan || {})[tokens[i].id] = v.turn; });
+  };
   // T3.project(v) -> { x, y, visible, behind }: where a world point (THREE.Vector3 or {x,y,z}) is on the page right now
   // (client pixels, as drawn), whether it is inside the picture, and whether it is behind the camera. null without a picture.
   var projV = new THREE.Vector3();
