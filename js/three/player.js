@@ -1377,8 +1377,8 @@ if (T3 && T3.ctx) (function () {
     if (A.trip && !A.trip.cup) finishNow(A);
     if (A.g) A.g = null;
     var R = ringOf(A), N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, obs = obstaclesFor(A), s = A.place.s, best = null, k;
-    var ring = [], blk = [];
-    for (k = 0; k < N; k++) { var q = ringPt(R, k * h); ring.push(q); blk.push(sideOff(R, q.x) || obs.some(function (ob) { return inObs(ob, q.x, q.z); })); }
+    var ring = [], blk = [], soft = [];   // hard: never through (a creature, the far person, a ruled-out side); soft: not a spot to stand (he goes round behind)
+    for (k = 0; k < N; k++) { var q = ringPt(R, k * h); ring.push(q); blk.push(sideOff(R, q.x) || obs.some(function (ob) { return ob.hard && inObs(ob, q.x, q.z); })); soft.push(obs.some(function (ob) { return !ob.hard && inObs(ob, q.x, q.z); })); }
     var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N;
     function reachAll(sp) { var pl = null, c = 0; for (var j = 0; j < pts.length; j++) { var r = reachPlan(A, sp, pts[j], 0); if (!r || r.mode === 'crawl') return null; c += r.cost; if (!pl || Math.hypot(pts[j].x - sp.x, pts[j].z - sp.z) > Math.hypot(pl.t.x - sp.x, pl.t.z - sp.z)) pl = { r: r, t: pts[j] }; } return { plan: pl.r, cost: c }; }
     function way(i, j) {   // ring distance from i to j without passing a blocked sample: { d, dir } or null
@@ -1387,10 +1387,11 @@ if (T3 && T3.ctx) (function () {
       return bestW;
     }
     for (k = 0; k < N; k++) {
-      if (blk[k]) continue;
+      if (blk[k] || soft[k]) continue;
       var ra = reachAll(ring[k]); if (!ra) continue;
       var w = way(iS, k); if (!w) continue;
-      var t = (w.d + Math.hypot(A.wk.x - ring[iS].x, A.wk.z - ring[iS].z)) / runSpeed(A, false) + ra.cost * 0.6;
+      var away = ra.plan.mode === 'flop' && Math.cos(ra.plan.yaw) < -0.7 ? 0.6 : 0;   // lying over the near rim hides the cubes from the seat camera: from a side if he can
+      var t = (w.d + Math.hypot(A.wk.x - ring[iS].x, A.wk.z - ring[iS].z)) / runSpeed(A, false) + ra.cost * 0.6 + away;
       if (!best || t < best.t) best = { t: t, k: k, w: w, plan: ra.plan };
     }
     if (!best) return false;
