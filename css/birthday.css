@@ -23,3 +23,9 @@ body.bday-on #t3title::after{opacity:0;transition:opacity .6s}
 #bdayLayer .bd-fade{animation:bdIn .5s ease both}
 @keyframes bdIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){#bdayLayer .bd-cap,#bdayLayer .bd-fade{transition:none;animation:none}}
+
+/* The display font has one weight only: a synthetic bold smears the letters (a pale fuzzy edge). Regular weight,
+   with a crisp dark outline under the letters so they read on any background. */
+#bdayLayer, #bdayLayer .bd-cap, #bdayLayer .bd-btn, #bdayLayer .bd-chip{font-weight:400;letter-spacing:.4px}
+#bdayLayer .bd-cap{text-shadow:0 2px 0 rgba(10,18,52,.75),0 -1px 0 rgba(10,18,52,.55),1px 0 0 rgba(10,18,52,.55),-1px 0 0 rgba(10,18,52,.55),0 4px 8px rgba(0,0,0,.35)}
+#bdayLayer .bd-btn{text-shadow:0 2px 0 rgba(0,0,0,.28)}

@@ -755,3 +755,7 @@ html.a11y-calm .modal-back.leaving{display:none}
 .gu-rec th,.gu-rec td{text-align:left;padding:4px 6px;border-bottom:1px solid #eef1f6}
 .gu-hint{color:#5f3dc4;font-weight:800;font-size:12px}
 .gu-note{margin:6px 0 0;font-size:14px;opacity:.75}
+
+/* The display font (Lilita One) has a single weight: never let the browser fake a bold (it smears the letters into a
+   pale fuzzy edge). Fonts that really have bold weights (Nunito) are not affected. */
+html{font-synthesis:none}
