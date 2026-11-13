@@ -441,3 +441,41 @@ textarea{width:100%;min-height:70px;-webkit-user-select:text;user-select:text}
 }
 
 #setup .stab > .tierh:first-of-type{margin-top:0}
+
+/* ===== Match screen, wide windows: scores, Goal, Pip's line and the buttons stand in a column on the right,
+   so the 3D picture keeps the full height of the window (it used to lose a third of it to the bar below). ===== */
+@media (min-width:1100px) and (min-aspect-ratio:8/5){
+  #game.three.on{display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,23vw,350px);grid-template-rows:auto auto minmax(0,1fr);gap:8px 0;align-items:stretch;justify-items:stretch;padding:0}
+  #game.three #gMat{grid-column:1;grid-row:1 / span 3;min-height:0;height:100%;width:100%}
+  #game.three #gTop{grid-column:2;grid-row:1;max-width:none;width:auto;padding:10px 12px 0;flex-wrap:wrap;justify-content:space-between;gap:8px}
+  #game.three #gTop .scores{order:3;flex:1 1 100%;flex-direction:column;align-items:stretch;gap:10px}
+  #game.three #gTop .scores .pl{justify-content:flex-start}
+  #game.three #gTop .scores .pl b{flex:1;max-width:none}
+  #game.three #gGoal{grid-column:2;grid-row:2;max-width:none;width:auto;padding:4px 12px 0}
+  #game.three #gGoal .goalhud{margin:0;width:100%;box-sizing:border-box;flex-wrap:wrap;justify-content:flex-start}
+  #game.three #gAct{grid-column:2;grid-row:3;max-width:none;width:auto;margin:0 12px 12px;align-self:stretch;flex-direction:column;flex-wrap:nowrap;align-items:stretch;justify-content:flex-start;gap:10px;overflow-y:auto;border-radius:20px}
+  #game.three #gAct .speech{flex:0 0 auto;align-items:flex-start}
+  #game.three #gAct .speech .txt{font-size:16px}
+  #game.three #gAct .speech .txt::before{top:22px;margin-top:0}
+  #game.three #gAct .acts{margin-left:0;flex-direction:column;align-items:stretch;gap:8px}
+  #game.three #gAct .acts .btn{width:100%;box-sizing:border-box}
+  #game.three #gAct .acts .also{flex-direction:column;align-items:stretch}
+  #game.three #gAct .emote-bar{justify-content:center;flex-wrap:wrap}
+}
+/* Everywhere else in 3D: a slimmer bar, so the picture keeps more room */
+@media not all and (min-width:1100px) and (min-aspect-ratio:8/5){
+  #game.three .actionbar{padding:6px 10px;gap:4px 10px;border-radius:18px}
+  #game.three .speech .who{width:40px;height:40px}
+  #game.three .speech .txt{font-size:15px;padding:6px 12px;line-height:1.25}
+  #game.three .acts{gap:8px}
+  #game.three .acts .btn.big{padding-top:8px;padding-bottom:8px;font-size:20px;min-height:0}
+  #game.three .emote-bar .emote{padding-top:3px;padding-bottom:3px}
+}
+/* The commentator's caption must not cover the Goal banner or the creature's face */
+body .wh-comm{top:calc(var(--sat, 0px) + 112px)}
+@media (min-width:1100px) and (min-aspect-ratio:8/5){
+  body .wh-comm{left:calc((100vw - clamp(280px,23vw,350px)) * 0.24);top:auto;bottom:calc(var(--sab, 0px) + 14px)}   /* bottom left of the picture, clear of his head */
+}
+@media not all and (min-width:1100px) and (min-aspect-ratio:8/5){
+  #game.three .emote-bar{width:auto;flex:0 1 auto}
+}
