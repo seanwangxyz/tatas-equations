@@ -215,7 +215,8 @@ function renderSettings() {
     '<div class="group"><h3>' + ico('sound') + ' Sound</h3>' +
     '<div class="setrow"><label>Music volume</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.music + '" data-set="music"></div>' +
     '<div class="setrow"><label>Sound effects</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.sfx + '" data-set="sfx"></div>' +
-    '<div class="setrow"><label>Mute everything</label><button class="btn small ' + (S.set.mute ? 'pink' : '') + '" data-act="toggleMute">' + (S.set.mute ? 'Muted' : 'Sound on') + '</button></div></div>' +
+    '<div class="setrow"><label>Mute everything</label><button class="btn small ' + (S.set.mute ? 'pink' : '') + '" data-act="toggleMute">' + (S.set.mute ? 'Muted' : 'Sound on') + '</button></div>' +
+    '<div class="setrow"><label>Sound check<br><small style="font-weight:600">Hear every sound, balance music, crowd, voices and ambience, and report one that sounds wrong.</small></label><button class="btn small" data-act="soundCheck">Open</button></div></div>' +
     '<div class="group"><h3>' + ico('people') + ' You</h3>' +
     '<div class="setrow"><label>Your name</label><input type="text" maxlength="14" value="' + esc(S.name) + '" id="nameInput"><button class="btn small" data-act="saveName">Save</button></div>' +
     '<div class="setrow"><label>Name on the back of the shirt</label><input type="text" maxlength="12" value="' + esc(backName()) + '" id="backInput"><button class="btn small" data-act="saveBack">Save</button></div>' +
@@ -252,6 +253,7 @@ function renderSettings() {
     (window.Tourney ? Tourney.parentHTML() : '') + // TOURNEY: open now / Middle list / practice clock / strict penalties
     (window.Bonus ? Bonus.parentHTML() : '') + // BONUS dice (house rule): a switch per die and per Power face, unlock now
     (window.VoiceChat ? VoiceChat.parentHTML() : '') + // VOICE: allow talking in online games (press and hold), per device
+    (T3.supported ? '<div class="setrow"><label>Speed overlay<br><small style="font-weight:600">A small box with the frame rate and a 20-second benchmark (for sending a speed report).</small></label><button class="btn small ' + (localStorage.getItem('tataEq.perf') === '1' ? 'green' : '') + '" data-act="perfToggle">' + (localStorage.getItem('tataEq.perf') === '1' ? '✔ On' : 'Off') + '</button></div>' : '') +
     '<div class="setrow"><label>Pip\'s tip after a match<br><small style="font-weight:600">A "💡 One thing Pip spotted" button on the results screen. It only shows a moment the game can prove. Tips opened: ' + ((S.tips && S.tips.seen) || 0) + '</small></label><button class="btn small ' + (S.set.review !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="review" data-def="1">' + (S.set.review !== false ? '✔ On' : 'Off') + '</button></div>' +
     '<div class="setrow"><label>"Beat Tata\'s Record" needs ' + TATA_RECORD + ' points in one match (change <code>TATA_RECORD</code> near the top of the game code). Best so far: ' + S.stats.bestMatch + '</label></div>' +
     '<div class="setrow"><label>Cube faces in this game (see RULES_SUMMARY.md)</label><table class="facetable">' + faces + '</table></div>' +
@@ -301,3 +303,6 @@ ACT.saveBack = function () { var v = ($('#backInput').value || '').trim().slice(
 ACT.setupTab = function (el) { window.setupTab = el.dataset.arg; Snd.click(); renderSetup(); $('#setup').scrollTop = 0; };
 ACT.setJump = function (el) { var want = el.dataset.arg.toLowerCase(), hs = [].slice.call(document.querySelectorAll('#settings h3')), h = hs.filter(function (x) { return x.textContent.toLowerCase().indexOf(want) >= 0; })[0]; Snd.click(); if (h) h.scrollIntoView({ block: 'start' }); else say0('That part is not on this device yet.'); };
 function say0() {}
+
+ACT.soundCheck = function () { Snd.soundCheck(); };
+ACT.perfToggle = function () { var on = localStorage.getItem('tataEq.perf') !== '1'; try { localStorage.setItem('tataEq.perf', on ? '1' : '0'); } catch (e) {} if (on && window.tataLoadPerf) tataLoadPerf(); else if (window.PerfHUD) PerfHUD.hide(); Snd.click(); renderSettings(); };

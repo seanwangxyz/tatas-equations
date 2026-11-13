@@ -34,7 +34,7 @@ var Snd = (function () {
   var voices = 0, diceVoices = 0, created = 0, peakVoices = 0;
   var lastDiceWhen = -1, lastVariant = {};
   var wantedMood = 'off', timer = null, nextBar = 0, barNo = 0, offTimer = null;
-  var musVol = 0.3, duckF = 1, duckToken = 0;
+  var musVol = 0.3, duckF = 1, duckToken = 0, talkF = 1; // talkF: VOICE chat (js/voice.js)
   var L = null; // music layers
 
   // ---------------------------------------------------------------- settings helpers
@@ -223,7 +223,7 @@ var Snd = (function () {
   function applySession() { try { var a = navigator.audioSession; if (a && 'type' in a) { var want = setg().playOnSilent === true ? 'playback' : 'auto'; if (a.type !== want) a.type = want; } } catch (e) {} }
   function refreshMus(tc) {
     if (!ctx) return;
-    var v = musVol * duckF;
+    var v = musVol * duckF * talkF;
     musMix.gain.setTargetAtTime(v, ctx.currentTime, tc || 0.05);
     musRev.gain.setTargetAtTime(v, ctx.currentTime, tc || 0.05);
     refreshAmb(tc); refreshDance(tc);
@@ -1535,6 +1535,7 @@ var Snd = (function () {
       audioSession: (function () { try { return navigator.audioSession ? navigator.audioSession.type : null; } catch (e) { return null; } })() }; },
     _measure: measure, _trim: TRIM, _reactTrim: REACT_TRIM,
     // Settings -> Sound -> Sound check (js/soundcheck.js is loaded on demand)
+    duckTalk: function (on) { talkF = on ? 0.55 : 1; refreshMus(on ? 0.25 : 0.9); }, // VOICE (js/voice.js): someone is talking online
     soundCheck: function () {
       try {
         if (typeof SoundCheck !== 'undefined') { SoundCheck.open(); return; }
