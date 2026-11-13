@@ -11,15 +11,15 @@ var OS3D = (function () {
   // Table units (a cube is 1). Zones: [x, z, w, d], x across, z toward the seat camera. Room for 12 cards, a Goal of up
   // to three cubes (stacked = multiply), the three sections and 18 cubes.
   var OS_LAYOUTS = {
-    wide: { W: 20, D: 15.6, tilt: 1.02, z: { universe: [-9.6, -7.5, 12.6, 5.0], goal: [3.4, -7.5, 6.2, 5.0], required: [-9.6, -2.2, 6.2, 3.9], permitted: [-3.1, -2.2, 6.2, 3.9], forbidden: [3.4, -2.2, 6.2, 3.9], resources: [-9.6, 2.0, 19.2, 5.5] } },
-    tall: { W: 12, D: 19.6, tilt: 1.15, z: { universe: [-5.6, -9.4, 11.2, 4.8], goal: [-5.6, -4.4, 11.2, 2.9], required: [-5.6, -1.3, 3.6, 4.4], permitted: [-1.8, -1.3, 3.6, 4.4], forbidden: [2.0, -1.3, 3.6, 4.4], resources: [-5.6, 3.3, 11.2, 6.3] } }
+    wide: { W: 20, D: 15.6, tilt: 1.02, z: { universe: [-9.6, -7.5, 12.6, 5.6], goal: [3.4, -7.5, 6.2, 5.6], required: [-9.6, -1.6, 6.2, 3.9], permitted: [-3.1, -1.6, 6.2, 3.9], forbidden: [3.4, -1.6, 6.2, 3.9], resources: [-9.6, 2.6, 19.2, 4.9] } },
+    tall: { W: 12, D: 19.6, tilt: 1.15, z: { universe: [-5.6, -9.4, 11.2, 5.8], goal: [-5.6, -3.3, 11.2, 2.9], required: [-5.6, -0.1, 3.6, 4.4], permitted: [-1.8, -0.1, 3.6, 4.4], forbidden: [2.0, -0.1, 3.6, 4.4], resources: [-5.6, 4.6, 11.2, 5.0] } }
   };
   var OS_LABELS = {
     wide: { universe: '🃏 UNIVERSE', goal: '🎯 GOAL', required: '✅ REQUIRED · must use', permitted: '👍 PERMITTED · may use', forbidden: "⛔ FORBIDDEN · can't use", resources: '🎲 RESOURCES' },
     tall: { universe: '🃏 UNIVERSE', goal: '🎯 GOAL', required: '✅ REQUIRED', permitted: '👍 PERMITTED', forbidden: '⛔ FORBIDDEN', resources: '🎲 RESOURCES' }
   };
   var GOAL_LAY = { 'A': [[0, 0]], 'A+B': [[0, 0], [0, 1]], 'A+B+C': [[0, 0], [0, 1], [0, 2]], 'AxB': [[0, 0], [1, 0]], 'AxBxC': [[0, 0], [1, 0], [2, 0]], 'Ax(B+C)': [[0, 0.5], [1, 0], [1, 1]], 'AxB+C': [[0, 0], [1, 0], [1, 1]] };
-  var on = false, saved = null;
+  var on = false, saved = null, keep = false, seatFlip = false; // keep: the last shake's cubes stay on the table until the next roll sweeps them into the cup
   function T() { return window.T3; }
   function can() {
     var t = T();
@@ -27,11 +27,26 @@ var OS3D = (function () {
   }
   function grown() { return typeof S !== 'undefined' && S.set && S.set.me === 'tata'; }
   function mateIdx() { if (!OG) return -1; if ((OG.mode === 'pvp' || OG.mode === 'p3') && !OG.players[1].ai) return 1; return -1; }
-  function seatOf(i) { return osSeat(i); }
+  // CLOCKWISE (mirrors G.seatFlip / aiSeat in js/game.js): with two creatures on a wide table the first one to play stands on the
+  // kid's left, which is creature seat 1 there. osSeat(i) (game.js) counts creatures in play order; seatOf() gives the figure's seat.
+  function flipSeat(n) { return seatFlip && n < 2 ? 1 - n : n; }
+  function seatOf(i) { return flipSeat(osSeat(i)); }
+  // who rolls (picks up the cup and dumps it) = the Goal-setter: 'me' (the kid), 'mate' (Tata), a creature's seat, or null (today's tipping pour)
+  function rollerBy() {
+    var t = T(), s = OG ? OG.setter : -1;
+    if (!OG || s < 0) return null;
+    if (osIsAI(s)) return t.creatureMove ? seatOf(s) : null;
+    if (s === 0) return t.playerMove && S.set.avatar !== false ? 'me' : null;
+    if (s === mateIdx()) return t.mateMove ? 'mate' : null;
+    return null;
+  }
 
   // ---- what the table shows: OG -> the object T3.sync reads ----
   function goalSlots() {
     var t = T(), L = t.ctx.layout, r = L && L.z.goal, out = {};
+    // the three white V / Λ cubes sit together on their own little plate at the end of Resources
+    var rs = t.onsets && t.onsets.restrSlots ? t.onsets.restrSlots() : [];
+    OG.cubes.filter(function (c) { return c.kind === 'restr' && c.zone === 'resources'; }).forEach(function (c, k) { if (rs[k]) out[c.id] = rs[k]; });
     if (!r || !OG.goal) return out;
     var lay = GOAL_LAY[OG.goal.shape] || GOAL_LAY.A, rows = 1, cols = 1;
     lay.forEach(function (p) { rows = Math.max(rows, p[0] + 1); cols = Math.max(cols, Math.ceil(p[1] + 1)); });
@@ -45,10 +60,13 @@ var OS3D = (function () {
     return out;
   }
   function payload() {
-    return {
+    var p = {
       cubes: OG.cubes.map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: c.zone, order: c.order, locked: false }; }),
-      goalTokens: [], selected: OG.selected, highlight: OG.highlight, phase: OG.phase, slots: goalSlots(), onsets: true
+      goalTokens: [], selected: OG.selected, highlight: OG.highlight, phase: OG.phase, onsets: true
     };
+    // the slots are worked out each time the table reads them, so a window turned from wide to tall (T3 re-syncs the last payload) re-seats the Goal and the V / Λ plate
+    Object.defineProperty(p, 'slots', { enumerable: true, get: function () { try { return OG && OG.cubes ? goalSlots() : {}; } catch (e) { return {}; } } });
+    return p;
   }
   function render() {
     if (!on || !OG || !OG.cubes || !OG.universe) return;
@@ -60,7 +78,7 @@ var OS3D = (function () {
     $('#gGoal').innerHTML = n ? '<div class="goalhud os-ghud"><div class="gl">' + ico('target') + '<span>GOAL</span></div>' +
       (OG.goal && OG.goalValue != null ? '<span class="expr os-gexpr">' + OSUI.goalPicHTML(OG.goal, true) + '</span><span class="gv">= ' + OG.goalValue + ' card' + (OG.goalValue === 1 ? '' : 's') + '</span>' : '<span class="gv os-gwait">' + (OG.phase === 'goal' ? 'being set…' : '…') + '</span>') +
       '<span class="os-ucount" title="Cards in the Universe">🃏 ' + n + '</span></div>' : '';
-    t.attach($('#gMat')); t.sync(payload());
+    t.attach($('#gMat')); if (!keep) t.sync(payload()); // (keep: last shake's cubes stay put until the cup takes them)
     $('#gAct').innerHTML = osSpeechHTML() + '<div class="acts">' + osActionsHTML() + '</div>';
   }
 
@@ -101,7 +119,9 @@ var OS3D = (function () {
       else t.mate(null);
     }
     var ais = OG.players.filter(function (p) { return p.ai; });
-    if (ais.length > 1 && t.setCreatures) t.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }));
+    var matEl = document.getElementById('gMat'), mw = (matEl && matEl.clientWidth) || innerWidth, mh = (matEl && matEl.clientHeight) || innerHeight;
+    seatFlip = ais.length === 2 && !(mw / Math.max(1, mh) < 0.9); // the same wide / tall test as js/game.js and js/three/table.js chooseLayout
+    if (ais.length > 1 && t.setCreatures) { var seatList = ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }); if (seatFlip) seatList.reverse(); t.setCreatures(seatList); }
     else if (t.setCreature) t.setCreature(ais.length ? ais[0].ai.kind : null, ais.length ? (ais[0].ai.pack || 'classic') : 'classic');
     if (t.playerWalkSide) t.playerWalkSide(OG.mode === 'ai3' ? 'right' : 'auto'); // the second creature stands at the far left corner
   }
@@ -113,7 +133,7 @@ var OS3D = (function () {
   }
   function begin() {
     var t = T();
-    on = true;
+    on = true; keep = false;
     saved = t.handlers; t.handlers = handlers;
     t.tableLayouts({ layouts: OS_LAYOUTS, labels: OS_LABELS, zcol: { universe: '#ffe8a3' } });
     t.onsets.enter();
@@ -135,7 +155,7 @@ var OS3D = (function () {
   function end() {
     if (!on) return;
     var t = T();
-    on = false;
+    on = false; keep = false;
     if (t.onsets) t.onsets.exit();
     if (saved) t.handlers = saved; saved = null;
     t.tableLayouts(null);
@@ -160,23 +180,26 @@ var OS3D = (function () {
   function rollAndDeal(dealer, done) {
     var t = T(), g0 = OG, c0 = OG.cubes;
     var rolled = OG.cubes.filter(function (c) { return c.kind !== 'restr'; });
-    render();
+    render(); // (keep is still on: the last shake's cubes lie where they were, and the cup takes them first)
+    var by = rollerBy(); // the Goal-setter picks the cup up and dumps it (a creature, the kid or Tata); null = the cup just tips
     t.pour(rolled.map(function (c) { return { id: c.id, color: c.color, s: c.s }; }), function (res) {
+      keep = false;
       if (OG !== g0 || OG.cubes !== c0) return;
       // the faces that came up are the roll (colour and operation cubes: 4 symbols on 6 faces, two layouts at random,
       // so each symbol still has a 1 in 4 chance; digit cubes are real 1 1 2 3 4 5 cubes)
       rolled.forEach(function (c) { if (res && res[c.id] != null) c.s = res[c.id]; });
-      // the Goal-setter's three white cubes are set out (not rolled), next to the Resources
+      // the Goal-setter's three white cubes are set out (not rolled) on their own little plate at the end of Resources: they drop in one after another
       try {
-        var L = t.ctx.layout, r = L.z.resources;
-        OG.cubes.filter(function (c) { return c.kind === 'restr'; }).forEach(function (c, k) { var m = t.ctx.meshes[c.id]; if (!m) return; m.position.set(r[0] + r[2] - 0.8 - k * 1.1, 2.2, r[1] + r[3] + 0.4); m.userData.dropped = true; });
+        var rs = t.onsets.restrSlots();
+        OG.cubes.filter(function (c) { return c.kind === 'restr'; }).forEach(function (c, k) { var m = t.ctx.meshes[c.id]; if (!m || !rs[k]) return; m.position.set(rs[k].x, 2.2 + k * 0.9, rs[k].z); m.userData.dropped = true; });
+        t.onsets.tray(true);
       } catch (e) {}
       render();
       setTimeout(function () {
         if (OG !== g0 || OG.cubes !== c0) return;
         t.onsets.deal(OG.universe, sideOf(dealer), function () { if (OG === g0 && OG.cubes === c0) { render(); done(); } });
       }, 350);
-    });
+    }, by != null ? { by: by } : undefined);
   }
 
   // ---- hands: who carries a cube over (a creature reaches, the kid or the mate walks round and places it) ----
@@ -216,7 +239,14 @@ var OS3D = (function () {
   }
   function goalSet(v) {
     var t = T();
-    if (t.setBoard) t.setBoard('GOAL' + String.fromCharCode(10) + v + (v === 1 ? ' CARD' : ' CARDS'));
+    var ex = ''; try { if (OG && OG.goal) ex = OSE.goalText(OG.goal); } catch (e) {}
+    if (ex === String(v)) ex = '';
+    // the big screen shows the sum and the number of cards ('OSGOAL' = bigscreen.js ONSETS branch)
+    if (t.setBoard) t.setBoard('OSGOAL' + String.fromCharCode(10) + v + (ex ? String.fromCharCode(10) + ex : ''));
+    try { // the Goal's sewn label on the felt ("2 × 3 = 6") and the brass frame warming once
+      if (t.onsets && t.onsets.goal && ex !== undefined) t.onsets.goal((ex ? ex + ' ' : 'Goal ') + '= ' + v);
+      if (t._craft) t._craft('plinth');
+    } catch (e) {}
     if (t.shot) t.shot('goal');
     crowd('cheer');
   }
@@ -242,9 +272,14 @@ var OS3D = (function () {
   return {
     LAYOUTS: OS_LAYOUTS,
     can: can, begin: begin, end: end, active: function () { return on; }, render: render,
-    newShake: function () { var t = T(); if (t.onsets) t.onsets.clear(); hideCubes(); if (t.cue) t.cue('reset'); if (t.setBoard) t.setBoard('ON-SETS'); },
+    // a new shake: the cards flip back into their deck and the Goal label goes; the cubes stay where they lie until the roll, when the cup sweeps them in
+    newShake: function () {
+      var t = T(); keep = true;
+      if (t.onsets) { if (t.onsets.goal) t.onsets.goal(null); if (t.onsets.tray) t.onsets.tray(false); if (t.onsets.tidy) t.onsets.tidy(); else t.onsets.clear(); }
+      if (t.cue) t.cue('reset'); if (t.setBoard) t.setBoard('ON-SETS');
+    },
     rollAndDeal: rollAndDeal, canCarry: canCarry, carry: carry, finishCarry: finishCarry,
-    use: function (seat) { var t = T(); if (t.creatureUse) t.creatureUse(seat); },
+    use: function (seat) { var t = T(); if (t.creatureUse) t.creatureUse(flipSeat(seat)); }, // seat = osSeat(i) (game.js); the figure's seat may be mirrored
     talk: function (ms) { var t = T(); if (t.creatureTalk) t.creatureTalk(ms); },
     mood: mood, kid: function (m) { var t = T(); if (t.playerMood) t.playerMood(m); }, crowd: crowd,
     challenge: challenge, goalSet: goalSet, matchEnd: matchEnd,

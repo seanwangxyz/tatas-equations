@@ -214,6 +214,15 @@ export function createBigScreen(o) {
       var right = cubeRow(tokensFromText(lines[0]), 40, W - 300, y0 + mh * 0.6, mh * 0.5);
       label('= ' + val, Math.min(right + 16, W - 290), y0 + mh * 0.6, Math.round(mh * 0.4), pal.text);
       badge('GOAL!', W - 110, y0 + mh * 0.6, Math.round(mh * 0.2), '#ffd43b');
+    } else if (/^OSGOAL\n/.test(text)) { // ONSETS: 'OSGOAL\n4\n1 × 4' = an On-Sets Goal: the sum that makes it and the number of cards it asks for
+      var oc = lines[1] || '', ox = lines[2] || '', ofs = Math.round(mh * 0.42), ow;
+      label('THE GOAL', 40, y0 + mh * 0.14, Math.round(mh * 0.13), pal.soft);
+      if (ox) {
+        do { g.font = '400 ' + ofs + 'px ' + FONT; ow = g.measureText(ox + '  =  ' + oc).width; ofs -= 4; } while (ow > W - 330 && ofs > 24); ofs += 4;
+        g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = pal.ink; g.fillText(ox + '  =', 40, y0 + mh * 0.6); var ew = g.measureText(ox + '  =  ').width;
+        g.fillStyle = pal.text; g.shadowColor = pal.glow; g.shadowBlur = 20; g.fillText(oc, 40 + ew, y0 + mh * 0.6); g.shadowBlur = 0; var ox2 = 40 + ew + g.measureText(oc).width;
+        label(oc === '1' ? 'CARD' : 'CARDS', ox2 + 24, y0 + mh * 0.66, Math.round(mh * 0.2), pal.soft);
+      } else bigText([oc + (oc === '1' ? ' CARD' : ' CARDS')], y0 + mh * 0.2, y1);
     } else if (/^GOAL\n/i.test(text) || (text === '' && goalTokens() && G && G.goal)) {
       var toks = goalTokens(), val2 = /^GOAL\n/i.test(text) ? lines.slice(1).join(' ') : (window.Eq && G.goal ? Eq.fmt(G.goal) : '');
       label('THE GOAL', 40, y0 + mh * 0.14, Math.round(mh * 0.13), pal.soft);

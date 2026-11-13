@@ -157,7 +157,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function atlasTex(color, skin, layer) {
     var res = texRes || 256, key = 'atlas' + color + skin + res + (layer || '') + (window.A11y ? A11y.key() : ''); // (A11Y: the helpers change the faces)
     if (texCache[key]) return texCache[key];
-    if (KINDS[color]) return layer ? null : (texCache[key] = KINDS[color].tex(res)); // ONSETS: a registered cube kind brings its own faces
+    if (KINDS[color]) return layer ? (layer === 'bump' && KINDS[color].bump ? (texCache[key] = KINDS[color].bump(res)) : null) : (texCache[key] = KINDS[color].tex(res)); // ONSETS: a registered cube kind brings its own faces (and may bring a 'bump' layer: its symbols pressed in)
     if (layer) res = Math.min(res, 256); // the extra layers are soft: 256 per face is plenty
     var cv = document.createElement('canvas'); cv.width = 3 * res; cv.height = 2 * res; var g = cv.getContext('2d');
     Eq.CUBE_FACES[color].forEach(function (s, k) {
@@ -439,7 +439,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var mt = new THREE.MeshPhysicalMaterial({ map: d20 ? d20Tex(color) : atlasTex(color, sk), // (BONUS: a twenty-sided die has its own atlas)
       roughness: P.rough, metalness: P.metal || 0, envMapIntensity: P.env,
       clearcoat: rich ? P.coat : 0, clearcoatRoughness: P.coatR });
-    if (rich && !d20 && CUBECOL[color]) {
+    if (rich && !d20 && (CUBECOL[color] || (KINDS[color] && KINDS[color].bump))) { // (ONSETS: a cube kind with a bump layer gets the pressed-in look too)
       mt.bumpMap = atlasTex(color, sk, 'bump'); mt.bumpScale = 1.6;
       if (P.orm) { var orm = atlasTex(color, sk, 'orm'); mt.roughnessMap = orm; mt.metalnessMap = orm; }
       if (P.glow) addGlow(mt, atlasTex(color, sk, 'glow'), P.glow);
