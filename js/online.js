@@ -1251,7 +1251,7 @@ var Online = (function () {
           return;
         }
       }
-      O.goalWait = setter;
+      O.goalWait = setter; G.busy = false; // (newShake keeps it busy until here; goalOK needs it free)
       say('pip', wait(setter, 'set the Goal')); renderGame();
     };
   });

@@ -226,7 +226,7 @@ function newShake(fixedCubes) {
       G.rolling = false; renderGame();
       setTimeout(function () {
         if (!G || G !== g0 || G.cubes !== c0) return;
-        var toGoal = function () { G.phase = 'goal'; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700); };
+        var toGoal = function () { G.phase = 'goal'; G.busy = true; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700); }; // (busy: no Build the Goal button before a card or die is offered)
         if (fixedCubes) { lockOps(); if (G.cubes.some(function (c) { return c.locked; })) say('pip', '🔒 Operations you haven\'t unlocked yet go to Forbidden. Coming soon!'); toGoal(); }
         else rerollOps(toGoal);
       }, 500);
@@ -269,6 +269,7 @@ function startGoalPhase() {
   var P = G.players[G.setter];
   if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); creatureAt(G.setter, function () { if (T3.creatureMood) T3.creatureMood('think'); }); /* ACTING */ setTimeout(aiSetGoal, 1100); }
   else {
+    G.busy = false; // (newShake kept it busy until now)
     if (G.mode !== 'tutorial') say('pip', (multiHuman() ? '<b>' + esc(P.name) + '</b>, you' : 'You') + ' rolled the cubes, so you set the <b>Goal</b>! Use 1 to 6 cubes. Two digit cubes side by side make a two-digit number, like 2 and 4 → 24.');
     renderGame();
   }
