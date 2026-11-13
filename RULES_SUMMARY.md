@@ -406,29 +406,33 @@ operator table (see docs/handoff/vari2.md for how to add an operator).
 
 ---
 
-## 7. HOUSE RULES: the three bonus dice (NOT part of the official game)
+## 7. HOUSE RULES: the two bonus dice and the Twist deck (NOT part of the official game)
 
 **Everything in this section is a house rule Tata asked for. It is not in the AGLOA rulebook, and nothing here
-changes a shake that has no bonus die.** The kid earns three twenty-sided dice with skill points, for higher
-levels of play. Code: `js/bonus.js` (dice, unlocking, Twist, lessons, Parent corner), the `BONUS` block in
-`js/engine.js` (the maths), `js/three/table.js` (the 3D icosahedra). Tests: block "BONUS DICE" in
-`tests/engine.test.js`. Developer notes: `docs/handoff/bonus.md`.
+changes a shake that has no bonus die or Twist card.** The kid earns two twenty-sided dice and a deck of Twist
+cards with skill points, for higher levels of play. (The Twist deck used to be a third die; Tata found a die that
+stays at the side confusing, so it became a deck of cards with exactly the same cards and odds.) Code: `js/bonus.js`
+(dice, deck, unlocking, lessons, Parent corner), the `BONUS` block in `js/engine.js` (the maths), `js/three/table.js`
+(the 3D icosahedra and the Twist deck on its stand). Tests: block "BONUS DICE" in `tests/engine.test.js`.
+Developer notes: `docs/handoff/bonus.md`.
 
 ### Earning them (skill, not time; never random)
 - Nothing starts until the difficulty ladder reaches its **last stage** (Roots: every operation unlocked), or Tata
   switches everything on. From that moment the game counts **skill points** (correct Solutions + correct
   Impossible! calls, the same points the variation cards use):
-  **Big-number die after 8 more, Power die after 20, Twist die after 36.** At one card per 4 points that puts
-  the Big-number die around the 6th-7th variation card, the Power die around the 9th-10th and the Twist die
+  **Big-number die after 8 more, Power die after 20, Twist deck after 36.** At one card per 4 points that puts
+  the Big-number die around the 6th-7th variation card, the Power die around the 9th-10th and the Twist deck
   around the 13th-14th, so the dice and the cards interleave.
-- Old saves: nothing changes until earned (the count starts when the ladder is first seen at its last stage).
-- A new die is announced once, with confetti and a "How it works" lesson, the first shake it rolls.
+- Old saves: nothing changes until earned (the count starts when the ladder is first seen at its last stage). A save
+  that had already earned (or switched off) the Twist die keeps that for the Twist deck (same save key).
+- A new die or the deck is announced once, with confetti and a "How it works" lesson, the first shake it plays.
   The first time each Power operation comes up, its own lesson (3 worked examples) pops up once.
-- Parent corner: an on/off switch per die, an on/off switch per Power operation, and **Unlock now** per die.
+- Parent corner: an on/off switch per die and for the deck, an on/off switch per Power operation, and **Unlock
+  now** for each.
 - Where they play: normal matches against a creature (Cup matches are normal matches, so they include them) and
-  pass-and-play. **Not** online (the dice are not synced), Team-up, Three at the table, the tutorial, the daily
-  puzzles, puzzle codes or How Many Ways (all unchanged). Training Camp has a "Bonus dice" tile: Make the Goal
-  with a bonus cube in Required, plus every lesson.
+  pass-and-play. **Not** online (the dice and the deck are not synced), Team-up, Three at the table, the tutorial,
+  the daily puzzles, puzzle codes or How Many Ways (all unchanged). Training Camp has a "Bonus dice" tile: Make the
+  Goal with a bonus cube in Required, plus every lesson (the Twist deck's too).
 
 ### How they enter play
 - Each shake the earned, switched-on dice roll out of the cup with the 24 cubes (real physics in 3D).
@@ -437,7 +441,13 @@ levels of play. Code: `js/bonus.js` (dice, unlocking, Twist, lessons, Parent cor
   they count for the last-cube rule (one cube left in Resources may be a bonus cube), for "Required must be used",
   for Now! ("at most one more cube from Resources"), for the Goal's 1 to 6 cubes and a Solution's 2 or more.
 - A face Tata switched off (or a fraction face while fractions are off) is rolled again, like a locked operation.
-- **The Twist die is read once and set aside** on the rim (3D) and shown as a chip and on the stadium big screen.
+- **One Twist card is drawn after the roll** (after any operation cubes are rolled again), before the Goal is set.
+  It is not a cube and is never played with: it only sets a rule for this shake. In 3D the deck sits on a small teal
+  TWIST stand just outside the right-hand rim, near the player's end; the top card lifts, flips over, comes up to
+  the camera so its face can be read, then lies face up next to the deck for the rest of the shake (about 2 seconds,
+  once; a tap skips it). On the flat mat a small deck sits in the top bar and the drawn card flips over once. The
+  card's name is also on a chip (tap it to read the rule again) and on the stadium big screen; Pip says it in one
+  sentence. At the next shake the card goes back into the deck (every shake draws from all 20 cards).
 
 ### Big-number die (purple): 20 faces
 10, 11, 12, 15, 20, 24, 25, 30, 36, 50, 60, 100, 1000, ½, ¼, ¾, ⅓, ⅔, 1/10, 1½.
@@ -479,26 +489,35 @@ whole-number rule. The levels "with × ÷", "with + −", "with ^" decide the or
 signs" of the Three Operations card. With Use It Again the gold operation may be repeated; the Big-number die never.
 x² and double appear on two faces each (18 operations, 20 faces).
 
-### Twist die (teal): 20 faces
-| Faces | What happens this shake |
-|---|---|
-| 8s, 9s | **Base 8** / **Base 9** (variation card) |
-| 0?, −3, 1/3, avg, ↻ | **0 is Wild**, **Upside-down**, **Sideways**, **Average**, **Use It Again** |
-| k6, k10 | **Multiple of 6** / **Multiple of 10** |
-| xⁿ, 10ⁿ, 23, rem, !!, # | **Exponent Colour** (a random colour that has digits in Resources), **Powers of Ten**, **Two-digit Numbers**, **Remainder**, **Factorial**, **Number of Factors** |
-| ×2 (2 faces) | **Golden Goal**: every score this shake counts double, for everybody (2 → 4, 4 → 8, 6 → 12) |
-| +2 (2 faces) | **Bonus +2**: a correct Solution that uses a bonus cube scores 2 extra points |
-| tip | **Free hint**: Pip's Hint this shake doesn't cost the "no hint needed" bonus |
+### Twist deck (teal cards): 20 cards
+One card per face of the old Twist die, so the odds are the same.
 
-- **Only faces that can change the shake count.** A card face counts only if the kid has earned that card, Tata
-  left it switched on, and the card's own "can it affect the shake" test passes (section 6); +2 needs a bonus cube
-  in play. Any other face is **rolled again** (Pip says so; in 3D the die hops and lands on a face that counts).
-- **Twist and cards:** when the Twist die shows a variation card, **that is this shake's card and nobody picks
-  another** (the engine supports one card's rules at a time). When it shows a scoring twist, the Goal-setter may
+| Cards | What happens this shake |
+|---|---|
+| 2 cards: Base 8, Base 9 | **Base 8** / **Base 9** (variation card) |
+| 5 cards | **0 is Wild**, **Upside-down**, **Sideways**, **Average**, **Use It Again** (variation cards) |
+| 2 cards: Multiple of 6, of 10 | **Multiple of 6** / **Multiple of 10** (variation card) |
+| 6 cards | **Exponent Colour** (a random colour that has digits in Resources), **Powers of Ten**, **Two-digit Numbers**, **Remainder**, **Factorial**, **Number of Factors** (variation cards) |
+| Golden Goal (2 cards) | **Golden Goal**: every score this shake counts double, for everybody (2 → 4, 4 → 8, 6 → 12) |
+| Bonus +2 (2 cards) | **Bonus +2**: a correct Solution that uses a bonus cube scores 2 extra points |
+| Free hint (1 card) | **Free hint**: Pip's Hint this shake doesn't cost the "no hint needed" bonus |
+
+Each card shows a big icon (a variation card shows the same icon as its card in the card picker), its name and one
+short line, and is marked VARIATION CARD or BONUS TWIST at the bottom.
+
+- **Only cards that can change the shake are drawn.** A variation card can be drawn only if the kid has earned that
+  card, Tata left it switched on, and the card's own "can it affect the shake" test passes (section 6); Bonus +2
+  needs a bonus cube in play. The other cards stay in the deck this shake. Every card that can be drawn is equally
+  likely, which is exactly what the old die did (it was rolled again until it showed such a face). Golden Goal and
+  Free hint can always be drawn, so there is always a card.
+- **Twist and cards:** when the Twist card is a variation card, **that is this shake's card and nobody picks
+  another** (the engine supports one card's rules at a time). When it is a scoring twist, the Goal-setter may
   pick a card as usual; the two never interact.
 - Scoring twists never take points away and apply to every player alike (creatures too).
-- ⚠ Judgment call: Three Operations, Smallest Prime, LCM, GCF, Percent and Decimal Point are not on the Twist die
+- ⚠ Judgment call: Three Operations, Smallest Prime, LCM, GCF, Percent and Decimal Point are not in the Twist deck
   (Three Operations can feel like a punishment when it is forced on a shake; the others are covered by the Power die).
+- ⚠ Judgment call (presentation only, not a rule): the drawn card goes back into the deck at the next shake, so
+  every shake draws from the same 20 cards (the odds never drift during a match).
 
 ### Creatures and the solver
 - Creatures of **4 stars and up** (Ollie, Mondo, Splosh, Blaze, Hex, Messy) prefer Goals with a bonus cube, keep

@@ -13,7 +13,8 @@
 .bonus-die.lg{width:64px;height:64px}
 .bd-power{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%235c3c00' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%23fcc419'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%23ffe066'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
 .bd-big{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%23fcc419' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%237048e8'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%239775fa'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
-.bd-twist{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='%23ffffff' stroke-width='1.1' stroke-linejoin='round'%3E%3Cpolygon points='12,1.5 21.5,7 21.5,17 12,22.5 2.5,17 2.5,7' fill='%230c8599'/%3E%3Cpolygon points='12,7 17.5,16 6.5,16' fill='%2338d9a9'/%3E%3Cpath fill='none' d='M12 1.5V7M21.5 7L17.5 16M2.5 7L6.5 16M12 22.5L17.5 16M12 22.5L6.5 16M2.5 7L12 7L21.5 7M2.5 17L6.5 16M21.5 17L17.5 16'/%3E%3C/svg%3E")}
+/* the Twist deck's icon: a teal card back with a gold swirl (the 3D cards are drawn in js/three/table.js, BONUS block) */
+.bd-twist{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5' y='1.5' width='14' height='21' rx='2.4' fill='%230c8599' stroke='%23ffffff' stroke-width='1.3'/%3E%3Crect x='6.9' y='3.4' width='10.2' height='17.2' rx='1.4' fill='none' stroke='%23fcc419' stroke-width='.8'/%3E%3Cpath d='M12 12.2a.9.9 0 1 1 .9-.9a2 2 0 1 1-2-2a3.1 3.1 0 1 1-3.1 3.1' fill='none' stroke='%23ffe066' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E")}
 
 /* the Twist chip on the table (under the variation card chip when there is one) */
 .bonus-chip{position:absolute;z-index:6;top:max(64px,calc(var(--sat) + 60px));left:max(10px,var(--sal));display:flex;align-items:center;gap:8px;
@@ -25,6 +26,21 @@
 .bonus-chip.dealt{animation:variDeal .55s cubic-bezier(.2,1.2,.4,1) both}
 @media (prefers-reduced-motion:reduce){.bonus-chip.dealt{animation:none}}
 #game:not(.three) .bonus-chip{position:static;order:-1;align-self:flex-start;margin:0}
+/* flat mat: a small deck, and the drawn card next to it. The card flips from its back to its face ONCE (.flip), then
+   stays face up; without .flip it is simply face up (a re-draw of the chip never flips it again). */
+.bonus-chip.tw-flat{gap:10px;padding:5px 12px 5px 8px}
+.tw-deck{position:relative;flex:0 0 auto;width:26px;height:36px;margin-right:2px;border-radius:4px;background:#0c8599 center/contain no-repeat;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 36'%3E%3Crect x='1' y='1' width='24' height='34' rx='3.5' fill='%230c8599' stroke='%23fff' stroke-width='1.6'/%3E%3Crect x='3.6' y='3.6' width='18.8' height='28.8' rx='2' fill='none' stroke='%23fcc419' stroke-width='1'/%3E%3Cpath d='M13 18.6a1.4 1.4 0 1 1 1.4-1.4a3.2 3.2 0 1 1-3.2-3.2a5 5 0 1 1-5 5' fill='none' stroke='%23ffe066' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  box-shadow:2px 2px 0 #e9ecef,3px 3px 0 #0b7285,5px 5px 0 #e9ecef,6px 6px 0 #0b7285}
+.tw-card{position:relative;flex:0 0 auto;width:30px;height:42px;perspective:220px;transform-style:preserve-3d}
+.tw-face{position:absolute;inset:0;border-radius:5px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;align-items:center;justify-content:center}
+.tw-front{background:#fffaf0;border:2.5px solid #0c8599;font-size:19px;line-height:1;transform:rotateY(0deg)}
+.tw-back{border:1.5px solid #fff;transform:rotateY(180deg);background:#0c8599 center/cover no-repeat;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 36'%3E%3Crect width='26' height='36' fill='%230c8599'/%3E%3Cpath d='M13 18.6a1.4 1.4 0 1 1 1.4-1.4a3.2 3.2 0 1 1-3.2-3.2a5 5 0 1 1-5 5' fill='none' stroke='%23ffe066' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")}
+.tw-card.flip{animation:twFlip .9s cubic-bezier(.3,.7,.3,1) both}
+.tw-card.flip .tw-face{animation:twLift .9s ease both}
+@keyframes twFlip{0%{transform:translateX(-30px) rotateY(-180deg) scale(.9)}55%{transform:translateX(-6px) rotateY(-20deg) scale(1.35)}100%{transform:none}}
+@keyframes twLift{0%,100%{box-shadow:0 1px 0 rgba(0,0,0,.2)}55%{box-shadow:0 8px 14px rgba(0,0,0,.28)}}
+@media (prefers-reduced-motion:reduce){.tw-card.flip,.tw-card.flip .tw-face{animation:none}}
 
 /* pop-ups and lessons */
 .bonus-new{display:flex;align-items:center;gap:14px;justify-content:center;max-width:560px;margin:8px auto;text-align:left}
