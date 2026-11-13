@@ -134,7 +134,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   // All six faces of one colour in a 3 x 2 atlas (face k in cell k % 3, row k / 3), so a cube is one draw call.
   function atlasTex(color, skin) {
-    var res = texRes || 256, key = 'atlas' + color + skin + res;
+    var res = texRes || 256, key = 'atlas' + color + skin + res + (window.A11y ? A11y.key() : ''); // (A11Y: the helpers change the faces)
     if (texCache[key]) return texCache[key];
     var cv = document.createElement('canvas'); cv.width = 3 * res; cv.height = 2 * res; var g = cv.getContext('2d');
     Eq.CUBE_FACES[color].forEach(function (s, k) {
@@ -148,6 +148,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function drawFace(g, color, s, skin) {
     var c = CUBECOL[color], ink = '#fff', shadow = 'rgba(0,0,0,.45)';
+    var hcc = window.A11y && A11y.faceCols(color); if (hcc) c = hcc; // A11Y: high-contrast cube colours (docs/handoff/a11y.md)
     if (skin === 'candy') {
       var light = { red: '#ffc2d1', blue: '#c5e6ff', green: '#d3f9d8', black: '#d0bfff' }[color], dark = { red: '#ff8fab', blue: '#74c0fc', green: '#8ce99a', black: '#9775fa' }[color];
       g.fillStyle = light; g.fillRect(0, 0, 128, 128); g.strokeStyle = dark; g.lineWidth = 12;
@@ -172,7 +173,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       g.fillStyle = eg; g.fillRect(0, 0, 128, 128);
       g.fillStyle = 'rgba(255,255,255,.16)'; rr(g, 12, 10, 104, 28, 14); g.fill();
       g.strokeStyle = 'rgba(255,255,255,.24)'; g.lineWidth = 3; rr(g, 3, 3, 122, 122, 14); g.stroke();
+      if (hcc && hcc[2] !== '#fff') { ink = hcc[2]; shadow = 'rgba(255,255,255,.5)'; } // A11Y: the light green takes a dark symbol
     }
+    if (window.A11y) A11y.drawFacePattern(g, color, 128, { skin: skin }); // A11Y: a pattern (and letter) per colour, under the symbol
     var label = Eq.SHOW[s] || s;
     g.font = '900 ' + (s === 'r' ? 84 : 80) + 'px "Trebuchet MS", "Segoe UI", sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
@@ -247,7 +250,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   var D20COL = { power: ['#ffe066', '#e8590c', '#5c3c00'], big: ['#b197fc', '#5f3dc4', '#ffffff'] };
   function d20Label(color, k) { try { return window.Bonus ? Bonus.faceLabel(color, k) : String(k + 1); } catch (e) { return String(k + 1); } }
   function d20Tex(color) {
-    var res = Math.min(256, texRes || 256), key = 'd20' + color + res;
+    var res = Math.min(256, texRes || 256), key = 'd20' + color + res + (window.A11y ? A11y.key() : ''); // (A11Y)
     if (texCache[key]) return texCache[key];
     var cv = document.createElement('canvas'); cv.width = 5 * res; cv.height = 4 * res; var g = cv.getContext('2d'), C = D20COL[color] || D20COL.power;
     for (var k = 0; k < 20; k++) {
@@ -255,6 +258,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       var lg = g.createLinearGradient(0, 0, 128, 128); lg.addColorStop(0, C[0]); lg.addColorStop(1, C[1]); g.fillStyle = lg; g.fillRect(0, 0, 128, 128);
       // a light rim just inside the face's edges (reads as a bevel), then the label at the triangle's centre
       g.beginPath(); g.moveTo(64, 16); g.lineTo(13, 103); g.lineTo(115, 103); g.closePath(); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.stroke();
+      if (window.A11y) A11y.drawFacePattern(g, color, 128, { ink: color === 'power' ? 'dark' : 'light', tri: true }); // A11Y: Power = double rim, Big-number = dotted rim
       var label = d20Label(color, k), size = label.length >= 4 ? 28 : label.length === 3 ? 36 : 46;
       g.font = '900 ' + size + 'px "Trebuchet MS", "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       g.strokeStyle = C[2] === '#ffffff' ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.6)'; g.lineWidth = 4; g.strokeText(label, 64, 79);
@@ -387,8 +391,12 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     Object.keys(layout.z).forEach(function (z) {
       var r = layout.z[z], x = (r[0] + W / 2 + PAD) * ppu, y = (r[1] + D / 2 + PAD) * ppu, w = r[2] * ppu, h = r[3] * ppu;
       g.fillStyle = z === 'goal' ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.07)'; rr(g, x, y, w, h, 22); g.fill();
-      g.setLineDash(z === 'goal' ? [] : [22, 14]); g.lineWidth = 6; g.strokeStyle = ZCOL[z]; g.globalAlpha = 0.8; rr(g, x, y, w, h, 22); g.stroke(); g.globalAlpha = 1; g.setLineDash([]);
-      g.font = '800 ' + Math.round(0.42 * ppu) + 'px "Trebuchet MS", sans-serif'; g.textBaseline = 'middle';
+      // A11Y: with colour helpers on, the edges differ by line too (Required solid, Permitted dashed, Forbidden dotted + hatch); labels follow the text size
+      var zs = window.A11y && A11y.zoneStyle(z), fs = Math.round(0.42 * ppu * (window.A11y ? A11y.textScale() : 1));
+      if (zs && zs.hatch) A11y.drawHatch(g, x + 8, y + 0.8 * ppu, w - 16, h - 0.8 * ppu - 8);
+      g.setLineDash(zs ? zs.dash : z === 'goal' ? [] : [22, 14]); g.lineCap = zs ? zs.cap : 'butt'; g.lineWidth = zs ? zs.width : 6; g.strokeStyle = ZCOL[z]; g.globalAlpha = zs ? 0.95 : 0.8; rr(g, x, y, w, h, 22); g.stroke(); g.globalAlpha = 1; g.setLineDash([]); g.lineCap = 'butt';
+      g.font = '800 ' + fs + 'px "Trebuchet MS", sans-serif'; g.textBaseline = 'middle';
+      while (fs > 18 && g.measureText(labels[z]).width > w - 0.5 * ppu) { fs -= 2; g.font = '800 ' + fs + 'px "Trebuchet MS", sans-serif'; } // (A11Y: larger text still fits the zone)
       g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
       g.fillStyle = '#fff'; g.fillText(labels[z], x + 0.32 * ppu, y + 0.45 * ppu);
       var zp = new THREE.Mesh(new THREE.PlaneGeometry(r[2], r[3]), new THREE.MeshBasicMaterial({ map: glowTex(r[2], r[3], ZCOL[z] === '#ffffff' ? '#ffe066' : ZCOL[z]), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));

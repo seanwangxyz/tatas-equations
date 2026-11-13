@@ -158,7 +158,7 @@ export function createLabels(o) {
       L.sp.visible = false; if (!show) return;
       var c = toScreen(m.position, W, H); if (!c.ok || c.x < 0 || c.x > W || c.y < 0 || c.y > H) return; // its cube is out of the picture
       w.copy(m.position).addScaledVector(right, 1); var c2 = toScreen(w, W, H);
-      var ppu = Math.hypot(c2.x - c.x, c2.y - c.y), h = Math.max(17, Math.min(28, 0.5 * ppu)) * L.T.hk, wd = h * L.T.aspect;
+      var ppu = Math.hypot(c2.x - c.x, c2.y - c.y), h = Math.max(17, Math.min(28, 0.5 * ppu)) * L.T.hk * (window.A11y ? A11y.textScale() : 1), /* A11Y: follows the text size */ wd = h * L.T.aspect;
       var b = box(m, W, H), bottom = b.y0 - 2;
       items.push({ L: L, x0: c.x - wd / 2, x1: c.x + wd / 2, y0: bottom - h, y1: bottom, h: h, own: m.id, z: c.z, box: b });
     });

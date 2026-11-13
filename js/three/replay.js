@@ -60,9 +60,10 @@ function install(T3, ctx) {
   }
   // a stand-in cube (no real cube to copy): a box with the symbol on its front, in the cube's colours
   function standInTex(s, color) {
-    var c = COL[color] || COL.none;
+    var c = (window.A11y && A11y.faceCols(color)) || COL[color] || COL.none; // A11Y: high-contrast colours
     return canvasTex(128, 128, function (g) {
       var lg = g.createLinearGradient(0, 0, 128, 128); lg.addColorStop(0, c[0]); lg.addColorStop(1, c[1]); g.fillStyle = lg; g.fillRect(0, 0, 128, 128);
+      if (window.A11y) A11y.drawFacePattern(g, color, 128); // A11Y: the colour's pattern (and letter)
       g.font = '900 80px "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = 'rgba(0,0,0,.4)'; g.fillText(SHOW(s), 66, 70); g.fillStyle = color === 'none' ? '#222' : '#fff'; g.fillText(SHOW(s), 64, 66);
     });
