@@ -352,7 +352,7 @@ function giftChecked(tokens) {
     P.retry = tokens;
     P.say = { text: 'Not yet, but that\'s OK! Look at what to fix and try again. ' + (P.hintIds && P.hints >= P.hintIds.length ? '' : 'Stuck? <b>Hint</b> shows one cube that\'s used.'), mood: 'think' };
     giftRender();
-    modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, T.cubes) + '<ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
+    modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, T.cubes) + '<ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: T.goal, fractions: T.fr, cubes: T.cubes, chk: chk }) : '') + /* EXPLAIN */
       '<p style="text-align:center">Good try! Fix it, or start fresh. You can try as many times as you like.</p>' +
       '<div class="row"><button class="btn green" data-act="giftFix">' + ico('pencil') + ' Fix it</button><button class="btn" data-act="giftFresh">Start fresh</button><button class="btn" data-act="closeModal">Not now</button></div>');
     return;
@@ -368,7 +368,7 @@ function giftChecked(tokens) {
   giftSnd('chime'); if (typeof victoryFX === 'function') victoryFX(); giftSnd('crowd');
   P.say = { text: first ? 'You cracked Tata\'s puzzle! 🎉 Tell Tata your receipt so he knows.' : 'You did it again! 🎉 Same receipt as before.', mood: 'cheer' };
   giftRender();
-  modal('<h2>🎉 You cracked it!</h2>' + exprBox(tokens, T.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(T.goal) + '</p>' +
+  modal('<h2>🎉 You cracked it!</h2>' + exprBox(tokens, T.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(T.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: T.goal, fractions: T.fr, cubes: T.cubes, chk: chk }) : '') + /* EXPLAIN */
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + (star ? '<br>⭐ Skill star for a new puzzle!' : '') + '</div>' : '') +
     '<div class="gf-tell"><div>📣 Tell Tata:</div><div class="gf-rc">' + esc(rc) + '</div><small>That\'s your receipt. Tata can check it on his screen.</small></div>' +
     '<div class="row"><button class="btn green big" data-act="closeModal">Yay!</button></div>', function () { drainQueue(function () { if (current === 'gift') giftRender(); }); });
@@ -462,7 +462,7 @@ function giftResultHTML(M) {
   var lnk = GiftCode.link(R.code, M.msg, location.origin + location.pathname);
   return '<div class="gf-result"><div class="gf-ok">✔ It can be solved! ' + (R.count === 1 && !R.more ? 'I found exactly <b>1</b> way.' : 'I found <b>' + cnt + '</b> different way' + (R.count === 1 ? '' : 's') + '.') + '</div>' +
     (R.count === 1 && !R.more ? '<p class="gf-small">Only one way: that\'s a tough one!</p>' : '') +
-    (M.showSample ? '<div class="gf-sample">One Solution: ' + exprBox(R.sample) + '</div>' : '<button class="btn small" data-act="giftSample">Show me one Solution</button>') +
+    (M.showSample ? '<div class="gf-sample">One Solution: ' + exprBox(R.sample) + (window.Explain ? Explain.buttonHTML(R.sample, { goal: M.goal, fractions: M.fr }) : '') + '</div>' /* EXPLAIN */ : '<button class="btn small" data-act="giftSample">Show me one Solution</button>') +
     '<div class="gf-codelabel">The code (read it out or text it):</div><div class="gf-code" id="gfCodeOut">' + esc(GiftCode.pretty(R.code)) + '</div>' +
     '<div class="row"><button class="btn green" data-act="giftCopy" data-arg="code">Copy code</button></div>' +
     '<div class="gf-codelabel">Or the link (with your message):</div><input id="gfLink" class="gf-input gf-link" type="text" readonly value="' + esc(lnk) + '" onclick="this.select()">' +

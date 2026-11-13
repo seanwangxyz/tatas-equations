@@ -640,6 +640,7 @@ function solHTML(i, s) {
   if (!s.tokens) return '<p>' + head + ' (no Solution written)</p>';
   var body = (window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(s.tokens, G.cubes, G.fractions) + '</div>' : exprBox(s.tokens, G.cubes);
   if (!s.ok && s.chk && s.chk.reasons && s.chk.reasons.length) body += '<ul class="reasons">' + s.chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
+  if (window.Explain) body += Explain.buttonHTML(s.tokens, { goal: G.goal, fractions: G.fractions, cubes: G.cubes, chk: s.chk, who: G.players[i].name + '\'s Solution' }); // EXPLAIN
   return '<div style="margin:8px 0">' + head + body + '</div>';
 }
 function endShake(r) {
@@ -682,7 +683,7 @@ function endShake(r) {
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div><!--replay-->' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
-    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p style="text-align:center;font-weight:800">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' :
+    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p style="text-align:center;font-weight:800">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' + (window.Explain ? Explain.buttonHTML(sample, { goal: G.goal, fractions: G.fractions, wild: G.sampleWild, who: anyOk ? 'Another way' : 'One way that works' }) : '') : // EXPLAIN
       (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.' + (G.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '')) + // (BONUS: not proved)
     idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
     (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +

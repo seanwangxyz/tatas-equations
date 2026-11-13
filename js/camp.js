@@ -173,7 +173,7 @@ function campDone(ok, title, bodyHTML) {
     function () { drainQueue(function () { if (current !== 'camp') return; if (CAMP) startDrill(id); else renderCamp(); }); });
 }
 ACT.campBack = function () { CAMP = null; closeModal(); };
-function solShow(tokens, P, label) { return tokens ? '<p><b>' + label + '</b></p>' + exprBox(tokens, P.cubes) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(P.goal) + '</p>' : ''; }
+function solShow(tokens, P, label) { return tokens ? '<p><b>' + label + '</b></p>' + exprBox(tokens, P.cubes) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(P.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: P.goal, fractions: P.fractions, cubes: P.cubes }) : '') : ''; } // EXPLAIN
 
 // yes / no drills
 ACT.campAnswer = function (el) {
@@ -196,7 +196,7 @@ ACT.campPick = function (el) {
   xpLog = []; campQuizReward(ok);
   var zn = { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' };
   if (ok) body = '<p>Moving ' + show(o.s) + ' to ' + zn[o.zone] + ' is <b>safe</b>: the Goal can still be made, and nobody can call Now! yet.</p>';
-  else if (o.why === 'now') body = '<p>After ' + show(o.s) + ' goes to ' + zn[o.zone] + ', the other player can call <b>Now!</b> with this:</p>' + exprBox(o.sol) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(P.goal) + '</p>';
+  else if (o.why === 'now') body = '<p>After ' + show(o.s) + ' goes to ' + zn[o.zone] + ', the other player can call <b>Now!</b> with this:</p>' + exprBox(o.sol) + '<p style="text-align:center;font-weight:800">= ' + Eq.fmt(P.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(o.sol, { goal: P.goal, fractions: P.fractions }) : ''); // EXPLAIN
   else body = '<p>After ' + show(o.s) + ' goes to ' + zn[o.zone] + ', the Goal <b>can\'t be made</b> any more, so the other player calls Impossible! and wins.</p>';
   var good = CAMP.options.filter(function (x) { return !x.why; })[0];
   if (!ok && good) body += '<p>The safe move was <b>' + show(good.s) + ' to ' + zn[good.zone] + '</b>.</p>';
@@ -219,13 +219,13 @@ ACT.campSolve = function () {
     var gSave = G; G = null;
     if (!CAMP.shown) recordSolution(chk, Date.now() - CAMP.t0, tokens, 'camp', P.goal);
     G = gSave;
-    if (chk.ok) campDone(true, '🎉 You made it!', exprBox(tokens, P.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(P.goal) + '</p>');
-    else { Snd.boop(); modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, P.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul><p style="text-align:center">Try again. There\'s no rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>'); }
+    if (chk.ok) campDone(true, '🎉 You made it!', exprBox(tokens, P.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(P.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: P.goal, fractions: P.fractions, cubes: P.cubes, chk: chk }) : '')); // EXPLAIN
+    else { Snd.boop(); modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, P.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: P.goal, fractions: P.fractions, cubes: P.cubes, chk: chk }) : '') + /* EXPLAIN */ '<p style="text-align:center">Try again. There\'s no rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>'); }
   });
 };
 ACT.campShow = function () {
   CAMP.shown = true; // peeking is fine, it just doesn't count for stars
-  modal('<h2>💡 One way to do it</h2>' + exprBox(CAMP.P.sample) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(CAMP.P.goal) + '</p><p style="text-align:center">Can you find a different one?</p><div class="row"><button class="btn green" data-act="closeModal">OK</button></div>');
+  modal('<h2>💡 One way to do it</h2>' + exprBox(CAMP.P.sample) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(CAMP.P.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(CAMP.P.sample, { goal: CAMP.P.goal, fractions: CAMP.P.fractions }) : '') + /* EXPLAIN */ '<p style="text-align:center">Can you find a different one?</p><div class="row"><button class="btn green" data-act="closeModal">OK</button></div>');
 };
 // set a sneaky goal
 ACT.campGoal = function () {
@@ -240,7 +240,7 @@ ACT.campGoal = function () {
       var n = r.tokens.filter(function (s) { return s !== '(' && s !== ')'; }).length;
       addXP(15 + Math.min(15, 5 * Math.max(0, n - 3)), 'A Goal that can be made');
       campQuizReward(true);
-      campDone(true, n >= 5 ? '🦊 Very sneaky Goal!' : '🎯 Good Goal!', '<p>Your Goal <b>' + Eq.fmt(val) + '</b> can be made. The shortest way I found uses ' + n + ' cubes:</p>' + exprBox(r.tokens) + (n >= 5 ? '<p style="text-align:center">That\'s hard to spot. Nice!</p>' : '<p style="text-align:center">Tip: Goals that need more cubes are harder for the other player.</p>'));
+      campDone(true, n >= 5 ? '🦊 Very sneaky Goal!' : '🎯 Good Goal!', '<p>Your Goal <b>' + Eq.fmt(val) + '</b> can be made. The shortest way I found uses ' + n + ' cubes:</p>' + exprBox(r.tokens) + (window.Explain ? Explain.buttonHTML(r.tokens, { goal: val, fractions: P.fractions }) : '') + /* EXPLAIN */ (n >= 5 ? '<p style="text-align:center">That\'s hard to spot. Nice!</p>' : '<p style="text-align:center">Tip: Goals that need more cubes are harder for the other player.</p>'));
     } else {
       campQuizReward(false);
       campDone(false, '🤔 Careful!', '<p>I couldn\'t find any way to make <b>' + Eq.fmt(val) + '</b> from the cubes that are left, so the other player would call <b>Impossible!</b> and win.</p><p style="text-align:center">Try a Goal you can already see a Solution for.</p>');

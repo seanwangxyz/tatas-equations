@@ -78,11 +78,11 @@ ACT.dailySolve = function () {
         if (!was && D.n >= p.cur) p.cur = D.n + 1;
         persist();
         Snd.chime(); victoryFX(); Snd.crowd();
-        modal('<h2>🎉 You solved it!</h2>' + exprBox(tokens, D.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') + '<div class="row"><button class="btn green" data-act="dailyNextM">Next puzzle ▶</button><button class="btn" data-act="closeModal">Stay here</button></div>', function () { drainQueue(function () { if (D && D.goNext) ACT.dailyNext(); else renderDaily(); }); });
+        modal('<h2>🎉 You solved it!</h2>' + exprBox(tokens, D.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: D.goal, fractions: D.fractions, cubes: D.cubes, chk: chk }) : '') + /* EXPLAIN */ (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') + '<div class="row"><button class="btn green" data-act="dailyNextM">Next puzzle ▶</button><button class="btn" data-act="closeModal">Stay here</button></div>', function () { drainQueue(function () { if (D && D.goNext) ACT.dailyNext(); else renderDaily(); }); });
       } else {
         if (!D.revealed) recordSolution(chk, Date.now() - t0, tokens, 'daily', D.goal, D.n > 0 || puzDone());
         Snd.boop();
-        modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, D.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul><p style="text-align:center">You can try as many times as you want. No rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>', function () { ACT.dailySolve(); });
+        modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, D.cubes) + '<p>Here\'s why:</p><ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: D.goal, fractions: D.fractions, cubes: D.cubes, chk: chk }) : '') + /* EXPLAIN */ '<p style="text-align:center">You can try as many times as you want. No rush!</p><div class="row"><button class="btn green" data-act="closeModal">Try again</button></div>', function () { ACT.dailySolve(); });
       }
       G = gSave;
     } };
@@ -98,7 +98,7 @@ ACT.dailyReveal = function () {
 };
 ACT.dailyRevealYes = function () {
   D.revealed = true;
-  modal('<h2>💡 One Solution</h2>' + exprBox(D.sample) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p><p style="text-align:center">Can you find a different one?</p><div class="row"><button class="btn green" data-act="closeModal">OK</button></div>');
+  modal('<h2>💡 One Solution</h2>' + exprBox(D.sample) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(D.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(D.sample, { goal: D.goal, fractions: D.fractions }) : '') + /* EXPLAIN */ '<p style="text-align:center">Can you find a different one?</p><div class="row"><button class="btn green" data-act="closeModal">OK</button></div>');
 };
 
 // ======================= OTHER SCREENS =======================

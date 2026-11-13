@@ -405,7 +405,7 @@ var Recorder = (function () {
   function cardHTML(t) {
     var face = typeof pipHTML === 'function' ? pipHTML(t.kind === 'nice' ? 'cheer' : 'think', 48, '') : '';
     return '<div class="ps-card"><div class="ps-head">' + face + '<h3>' + (t.kind === 'nice' ? '⭐ A moment Pip loved' : '💡 One thing Pip spotted') + '</h3></div>' +
-      picHTML(t.pic) + '<div class="ps-words">' + t.lines.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') + '</div>' +
+      picHTML(t.pic) + (window.Explain && t.raw && t.raw.sol && t.raw.ctx && t.raw.ctx.g ? Explain.buttonHTML(t.raw.sol, { goal: t.raw.kind === 'goal' ? t.raw.altVal : t.raw.ctx.g.goal, fractions: t.raw.ctx.g.fr, wild: t.raw.wild, who: 'Pip\'s Solution' }) : '') + /* EXPLAIN */ '<div class="ps-words">' + t.lines.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') + '</div>' +
       '<div class="row"><button class="btn green small" data-act="pipSpotDone">Got it</button></div></div>';
   }
   // Put this in the match-end html (an empty spot; the button appears in it only if Pip found something).

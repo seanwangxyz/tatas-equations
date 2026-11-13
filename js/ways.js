@@ -210,7 +210,7 @@ function waysChecked(tokens) {
   if (!chk.ok) {
     waysSnd('boop');
     W.retry = tokens;
-    modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, P.cubes) + '<ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
+    modal('<h2>🤔 Not quite!</h2>' + exprBox(tokens, P.cubes) + '<ul class="reasons">' + chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' + (window.Explain ? Explain.buttonHTML(tokens, { goal: P.goal, fractions: P.fractions, cubes: P.cubes, chk: chk }) : '') + /* EXPLAIN */
       '<p style="text-align:center">That\'s OK! Fix it, or start a new one. Trying never costs anything.</p>' +
       '<div class="row"><button class="btn green" data-act="waysFix">' + ico('pencil') + ' Fix it</button><button class="btn" data-act="waysFresh">Start fresh</button><button class="btn" data-act="closeModal">Not now</button></div>');
     return;
@@ -339,7 +339,7 @@ ACT.waysMissed = function () {
     : info.helper ? 'Times 1 (or plus 0) keeps a number the same, so this is really just one cube with a helper. That counts as a way too!'
     : newD.length ? 'None of your ways used the <b>' + newD.join('</b> or the <b>') + '</b>. Every cube can open up a new way!'
     : 'It puts the cubes together in a different shape. Next time, try moving the ( ) around!';
-  modal('<h2>💡 One you missed</h2>' + exprBox(toks, P.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(P.goal) + '</p><p style="text-align:center">' + why + '</p>' +
+  modal('<h2>💡 One you missed</h2>' + exprBox(toks, P.cubes) + '<p style="text-align:center;font-size:22px;font-weight:900">= ' + Eq.fmt(P.goal) + '</p>' + (window.Explain ? Explain.buttonHTML(toks, { goal: P.goal, fractions: P.fractions, cubes: P.cubes }) : '') + /* EXPLAIN */ '<p style="text-align:center">' + why + '</p>' +
     '<p style="text-align:center;color:#6b7592">' + (miss.length > 1 ? 'There ' + (miss.length - 1 === 1 ? 'is 1 more' : 'are ' + (miss.length - 1) + ' more') + ' you didn\'t find.' : 'That was the last one!') + '</p>' +
     '<div class="row">' + (miss.length > 1 ? '<button class="btn" data-act="waysMissed">Show another</button>' : '') + '<button class="btn green big" data-act="waysAgain">Next puzzle ▶</button><button class="btn" data-act="closeModal">Close</button></div>', waysDrain);
 };
