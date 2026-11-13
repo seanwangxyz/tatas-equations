@@ -213,7 +213,7 @@ var Career = (function () {
     var cups = (typeof Cup !== 'undefined' && Cup.CUPS) ? Cup.CUPS.filter(function (c) { return Cup.state().won[c.id]; }).length + ' / ' + Cup.CUPS.length : null;
     return '<div class="car">' +
       '<div class="car-top"><div class="car-big">' + won + '<small>/ ' + total + '</small></div><div><b>creatures beaten</b>' + (cups ? '<small>' + I('trophy') + ' Cups: ' + cups + '</small>' : '') + '</div></div>' +
-      nextLine + leagues +
+      nextLine + leagues + (typeof Rivals !== 'undefined' ? Rivals.careerHTML() : '') +
       '<p class="car-small">Each league opens with its first creature. Beat a creature to open the next one. The boss at the end of each league is the toughest, and the Legend League bosses bring their own special rules. Nothing you win can ever be lost.</p></div>';
   }
   function open() {

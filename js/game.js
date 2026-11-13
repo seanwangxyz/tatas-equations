@@ -113,6 +113,7 @@ function startMatch(mode, oppIdx, cfg) {
   if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
   if (window.Parent) Parent.note('matchStart'); // PARENT page
   if (window.Career) Career.matchStart(G); // CAREER: remember this match's signature rule
+  if (window.Rivals) Rivals.note('start', { g: G }); // RIVALS: creatures that remember
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -126,7 +127,7 @@ function startMatch(mode, oppIdx, cfg) {
     if (window.WeatherSfx) WeatherSfx.set(stadiumMat && wx ? wx.ambience : 'off');
     var news = stadiumMat && T3.stadiumNews ? T3.stadiumNews() : '';   // once per new stadium tier
     if (news) { persist(); setTimeout(function () { if (G) say('pip', news, 'cheer'); }, 2400); }
-    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = (window.Rivals && Rivals.greet(OPPONENTS.indexOf(ai))) || talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
@@ -358,6 +359,7 @@ function placeCube(id, zone, who) {
   crowdSay(G.clever ? 'ooh' : 'clap'); G.clever = false;
   if (!isAI(who)) say('pip', pick(['Nice move!', 'Good thinking!', 'Thunk! Placed.', 'Ooh, interesting!']), 'happy');
   if (!isAI(who) && firstAI() && Math.random() < 0.25) creatureMood(pick(['nod', 'nod', 'gasp']));
+  if (who === 0 && !isAI(0) && window.Rivals && firstAI() && window.Social && Social.bubble) { var rvl = Rivals.midLine(OPPONENTS.indexOf(firstAI()), { g: G, sym: c.s }); if (rvl) setTimeout(function () { if (G && G.phase === 'move') Social.bubble('opp', rvl); }, 700); } // RIVALS
   renderGame();
   nextTurn();
 }
@@ -409,6 +411,7 @@ function setGoal(tokens, val) {
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (window.Commentary) Commentary.say('goal', { goal: Eq.fmt(val), by: G.players[G.setter].name, cubes: tokens.filter(function (t) { return typeof t === 'object'; }).length });
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; if (window.Parent) Parent.note('goal', { tokens: tokens, value: val }); checkBadges({ type: 'goal' }); }
+  if (G.setter === 0 && !isAI(0) && G.mode !== 'tutorial' && window.Rivals && firstAI() && window.Social && Social.bubble) { var rvg = Rivals.midLine(OPPONENTS.indexOf(firstAI()), { g: G, goal: 1 }); if (rvg) setTimeout(function () { if (G && G.phase === 'move') Social.bubble('opp', rvg); }, 900); } // RIVALS
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
 }
@@ -463,6 +466,7 @@ function challenge(kind, who) {
   if (window.Recorder) Recorder.note('challenge', { by: who, kind: kind, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW
   var mover = G.lastMover;
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
+  if (window.Rivals) Rivals.note('challenge', { g: G }); // RIVALS
   var cname = (G.team && who === 0) ? Team.callerName() : G.players[who].name, mname = (G.team && mover === 0) ? Team.writerName() : G.players[mover].name;
   banner(kind === 'now' ? '⚡ NOW!' : '🚫 IMPOSSIBLE!', cname + ' challenges!');
   if (window.Commentary) Commentary.say('challenge', { kind: kind, by: cname });
@@ -658,6 +662,7 @@ function endShake(r) {
     checkBadges({ type: 'shake' });
     persist();
   }
+  if (window.Rivals && G.mode !== 'tutorial') Rivals.note('shake', { g: G, r: r }); // RIVALS
   renderGame();
   var aiI = idxs().filter(isAI).sort(function (x, y) { return (r.pts[y] || 0) - (r.pts[x] || 0); })[0];
   if (aiI !== undefined) focusAI(aiI);
@@ -705,6 +710,7 @@ function nextShake() {
 function endMatch() {
   if (window.Commentary) { var cmTop = Math.max.apply(null, G.players.map(function (p) { return p.score; })), cmN = G.players.filter(function (p) { return p.score === cmTop; }).length, cmMe = G.players[0].score === cmTop; Commentary.say('final', { won: cmMe && cmN === 1, tie: cmMe && cmN > 1 }); }
   if (window.Parent && G.mode !== 'tutorial') Parent.note('match'); // PARENT page (reads G; peeks at Pip's review notes)
+  if (window.Rivals && G.mode !== 'ai') Rivals.note('end', { g: G }); // RIVALS (Team-up, Three at the table, 3 players; one-on-one below)
   if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
   var a = G.players[0].score, html;
   if (G.mode === 'ai') {
@@ -720,11 +726,13 @@ function endMatch() {
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
     var seasonRes = window.Season ? Season.onMatch({ oppIdx: idx, you: a, them: b, won: won, tie: tie, mode: window.Cup && Cup.active() ? 'cup' : 'ai' }) : null;
+    if (window.Rivals) Rivals.note('end', { g: G, season: seasonRes }); // RIVALS (before Cup.onMatchEnd, which moves the Cup round on)
+    var rivalEnd = window.Rivals ? Rivals.endLine(idx, won ? 'w' : tie ? 't' : 'l') : '';
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
     var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
-      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?') + '</div></div>' +
+      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (rivalEnd || (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?')) + '</div></div>' +
       '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
       (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
@@ -738,6 +746,7 @@ function endMatch() {
     banner('⚽ GOOOAL!', winners.length > 1 ? 'It\'s a tie!' : G.players[winners[0]].name + ' wins!');
     var aiI = idxs().filter(isAI).sort(function (x, y) { return G.players[y].score - G.players[x].score; })[0];
     if (aiI !== undefined) focusAI(aiI);
+    if (window.Rivals && aiI !== undefined) { var rv3 = Rivals.endLine(OPPONENTS.indexOf(G.players[aiI].ai)); if (rv3) setTimeout(function () { if (G) say('opp', rv3); }, 900); } // RIVALS
     if (G.mode === 'ai3') { var sole = winners.indexOf(0) >= 0 && winners.length === 1; if (window.Trio) Trio.onMatchEnd(sole); if (sole) playerCelebrate(); else playerMood(winners.indexOf(0) >= 0 ? 'clap' : 'aw'); if (sole) { fx3('confetti'); fx3('wave'); board('GOOOAL!'); } }
     if (G.mode !== 'ai3') { if (winners.indexOf(0) >= 0 && winners.length === 1) { playerCelebrate(); mateMood('clap'); } else if (winners.indexOf(1) >= 0 && !isAI(1)) { mateMood('cheer'); playerMood('clap'); } }
     idxs().filter(isAI).forEach(function (i) {

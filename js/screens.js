@@ -110,6 +110,7 @@ function renderSetup() {
       (o.tip ? '<div class="otitle" style="margin-top:6px;font-size:13px;line-height:1.25">💡 Tip: ' + esc(o.tip) + '</div>' : '') +
       (o.taste ? '<div class="otitle" style="margin-top:4px;font-size:13px;line-height:1.25">🎲 Likes: ' + esc(o.taste) + '</div>' : '') +
       (window.Career ? Career.tagHTML(i) : '') + // CAREER: "Special rule: Use It Again"
+      (window.Rivals && open ? Rivals.cardLineHTML(i) : '') + // RIVALS: "Rival 3-2 · Last: you won 10-6"
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
   var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE, 2 * LEAGUE).join(''), legends = oppCards.slice(2 * LEAGUE).join(''); // CAREER

@@ -190,6 +190,35 @@ var AccountMerge = (function () {
     },
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
+    /*RIVALS-MERGE-START*/
+    rivals: function rivalsMerge(a, b) {
+    var isO = function (x) { return !!x && typeof x === 'object' && !Array.isArray(x); };
+    var cp = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };
+    a = isO(a) ? a : {}; b = isO(b) ? b : {};
+    var out = {};
+    Object.keys(a).concat(Object.keys(b)).forEach(function (id) {
+      if (id in out) return;
+      var x = a[id], y = b[id];
+      if (!isO(x) || !isO(y)) { out[id] = cp(isO(x) ? x : isO(y) ? y : (x !== undefined ? x : y)); return; }
+      // the side that played more matches against this creature wins; same count: the later day
+      var nx = +x.n || 0, ny = +y.n || 0, useX = nx !== ny ? nx > ny : String(x.d || '') >= String(y.d || '');
+      var w = cp(useX ? x : y), o = useX ? y : x;
+      w.bs = Math.max(+x.bs || 0, +y.bs || 0);
+      w.f = x.f && y.f ? (String(x.f) < String(y.f) ? x.f : y.f) : (x.f || y.f);
+      // milestones: union, earliest day for each
+      var ms = isO(w.ms) ? w.ms : {}, om = isO(o.ms) ? o.ms : {};
+      Object.keys(om).forEach(function (k) {
+        var p = ms[k], q = om[k], dp = Array.isArray(p) ? p[0] : p, dq = Array.isArray(q) ? q[0] : q;
+        if (p === undefined || (dq && dp && String(dq) < String(dp))) ms[k] = cp(q);
+      });
+      w.ms = ms;
+      if (Array.isArray(o.big) && (!Array.isArray(w.big) || +o.big[0] > +w.big[0])) w.big = cp(o.big);
+      if (Array.isArray(o.adm) && (!Array.isArray(w.adm) || +o.adm[2] > +w.adm[2])) w.adm = cp(o.adm);
+      out[id] = w;
+    });
+    return out;
+  },
+    /*RIVALS-MERGE-END*/
     fans: function (a, b) {
       a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
       var k = eachKey(a.k, b.k, function (x, y) {
@@ -214,6 +243,7 @@ var AccountMerge = (function () {
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
+    rivals: 'per creature: the side with more matches; milestones: union (earliest); best streak, biggest Goal, admired Solution: best of both',
     tour: 'tour stops seen on either device', parent: 'each counter and each day: highest'
   };
 

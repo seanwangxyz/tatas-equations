@@ -21,7 +21,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const C = (a, b, aAt = 1, bAt = 2) => AM.combine(a, b, { aAt, bAt }); // b is newer by default
 
 // Keys other features add to S outside defaults() (found with: grep -ohE "\bS\.[a-zA-Z_]+" js/*.js js/three/*.js)
-const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets'];
+const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals'];
 const ALL_KEYS = Object.keys(defaults()).concat(FEATURE_KEYS);
 
 // ---------------- every top-level key has an explicit rule and a plain-words description ----------------
