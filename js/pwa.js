@@ -10,7 +10,8 @@ var PWA = (function () {
   var IOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   var mq = function (q) { try { return !!(window.matchMedia && matchMedia(q).matches); } catch (e) { return false; } };
   function standalone() { return navigator.standalone === true || mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') || mq('(display-mode: minimal-ui)'); }
-  var SW_OK = 'serviceWorker' in navigator && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname));
+  // on this computer's test server the offline cache only runs when asked for (?sw=1), so edits show up at once while developing
+  var SW_OK = 'serviceWorker' in navigator && (location.protocol === 'https:' || (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && /[?&]sw=1/.test(location.search)));
   var reg = null, waiting = null, applying = false, deferred = null, info = null, bornAt = Date.now();
 
   function get(k) { try { return localStorage.getItem(KEY + k); } catch (e) { return null; } }

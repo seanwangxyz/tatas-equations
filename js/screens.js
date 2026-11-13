@@ -234,6 +234,7 @@ function renderSettings() {
     (T3.supported ? '<div class="setrow"><label>3D picture quality<br><small style="font-weight:600">Auto picks what this device can run smoothly.</small></label><div class="seg">' + [['auto', 'Auto'], ['low', 'Fast'], ['high', 'Pretty']].map(function (q) { return '<button class="' + ((S.set.quality || 'auto') === q[0] ? 'on' : '') + '" data-act="setQuality3d" data-arg="' + q[0] + '">' + q[1] + '</button>'; }).join('') + '</div></div>' : '') +
     '<div class="setrow"><label>Watch the intro again</label><button class="btn small" data-act="replayIntro">Play intro</button></div></div>' +
     (window.Account ? Account.panelHTML() : '') + // ACCOUNT
+    (window.PWA ? PWA.settingsHTML() : '') + // PWA: app on this device (install, offline, updates)
     '<div class="group"><h3>' + ico('disk') + ' Move progress to another device</h3>' +
     '<p>Copy this code, then paste it into Settings on the other device and tap <b>Load</b>.</p>' +
     '<textarea id="exportBox" readonly>' + exportCode() + '</textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small" data-act="copyCode">Copy code</button></div>' +
@@ -251,6 +252,7 @@ function renderSettings() {
     '<div class="setrow"><label>Pip\'s tip after a match<br><small style="font-weight:600">A "💡 One thing Pip spotted" button on the results screen. It only shows a moment the game can prove. Tips opened: ' + ((S.tips && S.tips.seen) || 0) + '</small></label><button class="btn small ' + (S.set.review !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="review" data-def="1">' + (S.set.review !== false ? '✔ On' : 'Off') + '</button></div>' +
     '<div class="setrow"><label>"Beat Tata\'s Record" needs ' + TATA_RECORD + ' points in one match (change <code>TATA_RECORD</code> near the top of the game code). Best so far: ' + S.stats.bestMatch + '</label></div>' +
     '<div class="setrow"><label>Cube faces in this game (see RULES_SUMMARY.md)</label><table class="facetable">' + faces + '</table></div>' +
+    (window.PWA ? PWA.parentRowHTML() : '') + // PWA: Reset app cache
     '<div class="setrow"><label>Start over from zero</label><button class="btn small pink" data-act="resetAsk">Reset progress</button></div></div>' +
     '</div>';
 }
