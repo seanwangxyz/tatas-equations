@@ -10,6 +10,7 @@
 //   Net.subscribe(path, cb)         cb(value) now and on every change; returns an unsubscribe function
 //   Net.presence(path, me, cb)      mark "I'm here" at path/me (removed when I disconnect); cb({seat: true}) for everyone here
 //   Net.stamp()                     a "server time" value for room creation
+//   Net.connection(cb)              cb(true / false) whenever THIS device's link to the database comes or goes; returns unsubscribe
 // Paths look like 'rooms/FROG47/state'. Values are small JSON (the game state travels as one JSON string).
 //
 // 'firebase': Google Firebase Realtime Database, loaded lazily from Google's CDN only when online play opens.
@@ -17,6 +18,8 @@
 //             The "database" lives in this browser's localStorage, and the tabs hear each other through
 //             'storage' events. p= gives each tab its own player (own save, own device id).
 //             TataOnline.drop(true/false) in a tab pretends its Wi-Fi went off / came back.
+//             A third player: a third tab with &p=c (any 1-8 letters/digits). All tabs must share one origin
+//             (e.g. all on http://127.0.0.1:PORT), because the pretend database is that origin's localStorage.
 var Net = (function () {
   var SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';   // pinned version
   var q = location.search;
@@ -27,7 +30,9 @@ var Net = (function () {
 
   // ---------------------------------------------------------------- local (two tabs, one browser)
   function Local() {
-    var PFX = 'tataNet:', subs = [], dropped = false, queue = [], pending = {}, uid = null;
+    var PFX = 'tataNet:', subs = [], dropped = false, queue = [], pending = {}, uid = null, conns = [];
+    function tellConn() { var ok = !dropped && navigator.onLine !== false; conns.slice().forEach(function (f) { try { f(ok); } catch (e) {} }); }
+    window.addEventListener('online', tellConn); window.addEventListener('offline', tellConn);
     function allKeys() { var out = []; try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(PFX) === 0) out.push(k.slice(PFX.length)); } } catch (e) {} return out; }
     function related(a, b) { return a === b || b.indexOf(a + '/') === 0 || a.indexOf(b + '/') === 0; }
     function put(tree, parts, v) {
@@ -97,10 +102,12 @@ var Net = (function () {
         return function () { bye(); live = false; clearInterval(t1); clearInterval(t2); window.removeEventListener('pagehide', bye); };
       },
       stamp: function () { return Date.now(); },
+      connection: function (cb) { conns.push(cb); setTimeout(function () { if (conns.indexOf(cb) >= 0) cb(!dropped && navigator.onLine !== false); }, 0); return function () { conns = conns.filter(function (f) { return f !== cb; }); }; },
       // Testing: pretend the connection dropped (writes wait, nothing is heard) or came back.
       drop: function (on) {
         dropped = !!on;
         if (!dropped) { var qd = queue; queue = []; qd.forEach(function (w) { writeNow(w[0], w[1]); }); subs.forEach(function (s) { changed(s.path); }); }
+        tellConn();
         return dropped;
       }
     };
@@ -126,6 +133,7 @@ var Net = (function () {
             if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
             db = firebase.database();
             var auth = firebase.auth();
+            // (room for the ACCOUNT helper's one shared-auth block; online play signs in anonymously below if nobody is signed in)
             if (auth.currentUser) return auth.currentUser;
             return new Promise(function (ok, bad) {
               var off = auth.onAuthStateChanged(function (u) { if (u) { off(); ok(u); } });
@@ -156,6 +164,12 @@ var Net = (function () {
         return function () { conn.off('value', hc); all.off('value', ha); mine.onDisconnect().cancel(); mine.remove().catch(function () {}); };
       },
       stamp: function () { return firebase.database.ServerValue.TIMESTAMP; },
+      // '.info/connected' starts false until the first connection: only a drop AFTER being connected counts as offline.
+      connection: function (cb) {
+        var ref = db.ref('.info/connected'), was = false;
+        var h = ref.on('value', function (s) { var ok = s.val() === true; if (ok) was = true; if (ok || was) cb(ok); });
+        return function () { ref.off('value', h); };
+      },
       drop: function (on) { if (on) firebase.database().goOffline(); else firebase.database().goOnline(); return !!on; }
     };
     return api;
@@ -168,6 +182,7 @@ var Net = (function () {
     read: function (p) { return I().read(p); }, write: function (p, v) { return I().write(p, v); }, create: function (p, v) { return I().create(p, v); },
     transaction: function (p, f) { return I().transaction(p, f); }, subscribe: function (p, cb) { return I().subscribe(p, cb); },
     presence: function (p, me, cb) { return I().presence(p, me, cb); }, stamp: function () { return I().stamp(); },
+    connection: function (cb) { return I().connection(cb); },
     drop: function (on) { return I().drop(on); }
   };
 })();

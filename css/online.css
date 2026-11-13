@@ -12,5 +12,27 @@
 .ol-pick.on{border-color:var(--good);background:#e1f8ee}
 .ol-banner{position:fixed;top:calc(68px + var(--sat));left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
   max-width:calc(100vw - 24px);background:var(--paper);color:var(--ink);border:3px solid var(--gold);border-radius:18px;padding:8px 14px;font-weight:800;font-size:17px;box-shadow:var(--shadow)}
-.ol-bb{display:flex;gap:6px}
+.ol-bb{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.ol-banner > span:not(.ol-bb){display:block;text-align:center}
 .ol-toast{font-weight:800}
+/* Lobby: who is in the room (two or three players), the third seat, options */
+.ol-seats{display:flex;flex-direction:column;gap:6px;margin:6px auto 10px;max-width:440px}
+.ol-seat{display:flex;align-items:center;gap:10px;background:#fff;border:3px solid var(--line);border-radius:16px;padding:6px 12px;font-size:18px;min-height:46px}
+.ol-seat b{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-seat small{margin-left:auto;color:var(--ink2);font-weight:800;font-size:14px;text-align:right}
+.ol-seat.ok{border-color:var(--good)}
+.ol-seat.wait small{color:var(--mute)}
+.ol-seat.empty{border-style:dashed;justify-content:center}
+.ol-seat.empty small{margin:0;text-align:center}
+.ol-seat.cre{border-style:dashed;flex-wrap:wrap}
+.ol-seat.cre label{font-weight:800;font-size:16px}
+.ol-seat.cre select{flex:1 1 180px;font:inherit;font-size:16px;padding:6px 8px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);min-width:0}
+.ol-q{text-align:center;margin-bottom:4px}
+.ol-opt{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-weight:800;margin:4px 0 8px}
+.ol-share{margin-top:-4px}
+.ol-codeline{text-align:center;font-size:18px;margin:0 0 4px}
+/* this device lost its own connection */
+.ol-offline{position:fixed;top:calc(8px + var(--sat));left:50%;transform:translateX(-50%);z-index:61;max-width:calc(100vw - 24px);background:var(--paper);color:var(--ink);
+  border:3px solid var(--sky);border-radius:18px;padding:6px 14px;font-weight:800;font-size:16px;box-shadow:var(--shadow);text-align:center}
+.ol-offline small{display:block;font-weight:700;font-size:13px;color:var(--ink2)}
+@media (max-width:480px){.ol-seat{font-size:16px}.ol-seat small{font-size:13px}}
