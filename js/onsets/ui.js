@@ -60,7 +60,9 @@ var OSUI = (function () {
   // ======================= THE SET-NAME BUILDER =======================
   // OB = { title, universe, goal (number or null), pools: [{label, ids, req?, max?, forb?}], cubes (by id),
   //        mode, check(tokens) -> OSE.checkSolution result (or null in free practice), onDone(tokens|null, gaveUp),
-  //        noGiveUp, extraBtn: {label, act} }
+  //        noGiveUp, extraBtn: {label, act},
+  //        dock (3D: the builder sits at the side / bottom so the cards on the table stay in view),
+  //        onLive(set | null, label) (3D: the cards of the set being built lift on the table, label = "R ∪ B: 7 cards") }
   var OB = null;
   function shell() {
     var el = document.getElementById('osB');
@@ -73,11 +75,11 @@ var OSUI = (function () {
   }
   function openSetBuilder(cfg) {
     OB = cfg; OB.tokens = OB.tokens || [];
-    shell().classList.add('on');
+    var sh = shell(); sh.classList.toggle('os-dock', !!cfg.dock); sh.classList.add('on');
     if (Snd.getMood && Snd.getMood() !== 'off') Snd.setMood('think');
     renderSetBuilder();
   }
-  function close() { var el = document.getElementById('osB'); if (el) el.classList.remove('on'); OB = null; }
+  function close() { var el = document.getElementById('osB'); if (el) el.classList.remove('on'); if (OB && OB.onLive) { try { OB.onLive(null, null); } catch (e) {} } OB = null; }
   function used() { var u = {}; OB.tokens.forEach(function (t) { if (typeof t === 'object') u[t.id] = 1; }); return u; }
   // the longest start of what he has built that already names a set (to light up while he is still building)
   function partial(tokens, uni) {
@@ -113,6 +115,10 @@ var OSUI = (function () {
       if (pe) lit = pe.set;
       live = (ev.code === 'missing' || ev.code === 'paren') ? '…keep building' + (pe ? ' (so far: ' + pe.count + ' card' + (pe.count === 1 ? '' : 's') + ')' : '') : esc(ev.msg);
       liveCls = 'meh';
+    }
+    if (OB.onLive) {
+      var lc = lit != null ? OSE.popcount(lit) : 0, what = ev && ev.ok && !ev.ambiguous ? exprText(OB.tokens) : 'so far';
+      try { OB.onLive(lit, lit != null ? what + ': ' + lc + ' card' + (lc === 1 ? '' : 's') : null); } catch (e) {}
     }
     var checks = '';
     if (chk) {
@@ -169,7 +175,7 @@ var OSUI = (function () {
   var GB = null;
   function openGoalBuilder(cfg) {
     GB = cfg; GB.picked = []; GB.shape = null;
-    shell().classList.add('on');
+    var sh = shell(); sh.classList.toggle('os-dock', !!cfg.dock); sh.classList.add('on');
     renderGoalBuilder();
   }
   function goalNow() {
@@ -218,7 +224,7 @@ var OSUI = (function () {
     var b = GB; GB = null; close(); b.onDone(g, v.value);
   };
   function builderOpen() { return !!OB || !!GB; }
-  function closeAll() { OB = null; GB = null; close(); }
+  function closeAll() { GB = null; close(); }
 
   return { cardHTML: cardHTML, universeHTML: universeHTML, cubeHTML: cubeHTML, faceHTML: faceHTML, exprHTML: exprHTML, exprText: exprText, goalPicHTML: goalPicHTML, shapeIcon: shapeIcon,
     openSetBuilder: openSetBuilder, openGoalBuilder: openGoalBuilder, builderOpen: builderOpen, closeAll: closeAll, rerender: function () { if (OB) renderSetBuilder(); else if (GB) renderGoalBuilder(); } };

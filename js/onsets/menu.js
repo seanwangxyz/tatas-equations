@@ -13,6 +13,7 @@ var Onsets = (function () {
   }
   function open() {
     OSUI.closeAll(); OT = null; ODR = null;
+    if (window.OS3D) OS3D.end(); // (a 3D match hands the table back to Equations)
     api.view = 'menu'; go('onsets'); Snd.setMood('menu');
     var st = osState();
     var greet = st.tutorialDone ? pick(['Ready to count some cards?', 'Sets, sets, sets! Let\'s play.', 'Which creature will you beat at On-Sets today?']) : 'On-Sets is the sister game of Equations. Instead of numbers you name groups of cards. Start with <b>How to Play</b>!';
@@ -25,6 +26,7 @@ var Onsets = (function () {
       '<button class="btn big orange" data-act="osTutorial"><span class="bi">' + ico('cap') + '</span><span class="bl">How to Play</span></button>' +
       '<button class="btn big yellow" data-act="osDrills"><span class="bi">' + ico('star') + '</span><span class="bl">Set Drills</span></button>' +
       '<button class="btn big blue" data-act="osPvp"><span class="bi">' + ico('play') + '</span><span class="bl">Two Players</span></button>' +
+      '<button class="btn big pink" data-act="os3p"><span class="bi">' + ico('people') + '</span><span class="bl">Three Players</span></button>' +
       '<button class="btn big purple" data-act="osRules"><span class="bi">' + ico('bulb') + '</span><span class="bl">The Rules</span></button>' +
       '</nav>' +
       '<div class="menu-sub"><button class="btn ghost" data-act="osBackToEq">' + ico('home') + ' Back to Equations</button></div>';
@@ -59,7 +61,54 @@ var Onsets = (function () {
   };
   ACT.osTutorial = function () { osStartTutorial(); };
   ACT.osDrills = function () { osOpenDrills(); };
-  ACT.osBackToEq = function () { OSUI.closeAll(); OG = null; OT = null; ODR = null; gotoTitle(); };
+  ACT.osBackToEq = function () { if (window.OS3D) OS3D.end(); OSUI.closeAll(); OG = null; OT = null; ODR = null; gotoTitle(); };
+  // ---- Three players (rules IV-B, VI-C, VII: the Third Party; see ONSETS_RULES_SUMMARY.md) ----
+  function openIdx() { return OPPONENTS.map(function (o, i) { return i; }).filter(osOpen); }
+  function oppChips(act, picked) {
+    return '<div class="os-chips">' + openIdx().map(function (i) {
+      var o = OPPONENTS[i], on = picked && picked.indexOf(i) >= 0;
+      return '<button class="os-chip' + (on ? ' on' : '') + '" data-act="' + act + '" data-arg="' + i + '">' + avatarHTML(o, 'sm') + '<b>' + esc(o.name) + '</b><small>' + '●'.repeat(OSAI.level(o)) + '</small></button>';
+    }).join('') + '</div>';
+  }
+  var trio = null;
+  ACT.os3p = function () {
+    var two = openIdx().length >= 2;
+    modal('<h2 class="hero">' + ico('people') + ' Three players</h2><div class="mm-opts os-3p">' +
+      '<button class="mm-opt' + (two ? '' : ' lock') + '" data-act="' + (two ? 'os3pAI' : 'closeModal') + '"><span class="mm-oi" style="background:#e5dbff">' + ico(two ? 'paw' : 'lock') + '</span><span class="mm-ot"><b>You against two creatures</b><small>' + (two ? 'Pick any two creatures you have opened.' : 'Beat a creature first so two are open.') + '</small></span></button>' +
+      '<button class="mm-opt" data-act="os3pFam" data-arg="c"><span class="mm-oi" style="background:#ffe8cc">' + ico('people') + '</span><span class="mm-ot"><b>You, a grown-up and a creature</b><small>Two people on this device and one creature.</small></span></button>' +
+      '<button class="mm-opt" data-act="os3pFam" data-arg="p"><span class="mm-oi" style="background:#d3f9d8">' + ico('people') + '</span><span class="mm-ot"><b>Three people</b><small>Pass and play on this device.</small></span></button>' +
+      '</div><p class="os-note">With three players, the one who didn\'t challenge is the <b>Third Party</b> and may write a Solution too (4 or 6 if correct).</p>' +
+      '<div class="row"><button class="btn" data-act="closeModal">' + ico('back') + ' Back</button></div>');
+  };
+  ACT.os3pAI = function () { trio = []; trioModal(); };
+  function trioModal() {
+    modal('<h2 class="hero">Pick two creatures</h2><p class="os-note">' + (trio.length < 2 ? 'Tap ' + (2 - trio.length) + ' more.' : 'Ready!') + '</p>' + oppChips('os3pPick', trio) +
+      '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="os3pGo"' + (trio.length === 2 ? '' : ' disabled') + '>' + ico('play') + ' Start</button><button class="btn" data-act="os3p">' + ico('back') + ' Back</button></div>');
+  }
+  ACT.os3pPick = function (el) { var i = +el.dataset.arg, k = trio.indexOf(i); if (k >= 0) trio.splice(k, 1); else if (trio.length < 2) trio.push(i); Snd.click(); trioModal(); };
+  ACT.os3pGo = function () { if (!trio || trio.length !== 2) return; closeModal(); osStartMatch('ai3', -1, { a: trio[0], b: trio[1] }); };
+  var fam = null;
+  ACT.os3pFam = function (el) {
+    var st = osState(); fam = { creature: el.dataset.arg === 'c' ? (fam && fam.creature >= 0 ? fam.creature : openIdx()[0]) : -1 };
+    famModal(st);
+  };
+  function famModal(st) {
+    var withC = fam.creature >= 0;
+    modal('<h2 class="hero">' + (withC ? 'You, a grown-up and a creature' : 'Three people') + '</h2>' +
+      '<div class="setrow"><label for="osN2">Second player</label><input id="osN2" type="text" maxlength="14" value="' + esc(st.p2 || 'Tata') + '"></div>' +
+      (withC ? '<p class="os-note">Which creature?</p>' + oppChips('os3pCre', [fam.creature]) : '<div class="setrow"><label for="osN3">Third player</label><input id="osN3" type="text" maxlength="14" value="' + esc(st.p3 || 'Mama') + '"></div>') +
+      '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="os3pFamGo">' + ico('play') + ' Start</button><button class="btn" data-act="os3p">' + ico('back') + ' Back</button></div>');
+  }
+  ACT.os3pCre = function (el) {
+    var st = osState(), n2 = document.getElementById('osN2'); if (n2) st.p2 = (n2.value || '').trim() || st.p2;
+    fam.creature = +el.dataset.arg; Snd.click(); famModal(st);
+  };
+  ACT.os3pFamGo = function () {
+    var st = osState(), n2 = document.getElementById('osN2'), n3 = document.getElementById('osN3');
+    var a = (n2 && n2.value || '').trim() || 'Player 2', b = (n3 && n3.value || '').trim() || 'Player 3';
+    st.p2 = a; if (n3) st.p3 = b; persist(); closeModal();
+    osStartMatch('p3', -1, fam.creature >= 0 ? { n2: a, creature: fam.creature } : { n2: a, n3: b, creature: -1 });
+  };
   ACT.osRules = function () {
     modal('<h2 class="hero">On-Sets in a nutshell</h2>' +
       '<ul class="reasons os-rules">' +

@@ -34,6 +34,10 @@ section 9.
 ⚠ **INTERPRETATION 1 (cube faces).** The rules list the four symbols on colour, operation and
 Restriction cubes but not which two symbols are repeated on the six faces. The game rolls each of
 the four symbols with an equal chance. One constant, `FACES` at the top of `js/onsets/engine.js`.
+On the 3D table the roll is the real physics pour: the face that lands up counts. A colour or operation cube
+there has four symbols on six faces, so each cube gets one of two face layouts at random every shake
+(B R G Y + B R, or B R G Y + G Y; ∪ ∩ − ′ + ∪ ∩, or + − ′): over the two layouts each symbol still comes up
+exactly 1 time in 4 (checked in `tests/onsets.test.js`). Digit cubes are real 1 1 2 3 4 5 cubes.
 
 ## 2. Starting a shake (sections I-D, II, pages O3-O4)
 
@@ -86,9 +90,10 @@ builder refuses these two with a kind sentence instead, so an 8-year-old can't l
   the last cube goes to Required or Permitted; then the opponent may still call Impossible!, otherwise
   **everyone writes** a Solution.
 
-⚠ **INTERPRETATION 5 (who may challenge with two players).** Anyone may challenge at any moment. In
-the app (as in Tata's Equations, item 12) the player whose turn it is challenges; with two players that
-is the only opponent of the last mover, so nothing is lost.
+⚠ **INTERPRETATION 5 (who may challenge).** Anyone may challenge at any moment. With two players the app
+lets the player whose turn it is challenge (the only opponent of the last mover, so nothing is lost). With
+three players (as in Tata's Equations) the other person at the table gets "can challenge too" buttons after
+every move, and a creature that is not next may also challenge out of turn (it looks once per move).
 
 ## 6. Solutions (sections III, VI-A, VII-B, pages O2, O8-O12)
 
@@ -129,15 +134,24 @@ tested in `tests/onsets.test.js` but the game never rolls = or ⊆ yet.
 ## 7. Scoring (sections VI, X, pages O2, O15)
 
 - After a challenge: anyone **not correct scores 2**; a **correct Challenger or Mover scores 6**.
-  Three-player Third Party rules are in the engine (identical to Equations: tested case by case
-  against `Eq.scoreChallenge`), but the app plays two players.
+- **Three players** (rules IV-B and VI-C, page O3): the player who is neither the Challenger nor the last Mover
+  is the **Third Party** and **may** present a Solution. A correct Third Party scores **6** if they (a) present a
+  correct Solution after Impossible!, (b) present a correct Solution after Now! when the Challenger's is not
+  correct, or (c) present none after Now! and the Challenger's is incorrect; otherwise a correct Third Party
+  scores **4**. (Correct = wrote a correct Solution, or didn't have to and nobody wrote one: rule V.) The engine's
+  `scoreChallenge` was checked against this text for all 12 cases (`tests/onsets.test.js`); it is the same as
+  Equations. After the last cube **all** players write (4 / 2); any player but the last mover may still call
+  Impossible! first. "No Goal" with three (pages O6-O7): Challenger 6/2, Goal-setter 2/6, a Third Party who does
+  not write 6 if the Challenger is wrong, 2 if right (interpretation 15).
 - After the last cube with no challenge: **correct 4, not correct 2**.
 - A match's winner is the higher total (match points tables, page O17, are not shown).
 
 ## 8. Time limits (section XI, pages O15-O16)
 
 Left out on purpose: the owner's rule is "reward skill, not time; no punishing timers". Nothing in the
-app is timed. Computer players pause about a second so the kid can follow.
+app is timed. Computer players pause about a second so the kid can follow. With two creatures at the table the
+game stops after one creature's move and waits (untimed) for the kid to look and tap **Go on** (or challenge)
+before the other creature moves, as in Equations.
 
 ## 9. Every interpretation, in one place
 
@@ -147,7 +161,7 @@ app is timed. Computer players pause about a second so the kid can follow.
 | 2 | Universe size | 6–12 (page O4) vs 6–10 (Glossary OG3) | 6–12, chosen by the dealer |
 | 3 | Unwinnable Goals | Legal to set, then lost to Impossible! | Goal builder refuses negative Goals and Goals bigger than the Universe |
 | 4 | Bonus moves | Allowed for a player not in the lead | Left out (as in Equations) |
-| 5 | Out-of-turn challenges | Anyone, any time | The player whose turn it is (2 players: same thing) |
+| 5 | Out-of-turn challenges | Anyone, any time | 2 players: the player whose turn it is (same thing). 3 players: "can challenge too" buttons; a creature not next may challenge once per move |
 | 6 | "Every interpretation equals the Goal" | Equals = same number of cards | Compares card counts of every reading |
 | 7 | Each cube once | Implied | Enforced |
 | 8 | Spare digit cubes | "Should be placed in Forbidden" | Moved there automatically when the Goal is set |
@@ -156,4 +170,6 @@ app is timed. Computer players pause about a second so the kid can follow.
 | 11 | Writing Solutions on paper; checking by opponents; judges | Opponents must show a Solution is wrong | The app checks instantly and explains why, kindly |
 | 12 | Computer strength | Not in the rules | Four levels from each creature's stars (js/onsets/ai.js) |
 | 13 | "No Goal" vs the computer | Opponent agrees or challenges | The creature searches for any Goal + Solution; if it finds one it challenges and shows it, otherwise it agrees |
-| 14 | Three players | Allowed | Not in this first version (engine scoring is ready) |
+| 14 | Three players | Allowed | You + two creatures, you + a grown-up + a creature, or three people. Third Party scoring as rule VI-C. Two creatures: an untimed "Go on" pause between their moves |
+| 15 | Third Party after "No Goal" | The Third Party may also write a Goal and Solution | The app doesn't ask; the Third Party is scored as not writing (6 if the challenger was wrong, 2 if right), as in Equations item 13 |
+| 16 | Face layout of 4-symbol cubes (3D) | Not specified | Two layouts, picked at random each shake, so each symbol is 1 in 4 (see interpretation 1) |
