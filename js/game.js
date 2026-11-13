@@ -406,6 +406,7 @@ function placeCube(id, zone, who) {
   if (window.Missions) Missions.note('move', { g: G, id: id, zone: zone, by: who }); // MISSIONS (before the cube moves)
   c.zone = zone; c.order = ++orderCounter; G.justMoved = id; G.highlight = null;
   G.lastMover = who;
+  if (window.Pace) Pace.moved(); // PACE: the clock for the next call starts
   if (G.tour) { G.tour.bonusBy = null; G.tour.armed = null; } // TOURNEY: the next player may make their own bonus move
   if (G.team) Team.sync(); // the other teammate takes the team's next turn
   if (!T3.active()) Snd.thunk();
@@ -425,7 +426,7 @@ function placeCube(id, zone, who) {
 // RACE: after every move, everyone except the mover may challenge, and it is a race. A creature that spots something calls
 // after its own reaction time (stronger creatures are quicker); the kid can beat it to the button. Any new move or
 // challenge cancels a call that has not happened yet (aiStill). It never blocks the turn.
-function reactMs(p) { var o = (G.players[p] && G.players[p].ai) || {}, s = o.stars || 3, f = o.fire || 0; return Math.max(1800, 6800 - s * 900 - f * 450) + Math.random() * 1200; }
+function reactMs(p) { var o = (G.players[p] && G.players[p].ai) || {}, s = o.stars || 3, f = o.fire || 0, base = Math.max(1800, 6800 - s * 900 - f * 450) + Math.random() * 1200; return window.Pace ? Pace.reactMs(p, base) : base; } // PACE: calibrated to his own speed
 function aiInterject() {
   if (G.mode === 'tutorial' || nP() < 3) return false;
   var cands = idxs().filter(function (i) { return isAI(i) && i !== G.lastMover && i !== G.turn; });
@@ -465,6 +466,7 @@ ACT.buildGoal = function () {
 function setGoal(tokens, val) {
   tokens.forEach(function (t) { if (typeof t === 'object') { G.cubes[t.id].zone = 'goal'; G.cubes[t.id].order = ++orderCounter; } });
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
+  if (window.Pace) Pace.moved(); // PACE: a Goal can be challenged too
   if (window.Vari) Vari.afterGoal(tokens); // VARIATIONS: 0 Wild needs the Goal's cubes in the math mode
   if (window.Recorder) Recorder.note('goal', { by: G.setter, goal: val, goalTokens: tokens, cubes: G.cubes, fr: G.fractions, shake: G.shake }); // REVIEW
   if (window.Missions) Missions.note('goal', { g: G, tokens: tokens, val: val }); // MISSIONS
@@ -528,6 +530,7 @@ function banner(text, sub) {
 }
 function thirdOf(a, b) { if (nP() < 3) return null; var r = idxs().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
 function challenge(kind, who) {
+  if (who === 0 && !isAI(0) && window.Pace) Pace.kidCalled(); // PACE: how quickly he called
   if (window.Recorder) Recorder.note('challenge', { by: who, kind: kind, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW
   if (window.Missions) Missions.note('challenge', { g: G, kind: kind, by: who }); // MISSIONS
   var mover = G.lastMover;
@@ -736,6 +739,7 @@ function rcSide(i, top, gain) {
 }
 function rcXP() { return xpLog.length ? '<div class="xplist">' + xpLog.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('') + '</div>' : ''; }
 function endShake(r) {
+  if (window.Pace && r && r.pts && G.mode !== 'tutorial') { var pk = r.pts[0] || 0, po = Math.max.apply(null, idxs().filter(function (q) { return q !== 0; }).map(function (q) { return r.pts[q] || 0; }).concat([0])); Pace.shakeEnd(pk < po); } // PACE: a lost shake gives him a little more time next shake
   if (window.Missions && G.mode !== 'tutorial') Missions.note('shake', { g: G, r: r, phase: G.phase }); // MISSIONS
   G.phase = 'over'; G.busy = false; G.carrying = false;
   G.lastShake = r; // TOURNEY: Judge Pip can explain why each Solution counted or not
@@ -911,7 +915,7 @@ function aiTurn() {
   var me = G.turn, o = G.players[me].ai;
   G.wait = false; focusAI(me);
   G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
-  var pause = nP() > 2 ? 2300 + Math.random() * 1300 : 900 + Math.random() * 700; // RACE: a moment for the others to call first
+  var pause = nP() > 2 ? Math.min(6000, Math.max(2300, window.Pace ? Pace.reactMs(me, 2300 + Math.random() * 1300) : 2300 + Math.random() * 1300)) : 900 + Math.random() * 700; // RACE + PACE: a moment for the others to call first, at least his own speed
   if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
   var sit = aiSituation();
   var tArgs = [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()];

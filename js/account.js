@@ -190,6 +190,12 @@ var AccountMerge = (function () {
     },
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
+    pace: function (a, b) { // PACE: per level, the device with more measured calls (same: the quicker average)
+      a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
+      var la = isObj(a.lv) ? a.lv : {}, lb = isObj(b.lv) ? b.lv : {}, out = { v: 1, lv: {} };
+      Object.keys(la).concat(Object.keys(lb)).forEach(function (k) { if (k in out.lv) return; var x = la[k], y = lb[k]; if (!isObj(x) || !isObj(y)) { out.lv[k] = clone(isObj(x) ? x : y); return; } var nx = num(x.n), ny = num(y.n); out.lv[k] = clone(nx !== ny ? (nx > ny ? x : y) : (num(x.avg) <= num(y.avg) ? x : y)); });
+      return out;
+    },
     matchday: function (a, b, c) { return pickNewer(a, b, c); }, // MATCHDAY: toss seed, counter, a pending toss
     tourney: function (a, b, c) { // TOURNEY: counters highest, options newest, round log union by time (20 newest)
       if (!has(a)) return clone(b); if (!has(b)) return clone(a);
@@ -274,6 +280,7 @@ var AccountMerge = (function () {
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
+    pace: 'creature reaction speed: per level, the device with more measured calls',
     matchday: 'the coin-toss seed: the newer device',
     tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',
     rivals: 'per creature: the side with more matches; milestones: union (earliest); best streak, biggest Goal, admired Solution: best of both',

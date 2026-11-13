@@ -261,6 +261,7 @@ function renderSettings() {
     (window.VoiceChat ? VoiceChat.parentHTML() : '') + // VOICE: allow talking in online games (press and hold), per device
     (T3.supported ? '<div class="setrow"><label>Speed overlay<br><small style="font-weight:600">A small box with the frame rate and a 20-second benchmark (for sending a speed report).</small></label><button class="btn small ' + (localStorage.getItem('tataEq.perf') === '1' ? 'green' : '') + '" data-act="perfToggle">' + (localStorage.getItem('tataEq.perf') === '1' ? '✔ On' : 'Off') + '</button></div>' : '') +
     (window.Missions ? Missions.settingsHTML() : '') + // MISSIONS (house feature)
+    (window.Pace ? Pace.parentHTML() : '') + // PACE: how quickly he calls, and how the creatures follow
     '<div class="setrow"><label>Pip\'s tip after a match<br><small style="font-weight:600">A "💡 One thing Pip spotted" button on the results screen. It only shows a moment the game can prove. Tips opened: ' + ((S.tips && S.tips.seen) || 0) + '</small></label><button class="btn small ' + (S.set.review !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="review" data-def="1">' + (S.set.review !== false ? '✔ On' : 'Off') + '</button></div>' +
     (window.Why ? Why.settingsHTML() : '') + // WHY: the Why? button Setting
     '<div class="setrow"><label>"Beat Tata\'s Record" needs ' + TATA_RECORD + ' points in one match (change <code>TATA_RECORD</code> near the top of the game code). Best so far: ' + S.stats.bestMatch + '</label></div>' +
