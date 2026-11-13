@@ -12,6 +12,11 @@
 //   - A new level (a stronger creature than any he has calibrated) starts slightly harder: 90 % of his average on the
 //     nearest easier level, then calibrates again from his own calls there.
 //   - Until a level has an average, the creature's built-in time is used (game.js reactMs fallback).
+//   - His record against each creature (S.rivals, its last 5 results): every extra win over losses makes THAT creature
+//     6 % quicker, every extra loss 6 % slower (from 25 % quicker to 25 % slower).
+//   - Grown-ups can switch to a fixed time in the Parent corner: S.set.paceMode = 'manual', S.set.paceSec seconds,
+//     give or take 0.75 s (no calibration, no record, no slack).
+//   - The measurements belong to the save, so they follow whoever is signed in (the cloud save of that account).
 var Pace = (function () {
   var STEP_UP = 0.9, SLACK_MAX = 3000, MIN_MS = 1500, MAX_MS = 15000;
   var FACTOR = [1.3, 1.5, 1.3, 1.15, 1.0, 0.9];   // by stars (index 0 unused); each fire icon takes 0.05 off
@@ -61,13 +66,21 @@ var Pace = (function () {
     L.slack = kidLost ? Math.min(SLACK_MAX, (L.slack || 0) + 300 + Math.round(Math.random() * 500)) : Math.round((L.slack || 0) * 0.6);
     persist();
   }
-  // how long creature p takes to call (or to move, with three at the table); base = its built-in time
+  // his last 5 results against this creature: wins - losses -> 0.75 .. 1.25 (fewer wins for him = more time)
+  function recordFactor(o) {
+    var r = S.rivals && o && S.rivals[o.id], list = r && Array.isArray(r.r) ? r.r : [];
+    var d = 0; list.forEach(function (x) { if (x && x[0] === 'w') d++; else if (x && x[0] === 'l') d--; });
+    return Math.max(0.75, Math.min(1.25, 1 - 0.06 * d));
+  }
+  function manual() { return S.set && S.set.paceMode === 'manual'; }
+  // how long creature p takes to call Now! / Impossible!; base = its built-in time
   function reactMs(p, base) {
     if (!active() || !G.players[p] || !G.players[p].ai) return base;
+    if (manual()) { var sec = Math.max(0.5, Math.min(20, +S.set.paceSec || 5)); return Math.round(sec * 1000 + (Math.random() * 2 - 1) * 750); }
     var k = key(); if (k == null) return base;
     var L = lvl(k, true);
-    if (!(L.avg > 0)) return base + (L.slack || 0);
-    var o = G.players[p].ai, f = (FACTOR[o.stars] || 1) - 0.05 * (o.fire || 0);
+    if (!(L.avg > 0)) return base * recordFactor(G.players[p].ai) + (L.slack || 0);
+    var o = G.players[p].ai, f = ((FACTOR[o.stars] || 1) - 0.05 * (o.fire || 0)) * recordFactor(o);
     return Math.max(MIN_MS, Math.min(MAX_MS, L.avg * f + (L.slack || 0) + Math.random() * 900));
   }
   // for Tata: one line per level that has a measurement
@@ -81,5 +94,5 @@ var Pace = (function () {
     }).join('') : '<li>No calls measured yet: creatures use their own speed.</li>';
     return '<div class="setrow" style="display:block"><label>Creature reaction speed (three at the table)<br><small style="font-weight:600">Set from how quickly ' + esc(S.name) + ' calls Now! or Impossible!, per level. Slower after a lost shake; a new level starts a little quicker.</small></label><ul style="margin:6px 0 0 18px;font-size:14px">' + body + '</ul></div>';
   }
-  return { moved: moved, kidCalled: kidCalled, shakeEnd: shakeEnd, reactMs: reactMs, parentHTML: parentHTML, _lvl: lvl, _key: key };
+  return { recordFactor: recordFactor, manual: manual, moved: moved, kidCalled: kidCalled, shakeEnd: shakeEnd, reactMs: reactMs, parentHTML: parentHTML, _lvl: lvl, _key: key };
 })();

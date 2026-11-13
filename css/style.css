@@ -739,3 +739,19 @@ html.a11y-calm .modal-back.leaving{display:none}
 .trio-chip .avatar{width:40px;height:40px;font-size:24px}
 .trio-chip.lock small{font-size:10px}
 @media (max-width:420px){.trio-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* GROWN-UPS: the PIN pad, the Parent corner panel */
+.gu-pad{text-align:center;padding:10px 4px}
+.gu-pad h3{margin:0 0 4px}
+.gu-pad p{margin:4px 0 10px}
+.gu-pad .row{justify-content:center;gap:8px}
+.gu-pin{font:900 24px/1 var(--font);letter-spacing:.3em;text-align:center;width:min(240px,60vw);padding:10px 12px;border-radius:12px;border:2px solid #cfd6e6}
+.gu-msg{min-height:22px;font-weight:800;color:#c92a2a}
+.gu-forgot{position:relative;overflow:hidden;margin-top:6px;opacity:.8}
+.gu-forgot .gu-fill{position:absolute;inset:0;width:0;background:rgba(201,42,42,.18)}
+.gu-forgot.holding .gu-fill{width:100%;transition:width 10s linear}
+.gu-panel{border-bottom:2px dashed #e3e7f0;margin-bottom:8px;padding-bottom:6px}
+.gu-rec{width:100%;border-collapse:collapse;margin-top:6px;font-size:14px}
+.gu-rec th,.gu-rec td{text-align:left;padding:4px 6px;border-bottom:1px solid #eef1f6}
+.gu-hint{color:#5f3dc4;font-weight:800;font-size:12px}
+.gu-note{margin:6px 0 0;font-size:14px;opacity:.75}

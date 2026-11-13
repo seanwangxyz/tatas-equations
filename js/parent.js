@@ -585,7 +585,7 @@ var Parent = (function () {
   function pc(n, d) { return d ? Math.round(100 * n / d) + '%' : '–'; }
   function render() {
     var el = document.getElementById('parent'); if (!el) return;
-    if (now() > gateUntil) { el.innerHTML = gateHTML(); return; }
+    if (window.Grown ? !Grown.unlocked() : now() > gateUntil) { el.innerHTML = gateHTML(); if (window.Grown) setTimeout(Grown.focusPin, 30); return; } // GROWN-UPS: the PIN
     var P = store(); flush();
     var m = lastModel = model(P, ctxFromSave()), C = m.C, h = m.habits, ch = m.ch;
     var sinceTxt = m.sinceToday ? 'today' : niceDay(m.since);
@@ -666,6 +666,7 @@ var Parent = (function () {
     return out;
   }
   function gateHTML() {
+    if (window.Grown) return '<div class="hdr"><button class="btn small" data-act="parentBack">' + ico('back') + ' Back</button><h2>' + ico('cap') + ' For Tata</h2></div><div class="panel pp-gate">' + Grown.padHTML('parent') + '</div>'; // GROWN-UPS: the PIN
     return '<div class="hdr"><button class="btn small" data-act="parentBack">' + ico('back') + ' Back</button><h2>' + ico('cap') + ' For Tata</h2></div>' +
       '<div class="panel pp-gate"><h3>Grown-ups only</h3><p>Press and hold the button for 2 seconds.</p>' +
       '<button class="btn big pp-hold" id="ppHold" type="button"><span class="pp-fill"></span><span class="pp-holdt">Hold to open</span></button></div>';
@@ -726,6 +727,6 @@ var Parent = (function () {
   // the first look at the save (marks what was already unlocked before this page)
   setTimeout(function () { safe(function () { store(); scanUnlocks(false); }); }, 0);
 
-  return { note: note, open: open, render: render, model: function () { return model(store(), ctxFromSave()); }, bytes: function () { return bytes(store()); },
+  return { rerender: function () { render(); }, note: note, open: open, render: render, model: function () { return model(store(), ctxFromSave()); }, bytes: function () { return bytes(store()); },
     flush: flush, analyseLog: analyseLog, core: core, _facts: { solutionFacts: solutionFacts, goalFacts: goalFacts, negUsed: negUsed, showText: showText } };
 })();

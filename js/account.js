@@ -190,6 +190,7 @@ var AccountMerge = (function () {
     },
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
+    pin: function (a, b, c) { return pickNewer(a, b, c); }, // GROWN-UPS: the PIN hash (salted); the newer device's
     pace: function (a, b) { // PACE: per level, the device with more measured calls (same: the quicker average)
       a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
       var la = isObj(a.lv) ? a.lv : {}, lb = isObj(b.lv) ? b.lv : {}, out = { v: 1, lv: {} };
@@ -280,6 +281,7 @@ var AccountMerge = (function () {
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
+    pin: 'grown-up PIN (only its salted hash): the newer device',
     pace: 'creature reaction speed: per level, the device with more measured calls',
     matchday: 'the coin-toss seed: the newer device',
     tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',

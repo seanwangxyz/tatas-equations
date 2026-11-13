@@ -915,14 +915,20 @@ function aiTurn() {
   var me = G.turn, o = G.players[me].ai;
   G.wait = false; focusAI(me);
   G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
-  var pause = nP() > 2 ? Math.min(6000, Math.max(2300, window.Pace ? Pace.reactMs(me, 2300 + Math.random() * 1300) : 2300 + Math.random() * 1300)) : 900 + Math.random() * 700; // RACE + PACE: a moment for the others to call first, at least his own speed
+  var pause = nP() > 2 ? 2300 + Math.random() * 1300 : 900 + Math.random() * 700, t0 = performance.now(); // RACE: a moment for the others to call first (its moves keep a steady pace)
   if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
   var sit = aiSituation();
   var tArgs = [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()];
   if (G.tour && window.Tourney) tArgs.push(Tourney.mayBonus(me)); // TOURNEY: a creature that is not leading may make a bonus move first (AI.turnT)
   aiThink(G.tour && window.Tourney ? 'turnT' : 'turn', tArgs, pause).then(function (t) {
     if (!aiStill(sit) || G.turn !== me) return;
-    if (t.challenge) { var d = t.challenge; G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); return; }
+    if (t.challenge) {
+      var d = t.challenge, callIt = function () { if (!aiStill(sit) || G.turn !== me || G.carrying) return; G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); };
+      // RACE + PACE: with three at the table a call waits its reaction time (his own speed, or Tata's fixed seconds), so he can beat it
+      var wait = nP() > 2 ? reactMs(me) - (performance.now() - t0) : 0;
+      if (wait > 0) { G.busy = false; renderGame(); setTimeout(callIt, wait); } else callIt();
+      return;
+    }
     if (t.bonus && G.tour && G.cubes[t.bonus.id] && G.cubes[t.bonus.id].zone === 'resources') { aiBonus(me, t.bonus.id, function () { aiMoveNow(me, o, t.move); }); return; } // TOURNEY
     aiMoveNow(me, o, t.move);
   }).catch(aiOops);
