@@ -84,6 +84,7 @@ function humanPlace(id, zone, who) {
 function humanGoal(tokens, val) {
   var fn = avatarMoveFn(G.setter); if (!fn) { setGoal(tokens, val); return; }
   var sit = G.cubes, k = 0; G.busy = true; G.carrying = true; renderGame();
+  if (T3.goalPlan) T3.goalPlan(tokens);   // VARI3D: a turned Goal cube turns in the kid's hand and lands turned
   (function next() {
     if (!G || G.cubes !== sit) return;
     while (k < tokens.length && typeof tokens[k] !== 'object') k++;                 // parentheses: nothing to carry
@@ -838,6 +839,7 @@ function aiSetGoal() {
       var toks = pick.toks;
       say('opp', (pick.liked && tasteLine(o, 'tasteGoal', 0.6)) || o.goal);
       if (T3.active() && T3.creatureMove) {
+        if (T3.goalPlan) T3.goalPlan(toks);   // VARI3D: a turned Goal cube turns in the creature's hand
         var k = 0;
         (function nextG() {
           if (!G || G.cubes !== sit.cubes) return;
