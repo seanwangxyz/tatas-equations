@@ -439,3 +439,5 @@ textarea{width:100%;min-height:70px;-webkit-user-select:text;user-select:text}
   *,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}
   .screen.on{animation:none}
 }
+
+#setup .stab > .tierh:first-of-type{margin-top:0}

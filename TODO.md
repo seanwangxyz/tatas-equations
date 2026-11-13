@@ -52,3 +52,12 @@ A star = one correct Solution or one correct Impossible! call. Settings → Pare
 - Still to do: listen to all new sounds; real iPad test (weather redraws ~19/s, bigger crowd, d20 dice);
   3D cubes do not turn for Upside-down/Sideways (the Goal banner shows it); online skips the new cards and dice;
   bases 11/12 not built (Junior level).
+
+## Round 8 (built, waiting for Tata's OK to publish)
+- Twist card deck (replaces the teal die); Google sign-in + cloud save (Firebase: Google provider on, profsean.wang
+  authorised, users/$uid rule published); new title menu + What's new tour; 3D variation cubes and labels;
+  online: three players, cards and dice, rematch (needs docs/handoff/firebase-rules-v2.json published WITH the code);
+  parent page; Legend League (opponents 11-15, signature rules, career); On-Sets first playable (flat mat);
+  proper football shorts and Tata's athletic build; shirt back name setting (TYSON W.); Play screen tabs.
+- Still to do: test real Google sign-in and a real three-player room after publishing; iPad/sound pass;
+  second extra figure for three humans in 3D; On-Sets 3D, three players, variations.

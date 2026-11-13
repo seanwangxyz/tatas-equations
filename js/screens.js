@@ -113,19 +113,24 @@ function renderSetup() {
       (open ? '' : '<div class="lockbadge">' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock</div>') + '</div>';
   });
   var opps = oppCards.slice(0, LEAGUE).join(''), monsters = oppCards.slice(LEAGUE, 2 * LEAGUE).join(''), legends = oppCards.slice(2 * LEAGUE).join(''); // CAREER
+  var sTab = window.setupTab || 'opps';
+  var sTabs = [['opps', ico('paw') + ' Creatures'], ['trio', '👑 Three at the table'], ['cups', ico('trophy') + ' Cups'], ['people', ico('people') + ' With people']].filter(function (t) { return (t[0] !== 'trio' || window.Trio) && (t[0] !== 'cups' || window.Cup); });
+  if (!sTabs.some(function (t) { return t[0] === sTab; })) sTab = 'opps';
+  function sPart(name) { return '<div class="stab" data-tab="' + name + '" style="display:' + (name === sTab ? 'block' : 'none') + '">'; }
   $('#setup').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('play') + ' Who do you want to play?</h2></div>' +
-    '<div class="panel"><h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
+    '<div class="panel"><div class="seg setup-tabs" role="tablist" style="flex-wrap:wrap;margin-bottom:12px">' + sTabs.map(function (t) { return '<button role="tab" aria-selected="' + (t[0] === sTab) + '" class="' + (t[0] === sTab ? 'on' : '') + '" data-act="setupTab" data-arg="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+    sPart('opps') + '<h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
     (legends ? '<h3 class="tierh">🌟 Legend League <span style="font-weight:600;opacity:.7;font-size:14px">(each brings a special rule)</span> ' + (window.Career ? Career.buttonHTML('small') : '') + '</h3><div class="opps">' + legends + '</div>' : '') + // CAREER
-    (window.Trio ? Trio.setupHTML() : '') +
-    (window.Cup ? Cup.setupHTML() : '') +
-    '<h3 class="tierh">' + ico('people') + ' Play with people</h3><div class="opps">' +
+    '</div>' + sPart('trio') + (window.Trio ? Trio.setupHTML() : '') + '</div>' +
+    sPart('cups') + (window.Cup ? Cup.setupHTML() : '') + '</div>' +
+    sPart('people') + '<h3 class="tierh" style="margin-top:0">' + ico('people') + ' Play with people</h3><div class="opps">' +
     (window.Online ? Online.setupCardHTML() : '') +
     (window.Team ? Team.setupCardHTML() : '') +
     (typeof giftTileHTML === 'function' ? giftTileHTML() : '') +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
-    '</div><div class="row" style="margin-top:18px"><b style="font-family:var(--display);font-weight:400;font-size:20px">Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';
+    '</div></div><div class="row" style="margin-top:18px"><b style="font-family:var(--display);font-weight:400;font-size:20px">Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';
 }
 ACT.playOpp = function (el) { startMatch('ai', +el.dataset.arg); };
 ACT.playPvp = function () { startMatch('pvp'); };
@@ -204,6 +209,7 @@ function renderSettings() {
   var st = stageInfo();
   var faces = Eq.COLORS.map(function (c) { return '<tr><td><b>' + c + '</b></td><td>' + Eq.CUBE_FACES[c].map(function (s) { return '<span class="cube tiny c-' + c + '"><span>' + show(s) + '</span></span>'; }).join(' ') + '</td></tr>'; }).join('');
   $('#settings').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('gear') + ' Settings</h2></div><div class="panel">' +
+    '<div class="seg" style="flex-wrap:wrap;margin-bottom:12px">' + ['Sound', 'You', 'The game', 'Parent corner', 'Account'].map(function (n) { return '<button data-act="setJump" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div>' +
     '<div class="group"><h3>' + ico('sound') + ' Sound</h3>' +
     '<div class="setrow"><label>Music volume</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.music + '" data-set="music"></div>' +
     '<div class="setrow"><label>Sound effects</label><input type="range" min="0" max="1" step="0.05" value="' + S.set.sfx + '" data-set="sfx"></div>' +
@@ -284,3 +290,7 @@ ACT.setMe = function (el) { S.set.me = el.dataset.arg; persist(); Snd.click(); r
 ACT.setWeatherPick = function (el) { S.set.weather = el.dataset.arg; persist(); Snd.click(); renderSettings(); };
 
 ACT.saveBack = function () { var v = ($('#backInput').value || '').trim().slice(0, 12); S.backName = v; persist(); Snd.chime(); if (T3.playerRefresh) T3.playerRefresh(); renderSettings(); };
+
+ACT.setupTab = function (el) { window.setupTab = el.dataset.arg; Snd.click(); renderSetup(); $('#setup').scrollTop = 0; };
+ACT.setJump = function (el) { var want = el.dataset.arg.toLowerCase(), hs = [].slice.call(document.querySelectorAll('#settings h3')), h = hs.filter(function (x) { return x.textContent.toLowerCase().indexOf(want) >= 0; })[0]; Snd.click(); if (h) h.scrollIntoView({ block: 'start' }); else say0('That part is not on this device yet.'); };
+function say0() {}
