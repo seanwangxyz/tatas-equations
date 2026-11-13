@@ -633,6 +633,7 @@ var Parent = (function () {
       '</div><p class="pp-muted">All time (from the game\'s own stats): ' + ch.all.won + ' of ' + ch.all.calls + ' challenges won, ' + ch.all.nowWins + ' by Now!, ' + ch.all.impWins + ' by Impossible!. ' +
       '"Chances he let pass" are only counted when the game can prove them (a real Solution for Now!, or a complete search for Impossible!), using the same check as Pip\'s tip after a match. They are checked only in one-on-one matches against a creature, with Pip\'s tip switched on.</p></section>' +
       // 5. progress
+      (window.Missions ? Missions.parentHTML() : '') +
       '<section class="pp-sec"><h3>Progress</h3>' + progressHTML(m) + '</section>' +
       '<p class="pp-foot">Saved numbers for this page: ' + Math.round(bytes(P) / 100) / 10 + ' KB (kept small: the last ' + DAYS_KEPT + ' days and running totals).</p>' +
       '</div>';

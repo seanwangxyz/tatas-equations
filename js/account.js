@@ -228,6 +228,28 @@ var AccountMerge = (function () {
     return out;
   },
     /*RIVALS-MERGE-END*/
+    /*MISSIONS-MERGE-START*/
+    missions: function missionsMerge(a, b, c) {
+      var isO = function (x) { return !!x && typeof x === 'object' && !Array.isArray(x); };
+      var cp = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };
+      if (!isO(a)) return cp(b); if (!isO(b)) return cp(a);
+      var newer = c && c.newer === 'a' ? a : b, older = newer === a ? b : a;
+      var out = { v: Math.max(+a.v || 0, +b.v || 0) || 1, n: Math.max(+a.n || 0, +b.n || 0), s: {} };
+      if (a.rk !== undefined || b.rk !== undefined) out.rk = Math.max(+a.rk || 0, +b.rk || 0);
+      var cv = newer.cv !== undefined ? newer.cv : older.cv; if (cv !== undefined) out.cv = cp(cv);
+      var sa = isO(a.s) ? a.s : {}, sb = isO(b.s) ? b.s : {};
+      Object.keys(sa).concat(Object.keys(sb)).forEach(function (id) {
+        if (id in out.s) return;
+        var x = sa[id], y = sb[id];
+        if (!Array.isArray(x) || !Array.isArray(y)) { out.s[id] = cp(Array.isArray(x) ? x : y); return; }
+        var dx = String(x[1] || ''), dy = String(y[1] || ''), cx = x[2] == null ? -1 : +x[2], cy = y[2] == null ? -1 : +y[2];
+        var useX = dx && dy ? (dx < dy || (dx === dy && cx <= cy)) : dx ? true : dy ? false : cx <= cy; // earliest day; same day: the lower creature number, so the merge is symmetric
+        var first = useX ? x : y;
+        out.s[id] = [Math.max(+x[0] || 0, +y[0] || 0), first[1] || '', first[2] == null ? -1 : first[2], Math.max(+x[3] || 0, +y[3] || 0), Math.max(+x[4] || 0, +y[4] || 0)];
+      });
+      return out;
+    },
+    /*MISSIONS-MERGE-END*/
     fans: function (a, b) {
       a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
       var k = eachKey(a.k, b.k, function (x, y) {
@@ -255,7 +277,7 @@ var AccountMerge = (function () {
     matchday: 'the coin-toss seed: the newer device',
     tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',
     rivals: 'per creature: the side with more matches; milestones: union (earliest); best streak, biggest Goal, admired Solution: best of both',
-    tour: 'tour stops seen on either device', parent: 'each counter and each day: highest'
+    tour: 'tour stops seen on either device', parent: 'each counter and each day: highest', missions: 'Skills Passport: stamps union (earliest date and its creature); counts, offered, swapped, matches: highest; cover: newer device'
   };
 
   function newerSide(o) { o = o || {}; return num(o.bAt) > num(o.aAt) ? 'b' : 'a'; }

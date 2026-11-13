@@ -21,7 +21,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const C = (a, b, aAt = 1, bAt = 2) => AM.combine(a, b, { aAt, bAt }); // b is newer by default
 
 // Keys other features add to S outside defaults() (found with: grep -ohE "\bS\.[a-zA-Z_]+" js/*.js js/three/*.js)
-const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday'];
+const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday', 'missions'];
 const ALL_KEYS = Object.keys(defaults()).concat(FEATURE_KEYS);
 
 // ---------------- every top-level key has an explicit rule and a plain-words description ----------------
@@ -153,6 +153,7 @@ function randomSave() {
   s.stadiumTierSeen = 1 + ri(4); s.matchday = { seed: ri(99999), n: ri(50) }; s.tourney = { rounds: ri(9), wins: ri(5), ties: ri(3), mp: ri(40), best: ri(18), log: [{ t: 1000 + ri(5000), div: 'E', n: 3, sc: [ri(20), ri(20), ri(20)], mp: [6, 4, 2], names: ['A', 'B', 'C'] }], opt: { on: ri(2) === 1, strict: false } }; s.rivals = { rusty: { n: ri(9), w: ri(5), l: ri(4), d: '2026-11-1' + ri(9), bs: ri(4), ms: {} } }; s.onsets = { v: 1, stars: ri(20), beaten: [], stats: { shakes: ri(30), wins: ri(9) }, tutorialDone: ri(2) === 1 }; s.parent = { v: 1, tot: { sol: ri(50), ok: ri(40) }, days: { [date()]: { min: ri(30), sol: ri(9) } } }; s.puz = { date: date(), cur: ri(4), extra: ri(3) };
   s.season = { v: 1, last: 'c', c: lg(1 + ri(3), ri(11), ri(21)), m: lg(1 + ri(3), ri(11), ri(21)), hist: Array.from({ length: ri(4) }, (_, i) => ({ lg: coin() ? 'c' : 'm', n: i + 1, date: date(), place: 1 + ri(6) })), won: { gold: ri(3), silver: ri(3), bronze: ri(3), blue: ri(3) }, cer: null };
   s.fans = { v: 1, k: {} }; ['chef', 'cat', 'wizard'].forEach(k => { if (coin()) s.fans.k[k] = { d: date(), at: ['stadium'] }; });
+  s.missions = { v: 1, n: ri(300), s: {} }; if (coin()) s.missions.cv = 'blue'; ['g_set', 'c_now', 'o_div', 'f_frac'].forEach(id => { if (coin()) s.missions.s[id] = [1 + ri(6), date(), ri(15) - 1, ri(9), ri(3)]; });
   return s;
 }
 const sub = (a, b) => Object.keys(a || {}).filter(k => a[k]).every(k => b && b[k]); // every truthy key of a is in b

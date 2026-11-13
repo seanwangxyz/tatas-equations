@@ -116,6 +116,7 @@ function startMatch(mode, oppIdx, cfg) {
   if (window.Parent) Parent.note('matchStart'); // PARENT page
   if (window.Career) Career.matchStart(G); // CAREER: remember this match's signature rule
   if (window.Rivals) Rivals.note('start', { g: G }); // RIVALS: creatures that remember
+  if (window.Missions) Missions.note('start', { g: G }); // MISSIONS (house feature): pick this match's missions
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -162,6 +163,7 @@ function rerollOps(done) {
   setTimeout(step, 1500);
 }
 function newShake(fixedCubes) {
+  if (window.Why) Why.reset(); // WHY
   var st = stageInfo();
   G.ops = st.ops.slice(); G.fractions = st.fractions;
   if (G.tour && window.Tourney) Tourney.fixOps(); // TOURNEY: fractions on, all six operations (or the unlocked ones)
@@ -282,7 +284,7 @@ function renderGame() {
     '<div class="zone z-res" data-zone="resources"><h3>🎲 RESOURCES <small>' + resC.length + ' left</small></h3><div class="cubes">' + resHTML + '</div></div>' +
     '</div>' ;
   }
-  $('#gAct').innerHTML = speechHTML() + '<div class="acts">' + (G.team ? Team.barHTML() : '') + actionsHTML() + '</div>';
+  $('#gAct').innerHTML = speechHTML() + (window.Missions ? Missions.chipsHTML() : '') + '<div class="acts">' + (G.team ? Team.barHTML() : '') + actionsHTML() + '</div>';
   G.justMoved = null;
   hudCountUp();
 }
@@ -310,6 +312,7 @@ function actionsHTML() {
       return '<span>' + esc(G.players[i].name) + ' can challenge too:</span><button class="btn small now" data-act="callNow" data-arg="' + i + '">' + ico('bolt') + ' Now!</button><button class="btn small imp" data-act="callImp" data-arg="' + i + '">' + ico('ban') + ' Impossible!</button>';
     }).join('') + '</div>';
   }
+  if (window.Why) out += Why.buttonHTML(); // WHY: "Why?" for the latest move
   if (G.wait) out += '<button class="btn big green" data-act="goOn">Go on ▶</button>';
   if (window.Social && Social.emoteBar && T3.active() && firstAI() && G.mode !== 'tutorial') out += Social.emoteBar();
   return out;
@@ -362,6 +365,8 @@ function doMove(id, zone, dragged) {
 function placeCube(id, zone, who) {
   var c = G.cubes[id];
   if (window.Recorder) Recorder.note('move', { by: who, id: id, zone: zone, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW (before the cube moves)
+  if (window.Why) Why.note('move', { before: G.cubes, cubeId: id, zone: zone, who: who }); // WHY (before the cube moves)
+  if (window.Missions) Missions.note('move', { g: G, id: id, zone: zone, by: who }); // MISSIONS (before the cube moves)
   c.zone = zone; c.order = ++orderCounter; G.justMoved = id; G.highlight = null;
   G.lastMover = who;
   if (G.tour) { G.tour.bonusBy = null; G.tour.armed = null; } // TOURNEY: the next player may make their own bonus move
@@ -425,6 +430,7 @@ function setGoal(tokens, val) {
   G.goalTokens = tokens; G.goal = val; G.lastMover = G.setter; G.turn = nextP(G.setter); G.phase = 'move'; G.busy = false;
   if (window.Vari) Vari.afterGoal(tokens); // VARIATIONS: 0 Wild needs the Goal's cubes in the math mode
   if (window.Recorder) Recorder.note('goal', { by: G.setter, goal: val, goalTokens: tokens, cubes: G.cubes, fr: G.fractions, shake: G.shake }); // REVIEW
+  if (window.Missions) Missions.note('goal', { g: G, tokens: tokens, val: val }); // MISSIONS
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (window.Commentary) Commentary.say('goal', { goal: Eq.fmt(val), by: G.players[G.setter].name, cubes: tokens.filter(function (t) { return typeof t === 'object'; }).length });
@@ -486,6 +492,7 @@ function banner(text, sub) {
 function thirdOf(a, b) { if (nP() < 3) return null; var r = idxs().filter(function (i) { return i !== a && i !== b; }); return r.length ? r[0] : null; }
 function challenge(kind, who) {
   if (window.Recorder) Recorder.note('challenge', { by: who, kind: kind, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW
+  if (window.Missions) Missions.note('challenge', { g: G, kind: kind, by: who }); // MISSIONS
   var mover = G.lastMover;
   G.phase = 'challenge'; G.ch = { kind: kind, challenger: who, mover: mover, tp: thirdOf(who, mover) }; G.selected = null; G.busy = false;
   if (window.Rivals) Rivals.note('challenge', { g: G }); // RIVALS
@@ -692,6 +699,7 @@ function rcSide(i, top, gain) {
 }
 function rcXP() { return xpLog.length ? '<div class="xplist">' + xpLog.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('') + '</div>' : ''; }
 function endShake(r) {
+  if (window.Missions && G.mode !== 'tutorial') Missions.note('shake', { g: G, r: r, phase: G.phase }); // MISSIONS
   G.phase = 'over'; G.busy = false; G.carrying = false;
   G.lastShake = r; // TOURNEY: Judge Pip can explain why each Solution counted or not
   if (window.Bonus) Bonus.adjust(r); // BONUS: Twist card scoring (Golden Goal doubles, Bonus +2); never takes points away
@@ -742,6 +750,7 @@ function endShake(r) {
     (solsHTML ? '<div class="rc-sols">' + solsHTML + '</div>' : '') +
     (!sample && G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.' + (G.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '') + // (BONUS: not proved)
     rcXP() +
+    (window.Why ? Why.shakeHTML() : '') + // WHY: the two most important moves of the shake
     '<div class="row"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div></div>';
   var showResult = function () {
     if (!G) return;
@@ -760,6 +769,7 @@ function nextShake() {
 function endMatch() {
   if (window.Commentary) { var cmTop = Math.max.apply(null, G.players.map(function (p) { return p.score; })), cmN = G.players.filter(function (p) { return p.score === cmTop; }).length, cmMe = G.players[0].score === cmTop; Commentary.say('final', { won: cmMe && cmN === 1, tie: cmMe && cmN > 1 }); }
   if (window.Parent && G.mode !== 'tutorial') Parent.note('match'); // PARENT page (reads G; peeks at Pip's review notes)
+  if (window.Missions) Missions.note('end', { g: G }); // MISSIONS
   if (window.Rivals && G.mode !== 'ai') Rivals.note('end', { g: G }); // RIVALS (Team-up, Three at the table, 3 players; one-on-one below)
   if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
   if (G.tour && window.Tourney) { Tourney.endMatch(); return; } // TOURNEY: places and official match points (XII-A), the saved record
@@ -815,6 +825,7 @@ function endMatch() {
       rcXP();
   }
   if (window.Social && Social.matchCard) { try { html += Social.matchCard({}); } catch (e) {} }
+  if (window.Missions) html += Missions.matchLineHTML(); // MISSIONS: "Missions: 2 of 3 (new stamp: ...)"
   if (window.Review) html += Review.slotHTML(); // REVIEW: empty spot; the button appears only if Pip found something
   var cupRow = (G.mode === 'ai' && window.Cup && Cup.active()) ? Cup.onMatchEnd({ won: won, tie: tie, you: a, them: b, oppIdx: G.oppIdx }) : '';
   html += cupRow || '<div class="row"><button class="btn green big" data-act="rematch">' + ico('play') + ' Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';

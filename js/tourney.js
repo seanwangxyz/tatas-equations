@@ -587,7 +587,7 @@ var Tourney = (function () {
       '<p class="vari-small">Match points (XII-A): ' + (G.players.length === 3 ? 'first 6 · two tied for first 5 each · all three tied 4 each · second 4 · two tied for second 3 each · third 2.' : 'first 6 · tied 5 each · second 4.') + '</p>' +
       '<p class="vari-small">Your record: ' + t.rounds + ' round' + (t.rounds > 1 ? 's' : '') + ', ' + t.wins + ' first place' + (t.wins === 1 ? '' : 's') + (t.ties ? ', ' + t.ties + ' shared' : '') + ', ' + t.mp + ' match points in all.</p>' +
       (typeof xpLog !== 'undefined' && xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
-      '<div class="row" style="margin-top:12px"><button class="btn green" data-act="tAgain">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
+      (window.Missions ? Missions.matchLineHTML() : '') + '<div class="row" style="margin-top:12px"><button class="btn green" data-act="tAgain">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
     modal(html, null);
   }
 

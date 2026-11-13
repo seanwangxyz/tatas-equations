@@ -198,6 +198,7 @@ var Team = (function () {
       (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
     // Player of the Match card only when the team won or tied (on a loss it would crown the creature).
     if ((won || tie) && window.Social && Social.matchCard) { try { html += Social.matchCard({}); } catch (e) {} }
+    if (window.Missions) html += Missions.matchLineHTML(); // MISSIONS
     html += '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
     modal(html, null);
   }
