@@ -221,6 +221,11 @@ var SoundCheck = (function () {
       { win: 'Snd.setMood(win)', loss: 'after the creature\'s dance when the match is lost', shakeGood: 'end of a shake that went well', shakeKind: 'end of a shake that did not', challengeRight: 'challenge resolved, the kid right', challengeWrong: 'challenge resolved, the kid not right' }[k]);
   });
   add('music.dance', 'music', 'Victory dance', 7, function () { Snd.danceMusic(6000); }, function () { Snd._danceAll(6000); }, 'Snd.danceMusic: creature dances');
+  // AUDIO2: the birthday choir (js/birthday-sfx.js, loaded here on first use; the song is rendered once, then played)
+  function bday(f) { if (window.BirthdaySfx) { f(); return; } var s = document.createElement('script'); s.src = 'js/birthday-sfx.js'; s.onload = function () { try { f(); } catch (e) {} }; document.head.appendChild(s); }
+  add('birthday.song', 'music', 'Birthday song (the creature choir)', 17, function () { bday(function () { BirthdaySfx.prerender().then(function () { var h = BirthdaySfx.song(null, 0.1); later(17000, function () { if (h) h.stop(); }); }); }); },
+    function (a) { if (window.BirthdaySfx) BirthdaySfx._into(a.ctx, a.bus('music'), 1.6); }, 'BirthdaySfx.song: the birthday easter egg (tap the T 5 times)');
+  add('birthday.hooray', 'music', 'Birthday "Hooray!"', 2, function () { bday(function () { BirthdaySfx.prerender().then(function () { setTimeout(function () { BirthdaySfx.pop('hooray'); }, 600); }); }); }, false, 'BirthdaySfx.pop(hooray)');
   add('title.intro', 'title', 'Title opening (whole)', 7.5, function () { if (!window.TitleSfx) return; TitleSfx.unlock(); TitleSfx.begin(); introScore().forEach(function (e) { TitleSfx.play(e[0], e[1], e[2]); }); }, function (a) { TitleSfx._into(a.ctx, dests(a), introScore()); }, 'three/title.js scheduleIntroSound');
   ['fanfare', 'thud', 'lightsUp', 'whoosh', 'sparkle', 'chime', 'crowd', 'confetti', 'boing', 'pat', 'hi', 'clack', 'twinkle', 'tick', 'liftoff'].forEach(function (n) {
     var o = n === 'fanfare' ? { beat: 0.444 } : { v: 0.8 };

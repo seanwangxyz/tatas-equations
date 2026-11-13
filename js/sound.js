@@ -68,12 +68,12 @@ var Snd = (function () {
     master = c.createGain(); master.gain.value = 0.8;
     limiter = c.createDynamicsCompressor();
     limiter.threshold.value = -10; limiter.knee.value = 6; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.25;
-    // AUDIO2: the clipper is exactly linear up to 0.6 (-4.4 dBFS) and only bends above it, smoothly, towards the 0.89
+    // AUDIO2: the clipper is exactly linear up to 0.5 (-6 dBFS out) and only bends above it, smoothly, towards the 0.89
     // ceiling. (Before: tanh all the way, which bent every loud sound a little and added intermodulation when sounds
     // piled up.) 4x oversampling keeps the bend from folding back as hiss.
     shaper = c.createWaveShaper();
     // (the old curve's small-signal gain, 1.125, is kept so every sound stays at its measured level)
-    var curve = new Float32Array(4096), KN = 0.6, CE = 0.89, G0 = 1.125;
+    var curve = new Float32Array(4096), KN = 0.5, CE = 0.89, G0 = 1.125;
     for (var i = 0; i < 4096; i++) { var x = i / 2047.5 - 1, ax = Math.abs(x) * G0; curve[i] = (ax <= KN ? ax : KN + (CE - KN) * Math.tanh((ax - KN) / (CE - KN))) * (x < 0 ? -1 : 1); }
     shaper.curve = curve; try { shaper.oversample = '4x'; } catch (e) {}
     // a gentle "glue" compressor first: single sounds pass almost untouched, a pile-up (win: fanfare + roar + cheer +

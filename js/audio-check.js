@@ -119,7 +119,7 @@ var AudioCheck = (function () {
     return needSC().then(function () {
       var todo = SoundCheck.list.filter(function (x) { return x.off && (!ids || ids.indexOf(x.id) >= 0); }).map(function (x) { return { id: x.id, sec: x.sec, run: function (a) { x.off(a); } }; });
       Object.keys(SoundCheck.SCENES).forEach(function (k) { var s = SoundCheck.SCENES[k]; if (!ids || ids.indexOf('scene.' + k) >= 0) todo.push({ id: 'scene.' + k, sec: s.sec, run: s.run }); });
-      Object.keys(EXTRA).forEach(function (k) { if (!ids || ids.indexOf(k) >= 0) todo.push({ id: k, sec: EXTRA[k].sec, run: EXTRA[k].run }); });
+      Object.keys(EXTRA).forEach(function (k) { if (todo.some(function (x) { return x.id === k; })) return; if (!ids || ids.indexOf(k) >= 0) todo.push({ id: k, sec: EXTRA[k].sec, run: EXTRA[k].run }); });
       var out = [], i = 0;
       return new Promise(function (res) {
         (function next() {
