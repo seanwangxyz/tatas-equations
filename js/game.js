@@ -661,15 +661,34 @@ function sampleSolution() {
   G.sampleComplete = r.complete !== false; // BONUS: a search that ran out of time proves nothing (bigger searches with bonus cubes)
   return r.found ? r.tokens : null;
 }
+// RESULTS (round 9): one Solution as a small card (cubes, what to fix, the Explain button)
 function solHTML(i, s) {
   if (!s) return '';
-  var head = '<b>' + esc(G.players[i].name) + '\'s Solution:</b> ' + (s.ok ? '<span style="color:var(--good)">' + ico('check') + ' correct</span>' : '<span style="color:var(--mute)">not quite</span>');
-  if (!s.tokens) return '<p>' + head + ' (no Solution written)</p>';
+  var head = '<div class="rc-h">' + esc(G.players[i].name) + '\'s Solution ' + (s.ok ? '<span class="rc-tag ok">' + ico('check') + ' correct</span>' : '<span class="rc-tag try">not quite</span>');
+  if (!s.tokens) return '<div class="rc-sol">' + head + '</div><p style="margin:0">No Solution written.</p></div>';
   var body = (window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(s.tokens, G.cubes, G.fractions) + '</div>' : exprBox(s.tokens, G.cubes);
   if (!s.ok && s.chk && s.chk.reasons && s.chk.reasons.length) body += '<ul class="reasons">' + s.chk.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
   if (window.Explain) body += Explain.buttonHTML(s.tokens, { goal: G.goal, fractions: G.fractions, cubes: G.cubes, chk: s.chk, who: G.players[i].name + '\'s Solution' }); // EXPLAIN
-  return '<div style="margin:8px 0">' + head + body + '</div>';
+  return '<div class="rc-sol' + (s.ok ? ' ok' : '') + '">' + head + '</div>' + body + '</div>';
 }
+// RESULTS (round 9): a player's picture for the results cards: the creature's portrait, the kid's own shirt
+// (kit colour, trim and number), other people a numbered shirt in their seat colour.
+function rcLight(hex) { var m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return false; var n = parseInt(m[1], 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 190; }
+function rcFace(i) {
+  var p = G.players[i];
+  if (p.ai) return avatarHTML(p.ai, 'lg');
+  var sh = ['#c9342c', '#1c7ed6', '#2f9e44'][i % 3], tr = '#ffffff', num = p.jersey || String(i + 1);
+  if (i === 0) { num = S.jersey || '7'; try { var k = typeof Kit !== 'undefined' && Kit.current ? Kit.current() : null; if (k && k.shirt) { sh = k.shirt; tr = k.trim || tr; } } catch (e) {} }
+  return '<span class="rc-shirt' + (rcLight(sh) ? ' light' : '') + '" style="--shirt:' + sh + ';--trim:' + tr + '" aria-hidden="true">' + esc(num) + '</span>';
+}
+// gain: points this shake (shown as "+n this shake"); without it the tile shows the final score only
+function rcSide(i, top, gain) {
+  var p = G.players[i], g = gain == null ? null : gain;
+  return '<div class="rc-side' + (top ? ' top' : '') + '"><div class="rc-face">' + rcFace(i) + '</div><div class="rc-name">' + esc(p.name) + '</div>' +
+    '<div class="rc-score" data-count="' + p.score + '" data-from="' + (g == null ? 0 : p.score - g) + '">' + p.score + '</div>' +
+    (g == null ? '' : '<div class="rc-gain"><b>+<span data-count="' + g + '">' + g + '</span></b> this shake</div>') + '</div>';
+}
+function rcXP() { return xpLog.length ? '<div class="xplist">' + xpLog.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('') + '</div>' : ''; }
 function endShake(r) {
   G.phase = 'over'; G.busy = false; G.carrying = false;
   G.lastShake = r; // TOURNEY: Judge Pip can explain why each Solution counted or not
@@ -708,15 +727,20 @@ function endShake(r) {
   if (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
-  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
-    '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div><!--replay-->' +
-    r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
-    idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
-    (sample ? '<p><b>' + (anyOk ? 'Another way' : 'One way that works') + ':</b></p>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p style="text-align:center;font-weight:800">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' + (window.Explain ? Explain.buttonHTML(sample, { goal: G.goal, fractions: G.fractions, wild: G.sampleWild, who: anyOk ? 'Another way' : 'One way that works' }) : '') : // EXPLAIN
-      (G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.' + (G.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '')) + // (BONUS: not proved)
-    idxs().map(function (i) { return '<div class="score-line' + ((r.pts[i] || 0) >= 4 ? ' win' : '') + '"><span>' + esc(G.players[i].name) + '</span><span class="p">+' + (r.pts[i] || 0) + ' → ' + G.players[i].score + '</span></div>'; }).join('') +
-    (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
-    '<div class="row" style="margin-top:12px"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div>';
+  // RESULTS (round 9): the end-of-shake card: every side's tile (points count up once), what happened, the Solutions as
+  // cubes (each with Explain), what was earned, one clear button. Same content and hooks as before (<!--replay--> below).
+  var vsAI = G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney';
+  var sampleHTML = sample ? '<div class="rc-sol"><div class="rc-h">' + (anyOk ? 'Another way' : 'One way that works') + '</div>' + ((window.Vari && Vari.on()) ? '<div class="expr vari-expr">' + Vari.exprHTML(sample, null, G.fractions) + '</div>' : exprBox(sample)) + '<p class="rc-eq">= ' + (Eq.rulesOf(G.fractions).multk ? (function () { var e = Eq.evaluate(sample, { fractions: G.fractions }); return e.ok ? Eq.fmt(e.value) + ' <small>(the Goal is ' + Eq.fmt(G.goal) + ': a multiple of ' + Eq.rulesOf(G.fractions).k + ' away)</small>' : Eq.fmt(G.goal); })() : Eq.fmt(G.goal)) + (G.sampleWild != null ? ' <small>(every 0 stands for ' + G.sampleWild + ')</small>' : '') + '</p>' + (window.Explain ? Explain.buttonHTML(sample, { goal: G.goal, fractions: G.fractions, wild: G.sampleWild, who: anyOk ? 'Another way' : 'One way that works' }) : '') + '</div>' : ''; // EXPLAIN
+  var solsHTML = idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') + sampleHTML;
+  var html = '<div class="rc rc-shake' + (vsAI ? (good ? ' win' : ' kind') : '') + '"><h2 class="hero">' + (vsAI ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
+    '<div class="rc-meta">' + (G.mode === 'tutorial' ? '<span class="rc-chip">Practice</span>' : '<span class="rc-chip">Shake ' + G.shake + ' of ' + G.shakes + '</span>') + '<span class="rc-chip gold">' + ico('target') + ' Goal <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></span></div>' +
+    '<div class="rc-board" style="--n:' + nP() + '">' + idxs().map(function (i) { return rcSide(i, (r.pts[i] || 0) >= 4, r.pts[i] || 0); }).join('') + '</div>' +
+    '<!--replay-->' +
+    (r.lines.length ? '<div class="rc-lines">' + r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') + '</div>' : '') +
+    (solsHTML ? '<div class="rc-sols">' + solsHTML + '</div>' : '') +
+    (!sample && G.goal && !anyOk ? '<div class="okbox">I searched and couldn\'t find any Solution with these cubes.' + (G.sampleComplete === false ? ' <small>(I ran out of searching time, so that does not prove there is none.)</small>' : '') + '</div>' : '') + // (BONUS: not proved)
+    rcXP() +
+    '<div class="row"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div></div>';
   var showResult = function () {
     if (!G) return;
     var rp = window.Replay ? Replay.popupHTML(r) : '';
@@ -737,7 +761,7 @@ function endMatch() {
   if (window.Rivals && G.mode !== 'ai') Rivals.note('end', { g: G }); // RIVALS (Team-up, Three at the table, 3 players; one-on-one below)
   if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
   if (G.tour && window.Tourney) { Tourney.endMatch(); return; } // TOURNEY: places and official match points (XII-A), the saved record
-  var a = G.players[0].score, html;
+  var a = G.players[0].score, html, rcTone = ''; // (RESULTS: rcTone = the card's mood: win / tie / kind)
   if (G.mode === 'ai') {
     var b = G.players[1].score, won = a > b, tie = a === b;
     var o = G.players[1].ai, idx = G.oppIdx;
@@ -756,11 +780,13 @@ function endMatch() {
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
     var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
+    // RESULTS (round 9): the final score as two tiles (count up once), the creature's line in its bubble, then the rest
+    rcTone = won ? ' win' : tie ? ' tie' : ' kind';
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
-      '<div class="row">' + avatarHTML(o, 'lg') + '<div class="bubble">' + (rivalEnd || (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?')) + '</div></div>' +
-      '<div class="score-line"><span>' + esc(G.players[0].name) + '</span><span class="p">' + a + '</span></div><div class="score-line"><span>' + esc(o.name) + '</span><span class="p">' + b + '</span></div>' +
-      (won && nextO ? '<p style="text-align:center">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
-      (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '') +
+      '<div class="rc-board final n2">' + rcSide(0, won) + '<div class="rc-vs" aria-hidden="true">VS</div>' + rcSide(1, !won && !tie) + '</div>' +
+      '<div class="rc-say">' + avatarHTML(o) + '<div class="bubble">' + (rivalEnd || (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?')) + '</div></div>' +
+      (won && nextO ? '<p class="rc-next">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
+      rcXP() +
       (seasonRes ? Season.lineHTML(seasonRes) : '');
     html += (window.Career && won ? Career.bossLineHTML(idx, first) : ''); // CAREER: "League conquered!"
   } else {
@@ -781,14 +807,16 @@ function endMatch() {
     if (aiI !== undefined && winners.indexOf(aiI) >= 0 && Snd.danceMusic) Snd.danceMusic(3200);   // once, even if both dance
     if (winners.indexOf(0) >= 0 && winners.length === 1) checkBadges({ type: 'match', won: true, trailed: G.trailed, perfect: G.players[0].list.every(function (v) { return v >= 4; }) });
     var order = idxs().sort(function (x, y) { return G.players[y].score - G.players[x].score; });
+    rcTone = winners.indexOf(0) >= 0 || !isAI(winners[0]) ? ' win' : ' kind'; // RESULTS (round 9)
     html = '<h2 class="hero">' + (winners.length > 1 ? 'Tie: ' + names.join(' & ') + '!' : names[0] + ' wins!') + '</h2>' +
-      order.map(function (i) { return '<div class="score-line' + (G.players[i].score === top ? ' win' : '') + '"><span>' + (G.players[i].score === top ? ico('trophy') + ' ' : '') + esc(G.players[i].name) + '</span><span class="p">' + G.players[i].score + '</span></div>'; }).join('') +
-      (xpLog.length ? '<div class="xplist">' + xpLog.map(esc).join('<br>') + '</div>' : '');
+      '<div class="rc-board final" style="--n:' + nP() + '">' + order.map(function (i) { return rcSide(i, G.players[i].score === top); }).join('') + '</div>' +
+      rcXP();
   }
   if (window.Social && Social.matchCard) { try { html += Social.matchCard({}); } catch (e) {} }
   if (window.Review) html += Review.slotHTML(); // REVIEW: empty spot; the button appears only if Pip found something
   var cupRow = (G.mode === 'ai' && window.Cup && Cup.active()) ? Cup.onMatchEnd({ won: won, tie: tie, you: a, them: b, oppIdx: G.oppIdx }) : '';
-  html += cupRow || '<div class="row" style="margin-top:12px"><button class="btn green" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
+  html += cupRow || '<div class="row"><button class="btn green big" data-act="rematch">' + ico('play') + ' Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
+  html = '<div class="rc rc-match' + rcTone + '">' + html + '</div>'; // RESULTS (round 9): one card around everything (Season, Career, Pip's tip, Cup rows included)
   // FIREWORKS (js/replay.js): a Cup final won, a league boss beaten for the first time, a Three-at-the-table crown
   var bigWin = (G.mode === 'ai' && won && ((first && (idx + 1) % LEAGUE === 0) || /data-act="cupLift"/.test(cupRow))) || (G.mode === 'ai3' && G.trioCrown);
   var showEnd = function () { modal(html, null); if (window.Review) Review.afterMatch(); }; // REVIEW: thinks at most ~1.5 s, in small slices

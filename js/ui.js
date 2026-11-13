@@ -27,7 +27,12 @@ var ICONS = {
   disk: '<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>',
   shirt: '<path d="M8.5 3.5L3 6.5l2 4.5 2.5-1V20.5h9V10l2.5 1 2-4.5-5.5-3c-.6 1.6-2 2.5-3.5 2.5s-2.9-.9-3.5-2.5z"/>',
   table: '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 9h17M3.5 14h17M9 9v11"/>',
-  sparkle: '<path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/>'
+  sparkle: '<path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/>',
+  // ROUND 9: icons that replace emoji in headings and cards
+  crown: '<path d="M3.5 8l4.5 4L12 5l4 7 4.5-4-2 11h-13z"/><path d="M5.5 19h13"/>',
+  scale: '<path d="M12 3.5v17M7.5 20.5h9M4.5 7h15M7 7l-3 6.5a3 3 0 006 0zM17 7l-3 6.5a3 3 0 006 0z"/>',
+  flame: '<path d="M12 21c-3.8 0-6.5-2.6-6.5-6.2 0-3.3 2.3-5.2 3.6-7.4.4 1.9 1.3 3 2.4 3.5.1-3.4 1.2-6 3.5-7.9.3 3.1 3.5 5.7 3.5 10.8 0 4-2.7 7.2-6.5 7.2z"/>',
+  chev: '<path d="M6 9.5l6 6 6-6"/>'
 };
 var ICON_FILL = { bolt: 'f', play: 'f', star: 'fs' };
 function ico(name, extra) { return '<svg class="ico ' + (ICON_FILL[name] || '') + (extra ? ' ' + extra : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
@@ -123,7 +128,9 @@ function go(id) {
     if (on && !s.classList.contains('on')) s.scrollTop = 0;
     s.classList.toggle('on', on);
   });
+  var was = current;
   current = id;
+  if (was !== id) Motion.stagger(document.getElementById(id)); // ROUND 9: list items arrive once, in a short stagger
   if (window.Title3D) Title3D.screen(id); // TITLE: the 3D title scene stops (and later frees itself) on any other screen
   if (window.Tour && Tour.onScreen) Tour.onScreen(id); // TOUR: leaving the title closes the What's new tour
 }
@@ -309,3 +316,95 @@ function gotoTitle() {
   }
   if (window.Tour && Tour.maybeStart) Tour.maybeStart(); // TOUR: What's new (waits for the opening; never in a match, never before the tutorial)
 }
+
+// ======================= MOTION (ROUND 9: one hand for every 2D screen) =======================
+// Everything here plays ONCE and then the screen is still. Reduced motion (and "Reduce flashing", which makes the
+// reduced-motion query match, see js/a11y.js) cuts straight to the end.
+//   Motion.stagger(screenEl)   list items of a screen that just opened arrive in a short stagger (go() calls it)
+//   Motion.countUp(rootEl)     [data-count] numbers (optional data-from) count up once, ~0.65 s
+//   modal / closeModal         wrapped once every script has loaded: a new pop-up stages its parts (tap = finish now),
+//                              closing fades out in 150 ms. The wrapped functions keep their exact behaviour.
+var setOpen = {}; // Settings: which folding groups are open (kept across re-renders; js/screens.js reads it)
+var Motion = (function () {
+  function calm() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) || document.documentElement.classList.contains('a11y-calm'); }
+  var STAG = '.opp,.panel>.group,.panel>details.group,.mm-hero,.mm-modes>.btn,.mm-stuff>.btn,.stat,.bdg,.cos .it,.chart,.sea-table tr,.cup-card';
+  var stT = null;
+  function stagger(scr) {
+    if (!scr || calm()) return;
+    var els = scr.querySelectorAll(STAG); if (!els.length) return;
+    var marks = [];
+    for (var k = 0; k < els.length; k++) {
+      var el = els[k], p = el.parentNode;
+      if (p.__st == null) { p.__st = 0; marks.push(p); }
+      el.setAttribute('data-st', ''); el.style.setProperty('--i', Math.min(p.__st++, 10));
+    }
+    marks.forEach(function (p) { p.__st = null; });
+    clearTimeout(stT); scr.classList.remove('stagger'); void scr.offsetWidth; scr.classList.add('stagger');
+    stT = setTimeout(function () { scr.classList.remove('stagger'); }, 900);
+  }
+  var counting = null;
+  function countUp(root) {
+    var els = root ? [].slice.call(root.querySelectorAll('[data-count]')) : [];
+    if (counting) counting.finish();
+    if (!els.length) return;
+    function val(el) { return +el.getAttribute('data-count'); }
+    function from(el) { return +(el.getAttribute('data-from') || 0); }
+    var done = false, t0 = performance.now() + 260, dur = 650, safety;
+    function finish() { if (done) return; done = true; clearTimeout(safety); counting = null; els.forEach(function (el) { el.textContent = val(el); }); }
+    if (calm()) { finish(); return; }
+    els.forEach(function (el) { el.textContent = from(el); });
+    function tick(now) {
+      if (done) return;
+      var k = Math.max(0, Math.min(1, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 3);
+      els.forEach(function (el) { el.textContent = Math.round(from(el) + (val(el) - from(el)) * e); });
+      if (k >= 1) finish(); else requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    safety = setTimeout(finish, 260 + dur + 400); // a hidden tab may not draw frames: the real numbers still land
+    counting = { finish: finish };
+  }
+  // ----- pop-ups -----
+  var back = null, box = null, leaveT = null, freshT = null;
+  function settle() { if (!box) return; clearTimeout(freshT); box.classList.remove('fresh'); if (counting) counting.finish(); }
+  function wrapModal() {
+    back = document.getElementById('modal'); box = document.getElementById('modalBox');
+    if (!back || !box || typeof window.modal !== 'function' || window.modal.__r9) return;
+    var om = window.modal, oc = window.closeModal;
+    window.modal = function (html, onClose) {
+      var was = back.classList.contains('on') && !back.classList.contains('leaving');
+      clearTimeout(leaveT); back.classList.remove('leaving');
+      var r = om.apply(this, arguments);
+      if (!was) { // a new pop-up (not a page inside an open one): stage it once
+        settle();
+        box.scrollTop = 0;
+        if (!calm()) { box.classList.add('fresh'); freshT = setTimeout(function () { box.classList.remove('fresh'); }, 700); }
+      }
+      countUp(box);
+      return r;
+    };
+    window.modal.__r9 = true;
+    if (typeof oc === 'function') window.closeModal = function () {
+      settle();
+      var r = oc.apply(this, arguments);
+      if (!back.classList.contains('on') && !calm()) { // nothing new opened from onClose: fade the old one out
+        back.classList.add('leaving'); clearTimeout(leaveT);
+        leaveT = setTimeout(function () { back.classList.remove('leaving'); }, 170);
+      }
+      return r;
+    };
+    box.addEventListener('pointerdown', settle, true); // tap through: everything lands at once (the tap still works)
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wrapModal); else setTimeout(wrapModal, 0);
+  // ----- Settings: folding groups remember being open; a jump button opens its group first -----
+  document.addEventListener('toggle', function (e) {
+    var d = e.target; if (d && d.matches && d.matches('details.group[data-g]')) setOpen[d.getAttribute('data-g')] = d.open;
+  }, true);
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('[data-act="setJump"]'); if (!b) return;
+    var want = String(b.dataset.arg || '').toLowerCase();
+    [].forEach.call(document.querySelectorAll('#settings details.group'), function (d) {
+      var h = d.querySelector('summary h3'); if (h && h.textContent.toLowerCase().indexOf(want) >= 0) { d.open = true; setOpen[d.getAttribute('data-g')] = true; }
+    });
+  }, true);
+  return { stagger: stagger, countUp: countUp, calm: calm, settle: settle };
+})();
