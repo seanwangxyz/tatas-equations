@@ -171,3 +171,18 @@ var Net = (function () {
     drop: function (on) { return I().drop(on); }
   };
 })();
+
+// ACCOUNT (docs/handoff/account.md): before online play signs in anonymously, wait until a signed-in account (Google /
+// email) has been restored, so it is never replaced; then play as whoever is signed in now (signed out: anonymous).
+(function () {
+  var init = Net.init;
+  Net.init = function () {
+    var wait = window.Account && Account.authReady ? Account.authReady() : Promise.resolve();
+    return wait.then(init).then(function (uid) {
+      if (Net.kind() !== 'firebase' || !window.firebase || !firebase.apps.length) return uid;
+      var a = firebase.auth();
+      return a.currentUser ? a.currentUser.uid : a.signInAnonymously().then(function (c) { return c.user.uid; });
+    });
+  };
+})();
+// /ACCOUNT

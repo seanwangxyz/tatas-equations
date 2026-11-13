@@ -44,6 +44,23 @@
         },
         "$other": { ".validate": false }
       }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+        ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+        "save": {
+          ".validate": "newData.hasChildren(['v', 'data', 'rev', 'updatedAt', 'device', 'did'])",
+          "v": { ".validate": "newData.val() === 1" },
+          "data": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 300000 && newData.val().beginsWith('{')" },
+          "rev": { ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() + 1 : 1)" },
+          "updatedAt": { ".validate": "newData.val() === now" },
+          "device": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "did": { ".validate": "newData.isString() && newData.val().length <= 20" },
+          "$other": { ".validate": false }
+        },
+        "$other": { ".validate": false }
+      }
     }
   }
 }
