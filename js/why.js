@@ -63,12 +63,17 @@ var Why = (function () {
     if (hit && (hit.r !== '?' || hit.cap >= ctx.slice)) return hit;
     if (ctx.st.spent >= ctx.budget) return { r: '?', skipped: true, ms: 0, cap: 0 };
     if (ctx.allow !== undefined) { if (ctx.allow <= 0) throw PAUSE; ctx.allow--; }
-    var t0 = now(), a;
+    var t0 = now(), a = null, cap = Math.max(5, Math.min(ctx.slice, ctx.budget - ctx.st.spent));
     try {
-      var res = Eq.solve({ goal: ctx.goal, req: q.req, opt: q.opt, res: q.res, mode: q.mode, fractions: ctx.fractions,
-        maxDigits: MAXD, timeMs: Math.max(5, Math.min(ctx.slice, ctx.budget - ctx.st.spent)) });
-      if (res.found) a = verify(res, q, ctx);
-      else a = { r: res.complete ? 'no' : '?' };
+      // A short look first (at most 3 number cubes), so the example on the card is a short one a child can read;
+      // then the full look (up to 6), which is the only one that can prove "no way". Both fit in one slice.
+      var p = { goal: ctx.goal, req: q.req, opt: q.opt, res: q.res, mode: q.mode, fractions: ctx.fractions, maxDigits: 3, timeMs: Math.max(3, Math.floor(cap / 3)) };
+      var res = q.req.filter(Eq.isDigit).length <= 3 ? Eq.solve(p) : { found: false };
+      if (res.found) { a = verify(res, q, ctx); if (a.r !== 'yes') a = null; }
+      if (!a) {
+        res = Eq.solve(Object.assign(p, { maxDigits: MAXD, timeMs: Math.max(5, cap - (now() - t0)) }));
+        a = res.found ? verify(res, q, ctx) : { r: res.complete ? 'no' : '?' };
+      }
     } catch (e) { a = { r: '?', err: String(e && e.message || e) }; }
     a.ms = now() - t0; a.cap = ctx.slice;
     ctx.st.spent += a.ms; ctx.st.calls++; if (a.ms > ctx.st.worst) ctx.st.worst = a.ms;
@@ -86,6 +91,13 @@ var Why = (function () {
     var chk = Eq.checkSolution(toks, solCtx(q.cubes, q.ctxMode || q.mode, ctx));
     if (!chk.ok) return { r: '?', bad: 'check', reasons: chk.reasons };
     return { r: 'yes', tokens: toks, wild: chk.wildAs, n: Eq.cubeCount(toks) };
+  }
+  // A "yes" proved by logic on another mat: the same Solution, its cubes re-chosen (twins swapped) on this mat
+  // and checked again. If that fails, the logic still holds but there is no example to show.
+  function moved(ans, cubes, ctx) {
+    if (!ans || ans.r !== 'yes' || !ans.tokens) return ans;
+    var v = verify({ tokens: ans.tokens.map(sym) }, Q(cubes, 'impossible'), ctx);
+    return v.r === 'yes' ? v : { r: 'yes' };
   }
   function solCtx(cubes, mode, ctx) {
     var by = {}; cubes.forEach(function (c) { by[c.id] = c; });
@@ -126,6 +138,23 @@ var Why = (function () {
     }
   }
 
+  // ---- The three mats the questions are asked on ----
+  // Two cubes with the same face are the same to a player, so "a way that needs this cube" means a way
+  // that can't be fixed by swapping in a twin:
+  //   Forbidden: withIt  = every free cube with this face in Required (a way needing ALL of them is lost)
+  //              without = the mat after the move
+  //   Required:  withIt  = the mat after the move
+  //              without = this cube and every twin not already Required in Forbidden (a way with fewer of
+  //                        this face than Required now asks for: it no longer counts, and no swap fixes it)
+  function states(cubes, id, zone) {
+    var mv = cubes.filter(function (c) { return c.id === id; })[0], face = Eq.cubeOf(mv.s) || mv.s;
+    var free = cubes.filter(function (c) { return (Eq.cubeOf(c.s) || c.s) === face && !c.locked && (c.zone === 'required' || c.zone === 'permitted' || c.zone === 'resources'); });
+    var after = applyMove(cubes, id, zone), withIt = after, without = after;
+    if (zone === 'forbidden') { withIt = cubes; free.forEach(function (c) { if (c.zone !== 'required') withIt = applyMove(withIt, c.id, 'required'); }); }
+    if (zone === 'required') { without = cubes; free.forEach(function (c) { if (c.zone !== 'required') without = applyMove(without, c.id, 'forbidden'); }); }
+    return { after: after, withIt: withIt, without: without, face: face, copies: free.length, reqCopies: free.filter(function (c) { return c.zone === 'required'; }).length };
+  }
+
   // ---- The facts about one move ----
   // Returns { sym, face, zone, name, mine, live, possB, possA, use, avoid, nowB, nowA, waysB, waysA, resLeft,
   //           last, liked, taste, spent, calls, worst }. Each solver fact is {r: 'yes'|'no'|'?'|'na', tokens?}.
@@ -136,9 +165,8 @@ var Why = (function () {
     if (!mv || mv.zone !== 'resources' || !ZN[input.zone] || !input.goal) return null;
     var ctx = { goal: input.goal, fractions: input.fractions, cache: opts.cache || {}, slice: opts.sliceMs || SLICE,
       budget: opts.budgetMs || BUDGET, allow: opts.allow, st: opts.state || { spent: 0, calls: 0, worst: 0 } };
-    var z = input.zone, after = applyMove(cubes, input.id, z), U = { r: '?' };
-    var withIt = applyMove(cubes, input.id, 'required'), without = applyMove(cubes, input.id, 'forbidden');
-    var F = { sym: mv.s, face: Eq.cubeOf(mv.s) || mv.s, id: mv.id, zone: z, name: input.name || 'They', mine: !!input.mine,
+    var z = input.zone, U = { r: '?' }, W = states(cubes, input.id, z), after = W.after, withIt = W.withIt, without = W.without;
+    var F = { sym: mv.s, face: W.face, id: mv.id, zone: z, name: input.name || 'They', mine: !!input.mine, copies: W.copies, reqCopies: W.reqCopies,
       live: !!opts.live, resLeft: stOf(after).res.length, before: cubes, after: after };
     F.last = F.resLeft === 0;
     // 1. Could the Goal be made before the move (all Required, any Permitted and Resources)?
@@ -148,11 +176,11 @@ var Why = (function () {
     //    after Required = "a way with it"; Permitted changes neither (Resources already count as Permitted).
     if (z === 'forbidden') {
       F.use = none || ask(Q(withIt, 'impossible'), ctx);
-      F.avoid = none || (F.use.r === 'no' && F.possB.r === 'yes' ? F.possB : ask(Q(without, 'impossible'), ctx));
+      F.avoid = none || (F.use.r === 'no' && F.possB.r === 'yes' ? moved(F.possB, without, ctx) : ask(Q(without, 'impossible'), ctx));
       F.possA = F.avoid;
     } else if (z === 'required') {
       F.use = none || ask(Q(withIt, 'impossible'), ctx);
-      F.avoid = none || (F.use.r === 'no' && F.possB.r === 'yes' ? F.possB : ask(Q(without, 'impossible'), ctx));
+      F.avoid = none || (F.use.r === 'no' && F.possB.r === 'yes' ? moved(F.possB, without, ctx) : ask(Q(without, 'impossible'), ctx));
       F.possA = F.use;
     } else { F.use = U; F.avoid = U; F.possA = F.possB; }
     // Plain logic: a way with (or without) the cube is a way before the move; "with" and "without" can't both be "no" if one exists.
@@ -184,31 +212,34 @@ var Why = (function () {
   function many(n) { return n >= WAYCAP ? 'lots of ways' : n >= 2 ? 'a few ways' : n === 1 ? 'one way' : 'no way'; }
   function Y(x) { return !!x && x.r === 'yes'; }
   function N(x) { return !!x && x.r === 'no'; }
+  function TK(x) { return Y(x) && !!x.tokens; }   // a yes WITH a Solution to show
   function tasteLine(F) {
     var t = (F.taste || '').trim();
     if (!/^Loves /.test(t)) return '';
-    return 'Maybe that\'s why: ' + F.name + ' l' + t.slice(1).replace(/\.?$/, '.');
+    return 'Maybe that\'s why: ' + F.name + ' l' + t.slice(1) + (/[.…!?]$/.test(t) ? '' : '.');
   }
   function compose(F) {
     if (!F) return null;
     var c = 'the ' + show(F.sym), C = 'The ' + show(F.sym), who = F.mine ? 'You' : F.name, full = !F.live, z = F.zone;
+    var f = show(F.face), twins = F.copies || 1, reqTw = F.reqCopies || 0; // twins = free cubes with this face (this one included)
     var L = [], add = function (p, kind, text, ex) { L.push({ p: p, kind: kind, text: text, ex: ex || null, i: L.length }); };
     var head = z === 'forbidden' ? who + ' put ' + c + ' in Forbidden, so nobody may use it now.'
       : z === 'required' ? who + ' put ' + c + ' in Required, so every Solution must use it now.'
       : who + ' put ' + c + ' in Permitted, so it may be used or left out.';
-    var exUse = Y(F.use) ? { tokens: F.use.tokens, when: 'before' } : null, exAvoid = Y(F.avoid) ? { tokens: F.avoid.tokens, when: 'before' } : null;
+    var exUse = TK(F.use) ? { tokens: F.use.tokens, when: 'before' } : null, exAvoid = TK(F.avoid) ? { tokens: F.avoid.tokens, when: 'before' } : null;
     if (N(F.possB)) {
       if (full) add(99, 'never', 'Even before this move there was no way to make the Goal, so this move didn\'t change that.');
     } else if (z === 'forbidden') {
-      if (Y(F.use)) add(90, 'lost', 'Before, ' + tokText(F.use.tokens) + ' made the Goal, but it uses ' + c + ', so that way is gone.', exUse);
-      else if (N(F.use)) add(85, 'unused', C + ' wasn\'t part of any way to make the Goal, so forbidding it takes no way away.');
+      if (Y(F.use)) add(90, 'lost', 'Before, ' + (TK(F.use) ? tokText(F.use.tokens) : 'a way') + ' made the Goal, but it ' + (twins > 1 ? 'needs ' + (twins === 2 ? 'both ' : 'all ' + twins + ' ') + f + ' cubes' : 'uses ' + c) + ', so that way is gone.', exUse);
+      else if (N(F.use)) add(85, 'unused', twins > 1 ? 'No way to make the Goal needed every ' + f + ' cube, so forbidding one takes no way away.' : C + ' wasn\'t part of any way to make the Goal, so forbidding it takes no way away.');
       else add(40, 'unsure', 'I couldn\'t find a way that uses ' + c + ', so I can\'t tell if forbidding it took a way away.');
       if (full && Y(F.use) && Y(F.possA)) add(80, 'still', F.waysA && F.waysA.n >= 2 ? 'I can still find ' + many(F.waysA.n) + ' to make the Goal without it.' : 'I can still find another way to make the Goal without it.', { tokens: F.possA.tokens, when: 'after' });
     } else if (z === 'required') {
-      if (Y(F.avoid)) add(90, 'ruledout', 'Before, ' + tokText(F.avoid.tokens) + ' made the Goal without ' + c + ', but now that doesn\'t count, because it leaves out a Required cube.', exAvoid);
-      else if (N(F.avoid)) add(85, 'needed', 'Every way to make the Goal already used ' + c + ', so this takes no way away.', full ? exUse : null);
-      else add(40, 'unsure', 'I can\'t tell for sure if a way without ' + c + ' was lost.');
-      if (full && Y(F.avoid) && Y(F.possA)) add(80, 'still', 'There is still a way that uses ' + c + ', like ' + tokText(F.possA.tokens) + '.', { tokens: F.possA.tokens, when: 'after' });
+      if (Y(F.avoid)) add(90, 'ruledout', 'Before, ' + (TK(F.avoid) ? tokText(F.avoid.tokens) : 'a way') + (reqTw ? ' made the Goal with fewer ' + f + ' cubes, but now that doesn\'t count, because every Required cube must be used.'
+        : ' made the Goal without ' + (twins > 1 ? 'any ' + f + ' cube' : c) + ', but now that doesn\'t count, because it leaves out a Required cube.'), exAvoid);
+      else if (N(F.avoid)) add(85, 'needed', (reqTw ? 'Every way to make the Goal already used one more ' + f + ' cube than Required had' : 'Every way to make the Goal already used ' + (twins > 1 ? 'a ' + f + ' cube' : c)) + ', so this takes no way away.', full ? exUse : null);
+      else add(40, 'unsure', 'I can\'t tell for sure if this took a way away.');
+      if (full && Y(F.avoid) && Y(F.possA)) add(80, 'still', 'There is still a way that uses ' + c + (TK(F.possA) ? ', like ' + tokText(F.possA.tokens) : '') + '.', { tokens: F.possA.tokens, when: 'after' });
     } else {
       add(60, 'quietperm', 'Moving a cube to Permitted never takes a way away, so it doesn\'t block anything.');
     }
@@ -279,7 +310,7 @@ var Why = (function () {
   }
 
 
-  var api = { analyze: analyze, facts: facts, compose: compose, run: run, applyMove: applyMove, stOf: stOf, tokText: tokText,
+  var api = { analyze: analyze, facts: facts, compose: compose, run: run, applyMove: applyMove, states: states, stOf: stOf, tokText: tokText,
     LIMITS: { maxDigits: MAXD, sliceMs: SLICE, budgetMs: BUDGET, wayCap: WAYCAP } };
   // ======================= UI (page side) =======================
   if (typeof window === 'undefined' || typeof document === 'undefined') return api;
