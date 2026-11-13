@@ -69,7 +69,7 @@ if (T3 && T3.ctx) (function () {
   var ctx = T3.ctx, TAU = Math.PI * 2;
   var v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), inv = new THREE.Matrix4();
   var REST0 = [[-1.0, -0.28, 0.12], [1.0, -0.28, 0.12]];
-  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl', 'bank', 'heel'];
+  var POSE = ['lean', 'twist', 'hop', 'headYaw', 'headPitch', 'headRoll', 'shrug', 'spin', 'crouch', 'kneel', 'fwd', 'side', 'flop', 'slide', 'lift', 'pitch', 'crawl', 'bank', 'heel', 'belly'];
   var FACE = ['big', 'smile', 'hmm', 'o', 'shout', 'lid', 'squint', 'wide', 'browUp', 'browTilt', 'browAsym', 'gazeX', 'gazeY'];
   function zero(list, o) { o = o || {}; list.forEach(function (k) { o[k] = 0; }); return o; }
 
@@ -1153,8 +1153,8 @@ if (T3 && T3.ctx) (function () {
     // on his tummy: while his hips are still outside the rim his legs hang down the side of the table, feet off the
     // ground; further in, they lie out behind him with the feet up
     // thighs stay upright in the world (hanging down the table's side, or kneeling on the felt with the shins flat behind)
-    var cr = clamp(cur.crawl, 0, 1), pit = Math.max(0, cur.pitch);
-    m.setKnees(-ca + h0 - pit + 0.2 * fl, -ca + h1 - pit + 0.3 * fl, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr);
+    var cr = clamp(cur.crawl, 0, 1), pit = Math.max(0, cur.pitch), bly = clamp(cur.belly, 0, 1);   // (CUPTOSS belly: lying right over the felt, legs out behind him, feet up)
+    m.setKnees(-ca + h0 - pit + 0.2 * fl + 0.95 * pit * bly, -ca + h1 - pit + 0.3 * fl + 0.95 * pit * bly, 2 * ca + kn + k0 + 0.35 * (fl - cr) + 1.5 * cr + 0.75 * bly, 2 * ca + kn + k1 + 0.2 * (fl - cr) + 1.62 * cr + 0.95 * bly);
     if (m.legs) { m.legs[0].rotation.z = 0.5 * hc; m.legs[1].rotation.z = 0.22 * hc; }
     var rot = W.yaw + cur.spin, fx = Math.sin(W.yaw), fz = Math.cos(W.yaw), fw = (clamp(cur.fwd, 0, 0.75) + Math.max(0, cur.slide)) * s, sw = cur.side * s;
     // fwd: a step toward the way he faces; side: a step along his own left (+) / right (-)
@@ -1352,6 +1352,13 @@ if (T3 && T3.ctx) (function () {
     var H = homeOf(A), p = { x: H.x, z: H.z, nx: Math.sin(H.yaw), nz: Math.cos(H.yaw) }, far = h.far || new THREE.Vector3(H.x + p.nx * 3, 1, H.z + p.nz * 3);
     var plan = reachPlan(A, p, far, WALK.slideMax * 1.15);
     if (!plan) return false;
+    if (plan.mode === 'crawl') {
+      // from his seat a kneel onto the felt is seen from behind (it reads as standing on the table): he slides in on his
+      // tummy instead, legs out behind him over the rim, feet up (a kid stretching across a big table)
+      var D = A.dims, s = A.place.s, Rr = (D.L1 + D.L2) * WALK.stretch * 0.97, lift = flopLift(A), pF = WALK.flopP;
+      var dy = (far.y - A.place.y) / s - (lift + D.SH_Y * Math.cos(pF)), F = Math.hypot(far.x - p.x, far.z - p.z) / s;
+      if (Math.abs(dy) < Rr) { var sF = Math.max(0, F - D.SH_Y * Math.sin(pF) - Math.sqrt(Rr * Rr - dy * dy)); if (sF <= WALK.slideMax * 1.5) plan = { yaw: plan.yaw, mode: 'flop', p: pF, lift: lift, lean: 0, fwd: 0, sl: sF }; }
+    }
     A.hold = { fn: h.fn, plan: plan, yaw0: H.yaw };
     A.settled = false; ctx.dirty(); ctx.startLoop();
     return true;
@@ -1374,6 +1381,7 @@ if (T3 && T3.ctx) (function () {
     if (pl.mode !== 'stand') {
       P.flop += wb; P.pitch += pl.p * wb; P.slide += pl.sl * wb * wb * wb; P.lift += pl.lift * Math.min(1, wb * 1.6); P.headPitch += -0.25 * wb;
       if (pl.mode === 'crawl') P.crawl += wb;
+      if (pl.mode === 'flop' && pl.sl > 1.2) P.belly += wb * wb;
     } else { P.lean += pl.lean * wb; P.fwd += pl.fwd * wb; P.headPitch += 0.2 * wb; }
     face(A, { gazeY: -0.5, browUp: 0.2, smile: 0.3 }, wb);
   }

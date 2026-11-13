@@ -445,7 +445,6 @@ if (T3 && T3.ctx) (function () {
       if (!actor || hidden) { hold = null; return false; }
       if (h && h.fn) {
         if (task) finishTask(true);
-        if (gn && !fadeT0) fadeT0 = performance.now();               // a reaction eases out under the hands
         var S0 = actor.arms[1].baseShoulder || { y: 1.42, z: 0 }, a1 = actor.arms[1];
         var nomF = h.far ? w2l(h.far.clone()) : new THREE.Vector3(0, 1, 2);
         hold = { fn: h.fn, fake: { stage: 2, nom: nomF, H: nomF, fix: new THREE.Vector3(), arm: { baseShoulder: { x: 0, y: S0.y, z: S0.z || 0 }, L1: a1.L1, L2: a1.L2, k0: a1.k0 } } };
@@ -468,6 +467,7 @@ if (T3 && T3.ctx) (function () {
       try { hold.fn(now, HO); } catch (e) { console.warn('creature hold', e); hold = null; return; }
       var w = clamp(HO.w, 0, 1), pts = [HO.a, HO.b].filter(function (p) { return !!p; });
       if (!pts.length || w <= 0) return;
+      if (gn === 'enter') endGesture(); else if (gn && !fadeT0) fadeT0 = now;   // the hands are coming: a reaction eases out under them
       // the spot on the creature's right (-x) goes to arm 0, the other to arm 1
       if (pts.length === 2 && pts[0].x > pts[1].x) pts = [pts[1], pts[0]];
       for (var i = 0; i < 2; i++) {

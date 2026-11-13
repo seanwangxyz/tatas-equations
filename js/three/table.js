@@ -1190,10 +1190,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (refit) w.bodies.forEach(function (b) { if (b.mass > 0) { b.position.x = clampIn(b.position.x, W); b.position.z = clampIn(b.position.z, D); b.wakeUp(); } });
   }
   function clampIn(v, size) { var h = size / 2 - 0.6; return v < -h ? -h : v > h ? h : v; }
+  // CUPTOSS: T3.pourBy(by) right before T3.pour(...) = the same as passing { by } to it (a one-line hook for game.js)
+  var nextBy = null;
+  api.pourBy = function (by) { nextBy = by != null ? { by: by, t: performance.now() } : null; };
   api.pour = function (cubes, done, opts) { // (CUPTOSS: opts.by = who rolls: 'me' | 'mate' | creature seat 0 / 1; they dump the cup)
     if (!layout) { done(cubes.map(function (c) { return c.s; })); return; }
     if (tumble) endTumble(); // a reroll still in the air lands at once
     if (toss) endToss(true); // (CUPTOSS: a toss in the hand lands at once)
+    if (redump) endRedump(true);
     if (pour && pour.dump) endDump(pour.dump); emptyLoad(true); // (CUPTOSS: a pour cut short lets go of the cup)
     if (builtTier >= 0 && tierOf(qual) !== builtTier && !document.hidden) buildTable(); // the level changed (dropped): a venue and crowd built for it
     ensureCubes(); if (!world) buildWorld();
@@ -1213,11 +1217,12 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var ids = cubes.map(function (c) { return c.id; }).filter(function (i) { return !!meshes[i]; }); // (BONUS: the cubes in play, not every mesh)
     pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(ids), n: ids.length, done: done, settledAt: 0, sim: 0,
       from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5),
-      gather: gather, lag: gather.length ? Math.max(0, 0.3 + gEnd - 0.45) : 0 }; // (CRAFT: the sweep)
+      gather: gather, gLate: gather.length ? 0.25 : 0, lag: gather.length ? Math.max(0, 0.3 + gEnd - 0.45) + 0.25 : 0 }; // (CRAFT: the sweep; CUPTOSS gLate: the cubes go in once the cup has arrived)
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0); cup.scale.setScalar(1);
     // CUPTOSS: the roller picks the cup up and dumps it (a figure at the table, motion not reduced); else the cup tips as before
-    var dmp = (opts && opts.by != null && !document.hidden) ? planDump(opts.by) : null;
-    if (dmp) { pour.dump = dmp; cup.scale.setScalar(dmp.cs); dmp.start = Math.max(0.7, 0.3 + gEnd + 0.15); pour.lag = dmp.start; pour.cupPos = cup.position; }
+    var byv = opts && opts.by != null ? opts.by : (nextBy && performance.now() - nextBy.t < 3000 ? nextBy.by : null); nextBy = null;
+    var dmp = (byv != null && !document.hidden) ? planDump(byv) : null;
+    if (dmp) { gEnd = orderGather(gather, dmp.R, 0.022); pour.dump = dmp; cup.scale.setScalar(dmp.cs); pour.gLate = 0.22; dmp.start = Math.max(0.75, 0.3 + pour.gLate + gEnd + 0.15); hoverPlan(dmp, gather, pour.gLate); pour.lag = dmp.start; pour.cupPos = cup.position; } // (the cubes wait until the cup is there)
     Snd.cupRattle();
     camSnap(); if (orbit) orbit.reset(); pour.cupPos = cup.position; // a new shake: back to the seat (a half-second ease)
     if (document.hidden) { pour.fast = true; finishPourFast(); return; }
@@ -1230,7 +1235,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     // never outside the rim (the walls only keep in what starts inside)
     b.position.x = Math.max(-layout.W / 2 + 1, Math.min(layout.W / 2 - 1, b.position.x)); b.position.z = Math.max(-layout.D / 2 + 1, Math.min(layout.D / 2 - 1, b.position.z));
     var tx = (Math.random() - 0.5) * layout.W * 0.55, tz = (Math.random() - 0.3) * layout.D * 0.5, dx = tx - b.position.x, dz = tz - b.position.z, len = Math.hypot(dx, dz) || 1, sp = 6 + Math.random() * 6;
-    if (pour.dump) { sp = Math.min(2.5 + Math.random() * 3.5, len * 1.4); b.velocity.set(dx / len * sp, -2 + Math.random() * 1.5, dz / len * sp); } // (CUPTOSS: tumbling out of the upturned cup, spreading over the felt)
+    if (pour.dump) { dumpVel(pour.dump, b); } // (CUPTOSS: tumbling out of the upturned cup, spreading over the felt, away from where the cup goes back down)
     else b.velocity.set(dx / len * sp, -1 + Math.random() * 3, dz / len * sp);
     b.angularVelocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
     b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
@@ -1323,7 +1328,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (!o.lp) { job.nLoad = job.nLoad || cupLoad.length; loadCube(o, job.nLoad++); }
       var cs = cup.scale.x || 1, k1 = 0.7;
       gIn.copy(o.lp).applyMatrix4(cup.matrixWorld);
-      gMouth.set(o.lp.x * 0.5, 1.55 + (0.9 + 0.55 * o.s0) / cs, o.lp.z * 0.5).applyMatrix4(cup.matrixWorld);   // above the opening
+      gMouth.set(o.lp.x * 0.5, 1.55 + (1.25 + 0.55 * o.s0) / cs, o.lp.z * 0.5).applyMatrix4(cup.matrixWorld);   // above the opening
       if (k >= 1) {
         m.userData.inCup = true; cupLoad.push(o); placeLoad();
         var n = performance.now(); if (n - gLastTick > 55) { gLastTick = n; try { Snd.diceHit(0.16); } catch (e) {} }
@@ -1331,8 +1336,18 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       }
       if (k < k1) {
         var ek = sstep01(k / k1);
-        m.position.lerpVectors(o.p0, gMouth, ek); m.position.y += 2.0 * Math.sin(Math.PI * ek) * (1 - ek);
-        m.quaternion.copy(o.q0).slerp(o.qs, ek); m.scale.setScalar(o.s0 + (IN_S * o.s0 - o.s0) * ek);
+        // up first, then over: the height leads, so it is above the rim before it gets near the cup. A cube lying under
+        // the cup (it waits above its place) first slides out from under it, low, then goes up and over.
+        if (!o.p1) {
+          var rOut = 1.75 * cs + 0.55 * o.s0 + 0.25, ddx = o.p0.x - cup.position.x, ddz = o.p0.z - cup.position.z, dd = Math.hypot(ddx, ddz);
+          o.p1 = o.p0.clone();
+          if (dd < rOut) { if (dd < 0.01) { ddx = 0; ddz = 1; dd = 1; } o.p1.set(cup.position.x + ddx / dd * rOut, o.p0.y + 0.15, cup.position.z + ddz / dd * rOut); o.out = true; }
+        }
+        var kk = k / k1, a0 = o.p0;
+        if (o.out) { if (kk < 0.3) { m.position.lerpVectors(o.p0, o.p1, sstep01(kk / 0.3)); kk = -1; } else { kk = (kk - 0.3) / 0.7; a0 = o.p1; } }
+        if (kk >= 0) { var ev = 1 - Math.pow(1 - kk, 3), eh = sstep01((kk - 0.12) / 0.88);
+          m.position.set(a0.x + (gMouth.x - a0.x) * eh, a0.y + (gMouth.y - a0.y) * ev + 0.9 * Math.sin(Math.PI * kk) * (1 - kk), a0.z + (gMouth.z - a0.z) * eh); }
+        m.quaternion.copy(o.q0).slerp(o.qs, ek); m.scale.setScalar(o.s0 + (IN_S * o.s0 - o.s0) * Math.min(1, ek / 0.6));   // small before it is over the rim
       } else {
         var ed = (k - k1) / (1 - k1); ed = ed * ed;                          // dropping in: it falls, faster as it goes
         m.position.lerpVectors(gMouth, gIn, ed); gq.copy(cup.quaternion).multiply(o.lq); m.quaternion.copy(o.qs).slerp(gq, ed); m.scale.setScalar(IN_S * o.s0);
@@ -1345,10 +1360,10 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // ----- CUPTOSS: the roller picks the cup up and dumps it -----
   // by: 'me' | 'mate' (player.js) or a creature seat 0 / 1 (creatures.js), through ctx.grips. The cup comes to rest on
   // the felt right in front of the roller, the cubes go in, then (u = seconds since the dump began): hands to the cup
-  // (0-0.45), lift and carry it a little over the table (-1.05), turn it upside down over the felt (-1.6, the cubes fall
-  // out of its mouth from about half way), hold (-1.95), turn it back (-2.45), set it down where it stood (-2.8), let go
-  // (-3.15). The hands hold the cup by its sides on the turning axis, so they stay put while it turns between them.
-  var DUMP = { side: -2.6, fwd: [0.9, 1.3], ly: [3.3, 0.5, 4.6], cs: 0.78, reach: 0.45, lift0: 0.45, lift1: 1.05, turn1: 1.6, hold: 1.95, back: 2.45, down: 2.8, free: 3.15 };
+  // (0-0.45), lift and carry it a little over the table (-1.0), turn it upside down over the felt (-1.5, the cubes fall
+  // out of its mouth from about half way), hold (-1.72), turn it back (-2.18), set it down where it stood (-2.52), let go
+  // (-2.84). The hands hold the cup by its sides on the turning axis, so they stay put while it turns between them.
+  var DUMP = { side: -2.6, fwd: [0.9, 2.1], ly: [3.3, 0.5, 4.6], cs: 0.78, reach: 0.45, lift0: 0.45, lift1: 1.0, turn1: 1.5, hold: 1.72, back: 2.18, down: 2.52, free: 2.84 };
   function gripOf(by) {
     var g = ctx.grips || {};
     try {
@@ -1366,7 +1381,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     });
     return t1 >= t0 ? t0 : null;
   }
-  function planDump(by) {
+  function planDump(by, keep) {   // keep: { id: true } cubes that stay on the table (the cup must not stand on them)
     if (by == null || calm() || document.hidden || !layout || !host || current !== 'game') return null;
     var g = gripOf(by); if (!g) return null;
     var cs = DUMP.cs, rIn = 1.75 * cs + 0.35, rB = 1.4 * cs + 0.12, te = feltEntry(g.x, g.z, g.fx, g.fz); if (te == null) return null;
@@ -1375,10 +1390,15 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     // the kid at the near seat has his back to the camera: the cup stands a little to his left on screen, so his head
     // never hides it (he reaches across to it); everyone else has it straight in front
     var sd = by === 'me' && g.fz < -0.7 ? DUMP.side : 0;
-    var R = new THREE.Vector3(cl(g.x + g.fx * (te + rB) - g.fz * sd, W, rB), 1.6 * cs, cl(g.z + g.fz * (te + rB) + g.fx * sd, Dh, rB));
+    var R = new THREE.Vector3(), clear = function (x, z) { return !meshes.some(function (m, i) { return keep && keep[i] && m.visible && Math.hypot(m.position.x - x, m.position.z - z) < rB + 0.55 * m.scale.x + 0.15; }); };
+    // its spot: straight in front (or the kid's side spot); if a cube that stays on the table lies there, a little along the edge
+    [0, 1.3, -1.3, 2.6, -2.6, 3.9, -3.9, 5.2, -5.2].some(function (o) {
+      var sx = sd + o; R.set(cl(g.x + g.fx * (te + rB) - g.fz * sx, W, rB), 1.6 * cs, cl(g.z + g.fz * (te + rB) + g.fx * sx, Dh, rB));
+      return clear(R.x, R.z);
+    });
     var dx = R.x - g.x, dz = R.z - g.z, dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;   // from the roller to the cup: the way it is lifted and tipped
     var fwd = DUMP.fwd[g.kind === 'creature' ? 1 : 0], L = new THREE.Vector3(cl(R.x + dx * fwd, W), Math.max(DUMP.ly[0], Math.min(g.sy + DUMP.ly[1], DUMP.ly[2])), cl(R.z + dz * fwd, Dh));
-    var ax = new THREE.Vector3(dz, 0, -dx), hr = 1.54 * cs + g.hand * 0.85;
+    var ax = new THREE.Vector3(dz, 0, -dx), hr = 1.54 * cs + Math.min(g.hand * 0.85, 0.3);   // palms flat on its sides
     var D = { g: g, by: by, cs: cs, R: R, L: L, ax: ax, hr: hr, up: new THREE.Vector3(R.x, R.y + 0.8, R.z), u: -1, w: 0, open: 1, angle: 0, spill: false, freed: false, col: null, start: 1e9,
       ha: new THREE.Vector3(), hb: new THREE.Vector3(), look: new THREE.Vector3() };
     var fa = L.clone().addScaledVector(ax, hr), fb = L.clone().addScaledVector(ax, -hr);
@@ -1386,6 +1406,27 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var ok = false;
     try { ok = g.set({ far: far, fn: function (now, out) { if (D.w <= 0) { out.w = 0; return; } out.a = D.ha; out.b = D.hb; out.w = D.w; out.open = D.open; out.look = D.look; } }); } catch (e) { ok = false; }
     return ok ? D : null;
+  }
+  // the cup comes in to a spot just above its own place and only sets down once the cubes lying there have gone in
+  // (those go first); D.down0 = when it starts down (0.3 s), the dump waits for it
+  // nearest to the cup's place first (the ones lying under it go in first); returns when the last one is in
+  function orderGather(gather, R, step) {
+    var gEnd = 0;
+    gather.forEach(function (o) { o.d = Math.hypot(o.p0.x - R.x, o.p0.z - R.z); }); gather.sort(function (a, b) { return a.d - b.d; });
+    gather.forEach(function (o, i) { o.delay = i * Math.min(step, 0.5 / gather.length); o.dur = 0.42 + o.d * 0.012; gEnd = Math.max(gEnd, o.delay + o.dur); });
+    return gEnd;
+  }
+  function hoverPlan(D, gather, late) {
+    var rf = 1.4 * D.cs + 0.75, tIn = 0;
+    gather.forEach(function (o) { if (Math.hypot(o.p0.x - D.R.x, o.p0.z - D.R.z) < rf) tIn = Math.max(tIn, 0.3 + late + o.delay + o.dur); });
+    D.down0 = Math.max(0.5, tIn); D.hov = new THREE.Vector3(D.R.x, D.R.y + 1.9, D.R.z);
+    D.start = Math.max(D.start, D.down0 + 0.45);
+  }
+  function arriveTick(D, from, tc) {
+    var p = cup.position;
+    if (tc < 0.5) { var ea = (1 - Math.cos(tc / 0.5 * Math.PI)) / 2; p.lerpVectors(from, D.hov, ea); p.y += 1.2 * Math.sin(Math.PI * ea) * (1 - ea); }
+    else p.lerpVectors(D.hov, D.R, sstep01((tc - D.down0) / 0.3));
+    cup.quaternion.set(0, 0, 0, 1); cup.updateMatrixWorld();
   }
   // the cup's pose at u (also used by the reroll's pre-run, so the cubes fall from exactly where the cup is drawn)
   function dumpPose(D, u, obj) {
@@ -1407,18 +1448,35 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     D.open = u < T.reach * 0.85 ? 1 : 0.15;
     D.ha.copy(cup.position).addScaledVector(D.ax, D.hr); D.hb.copy(cup.position).addScaledVector(D.ax, -D.hr); D.look.copy(cup.position);
     if (!D.spill && u > T.lift1 && ang > 1.75) D.spill = true;
-    if (u >= T.back + 0.1 && !D.col && world) footprint(D);
+    if (u >= T.back && !D.col && !D.noCol && world) { footprint(D); if (u >= T.down && !D.col) D.noCol = true; }
     if (u >= T.free && !D.freed) releaseDump(D);
   }
-  // the cup set back down: a cube still lying where it goes is nudged aside, then the cup is solid there
-  function footprint(D) {
-    var r = 1.45 * D.cs;
-    world.bodies.forEach(function (b) {
+  // a cube leaving the upturned cup: toward a spot on the felt beyond the cup (away from the roller and from where the cup
+  // is set back down), a gentle throw that spreads them out
+  function dumpVel(D, b) {
+    var dx = D.L.x - D.R.x, dz = D.L.z - D.R.z, dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    var W = layout.W / 2 - 1.2, Dh = layout.D / 2 - 1.2, a = (Math.random() - 0.5) * 2.2, ca = Math.cos(a), sa = Math.sin(a), far = 3.5 + Math.random() * 5;
+    var tx = D.L.x + (dx * ca - dz * sa) * far, tz = D.L.z + (dz * ca + dx * sa) * far;
+    tx = Math.max(-W, Math.min(W, tx)); tz = Math.max(-Dh, Math.min(Dh, tz));
+    var ex = tx - b.position.x, ez = tz - b.position.z, len = Math.hypot(ex, ez) || 1, sp = Math.min(3 + Math.random() * 3.5, len * 1.6);
+    b.velocity.set(ex / len * sp, -1.5 + Math.random() * 1.5, ez / len * sp);
+  }
+  // the cup coming back down: a cube lying where it goes is nudged aside first (gently); once it stands on the felt it is
+  // solid there, but only if nothing is in its footprint (a body placed inside another one would be shot out)
+  function clearSpot(D, bodies, wake) {
+    var r = 1.45 * D.cs, any = false;
+    bodies.forEach(function (b) {
       if (b.mass <= 0) return; var dx = b.position.x - D.R.x, dz = b.position.z - D.R.z, d = Math.hypot(dx, dz) || 1e-3;
-      if (d < r + 0.8) { b.wakeUp(); b.velocity.set(dx / d * 3.2, 1.2, dz / d * 3.2); if (pour) pour.settledAt = 0; }
+      if (d < r + 0.55) { any = true; b.wakeUp(); b.velocity.set(dx / d * 2.6, 1.1, dz / d * 2.6); }
     });
-    var c = new CANNON.Body({ mass: 0, material: world.floorMat }); c.addShape(new CANNON.Cylinder(r, r, 3.2 * D.cs, 12)); c.position.set(D.R.x, 1.6 * D.cs, D.R.z);
-    world.addBody(c); D.col = c;
+    if (any && wake) wake();
+    return any;
+  }
+  function spotFree(D, bodies) { var r = 1.45 * D.cs + 0.55; return !bodies.some(function (b) { return b.mass > 0 && Math.hypot(b.position.x - D.R.x, b.position.z - D.R.z) < r; }); }
+  function cupBody(D, mat) { var r = 1.45 * D.cs, c = new CANNON.Body({ mass: 0, material: mat }); c.addShape(new CANNON.Cylinder(r, r, 3.2 * D.cs, 12)); c.position.set(D.R.x, 1.6 * D.cs, D.R.z); return c; }
+  function footprint(D) {
+    if (!D.nudged) { D.nudged = true; clearSpot(D, world.bodies, function () { if (pour) pour.settledAt = 0; }); return; }
+    if (D.u >= DUMP.down && spotFree(D, world.bodies)) { D.col = cupBody(D, world.floorMat); world.addBody(D.col); }
   }
   function releaseDump(D) {
     if (!D || D.freed) return; D.freed = true; D.w = 0;
@@ -1443,7 +1501,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var D = pour.dump;
     if (D) {
       // CUPTOSS: the cup comes in and settles on the felt in front of the roller (0.6 s), the cubes go in, then the dump
-      if (tc < 0.6) { var ea = e(tc / 0.6); cup.position.lerpVectors(pour.from, D.R, ea); cup.position.y += 1.6 * Math.sin(Math.PI * ea) * (1 - ea); cup.quaternion.set(0, 0, 0, 1); cup.updateMatrixWorld(); }
+      if (tc < D.start) arriveTick(D, pour.from, tc);
       else dumpTick(D, tc - D.start);
     } else {
       if (tc < 0.55) cup.position.lerpVectors(pour.from, pour.at, e(tc / 0.55)); else if (t <= 1.45) cup.position.copy(pour.at);
@@ -1452,7 +1510,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (t > 2.1) cup.visible = false;
       cup.updateMatrixWorld();
     }
-    if (pour.gather && pour.gather.length) stepGather(tc);
+    if (pour.gather && pour.gather.length) stepGather(tc - (pour.gLate || 0));
     placeLoad();
     if (D ? D.spill : t > 0.72) { if (D && !D.spillT) D.spillT = t; var want = Math.min(pour.n, Math.floor((t - (D ? D.spillT : 0.72)) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); } // (BONUS: pour.n = the cubes in play)
     if (pour.spawned) {
@@ -1608,7 +1666,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var tossed = false, onToss = function () { if (tossed) return; tossed = true; try { if (typeof opts.onToss === 'function') opts.onToss(); } catch (e) { console.warn(e); } };
     try {
       list = (list || []).filter(function (e) { return e && meshes[e.id] && meshes[e.id].visible; });
-      if (!list.length || !layout || !host || document.hidden || current !== 'game' || pour || !document.body.contains(renderer.domElement)) { onToss(); fin(); return false; }
+      if (!list.length || !layout || !host || document.hidden || current !== 'game' || pour || !document.body.contains(renderer.domElement)) { api._tossWhy = [!list.length, !layout, !host, document.hidden, current, !!pour].join(','); list.forEach(function (e) { if (!rollingId(e.id)) flatten(meshes[e.id], e.s); }); onToss(); fin(); return false; }
       if (toss) endToss(true); if (redump) endRedump(true); if (tumble) endTumble();
       var fin2 = function () { list.forEach(function (e) { flatten(meshes[e.id], e.s); }); fin(); };
       if (calm()) { onToss(); turnInPlace(list, fin2); return true; }
@@ -1624,7 +1682,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     } catch (e) { console.warn('rerollToss', e); toss = null; onToss(); fin(); return false; }
   };
   api.tossing = function () { return !!(toss || redump); };
-  api._cuptoss = function (o) { if (o) { if (o.dump) Object.assign(DUMP, o.dump); if (o.toss) Object.assign(TOSS, o.toss); } return { dump: DUMP, toss: TOSS, load: cupLoad.length, pour: !!pour, dumpU: pour && pour.dump ? pour.dump.u : null }; }; // tuning / checks
+  api._cuptoss = function (o) { if (o) { if (o.dump) Object.assign(DUMP, o.dump); if (o.toss) Object.assign(TOSS, o.toss); } var r = { dump: DUMP, toss: TOSS, load: cupLoad.length, pour: !!pour, dumpU: pour && pour.dump ? pour.dump.u : (redump ? redump.D.u : null), held: !!((pour && pour.dump && !pour.dump.freed) || toss || redump), col: !!(pour && pour.dump && pour.dump.col), gath: pour ? pour.gather.length : redump ? redump.gather.length : 0, spawned: pour ? pour.spawned : 0 };
+    if (o && o.faces) r.faces = o.faces.map(function (id) { var m = meshes[id]; if (!m) return null; var u = upFace(m.quaternion, m); return { id: id, s: facesOf(m)[u.k], up: +u.up.toFixed(3), y: +m.position.y.toFixed(3), x: +m.position.x.toFixed(2), z: +m.position.z.toFixed(2), vis: m.visible }; });
+    return r; }; // tuning / checks
   // make sure a rerolled cube lies flat showing face s (a cube still tilted after its fall is laid down; the rest untouched)
   function flatten(m, s) {
     if (!m || !m.visible) return; var k = facesOf(m).indexOf(s); if (k < 0) return;
@@ -1710,15 +1770,15 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // more than two cubes: back into the cup (the sweep), the roller dumps it again. The fall is worked out first (the
   // cup's path is fixed, so each cube leaves the mouth exactly where the cup is drawn), then played back relabelled.
   function startRedump(by, list, onToss, fin) {
-    var D = planDump(by); if (!D) return false;
+    var keep = {}; meshes.forEach(function (m, i) { keep[i] = true; }); list.forEach(function (e) { keep[e.id] = false; });
+    var D = planDump(by, keep); if (!D) return false;
     var J = { D: D, ids: {}, clock: 0, fin: fin, onToss: onToss, gather: [], nLoad: 0, from: new THREE.Vector3(layout.W / 2 + 5, 8, layoutName === 'tall' ? -3 : -1.5) };
     list.forEach(function (e) {
       var m = meshes[e.id]; anims = anims.filter(function (a) { return a.m !== m; }); m.userData.tpos = null; m.userData.lock.visible = false; J.ids[e.id] = e.s;
       J.gather.push({ m: m, p0: m.position.clone(), q0: m.quaternion.clone(), s0: m.scale.x, qs: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)), d: m.position.distanceTo(D.R) });
     });
-    J.gather.sort(function (a, b) { return a.d - b.d; });
-    var gEnd = 0; J.gather.forEach(function (o, i) { o.delay = i * Math.min(0.06, 0.5 / J.gather.length); o.dur = 0.42 + o.d * 0.012; gEnd = Math.max(gEnd, o.delay + o.dur); });
-    D.start = Math.max(0.75, 0.3 + gEnd + 0.15);
+    var gEnd = orderGather(J.gather, D.R, 0.06);
+    J.gLate = 0.22; D.start = Math.max(0.75, 0.3 + J.gLate + gEnd + 0.15); hoverPlan(D, J.gather, J.gLate);
     try { J.sim = preSim(D, list); } catch (e) { console.warn('redump', e); J.sim = null; }
     if (!J.sim) { releaseDump(D); return false; }
     emptyLoad(true);
@@ -1751,19 +1811,15 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         var id = order[C.length], m = meshes[id]; dumpPose(D, u, o); mouth.set(0, 1.5, 0).applyMatrix4(o.matrixWorld);
         var b = new CANNON.Body({ mass: 1, material: dm }); b.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)));
         b.position.set(clampIn(mouth.x + (Math.random() - 0.5) * 0.7, layout.W), Math.max(1.2, mouth.y + (Math.random() - 0.5) * 0.4), clampIn(mouth.z + (Math.random() - 0.5) * 0.7, layout.D));
-        var tx = (Math.random() - 0.5) * layout.W * 0.55, tz = (Math.random() - 0.3) * layout.D * 0.5, dx = tx - b.position.x, dz = tz - b.position.z, len = Math.hypot(dx, dz) || 1, sp = Math.min(2.5 + Math.random() * 3.5, len * 1.4);
-        b.velocity.set(dx / len * sp, -2 + Math.random() * 1.5, dz / len * sp);
+        dumpVel(D, b);
         b.angularVelocity.set((Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24);
         b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
         b.linearDamping = 0.08; b.angularDamping = 0.08; b.allowSleep = true; b.sleepSpeedLimit = 0.3; b.sleepTimeLimit = 0.35;
         (function (fr) { b.addEventListener('collide', function (ev) { var v = Math.abs(ev.contact.getImpactVelocityAlongNormal()); if (v > 1.2) hits.push([fr(), Math.min(1, v / 11)]); }); })(function () { return f; });
         w.addBody(b); C.push({ id: id, s: ids[id], m: m, b: b, f0: f, pos: [], q: [] }); lastSpawn = f;
       }
-      if (!col && u >= T.back + 0.1) {   // the cup back on the felt: a cube in its way is nudged aside, then it is solid there
-        col = true; var r = 1.45 * D.cs;
-        C.forEach(function (c) { var dx2 = c.b.position.x - D.R.x, dz2 = c.b.position.z - D.R.z, d = Math.hypot(dx2, dz2) || 1e-3; if (d < r + 0.8) { c.b.wakeUp(); c.b.velocity.set(dx2 / d * 3.2, 1.2, dz2 / d * 3.2); } });
-        var cb = new CANNON.Body({ mass: 0, material: fm }); cb.addShape(new CANNON.Cylinder(r, r, 3.2 * D.cs, 12)); cb.position.set(D.R.x, 1.6 * D.cs, D.R.z); w.addBody(cb);
-      }
+      if (!col && u >= T.back) { col = 1; clearSpot(D, C.map(function (c) { return c.b; })); }
+      if (col === 1 && u >= T.down) { col = 2; var bs = C.map(function (c) { return c.b; }); if (spotFree(D, bs)) w.addBody(cupBody(D, fm)); }
       w.step(1 / 60);
       C.forEach(function (c) { var p = c.b.position, q = c.b.quaternion; c.pos.push(p.x, p.y, p.z); c.q.push(q.x, q.y, q.z, q.w); });
       if (C.length === order.length && f > lastSpawn + 20 && col) {
@@ -1793,10 +1849,11 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function tickRedump(dt) {
     var J = redump, D = J.D, S = J.sim; J.clock += Math.min(Math.max(dt, 0), 0.05);
     var tc = J.clock, u = tc - D.start;
-    if (tc < 0.6) { var ea = (1 - Math.cos(Math.min(1, tc / 0.6) * Math.PI)) / 2; cup.position.lerpVectors(J.from, D.R, ea); cup.position.y += 1.6 * Math.sin(Math.PI * ea) * (1 - ea); cup.quaternion.set(0, 0, 0, 1); cup.updateMatrixWorld(); }
+    if (tc < D.start) arriveTick(D, J.from, tc);
     else dumpTick(D, u);
-    if (J.gather.length) stepGather(tc, J);
+    if (J.gather.length) stepGather(tc - J.gLate, J);
     placeLoad();
+    if (J.landed) { if (u >= DUMP.free) endRedump(false); return; }
     if (u >= S.u0) {
       if (!J.spilled) { J.spilled = true; J.onToss(); }
       var f = Math.floor((u - S.u0) * 60);
@@ -1806,12 +1863,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         c.m.visible = true; c.m.scale.setScalar(1); poseRec(c, f);
       });
       while (S.hi < S.hits.length && S.hits[S.hi][0] <= f) { var hv = S.hits[S.hi++]; if (hv[0] >= f - 2) { try { Snd.diceHit(hv[1]); } catch (e) {} } }
-      if (f >= S.frames - 1 && u >= DUMP.free) endRedump(false);
+      if (f >= S.frames - 1 && !J.landed) landRedump(J, false);              // down: done() now, the cup is still being put back
+      if (J.landed && u >= DUMP.free) endRedump(false);
     }
   }
   // land everything now (the recorded last frame, flat inside the felt, showing the new faces), cup away, then done()
-  function endRedump(force) {
-    var J = redump; if (!J) return; redump = null; clearTimeout(J.timer);
+  function landRedump(J, force) {
+    if (J.landed) return; J.landed = true;
     J.gather = [];
     J.sim.cubes.forEach(function (c) {
       if (c.m.userData.inCup) unload(c.m);
@@ -1820,9 +1878,14 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (force) spawnPuff(c.m.position.x, c.m.position.z, 0.8, 0.4);
     });
     emptyLoad(false);
-    endDump(J.D); cup.visible = false; cup.scale.setScalar(1);
+    J.ids = {};                                                          // the game may slide them into their slots now
     if (!J.spilled) { J.spilled = true; J.onToss(); }
     dirty = true; J.fin();
+  }
+  function endRedump(force) {
+    var J = redump; if (!J) return; redump = null; clearTimeout(J.timer);
+    landRedump(J, force);
+    endDump(J.D); cup.visible = false; cup.scale.setScalar(1); dirty = true;
   }
   var looping = false, wd = null;
   function renderNow() {
