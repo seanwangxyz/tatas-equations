@@ -837,7 +837,7 @@ if (T3 && T3.ctx) (function () {
     if (Math.hypot(H.x - A.wk.x, H.z - A.wk.z) > 0.3) { toReturn(A, T); return; }
     clearTimeout(T.timer); A.trip = null; syncHome(A);
   }
-  function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); else if (g.k === 'walk' && T.script) T.fin(); }   // (MATCHDAY: a scripted walk has arrived)
+  function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); else if (g.k === 'walk' && (T.script || T.cup)) T.fin(); }   // (CUPTOSS cup: arrived at the spot on the rim)   // (MATCHDAY: a scripted walk has arrived)
   document.addEventListener('visibilitychange', function () { if (document.hidden) { finishNow(me, true); finishNow(mate, true); } });
 
   // the trip's pose for this frame (before smoothing): where he is, which way he faces, lean / tummy, arm targets
@@ -887,7 +887,7 @@ if (T3 && T3.ctx) (function () {
       }
     }
     // the arms that are not reaching: swing while he runs, the cube hand holds it at his side
-    var run = clamp(W.spd / (0.5 * WALK.v * s), 0, 1), ai = T.arm, holding = T.picked && !T.released;
+    var run = clamp(W.spd / (0.5 * WALK.v * s), 0, 1), ai = T.carry != null ? T.carry : T.arm, holding = (T.picked && !T.released) || T.carry != null;   // (CUPTOSS carry: a cube in his hand on the way)
     for (var i = 0; i < 2; i++) {
       var ph = W.ph + i * Math.PI, AR = A.arm[i];
       if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
@@ -1114,7 +1114,7 @@ if (T3 && T3.ctx) (function () {
     if (A.hold && !A.trip) holdPose(A, now);                              // (CUPTOSS)
     var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
-    if (!A.trip) { T = null; syncHome(A); }
+    if (!A.trip) { T = null; if (!A.hold) syncHome(A); }   // (CUPTOSS: held at a spot on the rim: he stays there)
     if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
     // how fast he really moves (legs, arm swing) and which way he faces
     var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
@@ -1346,20 +1346,16 @@ if (T3 && T3.ctx) (function () {
   function holdSet(A, h) {
     if (!h || !h.fn) { A.hold = null; A.settled = false; ctx.dirty(); ctx.startLoop(); return true; }
     if (!A.model || !A.shown || !A.fits || !A.model.root.visible || document.hidden || !ctx.layout) return false;
-    if (A.trip) finishNow(A, true);
+    // from where he stands: his seat (the dump), or the spot on the rim he walked to (a toss: T3 grip walk())
+    var atSpot = !!(A.trip && A.trip.cup);
+    if (atSpot) { clearTimeout(A.trip.timer); A.trip = null; } else { if (A.trip) finishNow(A, true); syncHome(A); }
     if (A.g) A.g = null;
-    syncHome(A);
-    var H = homeOf(A), p = { x: H.x, z: H.z, nx: Math.sin(H.yaw), nz: Math.cos(H.yaw) }, far = h.far || new THREE.Vector3(H.x + p.nx * 3, 1, H.z + p.nz * 3);
-    var plan = reachPlan(A, p, far, WALK.slideMax * 1.15);
-    if (!plan) return false;
-    if (plan.mode === 'crawl') {
-      // from his seat a kneel onto the felt is seen from behind (it reads as standing on the table): he slides in on his
-      // tummy instead, legs out behind him over the rim, feet up (a kid stretching across a big table)
-      var D = A.dims, s = A.place.s, Rr = (D.L1 + D.L2) * WALK.stretch * 0.97, lift = flopLift(A), pF = WALK.flopP;
-      var dy = (far.y - A.place.y) / s - (lift + D.SH_Y * Math.cos(pF)), F = Math.hypot(far.x - p.x, far.z - p.z) / s;
-      if (Math.abs(dy) < Rr) { var sF = Math.max(0, F - D.SH_Y * Math.sin(pF) - Math.sqrt(Rr * Rr - dy * dy)); if (sF <= WALK.slideMax * 1.5) plan = { yaw: plan.yaw, mode: 'flop', p: pF, lift: lift, lean: 0, fwd: 0, sl: sF }; }
-    }
-    A.hold = { fn: h.fn, plan: plan, yaw0: H.yaw };
+    var R = ringOf(A), rp = ringPt(R, ringU(R, A.wk.x, A.wk.z)), yaw0 = atSpot ? A.wk.yawT : homeOf(A).yaw;
+    var p = atSpot ? { x: A.wk.x, z: A.wk.z, nx: rp.nx, nz: rp.nz } : { x: A.wk.x, z: A.wk.z, nx: Math.sin(yaw0), nz: Math.cos(yaw0) };
+    var far = h.far || new THREE.Vector3(p.x + p.nx * 3, 1, p.z + p.nz * 3);
+    var plan = reachPlan(A, p, far, 0);                                       // standing, or tummy on the rim: never up on the felt
+    if (!plan || plan.mode === 'crawl') return false;
+    A.hold = { fn: h.fn, plan: plan, yaw0: yaw0 };
     A.settled = false; ctx.dirty(); ctx.startLoop();
     return true;
   }
@@ -1368,13 +1364,62 @@ if (T3 && T3.ctx) (function () {
     var H = homeOf(A), D = A.dims, s = A.place.s;
     return { kind: A.who, x: H.x, z: H.z, fx: Math.sin(H.yaw), fz: Math.cos(H.yaw), reach: (D.L1 + D.L2) * s, sy: A.place.y + D.SH_Y * s, hand: 0.26 * D.handS * s,
       set: function (h) { return holdSet(A, h); }, holding: function () { return !!A.hold; },
+      walk: function (pts, done, o) { return cupWalk(A, pts, done, o); }, home: function () { cupHome(A); }, at: function () { return { x: A.wk.x, z: A.wk.z, yaw: A.wk.yawT }; },
+      sideOf: function (q) { var cx = Math.cos(A.wk.yawT), cz = -Math.sin(A.wk.yawT); return (q.x - A.wk.x) * cx + (q.z - A.wk.z) * cz < 0 ? 0 : 1; },
       hands: function () { if (!A.model) return null; A.model.root.updateMatrixWorld(true); return A.model.arms.map(function (a) { return a.pos.clone().applyMatrix4(A.model.chest.matrixWorld); }); } };
+  }
+  // walk(pts, done, { carry }): he walks round the outside of the table to the spot on the rim from which he can reach
+  // every point in pts (standing, or tummy on the rim: never up on the felt), the quickest way round (the same ring,
+  // obstacles and sides as a move), and stands there facing in; done() on arrival. carry: the hand (0 / 1) that holds a
+  // cube on the way. Returns false (done not called) if no spot reaches them all.
+  function cupWalk(A, pts, done, o) {
+    if (!A.model || !A.shown || !A.fits || !A.model.root.visible || document.hidden || !ctx.layout || !pts || !pts.length) return false;
+    if (A.trip && !A.trip.cup) finishNow(A);
+    if (A.g) A.g = null;
+    var R = ringOf(A), N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, obs = obstaclesFor(A), s = A.place.s, best = null, k;
+    var ring = [], blk = [], soft = [];   // hard: never through (a creature, the far person, a ruled-out side); soft: not a spot to stand (he goes round behind)
+    for (k = 0; k < N; k++) { var q = ringPt(R, k * h); ring.push(q); blk.push(sideOff(R, q.x) || obs.some(function (ob) { return ob.hard && inObs(ob, q.x, q.z); })); soft.push(obs.some(function (ob) { return !ob.hard && inObs(ob, q.x, q.z); })); }
+    var iS = Math.round(ringU(R, A.wk.x, A.wk.z) / h) % N;
+    function reachAll(sp) { var pl = null, c = 0; for (var j = 0; j < pts.length; j++) { var r = reachPlan(A, sp, pts[j], 0); if (!r || r.mode === 'crawl') return null; c += r.cost; if (!pl || Math.hypot(pts[j].x - sp.x, pts[j].z - sp.z) > Math.hypot(pl.t.x - sp.x, pl.t.z - sp.z)) pl = { r: r, t: pts[j] }; } return { plan: pl.r, cost: c }; }
+    function way(i, j) {   // ring distance from i to j without passing a blocked sample: { d, dir } or null
+      var bestW = null;
+      [1, -1].forEach(function (d) { var n = i, c = 0; while (n !== j && c <= N) { n = (n + d + N) % N; c++; if (blk[n]) return; } if (n === j && (!bestW || c * h < bestW.d)) bestW = { d: c * h, dir: d }; });
+      return bestW;
+    }
+    for (k = 0; k < N; k++) {
+      if (blk[k] || soft[k]) continue;
+      var ra = reachAll(ring[k]); if (!ra) continue;
+      var w = way(iS, k); if (!w) continue;
+      var away = ra.plan.mode === 'flop' && Math.cos(ra.plan.yaw) < -0.7 ? 0.6 : 0;   // lying over the near rim hides the cubes from the seat camera: from a side if he can
+      var t = (w.d + Math.hypot(A.wk.x - ring[iS].x, A.wk.z - ring[iS].z)) / runSpeed(A, false) + ra.cost * 0.6 + away;
+      if (!best || t < best.t) best = { t: t, k: k, w: w, plan: ra.plan };
+    }
+    if (!best) return false;
+    var ctxp = { R: R, N: N, h: h, obs: obs, pts: ring }, sp = ring[best.k];
+    var path = ringPath(ctxp, iS, best.k, best.w.dir, { x: A.wk.x, z: A.wk.z }, null), segs = [];
+    var face = Math.atan2(sp.nx, sp.nz);
+    if (path.len > 0.05) { var tn = turnSeg(A.wk.yaw, path, s, false); if (tn) segs.push(tn); segs.push(walkSeg(path, runSpeed(A, false) * 0.85, face, s)); }
+    segs.push({ k: 'wait', x: sp.x, z: sp.z, T: 1e7 });
+    var fired = false, T = { cup: true, carry: o && (o.carry === 0 || o.carry === 1) ? o.carry : null, fin: function () { if (fired) return; fired = true; try { done(); } catch (e) { console.warn(e); } },
+      segs: segs, i: 0, t0: performance.now(), u: 0, phase: 'cup', arm: 0, picked: false, released: true, timer: 0 };
+    if (A.trip) clearTimeout(A.trip.timer);
+    A.hold = null; A.trip = T; A.settled = false; ctx.dirty(); ctx.startLoop();
+    if (path.len <= 0.05) { A.wk.yawT = face; T.fin(); }
+    return true;
+  }
+  // home(): he walks back to his seat from wherever he is (the walk back of a move)
+  function cupHome(A) {
+    if (!A.model) return;
+    if (A.trip && A.trip.cup) A.trip = null;
+    if (A.trip) return;
+    var T = { segs: [], i: 0, t0: performance.now(), u: 0, phase: 'back', arm: 0, picked: false, released: true, timer: 0 };
+    A.trip = T; toReturn(A, T); A.settled = false; ctx.dirty(); ctx.startLoop();
   }
   ctx.grips = ctx.grips || {};
   ctx.grips.human = function (who) { return humanGrip(who === 'mate' ? mate : me); };
   // the body for this frame: the reach plan (lean / tummy on the rim / kneeling in), blended by the hands' weight
   function holdPose(A, now) {
-    var Hd = A.hold; HOP.a = HOP.b = HOP.look = null; HOP.w = 0; HOP.open = 0.5;
+    var Hd = A.hold; HOP.a = HOP.b = HOP.look = null; HOP.w = 0; HOP.open = 0.5; HOP.armA = null;
     try { Hd.fn(now, HOP); } catch (e) { console.warn('player hold', e); A.hold = null; return; }
     var P = A.P, pl = Hd.plan, wb = clamp(HOP.w, 0, 1);
     A.wk.yawT = Hd.yaw0 + wrap(pl.yaw - Hd.yaw0) * wb;
@@ -1390,7 +1435,8 @@ if (T3 && T3.ctx) (function () {
     var m = A.model, w = clamp(HOP.w, 0, 1), pts = [HOP.a, HOP.b].filter(function (q) { return !!q; });
     if (!pts.length || w <= 0) return;
     var cx = Math.cos(A.wk.yaw), cz = -Math.sin(A.wk.yaw), lx = function (q) { return (q.x - A.wk.x) * cx + (q.z - A.wk.z) * cz; };
-    if (pts.length === 2 && lx(pts[0]) > lx(pts[1])) pts = [pts[1], pts[0]];
+    if (pts.length === 2 && (HOP.armA === 0 || HOP.armA === 1)) { if (HOP.armA === 1) pts = [pts[1], pts[0]]; }   // (spot a goes to a given hand: the cube already in it)
+    else if (pts.length === 2 && lx(pts[0]) > lx(pts[1])) pts = [pts[1], pts[0]];
     m.root.updateMatrixWorld(true); inv.copy(m.chest.matrixWorld).invert();
     for (var i = 0; i < 2; i++) {
       var q = pts.length === 2 ? pts[i] : (i === (lx(pts[0]) < 0 ? 0 : 1) ? pts[0] : null); if (!q) continue;

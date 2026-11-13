@@ -60,9 +60,21 @@ skipped by a tap, torn down, hidden, on any error, or by a safety timeout). Retu
   higher, spin (calmer than T3.reroll's) and land on their spots showing exactly `s` (the same relabelling as
   T3.reroll: the fall is simulated first, then each frame is turned by one fixed cube symmetry). The hands follow
   through upward and ease home (0.34 s). Toss to landed: ~0.85 s + ~0.8 s = about 1.6-1.9 s.
-  Kid: his cubes are usually in the middle of Resources, beyond a lean, so he slides in on his tummy over the rim,
-  legs out behind, feet up (new `belly` pose channel), then slides back. Creatures lean / step in over the table (their
-  move posture). Two cubes too far apart for one hand each: one toss, then the other.
+  Creatures lean / step in over the table (their move posture); two cubes too far apart for one hand each: one toss,
+  then the other.
+  **The kid and Tata (round 2, coordinator):** never on the table. Like a move, he walks round the outside of the table
+  (the same ring, obstacles and sides as `T3.playerMove`; the other person is gone round, a creature's side is never
+  used) to the spot on the rim from which both cubes are in reach, one in each hand, standing or tummy on the rim (hips
+  outside it), and faces in. If no spot reaches both: the nearer cube first; he grabs it, lifts it, carries it in his
+  hand (the move's carry pose) along the edge to the spot for the other, grabs that one too with his other hand, then
+  the same scoop and toss; then he walks back to his seat (the walk back is free: done() fires when the cubes land).
+  Spots where he would lie over the near rim with his back to the camera cost a little more, so a cube that can be
+  reached from a side is taken from the side. Measured (1280x800): the kid, one cube at the far right end: toss at
+  1.6 s, done 3.2 s; two close cubes in the middle: from his seat, toss 0.9 s, done 2.6 s; two far apart (left and
+  right ends): toss 3.2 s, done 4.4 s. Tata from the left seat (3 players): far right cube toss 3.0 s / done 4.7 s
+  (round behind the kid), far apart 3.7 / 5.1 s, close 2.2 / 4.0 s. Grip adapter additions: `walk(pts, done, {carry})`,
+  `home()`, `at()`, `sideOf(p)`; `set()` now plans from where he stands and never kneels on the felt (the belly slide is
+  gone).
 - **More than two**: they sweep back into the cup (really inside, as above), the roller dumps it again (same timeline
   as the dump), and they land showing exactly `s`: the whole fall is simulated first (the cup's path is fixed, so each
   cube leaves the mouth exactly where the cup is drawn), the other cubes are solid and never move, then it is played
