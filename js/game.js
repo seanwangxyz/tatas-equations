@@ -56,6 +56,7 @@ function seatPeople(mode, cfg) {
   else if (mode === 'online') mateShow({ who: other, seat: 'far', name: p1.name, number: p1.jersey || (grown ? '7' : '17') });
   else if (mode === 'team' && G.team) mateShow({ who: other, seat: 'left', name: G.team.names[1], number: G.team.jerseys[1] });
   else if (mode === 'p3') mateShow({ who: other, seat: 'left', name: p1.name, number: grown ? '7' : '17' });
+  else if (mode === 'tourney' && humans().length > 1) mateShow({ who: other, seat: nP() > 2 ? 'left' : 'far', name: G.players[humans()[1]].name, number: grown ? '7' : '17' }); // TOURNEY
   else mateShow(null);
 }
 function creatureMood(m) { if (T3.creatureMood) T3.creatureMood(m); if (m === 'dance' && Snd.danceMusic) Snd.danceMusic(3200); }
@@ -72,7 +73,7 @@ function avatarMoveFn(who) {
   if (G.mode === 'online') return window.Online && Online.moveFn ? Online.moveFn(who) : null; // host: its player / the mate carry the cube
   if (G.team && who === 0) return G.team.cur === 0 ? T3.playerMove : T3.mateMove;   // Team-up: whoever's go it is
   if (who === 0) return T3.playerMove;
-  if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3')) return T3.mateMove;
+  if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3' || G.mode === 'tourney')) return T3.mateMove; // (TOURNEY: + tourney)
   return null;
 }
 // A human's move: the kid (or the mate) picks the cube up and lobs it into the zone, like aiPlace for creatures.
@@ -109,6 +110,7 @@ function startMatch(mode, oppIdx, cfg) {
   }
   else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
   else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
+  else if (mode === 'tourney' && window.Tourney) Tourney.setup(G, cfg); // TOURNEY: tournament practice (js/tourney.js): players, division, options
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
   if (window.Parent) Parent.note('matchStart'); // PARENT page
@@ -120,13 +122,13 @@ function startMatch(mode, oppIdx, cfg) {
   if (ais.length > 1 && T3.setCreatures) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }));
   else setCreature(ai ? ai.kind : null, ai && ai.pack);
   playerShow(); seatPeople(mode, cfg);
-  if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' ? 'right' : 'auto');   // the second creature stands at the far left corner
+  if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' || (mode === 'tourney' && ais.length > 1) ? 'right' : 'auto'); // (TOURNEY: two creatures stand like Three at the table)   // the second creature stands at the far left corner
   var begin = function () { if (!G) return; if (Snd.ambience) Snd.ambience(['stadium', 'night', 'beach', 'volcano'].indexOf(S.cos.mat) >= 0 ? 'stadium' : 'room');
     var stadiumMat = ['stadium', 'night'].indexOf(S.cos.mat) >= 0;
     if (window.WeatherSfx) WeatherSfx.set(stadiumMat && wx ? wx.ambience : 'off');
     var news = stadiumMat && T3.stadiumNews ? T3.stadiumNews() : '';   // once per new stadium tier
     if (news) { persist(); setTimeout(function () { if (G) say('pip', news, 'cheer'); }, 2400); }
-    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); newShake(); if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
+    if (ai && Snd.theme) Snd.theme(ai.kind); creaturesEnter(); setTimeout(function () { if (G) playerMood('wave'); }, 500); if (G.tour && window.Tourney) Tourney.firstSetter(function () { newShake(); }); else newShake(); /* TOURNEY: red-cube roll for the first Goal-setter */ if (window.Commentary) Commentary.say('kickoff'); if (ai) { var hi = talkLine(ai, 'greet'); if (hi) setTimeout(function () { if (G && G.phase === 'roll') say('opp', hi); }, 600); } };
   if (window.Social && Social.vsScreen) Social.vsScreen(G.players, begin); else begin();
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
@@ -158,6 +160,7 @@ function rerollOps(done) {
 function newShake(fixedCubes) {
   var st = stageInfo();
   G.ops = st.ops.slice(); G.fractions = st.fractions;
+  if (G.tour && window.Tourney) Tourney.fixOps(); // TOURNEY: fractions on, all six operations (or the unlocked ones)
   G.cubes = (fixedCubes || Eq.roll()).map(function (c) { return { id: c.id, color: c.color, s: c.s, zone: 'resources', order: c.id, locked: false }; });
   if (window.Bonus) Bonus.onShake(G, !!fixedCubes); // BONUS (house rule): the earned bonus dice join the roll (js/bonus.js)
   if (window.Career) Career.onShake(G, !!fixedCubes); // CAREER: a creature's bonus die (Nugget) joins the roll
@@ -165,6 +168,7 @@ function newShake(fixedCubes) {
   G.goalTokens = []; G.goal = null; G.lastMover = null; G.selected = null; G.hintUsed = false; G.turn = G.setter;
   G.busy = false; G.aiPlan = null; G.justMoved = null; G.highlight = null;
   if (window.Vari) Vari.reset(); // VARIATIONS (js/variations.js): no card yet this shake
+  if (G.tour && window.Tourney) Tourney.onShake(); // TOURNEY: the division's rules, no card yet, bonus moves reset
   xpLog = [];
   G.phase = 'roll'; G.rolling = true;
   cue('reset'); Snd.setMood('play'); board('');
@@ -214,6 +218,7 @@ function speechHTML() {
 }
 
 function startGoalPhase() {
+  if (G.tour && window.Tourney && Tourney.beforeGoal(startGoalPhase)) return; // TOURNEY: every player picks a card first (II-B)
   if (window.Bonus && Bonus.beforeGoal(startGoalPhase)) return; // BONUS: a newly earned die is celebrated, the Twist card is drawn (it may pick this shake's card)
   if (window.Career && Career.beforeGoal(startGoalPhase)) return; // CAREER: the creature's signature card is dealt
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
@@ -261,7 +266,7 @@ function renderGame() {
   if (!$('#gTop')) el.innerHTML = '<div id="gTop" class="game-top"></div><div id="gGoal"></div><div id="gMat"></div><div id="gAct" class="actionbar"></div>';
   el.classList.toggle('three', three);
   $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
-    '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>';
+    '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>' + (G.tour && window.Tourney ? Tourney.topHTML() : ''); // (TOURNEY: division, penalties, practice clock)
   if (three) {
     $('#gGoal').innerHTML = G.goal ? '<div class="goalhud"><div class="gl">' + ico('target') + '<span>GOAL</span></div><span class="expr">' + ((window.Vari && Vari.goalHTML && Vari.goalHTML('mini')) || tokensHTML(G.goalTokens, G.cubes)) + '</span><span class="gv">= ' + Eq.fmt(G.goal) + (window.Vari && Vari.wildNote() ? ' <small>(0 is wild)</small>' : '') + '</span></div>' : '';
     T3.attach($('#gMat')); T3.sync(G);
@@ -278,9 +283,11 @@ function renderGame() {
   hudCountUp();
 }
 function actionsHTML() {
+  if (G.phase === 'goal' && G.tour && window.Tourney && Tourney.selPending()) return '<button class="btn big green" data-act="tResumeSel">🃏 Pick the cards first</button>'; // TOURNEY: the card pick is not finished
   if (G.phase === 'goal' && !isAI(G.setter) && !G.busy) {
     return (multiHuman() ? '<div style="width:100%;text-align:center;font-weight:800">' + esc(G.players[G.setter].name) + ' sets the Goal</div>' : '') +
-      '<button class="btn big green" data-act="buildGoal">' + ico('target') + ' Build the Goal</button>' + (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="noGoal">No Goal possible</button>');
+      '<button class="btn big green" data-act="buildGoal">' + ico('target') + ' Build the Goal</button>' + (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="noGoal">No Goal possible</button>') +
+      (G.tour && window.Tourney ? Tourney.bonusButtonHTML() : '') + (window.Tourney ? Tourney.judgeButtonHTML() : ''); // TOURNEY: bonus move before the Goal; Ask the Judge
   }
   if (G.phase !== 'move') return '';
   var out = '';
@@ -289,8 +296,10 @@ function actionsHTML() {
     out += (multiHuman() ? '<div style="width:100%;text-align:center;font-weight:800">' + esc(G.players[G.turn].name) + ': your turn!</div>' : '') +
       '<button class="btn now" data-act="callNow" data-arg="' + G.turn + '"' + (nc ? ' title="' + esc(nc) + '"' : '') + '>' + ico('bolt') + ' Now!</button>' +
       '<button class="btn imp" data-act="callImp" data-arg="' + G.turn + '">' + ico('ban') + ' Impossible!</button>' +
-      (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="hint">' + ico('bulb') + ' Hint</button>');
+      (G.mode === 'tutorial' ? '' : '<button class="btn" data-act="hint">' + ico('bulb') + ' Hint</button>') +
+      (G.tour && window.Tourney ? Tourney.bonusButtonHTML() : ''); // TOURNEY: bonus move
   }
+  if (window.Tourney && !G.carrying) out += Tourney.judgeButtonHTML(); // TOURNEY: Ask the Judge (normal matches too)
   if (nP() > 2 && G.lastMover !== null && !G.carrying) {
     var others = humans().filter(function (i) { return i !== G.turn && i !== G.lastMover; });
     if (others.length) out += '<div class="also">' + others.map(function (i) {
@@ -321,6 +330,7 @@ ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commenta
 ACT.cubeTap = function (el) {
   if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once
   if (!G) return;
+  if (G.tour && window.Tourney && Tourney.bonusTap(+el.dataset.id)) return; // TOURNEY: a bonus move goes straight to Forbidden
   var id = +el.dataset.id, c = G.cubes[id];
   if (c.locked) { say('pip', 'That ' + show(c.s) + ' cube is locked 🔒. <b>Coming soon!</b> Keep solving to unlock it.'); return; }
   if (c.zone !== 'resources') return;
@@ -339,6 +349,7 @@ function doMove(id, zone, dragged) {
   var c = G.cubes[id];
   if (!humanTurn() || c.zone !== 'resources' || c.locked) return;
   if (['required', 'permitted', 'forbidden'].indexOf(zone) < 0) return;
+  if (zone === 'forbidden' && zoneCubes('resources').length === 1 && G.tour && window.Tourney) { Tourney.illegal(G.turn, 'lastForbid'); return; } // TOURNEY: the Judge explains (VIII-A)
   if (zone === 'forbidden' && zoneCubes('resources').length === 1) { say('pip', 'The very last cube can\'t go to Forbidden. Put it in <b>Required</b> or <b>Permitted</b>!', 'think'); Snd.boop(); return; }
   if (G.mode === 'tutorial' && !tutAllowMove(c, zone)) return;
   G.selected = null;
@@ -349,6 +360,7 @@ function placeCube(id, zone, who) {
   if (window.Recorder) Recorder.note('move', { by: who, id: id, zone: zone, cubes: G.cubes, goal: G.goal, fr: G.fractions }); // REVIEW (before the cube moves)
   c.zone = zone; c.order = ++orderCounter; G.justMoved = id; G.highlight = null;
   G.lastMover = who;
+  if (G.tour) { G.tour.bonusBy = null; G.tour.armed = null; } // TOURNEY: the next player may make their own bonus move
   if (G.team) Team.sync(); // the other teammate takes the team's next turn
   if (!T3.active()) Snd.thunk();
   var left = zoneCubes('resources').length;
@@ -382,7 +394,7 @@ function nextTurn() {
   if (G.team) Team.sync(); // (also catches the Goal the team just set)
   if (aiInterject()) return;
   // (untimed) with two creatures, the kid gets to look at one creature's move before the other one plays
-  if (isAI(G.turn) && G.mode === 'ai3' && G.lastMover !== null && isAI(G.lastMover)) {
+  if (isAI(G.turn) && (G.mode === 'ai3' || G.mode === 'tourney') && G.lastMover !== null && isAI(G.lastMover)) { // (TOURNEY: + tourney)
     G.wait = true; G.busy = false;
     say('pip', '<b>' + esc(G.players[G.lastMover].name) + '</b> moved. Spot something? Call <b>Now!</b> or <b>Impossible!</b> Or tap <b>Go on</b> to let ' + esc(G.players[G.turn].name) + ' play. Take your time!');
     renderGame(); return;
@@ -395,9 +407,12 @@ function nextTurn() {
   else say('pip', name + ' turn! Tap a Resource cube, then tap a section. Or, if you spot something, challenge: <b>Now!</b> or <b>Impossible!</b>');
   renderGame();
 }
+ACT.tResumeSel = function () { if (G && G.tour && window.Tourney) Tourney.resumeSel(); }; // TOURNEY
 ACT.goOn = function () { if (!G || !G.wait || G.phase !== 'move') return; G.wait = false; Snd.click(); aiTurn(); };
 ACT.buildGoal = function () {
   if (!G || G.phase !== 'goal' || isAI(G.setter)) return;
+  if (G.tour && window.Tourney && Tourney.resumeSel()) return; // TOURNEY: every card is picked before the Goal (II-B, A12)
+
   openGoalBuilder(G.setter, function (tokens, val) { humanGoal(tokens, val); });
 };
 function setGoal(tokens, val) {
@@ -420,8 +435,10 @@ function canChallengeNowish(p) {
 }
 ACT.callNow = function (el) {
   var p = challengerFrom(el);
+  if (G && G.tour && window.Tourney && G.phase === 'move' && !isAI(p) && (G.lastMover === null || G.lastMover === p)) { Tourney.illegal(p, G.lastMover === null ? 'noMove' : 'self'); return; } // TOURNEY
   if (!canChallengeNowish(p)) return;
   var why = nowCheckFor(p);
+  if (why && G.tour && window.Tourney) { Tourney.illegal(p, /two cubes/.test(why) ? 'nowRes' : /Required or Permitted/.test(why) ? 'nowMat' : 'noMove'); return; } // TOURNEY: the Judge explains (VI-A-2)
   if (why) { say('pip', why, 'think'); Snd.boop(); return; }
   if (G.mode === 'tutorial' && !tutAllowChallenge('now')) return;
   challenge('now', p);
@@ -429,6 +446,7 @@ ACT.callNow = function (el) {
 ACT.callImp = function (el) {
   var p = challengerFrom(el);
   if (!G || G.phase !== 'move') return;
+  if ((G.lastMover === null || G.lastMover === p) && G.tour && window.Tourney && !isAI(p)) { Tourney.illegal(p, G.lastMover === null ? 'noMove' : 'self'); return; } // TOURNEY
   if (G.lastMover === null || G.lastMover === p) { say('pip', 'There is no move to challenge yet.'); return; }
   if (!canChallengeNowish(p)) return;
   if (G.mode === 'tutorial' && !tutAllowChallenge('impossible')) return;
@@ -593,6 +611,8 @@ function askNoGoal(setter) {
 }
 ACT.noGoal = function () {
   if (!G || G.phase !== 'goal' || isAI(G.setter)) return;
+  if (G.tour && G.tour.setterBonus && window.Tourney) { Tourney.illegal(G.setter, 'noGoalBonus'); return; } // TOURNEY: IV-D-1 comment (c)
+  if (G.tour && window.Tourney && Tourney.resumeSel()) return; // TOURNEY: cards first
   var setter = G.setter, ai = idxs().filter(function (i) { return i !== setter && isAI(i); })[0];
   if (ai !== undefined) {
     var o = G.players[ai].ai; G.busy = true;
@@ -644,6 +664,7 @@ function solHTML(i, s) {
 }
 function endShake(r) {
   G.phase = 'over'; G.busy = false; G.carrying = false;
+  G.lastShake = r; // TOURNEY: Judge Pip can explain why each Solution counted or not
   if (window.Bonus) Bonus.adjust(r); // BONUS: Twist card scoring (Golden Goal doubles, Bonus +2); never takes points away
   Snd.setMood('play');
   idxs().forEach(function (i) { var v = r.pts[i] || 0; G.players[i].score += v; G.players[i].list.push(v); });
@@ -675,10 +696,10 @@ function endShake(r) {
   if (sample && r.sols) Object.keys(r.sols).forEach(function (k) { var s = r.sols[k]; if (sample && s && s.ok && s.tokens && s.tokens.map(function (x) { return typeof x === 'string' ? x : x.s; }).join('') === sample.join('')) sample = null; });
   var anyOk = r.sols && Object.keys(r.sols).some(function (k) { return r.sols[k] && r.sols[k].ok; });
   var p0 = r.pts[0] || 0, good = !isAI(0) && p0 >= 4;
-  if (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
+  if (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney') { if (good) { Snd.chime(); FX.confetti(70); fx3('confetti'); fx3('flash'); crowdSay('cheer'); say('pip', 'Great shake!', 'cheer'); playerMood('cheer'); } else { playerMood('clap'); Snd.boop(); crowdSay('aww'); say('pip', 'Good try! Every shake teaches your brain something new.', 'happy'); } }
   else Snd.chime();
   if (aiTalk) setTimeout(function () { if (G && G.phase === 'over') say('opp', aiTalk); }, 400);
-  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
+  var html = '<h2 class="hero">' + (G.mode === 'ai' || G.mode === 'ai3' || G.mode === 'team' || G.mode === 'tourney' ? (good ? 'Great shake!' : 'Nice try!') : 'Shake over!') + '</h2>' +
     '<div style="text-align:center;font-size:18px">Goal: <b>' + (G.goal ? Eq.fmt(G.goal) : '?') + '</b></div><!--replay-->' +
     r.lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
     idxs().map(function (i) { return solHTML(i, r.sols && r.sols[i]); }).join('') +
@@ -705,6 +726,7 @@ function endMatch() {
   if (window.Commentary) { var cmTop = Math.max.apply(null, G.players.map(function (p) { return p.score; })), cmN = G.players.filter(function (p) { return p.score === cmTop; }).length, cmMe = G.players[0].score === cmTop; Commentary.say('final', { won: cmMe && cmN === 1, tie: cmMe && cmN > 1 }); }
   if (window.Parent && G.mode !== 'tutorial') Parent.note('match'); // PARENT page (reads G; peeks at Pip's review notes)
   if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
+  if (G.tour && window.Tourney) { Tourney.endMatch(); return; } // TOURNEY: places and official match points (XII-A), the saved record
   var a = G.players[0].score, html;
   if (G.mode === 'ai') {
     var b = G.players[1].score, won = a > b, tie = a === b;
@@ -792,16 +814,32 @@ function aiTurn() {
   var pause = 900 + Math.random() * 700;
   if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
   var sit = aiSituation();
-  aiThink('turn', [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()], pause).then(function (t) {
+  var tArgs = [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()];
+  if (G.tour && window.Tourney) tArgs.push(Tourney.mayBonus(me)); // TOURNEY: a creature that is not leading may make a bonus move first (AI.turnT)
+  aiThink(G.tour && window.Tourney ? 'turnT' : 'turn', tArgs, pause).then(function (t) {
     if (!aiStill(sit) || G.turn !== me) return;
     if (t.challenge) { var d = t.challenge; G.busy = false; if (d.kind === 'now') G.aiPlan = d.plan; challenge(d.kind, me); return; }
-    var mv = t.move;
+    if (t.bonus && G.tour && G.cubes[t.bonus.id] && G.cubes[t.bonus.id].zone === 'resources') { aiBonus(me, t.bonus.id, function () { aiMoveNow(me, o, t.move); }); return; } // TOURNEY
+    aiMoveNow(me, o, t.move);
+  }).catch(aiOops);
+}
+// TOURNEY: the creature's bonus move (IV-C, V-C): one cube to Forbidden, then its normal move.
+function aiBonus(me, id, then) {
+  var c = G.cubes[id], g0 = G, c0 = G.cubes;
+  say('opp', 'Bonus! The ' + show(c.s) + ' goes to Forbidden first.');
+  var land = function () { if (!G || G !== g0 || G.cubes !== c0) return; c.zone = 'forbidden'; c.order = ++orderCounter; G.justMoved = id; G.tour.bonusBy = me; G.busy = false; G.carrying = false; renderGame(); setTimeout(function () { if (G === g0 && G.cubes === c0 && G.phase === 'move') then(); }, 500); };
+  if (T3.active() && T3.creatureMove) { G.busy = true; G.carrying = true; renderGame(); if (T3.creatureUse) T3.creatureUse(aiSeat(me)); T3.creatureMove(id, 'forbidden', land); }
+  else setTimeout(land, 600);
+}
+function aiMoveNow(me, o, mv) {
+  if (!mv) return;
+  { // (the normal move, as before)
     G.busy = false;
     var c = G.cubes[mv.id], yum = mv.liked ? tasteLine(o, 'tasteMove', 0.4) : '';
     G.clever = !!mv.liked;
     say('opp', 'I\'ll put the ' + show(c.s) + ' in ' + { required: 'Required', permitted: 'Permitted', forbidden: 'Forbidden' }[mv.zone] + '.' + (yum ? ' ' + yum : (S.set.bluff === true && o.talk && Math.random() < 0.35 ? ' ' + talkLine(o, 'bluff') : '')));
     aiPlace(mv.id, mv.zone, me);
-  }).catch(aiOops);
+  }
 }
 // Turn solver symbols into tokens that point at real cubes (Required first, then Permitted, then Resources)
 function symsToCubeTokens(list, mode) {

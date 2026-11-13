@@ -185,7 +185,7 @@ var Vari = (function () {
   function reset() {
     if (!G) return;
     unlive();
-    G.vari = null; G.variSet = null; G.variDone = false;
+    G.vari = null; G.variSet = null; G.variDone = false; G.varis = null; // (TOURNEY: G.varis = several cards)
     chip();
   }
   // Exponent card: which cubes have the chosen colour is fixed for the shake, but which ZONE each one is in
@@ -197,7 +197,7 @@ var Vari = (function () {
     delete G.fractions;
     Object.defineProperty(G, 'fractions', { configurable: true, enumerable: true,
       get: function () {
-        if (!kept || typeof kept !== 'object' || !G || G.vari !== 'expo') return kept;
+        if (!kept || typeof kept !== 'object' || !G || !Eq.rulesOf(kept).expo) return kept; // (TOURNEY: the Exponent card may be one of several)
         var c = {}; for (var k in kept) c[k] = kept[k];
         c.ex = Eq.expCounts(G.cubes, kept.ecol);
         return c;
@@ -214,9 +214,21 @@ var Vari = (function () {
     if (id === 'expo') makeLive();
     chip(true);
   }
+  // TOURNEY: several cards at once (tournament practice, js/tourney.js). set = all the cards' settings merged, plus {div}.
+  // G.vari stays the first card (so every "is a card in play?" check works) and G.varis lists them all.
+  function applySet(ids, set) {
+    set = Object.assign({}, set || {});
+    if (ids.indexOf('expo') >= 0 && set.ecol) set.eids = G.cubes.filter(function (x) { return x.color === set.ecol && Eq.isDigit(x.s); }).map(function (x) { return x.id; });
+    unlive();
+    G.vari = ids[0] || null; G.varis = ids.slice(); G.variSet = set;
+    G.fractions = Eq.mathMode(true, ids, null, set);
+    if (ids.indexOf('expo') >= 0) makeLive();
+    chip(true);
+  }
+  function inPlay() { return G ? (G.varis && G.varis.length ? G.varis : (G.vari ? [G.vari] : [])) : []; }
   // Called at the start of the Goal phase. Returns true if it took over (it calls again() when done).
   function beforeGoal(again) {
-    if (!G || G.variDone || G.mode === 'tutorial') return false;
+    if (!G || G.variDone || G.mode === 'tutorial' || G.mode === 'tourney') return false; // (TOURNEY picks its own cards: js/tourney.js)
     G.variDone = true;
     var cards = offered(), v = store();
     if (!cards.length) return false;
@@ -315,15 +327,17 @@ var Vari = (function () {
     var host = document.getElementById('game');
     var el = document.getElementById('variChip');
     if (!G || !G.vari || !host) { if (el) el.remove(); return; }
-    var c = card(G.vari);
+    var c = card(G.vari), all = inPlay();
     if (!el || el.parentNode !== host) { if (el) el.remove(); el = document.createElement('button'); el.id = 'variChip'; el.className = 'vari-chip'; el.setAttribute('data-act', 'variInfo'); host.appendChild(el); }
     var note = wildNote() || extraNote();
-    el.innerHTML = '<span class="vc-icon">' + c.icon + '</span><span><small>This shake</small><b>' + esc(cardName(G.vari)) + '</b></span>' + (note ? '<em>' + note + '</em>' : '');
+    if (all.length > 1) el.innerHTML = '<span class="vc-icon">' + all.map(function (id) { return card(id).icon; }).join('') + '</span><span><small>This shake: ' + all.length + ' cards</small><b>' + all.map(function (id) { return esc(cardName(id, G.variSet)); }).join(' + ') + '</b></span>' + (note ? '<em>' + note + '</em>' : ''); // TOURNEY
+    else el.innerHTML = '<span class="vc-icon">' + c.icon + '</span><span><small>This shake</small><b>' + esc(cardName(G.vari)) + '</b></span>' + (note ? '<em>' + note + '</em>' : '');
     if (dealt) { el.classList.remove('dealt'); void el.offsetWidth; el.classList.add('dealt'); } // one gentle "deal" when it arrives
   }
   ACT.variInfo = function () {
     if (!G || !G.vari) return;
-    var c = card(G.vari);
+    var c = card(G.vari), all = inPlay();
+    if (all.length > 1) { modal('<h2>This shake\'s cards</h2><div class="vari-cards one">' + all.map(function (id) { return cardHTML(card(id), false, false, G.variSet); }).join('') + '</div><p class="vari-small">Official rules: ' + all.map(function (id) { return esc(card(id).ref); }).join('; ') + '.</p><div class="row">' + (window.Tourney ? '<button class="btn" data-act="tJudgeQ" data-arg="card">Ask the Judge how they mix</button>' : '') + '<button class="btn green" data-act="closeModal">OK</button></div>'); return; } // TOURNEY
     modal('<h2>This shake\'s card</h2><div class="vari-cards one">' + cardHTML(c, false, false, G.variSet) + '</div><p class="vari-small">Official rule: ' + esc(c.ref) + '.</p>' +
       '<div class="row">' + (c.lesson ? '<button class="btn" data-act="variLesson" data-arg="' + c.id + '">How it works</button>' : '') + '<button class="btn green" data-act="closeModal">OK</button></div>');
   };
@@ -335,13 +349,14 @@ var Vari = (function () {
   };
   // 0 Wild with a 0 in the Goal: the Goal's value depends on the 0.
   function wildNote() {
-    if (!G || G.vari !== 'wild0' || !G.goalTokens || !G.goalTokens.some(function (t) { return (typeof t === 'string' ? t : t.s) === '0'; })) return '';
+    if (!G || inPlay().indexOf('wild0') < 0 || !G.goalTokens || !G.goalTokens.some(function (t) { return (typeof t === 'string' ? t : t.s) === '0'; })) return '';
     return 'The 0 in the Goal is wild too';
   }
   // A one-line reminder under the chip for cards that change what counts as a Solution.
   function extraNote() {
     if (!G || !G.vari) return '';
-    var set = G.variSet || {};
+    var set = G.variSet || {}, all = inPlay();
+    if (all.length > 1) { var bits = []; if (all.indexOf('multk') >= 0) bits.push('Miss by ' + set.k + ', ' + (2 * set.k) + '…'); if (all.indexOf('basem') >= 0) bits.push('Base ' + set.base); if (all.indexOf('factorial') >= 0 && G.goalTokens && all.indexOf('multiops') < 0) bits.push((2 - Eq.bangsIn(G.goalTokens)) + ' ! left'); return bits.join(' · '); } // TOURNEY
     if (G.vari === 'multk') return 'Miss the Goal by ' + set.k + ', ' + (2 * set.k) + ', ' + (3 * set.k) + '…';
     if (G.vari === 'basem') return 'Count in ' + (set.base === 8 ? 'eights' : 'nines');
     if (G.vari === 'factorial' && G.goalTokens) { var b = Eq.bangsIn(G.goalTokens); return (2 - b) + ' ! left for Solutions'; }
@@ -381,7 +396,8 @@ var Vari = (function () {
     var o = Eq.orient(s);
     if (o && o.o === 'u') return o.d ? '−' + o.d : '0';
     if (o && o.o === 's') return '1/' + o.d;
-    if (Eq.pobOf(s) !== null) return Eq.SHOW[s];
+    if (o && o.o === 'n') return '−1/' + o.d; // TOURNEY: both turns
+    if (Eq.pobOf(s) !== null || (Eq.npobOf && Eq.npobOf(s) !== null)) return Eq.SHOW[s]; // (TOURNEY: + an upside-down power of the base)
     if (Eq.exOf(s) >= 0) return 'power';
     if (CAP[s]) return CAP[s];
     if (s === '*' && RU && (RU.nfac || RU.sprime) && tokens) { // a plain × read by its place
@@ -405,7 +421,8 @@ var Vari = (function () {
       if (s === '!') return '<span class="vari-bang"' + (actAttr ? ' ' + actAttr : '') + ' data-bi="' + i + '">!</span>';
       var color = (typeof t === 'object' && t.id != null && cubes && cubes[t.id]) ? cubes[t.id].color : 'none';
       var face = Eq.cubeOf(s) || s, o = Eq.orient(s), cls = '';
-      if (o && o.o === 'u') cls = ' vt-ud'; else if (o && o.o === 's') cls = ' vt-sw';
+      if (o && o.o === 'u') cls = ' vt-ud'; else if (o && o.o === 's') cls = ' vt-sw'; else if (o && o.o === 'n') cls = ' vt-ns'; // (TOURNEY: vt-ns)
+      if (Eq.npobOf && Eq.npobOf(s) !== null) cls = ' vt-ud'; // TOURNEY: an upside-down 1
       if (Eq.exOf(s) >= 0) cls = ' vt-exp';
       if (s === '%') cls = ' vt-ud';                         // Percent: an upside-down √
       var cap = capOf(s, RU, tokens, i);
@@ -446,7 +463,7 @@ var Vari = (function () {
   };
 
   return { CARDS: CARDS, card: card, cardName: cardName, unlocked: unlocked, unlockedCount: unlockedCount, offered: offered, hasEffect: hasEffect,
-    reset: reset, apply: apply, beforeGoal: beforeGoal, afterGoal: afterGoal, cubeTokens: cubeTokens, builderNote: builderNote,
+    reset: reset, apply: apply, applySet: applySet, inPlay: inPlay, beforeGoal: beforeGoal, afterGoal: afterGoal, cubeTokens: cubeTokens, builderNote: builderNote,
     wildNote: wildNote, chip: chip, on: on, cardHTML: cardHTML, cardOn: cardOn, lessonHTML: lessonHTML, exprHTML: exprHTML, capOf: capOf,
     parentHTML: parentHTML, goalHTML: goalHTML, randomSet: randomSet, STAR_STEP: STAR_STEP, FIRST_STAGE: FIRST_STAGE };
 })();

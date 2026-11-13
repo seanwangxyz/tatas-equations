@@ -52,16 +52,25 @@ var Eq = (function () {
   var EX = '⁰¹²³⁴⁵⁶⁷⁸⁹';                 // exponent-colour digit d used as an exponent: x⁽ᵈ⁾ = x^d (Exponent card)
   var POB = { T: 1, H: 2, K: 3, W: 4, V: 5, Z: 6, t: -1, h: -2, k: -3, w: -4, v: -5, z: -6 }; // a 1 cube = 10^k (Powers of the Base)
   var POBK = {}; Object.keys(POB).forEach(function (c) { POBK[POB[c]] = c; });
+  // TOURNEY (several variation cards at once, RULES_SUMMARY.md section 8): two more symbol sets that only exist
+  // when two cards are in play together.
+  var NS = '⓿❶❷❸❹❺❻❼❽❾';                 // a digit cube BOTH sideways and upside-down = −1/d (Sideways + Upside-down; Solution only, XIII-A-2 comment (a), manual F1)
+  var NPOB = { 'ⅰ': 1, 'ⅱ': 2, 'ⅲ': 3, 'ⅳ': 4, 'ⅴ': 5, 'ⅵ': 6, 'Ⅰ': -1, 'Ⅱ': -2, 'Ⅲ': -3, 'Ⅳ': -4, 'Ⅴ': -5, 'Ⅵ': -6 }; // an upside-down 1 = −(a power of the base) (Powers of the Base + Upside-down, manual F17)
+  var NPOBK = {}; Object.keys(NPOB).forEach(function (c) { NPOBK[NPOB[c]] = c; });
   function udOf(s) { var i = typeof s === 'string' && s.length === 1 ? UD.indexOf(s) : -1; return i; }
   function swOf(s) { var i = typeof s === 'string' && s.length === 1 ? SW.indexOf(s) : -1; return i; }
+  function nsOf(s) { var i = typeof s === 'string' && s.length === 1 ? NS.indexOf(s) : -1; return i; }
   function exOf(s) { var i = typeof s === 'string' && s.length === 1 ? EX.indexOf(s) : -1; return i; }
   function pobOf(s) { return typeof s === 'string' && POB[s] !== undefined ? POB[s] : null; }
+  function npobOf(s) { return typeof s === 'string' && NPOB[s] !== undefined ? NPOB[s] : null; }
   for (var di = 0; di <= 9; di++) {
     SHOW[UD[di]] = di === 0 ? '0' : '−' + di;
     if (di) SHOW[SW[di]] = '1/' + di;
+    if (di) SHOW[NS[di]] = '−1/' + di;
     SHOW[EX[di]] = EX[di];
   }
   Object.keys(POB).forEach(function (c) { var k = POB[c]; SHOW[c] = k > 0 ? '1' + '0'.repeat(k) : '0.' + '0'.repeat(-k - 1) + '1'; });
+  Object.keys(NPOB).forEach(function (c) { var k = NPOB[c]; SHOW[c] = '−' + (k > 0 ? '1' + '0'.repeat(k) : '0.' + '0'.repeat(-k - 1) + '1'); });
 
   // ---- OPERATOR TABLE ----
   // Every operation symbol the evaluator and the solver know. To add an operator (e.g. a house-rule
@@ -123,8 +132,9 @@ var Eq = (function () {
     if (isDigit(s)) return s;
     var k = udOf(s); if (k >= 0) return String(k);
     k = swOf(s); if (k >= 0) return String(k);
+    k = nsOf(s); if (k >= 0) return String(k);   // TOURNEY
     k = exOf(s); if (k >= 0) return String(k);
-    if (pobOf(s) !== null) return '1';
+    if (pobOf(s) !== null || npobOf(s) !== null) return '1'; // (TOURNEY: + an upside-down power of the base)
     if (bigIdx(s) >= 0) return s; // BONUS: the big-number die is its own face
     if (s === '.') return '^';
     if (OPDEF[s]) return OPDEF[s].cube === '!' ? null : OPDEF[s].cube;
@@ -135,24 +145,54 @@ var Eq = (function () {
     if (isDigit(s)) return { d: +s, o: '' };
     var k = udOf(s); if (k >= 0) return { d: k, o: 'u' };
     k = swOf(s); if (k >= 0) return { d: k, o: 's' };
+    k = nsOf(s); if (k >= 0) return { d: k, o: 'n' };   // TOURNEY: both turns at once
     return null;
   }
-  // The symbol for digit d in orientation o ('' upright, 'u' upside-down, 's' sideways).
-  function withOrient(d, o) { d = +d; return o === 'u' ? UD[d] : o === 's' ? SW[d] : String(d); }
+  // The symbol for digit d in orientation o ('' upright, 'u' upside-down, 's' sideways, 'n' both: TOURNEY).
+  function withOrient(d, o) { d = +d; return o === 'u' ? UD[d] : o === 's' ? SW[d] : o === 'n' ? NS[d] : String(d); }
   // Does this symbol stand for a number by itself (a leaf)?
-  function isNumSym(s) { return isDigit(s) || udOf(s) >= 0 || swOf(s) >= 0 || pobOf(s) !== null || bigIdx(s) >= 0; } // (BONUS: + the big-number die)
+  function isNumSym(s) { return isDigit(s) || udOf(s) >= 0 || swOf(s) >= 0 || nsOf(s) >= 0 || pobOf(s) !== null || npobOf(s) !== null || bigIdx(s) >= 0; } // (BONUS: + the big-number die; TOURNEY: + both turns, upside-down powers)
 
   // ---- small number helpers ----
   function isPrime(n) { if (n < 2) return false; for (var k = 2; k * k <= n; k++) if (n % k === 0) return false; return true; }
   function numFactors(n) { var c = 0; for (var k = 1; k * k <= n; k++) if (n % k === 0) c += (k * k === n) ? 1 : 2; return c; }
   function nextPrime(v) { var n = Math.floor(v.n / v.d) + 1; if (n < 2) n = 2; while (!isPrime(n)) n++; return n; }
-  function pow10(k) { var x = 1; for (var i = 0; i < Math.abs(k); i++) x *= 10; return k >= 0 ? frac(x, 1) : frac(1, x); }
+  function pow10(k, B) { B = B || 10; var x = 1; for (var i = 0; i < Math.abs(k); i++) x *= B; return k >= 0 ? frac(x, 1) : frac(1, x); } // (TOURNEY: B = the base, Powers of the Base + Base m, XIII-B-10)
+  // TOURNEY: Middle-division powers and roots (section III-C; no Elementary "General Rule"), kept exact: a value that is not a
+  // fraction (like √2) is refused. Only used when a tournament-practice shake is played with the Middle list (rulesOf().mpow).
+  function iroot(n, q) { // the whole number r with r^q = n (n ≥ 0), or -1
+    if (n < 0) return -1; if (n < 2) return n;
+    var g = Math.round(Math.pow(n, 1 / q));
+    for (var c = Math.max(0, g - 1); c <= g + 1; c++) { var x = 1, k; for (k = 0; k < q && x <= n; k++) x *= c; if (k === q && x === n) return c; }
+    return -1;
+  }
+  function powQ(a, e) { // a^e for fractions a, e (e reduced); an error code if undefined or not a fraction
+    var p = e.n, q = e.d;
+    if (a.n === 0) return p > 0 ? { n: 0, d: 1 } : p === 0 ? 'zerozero' : 'divzero'; // 0^a is undefined for a ≤ 0 (III-C-2-b)
+    var n = a.n, d = a.d;
+    if (q > 1) {
+      if (n < 0 && q % 2 === 0) return 'evenneg';
+      if (q > 64) return 'irrational';
+      var rn = iroot(Math.abs(n), q), rd = iroot(d, q);
+      if (rn < 0 || rd < 0) return 'irrational';
+      n = n < 0 ? -rn : rn; d = rd;
+    }
+    var ap = Math.abs(p), xn = 1, xd = 1;
+    if (Math.abs(n) === 1 && d === 1) xn = (n === -1 && ap % 2 === 1) ? -1 : 1;
+    else for (var i = 0; i < ap; i++) { xn *= n; xd *= d; if (Math.abs(xn) > LIMIT || xd > LIMIT) return 'big'; }
+    return p >= 0 ? frac(xn, xd) : frac(xd, xn);
+  }
 
   // One operation on two fractions. Returns a fraction or an error code string.
   // fr = fractions unlocked? (if not, every division must come out whole)
   // Powers and roots follow the Elementary "General Rule": whole numbers only.
-  function opCore(op, a, b, fr) {
+  function opCore(op, a, b, fr, R) {
     var r;
+    if (R && R.mpow && (op === '^' || op === 'r')) { // TOURNEY: Middle list (III-C): any real power or root, kept exact
+      if (op === '^') return powQ(a, b);
+      if (a.n === 0) return 'rootindex';                               // 0√b is undefined (III-C-2-a)
+      return powQ(b, { n: a.n < 0 ? -a.d : a.d, d: Math.abs(a.n) });  // a√b = b^(1/a); even-root rules come from powQ (III-C-2-c, d)
+    }
     switch (op) {
       case '+': return frac(a.n * b.d + b.n * a.d, a.d * b.d);
       case '-': return frac(a.n * b.d - b.n * a.d, a.d * b.d);
@@ -206,10 +246,11 @@ var Eq = (function () {
     return 'syntax';
   }
   // One-number operations: 'f' Number of Factors, 'p' Smallest Prime, '!' factorial.
-  function unCore(op, a, fr) {
+  function unCore(op, a, fr, R) {
     switch (op) {
-      case 'f': // XIII-B-8 (Middle): A a counting number, A ≤ 1000
+      case 'f': // XIII-B-8 (Middle): A a counting number, A ≤ 1000 (TOURNEY Elementary list: A ≤ 200, XIII-A-11)
         if (a.d !== 1 || a.n < 1) return 'nfacwhole';
+        if (R && R.nfmax === 200 && a.n > 200) return 'nfacbig200';
         if (a.n > 1000) return 'nfacbig';
         return { n: numFactors(a.n), d: 1 };
       case 'p': // XIII-A-13: A a rational number ≤ 200
@@ -269,9 +310,12 @@ var Eq = (function () {
   var FLAG = { wild0: 'wild', twodigit: 'two', threeops: 'three', multiops: 'multi', remainder: 'rem',
     upside: 'ud', sideways: 'sw', average: 'avg', expo: 'expo', multk: 'multk', powbase: 'pob', factorial: 'fact',
     nfactors: 'nfac', sprime: 'sprime', lcm: 'lcm', gcf: 'gcf', percent: 'pct', decimal: 'dec', basem: 'basem' };
-  var SETTINGS = ['k', 'base', 'ecol', 'eids', 'ex']; // card settings a math mode carries along
+  // TOURNEY: 'div' = 'E' or 'M' marks a tournament-practice shake (the division's list). It switches on the few
+  // rules that differ by division: Number of Factors up to 200 in Elementary (XIII-A-11) or 1000 in Middle (XIII-B-8),
+  // and Middle-division powers and roots (no "General Rule", section III-C) for the Middle list. Without it nothing changes.
+  var SETTINGS = ['k', 'base', 'ecol', 'eids', 'ex', 'div']; // card settings a math mode carries along
   function rulesOf(x) {
-    var R = { fr: false, goal: null, any: false, k: 6, base: 0, ecol: null, eids: null, ex: null, sig: '' };
+    var R = { fr: false, goal: null, any: false, k: 6, base: 0, ecol: null, eids: null, ex: null, sig: '', div: null, nfmax: 1000, mpow: false };
     Object.keys(FLAG).forEach(function (v) { R[FLAG[v]] = false; });
     if (x && typeof x === 'object') {
       R.fr = !!x.fractions; R.goal = x.goal || null;
@@ -279,15 +323,17 @@ var Eq = (function () {
       if (R.multk) R.k = (x.k >= 2 && x.k <= 99) ? x.k | 0 : 6;
       if (R.basem) R.base = (x.base >= 2 && x.base <= 10) ? x.base | 0 : 8;
       if (R.expo) { R.ecol = x.ecol || null; R.eids = x.eids || null; R.ex = x.ex || null; }
-      R.sig += 'k' + R.k + 'b' + R.base;
+      if (x.div === 'E' || x.div === 'M') { R.div = x.div; R.nfmax = x.div === 'E' ? 200 : 1000; R.mpow = x.div === 'M'; }
+      R.sig += 'k' + R.k + 'b' + R.base + (R.div ? 'd' + R.div : '');
     } else R.fr = !!x;
+    R.udsw = R.ud && R.sw; R.pobud = R.pob && R.ud; // TOURNEY: symbols that need two cards at once
     return R;
   }
   // Build a math mode. With no variations it is just the fractions boolean (so nothing changes).
   // set = optional card settings ({k}, {base}, {ecol, eids, ex}).
   function mathMode(fractions, vars, goalSyms, set) {
     vars = (vars || []).filter(function (v) { return VARIATIONS.indexOf(v) >= 0; });
-    if (!vars.length) return !!fractions;
+    if (!vars.length && !(set && (set.div === 'E' || set.div === 'M'))) return !!fractions; // (TOURNEY: a tournament shake keeps its division even with no card)
     var m = { fractions: !!fractions, vars: vars.slice() };
     if (goalSyms) m.goal = goalSyms.slice();
     if (set) SETTINGS.forEach(function (k) { if (set[k] !== undefined && set[k] !== null) m[k] = set[k]; });
@@ -300,18 +346,20 @@ var Eq = (function () {
   }
   function fracOn(m) { return rulesOf(m).fr; }
   function varsOf(m) { return (m && typeof m === 'object' && m.vars) ? m.vars.slice() : []; }
-  function hasZero(list) { return list.some(function (t) { return sym(t) === '0'; }); }
+  function hasZero(list) { return list.some(function (t) { var s = sym(t); return s === '0' || s === UD[0] || s === SW[0] || s === NS[0]; }); } // (TOURNEY: a turned 0 is wild too, manual F2, F3)
   function bangsIn(list) { var n = 0; (list || []).forEach(function (t) { if (sym(t) === '!') n++; }); return n; }
   // Which card switches a symbol on (null = always allowed)
   function symCard(s) {
     if (udOf(s) >= 0) return 'ud';
     if (swOf(s) >= 0) return 'sw';
+    if (nsOf(s) >= 0) return 'udsw';      // TOURNEY
+    if (npobOf(s) !== null) return 'pobud'; // TOURNEY
     if (exOf(s) >= 0) return 'expo';
     if (pobOf(s) !== null) return 'pob';
     if (s === '.') return 'dec';
     return OPDEF[s] ? OPDEF[s].card : null;
   }
-  var CARDNAME = { ud: 'Upside-down', sw: 'Sideways', expo: 'Exponent', pob: 'Powers of the Base', dec: 'Decimal Point', rem: 'Remainder',
+  var CARDNAME = { udsw: 'Sideways and the Upside-down', pobud: 'Powers of the Base and the Upside-down', ud: 'Upside-down', sw: 'Sideways', expo: 'Exponent', pob: 'Powers of the Base', dec: 'Decimal Point', rem: 'Remainder',
     avg: 'Average', pct: 'Percent', gcf: 'GCF', lcm: 'LCM', nfac: 'Number of Factors', sprime: 'Smallest Prime', fact: 'Factorial' };
   // Make every symbol explicit for a card: under Average every + is 'a'; under Number of Factors /
   // Smallest Prime a × with no number in front of it is 'f' / 'p' (its place decides, PDF XIII-A-11 comment (a)).
@@ -374,6 +422,11 @@ var Eq = (function () {
     pctdigits: "In a Solution, only the numbers right next to % may have two digits.",
     multkgoal: "With Multiple of k, the Goal must be between −1000 and 1000.",
     expcolor: "Only a cube of the Exponent colour can be an exponent all by itself.",
+    // TOURNEY (several cards at once)
+    nfacbig200: "In the Elementary list, Number of Factors only works on numbers up to 200.",
+    bothgoal: "A cube can be sideways AND upside-down only in a Solution, not in the Goal.",
+    irrational: "That power or root doesn't come out as a whole number or a neat fraction, so the game can't check it exactly.",
+    evenneg: "An even root (like a square root) of a number below zero isn't a real number.",
     // BONUS dice (house rule)
     bignext: "The big-number die is one number all by itself, so it can't join other number cubes. Put an operation between them.",
     bigfrac: "That big-number die shows a fraction, and fractions are switched off in Settings.",
@@ -448,14 +501,21 @@ var Eq = (function () {
       }
       if (isNumSym(s)) { // a turned digit cube or a power of ten: a number all by itself
         var o = orient(s), nvx;
-        if (o && o.o === 'u') { if (o.d >= B) return err('basedigit', baseMsg(B)); nvx = { n: -o.d, d: 1 }; }
-        else if (o && o.o === 's') { if (o.d === 0) return err('sw0'); if (!fr) return err('frac2'); nvx = { n: 1, d: o.d }; }
-        else { var pk = pobOf(s); if (pk < 0 && !fr) return err('frac2'); nvx = pow10(pk); if (typeof nvx === 'string') return err(nvx); }
+        var od = o ? ((o.d === 0 && RU.wild) ? +w : o.d) : 0; // TOURNEY: a turned wild 0 is the wild digit turned (manual F2, F3)
+        if (o && o.o === 'u') { if (od >= B) return err('basedigit', baseMsg(B)); nvx = { n: -od, d: 1 }; }
+        else if (o && o.o === 's') { if (od === 0) return err('sw0'); if (od >= B) return err('basedigit', baseMsg(B)); if (!fr) return err('frac2'); nvx = { n: 1, d: od }; } // (TOURNEY: base check, manual F15)
+        else if (o && o.o === 'n') { // TOURNEY: sideways and upside-down at once, Solution only (XIII-A-2 comment (a), manual F1)
+          if (opts.inGoal) return err('bothgoal');
+          if (od === 0) return err('sw0'); if (od >= B) return err('basedigit', baseMsg(B)); if (!fr) return err('frac2');
+          nvx = { n: -1, d: od };
+        }
+        else if (npobOf(s) !== null) { var nk = npobOf(s); if (nk < 0 && !fr) return err('frac2'); nvx = pow10(nk, B); if (typeof nvx === 'string') return err(nvx); nvx = { n: -nvx.n, d: nvx.d }; } // TOURNEY: manual F17
+        else { var pk = pobOf(s); if (pk < 0 && !fr) return err('frac2'); nvx = pow10(pk, B); if (typeof nvx === 'string') return err(nvx); } // (TOURNEY: B, Powers of the Base + Base m)
         toks.push({ k: 'n', v: nvx, len: 1, turned: true });
         i++;
         continue;
       }
-      if (exOf(s) >= 0) { toks.push({ k: 'e', d: exOf(s) }); i++; continue; }
+      if (exOf(s) >= 0) { if (exOf(s) >= B) return err('basedigit', baseMsg(B)); toks.push({ k: 'e', d: exOf(s) }); i++; continue; } // (TOURNEY: base check, manual A27)
       if (s === '+' && RU.avg) { toks.push({ k: 'a' }); i++; continue; }
       if (OPDEF[s] || s === '(' || s === ')') {
         if (s === 'm' && opts.inGoal) return err('remgoal');
@@ -481,22 +541,22 @@ var Eq = (function () {
     function lvlOf(k) { return OPDEF[k] && OPDEF[k].kind === 'bin' && (!OPDEF[k].card || RU[OPDEF[k].card]) ? OPDEF[k].lvl : 0; }
     function expr() {
       var l = term();
-      while (lvlOf(peek()) === 1) { var o = toks[p++].k; var r = term(); l = chk(opCore(o, l, r, fr)); }
+      while (lvlOf(peek()) === 1) { var o = toks[p++].k; var r = term(); l = chk(opCore(o, l, r, fr, RU)); }
       return l;
     }
     function term() {
       var l = power();
-      while (lvlOf(peek()) === 2) { var o = toks[p++].k; var r = power(); l = chk(opCore(o, l, r, fr)); }
+      while (lvlOf(peek()) === 2) { var o = toks[p++].k; var r = power(); l = chk(opCore(o, l, r, fr, RU)); }
       return l;
     }
     function power() {
       var b = rootChain();
-      if (lvlOf(peek()) === 3) { var o = toks[p++].k; var e = power(); return chk(opCore(o, b, e, fr)); }
+      if (lvlOf(peek()) === 3) { var o = toks[p++].k; var e = power(); return chk(opCore(o, b, e, fr, RU)); }
       return b;
     }
     function rootChain() {
       var a = atom();
-      while (lvlOf(peek()) === 3.5) { var o = toks[p++].k; var b = atom(); a = chk(opCore(o, a, b, fr)); }
+      while (lvlOf(peek()) === 3.5) { var o = toks[p++].k; var b = atom(); a = chk(opCore(o, a, b, fr, RU)); }
       return a;
     }
     // an item, then any postfix ops (! and exponent cubes) that follow it
@@ -504,7 +564,7 @@ var Eq = (function () {
       var v = primary();
       while (peek() === '!' || peek() === 'e' || isBonusPost(peek())) { // (BONUS: + the Power die's x², x³, n!)
         var t = toks[p++];
-        v = t.k === 'e' ? chk(opCore('^', v, { n: t.d, d: 1 }, fr)) : chk(unCore(t.k, v, fr));
+        v = t.k === 'e' ? chk(opCore('^', v, { n: t.d, d: 1 }, fr, RU)) : chk(unCore(t.k, v, fr, RU));
       }
       return v;
     }
@@ -520,12 +580,12 @@ var Eq = (function () {
         if (peek() !== ')') fail('missingop');
         p++; return v;
       }
-      if (k === 'r') { p++; var x = atom(); return chk(opCore('r', TWO, x, fr)); }
+      if (k === 'r') { p++; var x = atom(); return chk(opCore('r', TWO, x, fr, RU)); }
       if (OPDEF[k] && OPDEF[k].bonus && OPDEF[k].kind === 'pre') { p++; var bx = atom(); return chk(unCore(k, bx, fr)); } // BONUS: a Power die op in front of a number
       if (isBonusPost(k)) fail('bpost');
       // a × with no number before it: Number of Factors / Smallest Prime (its place decides)
       if (k === 'f' || k === 'p' || (k === '*' && (RU.nfac || RU.sprime))) {
-        p++; var y = atom(); return chk(unCore(k === '*' ? (RU.nfac ? 'f' : 'p') : k, y, fr));
+        p++; var y = atom(); return chk(unCore(k === '*' ? (RU.nfac ? 'f' : 'p') : k, y, fr, RU));
       }
       if (k === '!' || k === 'e') fail('postfix');
       if (k === '+' || k === '-') fail('sign');
@@ -573,6 +633,19 @@ var Eq = (function () {
     var e = evaluate(goalSyms, { multiDigit: true, fractions: fractions, inGoal: true, wild: w });
     return e.ok ? e.value : null;
   }
+  // TOURNEY: every value the Goal may have when every 0 stands for digit w. With 0 Wild AND Upside-down a 0 in the
+  // Goal looks the same upside-down, so each writer may read each Goal 0 either way (manual General Principle 11).
+  // Otherwise this is just [goalAt(...)] (or [] if that is not legal).
+  function goalVals(goalSyms, w, fractions) {
+    var RU = rulesOf(fractions), base = (goalSyms || []).map(sym), zi = [], out = [], seen = {};
+    if (RU.wild && RU.ud) base.forEach(function (s, i) { if (s === '0') zi.push(i); });
+    for (var mask = 0; mask < (1 << zi.length); mask++) {
+      var t = base.slice(); zi.forEach(function (i, b) { if ((mask >> b) & 1) t[i] = UD[0]; });
+      var e = evaluate(t, { multiDigit: true, fractions: fractions, inGoal: true, wild: w });
+      if (e.ok && !seen[e.value.n + '/' + e.value.d]) { seen[e.value.n + '/' + e.value.d] = 1; out.push(e.value); }
+    }
+    return out;
+  }
   // Multiple of k: does value v differ from the Goal g by a nonzero whole-number multiple of k?
   function multOk(v, g, k) {
     var dn = v.n * g.d - g.n * v.d, dd = v.d * g.d; // v − g = dn/dd
@@ -591,7 +664,8 @@ var Eq = (function () {
     var label = ctx.label || function (id) { return String(id); };
     var RU = rulesOf(ctx.fractions);
     var opCount = 0;
-    tokens.forEach(function (t) { if (typeof t === 'object' && t.id != null && !isNumSym(t.s) && exOf(t.s) < 0) opCount++; });
+    tokens.forEach(function (t) { if (typeof t === 'object' && t.id != null && !isNumSym(t.s) && exOf(t.s) < 0 && !(t.s === '.' && RU.three)) opCount++; }); // (TOURNEY: a decimal point is not an operation sign, XIII-A-6 comment)
+    if (RU.fact && RU.three) opCount += bangsIn(tokens); // TOURNEY: with Factorial, ! counts as an operation sign (XIII-A-6)
     var distinct = uniq(ids).length;
     if (distinct < 2) reasons.push('A Solution needs at least two cubes.');
     var forb = [], res = 0, goalUsed = false, seen = {};
@@ -609,7 +683,7 @@ var Eq = (function () {
       if (RU.expo && exOf(t.s) >= 0 && RU.eids && RU.eids.indexOf(id) < 0) reasons.push(MSG.expcolor + ' (This ' + label(id) + ' isn\'t ' + (RU.ecol || 'that colour') + '.)');
     });
     if (RU.three && opCount < 3) reasons.push('With the Three-operation card, a Solution needs at least 3 operation signs (this one has ' + opCount + ').');
-    if (RU.fact && bangsIn(tokens) + bangsIn(RU.goal) > 2) reasons.push(bangsIn(RU.goal) ? 'The Goal already uses ' + bangsIn(RU.goal) + ' of the two ! signs, so your Solution may use only ' + (2 - bangsIn(RU.goal)) + '.' : MSG.bangs);
+    if (RU.fact && !RU.multi && bangsIn(tokens) + bangsIn(RU.goal) > 2) reasons.push(bangsIn(RU.goal) ? 'The Goal already uses ' + bangsIn(RU.goal) + ' of the two ! signs, so your Solution may use only ' + (2 - bangsIn(RU.goal)) + '.' : MSG.bangs);
     if (forb.length) reasons.push('It uses a Forbidden cube (' + forb.map(label).join(', ') + '). Forbidden cubes are off-limits.');
     var missing = (ctx.required || []).filter(function (id) { return ids.indexOf(id) < 0; });
     if (missing.length) reasons.push('It leaves out Required cube' + (missing.length > 1 ? 's ' : ' ') + missing.map(label).join(', ') + '. Every Required cube must be used.');
@@ -628,8 +702,8 @@ var Eq = (function () {
         var ew = evaluate(tokens, { fractions: ctx.fractions, wild: w });
         if (!ew.ok) continue;
         if (!firstOk) firstOk = ew;
-        var gw = gZero ? goalAt(RU.goal, w, ctx.fractions) : ctx.goal;
-        if (gw && eqF(ew.value, gw)) { equal = true; ev = ew; wildAs = w; }
+        var gws = gZero ? goalVals(RU.goal, w, ctx.fractions) : [ctx.goal]; // (TOURNEY: goalVals, manual General Principle 11)
+        if (gws.some(function (gw) { return gw && eqF(ew.value, gw); })) { equal = true; ev = ew; wildAs = w; }
       }
       if (!equal && firstOk) ev = firstOk;
       if (!ev.ok) reasons.push(ev.msg);
@@ -743,15 +817,16 @@ var Eq = (function () {
     var ws = (gZero || sZero) ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : [null];
     var complete = true;
     for (var wi = 0; wi < ws.length; wi++) {
-      var w = ws[wi], goal = gZero ? goalAt(RU.goal, w, p.fractions) : p.goal;
-      if (!goal) continue; // the Goal is not legal when 0 means this digit
-      var base = { goal: goal, req: req, fractions: RU.fr, RU: RU, wild: w, maxDigits: p.maxDigits || 6, deadline: deadline, memo: memo,
-        bangs: RU.fact ? Math.max(0, 2 - bangsIn(RU.goal)) : 0 };
-      for (var i = 0; i < scen.length; i++) {
-        var r = core(base, scen[i].opt, scen[i].must);
-        if (r.found) { if (w !== null) r.wild = w; return r; }
-        if (!r.complete) complete = false;
-        if (nowMs() > deadline) return { found: false, complete: false };
+      var w = ws[wi], goals = gZero ? goalVals(RU.goal, w, p.fractions) : [p.goal]; // (TOURNEY: goalVals; with 0 Wild + Upside-down a Goal 0 may be read either way)
+      for (var gi = 0; gi < goals.length; gi++) { // (no Goal value: the Goal is not legal when 0 means this digit)
+        var base = { goal: goals[gi], req: req, fractions: RU.fr, RU: RU, wild: w, maxDigits: p.maxDigits || 6, deadline: deadline, memo: memo,
+          bangs: RU.fact ? (RU.multi ? 1 : Math.max(0, 2 - bangsIn(RU.goal))) : 0 }; // (TOURNEY: Factorial + Multiple Operations: any number of ! in a Solution, XIII-A-5)
+        for (var i = 0; i < scen.length; i++) {
+          var r = core(base, scen[i].opt, scen[i].must);
+          if (r.found) { if (w !== null) r.wild = w; return r; }
+          if (!r.complete) complete = false;
+          if (nowMs() > deadline) return { found: false, complete: false };
+        }
       }
     }
     return { found: false, complete: complete };
@@ -831,14 +906,21 @@ var Eq = (function () {
     }
     // the numbers one cube can be
     function leaves(m, ch) {
-      if (exOf(ch) >= 0) { put(m, 0, { v: { n: exOf(ch), d: 1 }, s: String(exOf(ch)), p: 4, o: 0 }); return; } // an exponent-colour digit used plainly
+      if (exOf(ch) >= 0) { if (exOf(ch) < B) put(m, 0, { v: { n: exOf(ch), d: 1 }, s: String(exOf(ch)), p: 4, o: 0 }); return; } // an exponent-colour digit used plainly (TOURNEY: < B)
       if (bigIdx(ch) >= 0) { var bv = bigOf(ch); if (bv.d === 1 || fr) put(m, 0, { v: bv, s: ch, p: 4, o: 0 }); return; } // BONUS: the big-number die
       var d = leafV(ch);
       if (d >= B) return;
       put(m, 0, { v: { n: d, d: 1 }, s: ch, p: 4, o: 0 });
-      if (RU.ud && d !== 0) put(m, 0, { v: { n: -d, d: 1 }, s: UD[d], p: 4, o: 0 });
-      if (RU.sw && d !== 0 && fr) put(m, 0, { v: { n: 1, d: d }, s: SW[d], p: 4, o: 0 });
-      if (RU.pob && ch === '1') for (var k = -6; k <= 6; k++) { if (!k || (k < 0 && !fr)) continue; put(m, 0, { v: pow10(k), s: POBK[k], p: 4, o: 0 }); }
+      var cd = +ch; // (TOURNEY: the turned symbol names the cube's own digit, so a turned wild 0 stays a 0 cube: manual F2, F3)
+      if (RU.ud && d !== 0) put(m, 0, { v: { n: -d, d: 1 }, s: UD[cd], p: 4, o: 0 });
+      if (RU.sw && d !== 0 && fr) put(m, 0, { v: { n: 1, d: d }, s: SW[cd], p: 4, o: 0 });
+      if (RU.udsw && d !== 0 && fr) put(m, 0, { v: { n: -1, d: d }, s: NS[cd], p: 4, o: 0 }); // TOURNEY: manual F1
+      if (RU.pob && ch === '1') for (var k = -6; k <= 6; k++) {
+        if (!k || (k < 0 && !fr)) continue;
+        var pv = pow10(k, B); if (typeof pv === 'string') continue; // (TOURNEY: powers of the base, XIII-B-10)
+        put(m, 0, { v: pv, s: POBK[k], p: 4, o: 0 });
+        if (RU.ud) put(m, 0, { v: { n: -pv.n, d: pv.d }, s: NPOBK[k], p: 4, o: 0 }); // TOURNEY: manual F17
+      }
     }
     function dp(S) {
       var key = cfg + '#' + S, m = base.memo.get(key);
@@ -856,11 +938,11 @@ var Eq = (function () {
           var A = sp[si][0], Bs = sp[si][1];
           var mA = dp(A), mB = dp(Bs);
           // Exponent card: an exponent-colour digit right after a number raises it to that power
-          if (RU.expo && Bs.length === 1 && exOf(Bs) >= 0) {
+          if (RU.expo && Bs.length === 1 && exOf(Bs) >= 0 && exOf(Bs) < B) { // (TOURNEY: < B, manual A27)
             var ed = { n: exOf(Bs), d: 1 };
             mA.forEach(function (vmA, uA) {
               vmA.forEach(function (ea) {
-                var r = opCore('^', ea.v, ed, fr);
+                var r = opCore('^', ea.v, ed, fr, RU);
                 if (typeof r !== 'string') put(m, uA, { v: r, s: wrap(ea, 4) + Bs, p: 4, o: ea.o + 1 });
               });
             });
@@ -878,7 +960,7 @@ var Eq = (function () {
                 vmA.forEach(function (ea) {
                   vmB.forEach(function (eb) {
                     if (((++tick) & 4095) === 0 && nowMs() > base.deadline) throw TIMEOUT;
-                    var r = opCore(o, ea.v, eb.v, fr);
+                    var r = opCore(o, ea.v, eb.v, fr, RU);
                     if (typeof r === 'string') return;
                     var oc = ea.o + eb.o + 1, k = vkey(r, oc);
                     if (!out.has(k)) { var e = combine(o, ea, eb, r); e.o = oc; out.set(k, e); }
@@ -904,26 +986,27 @@ var Eq = (function () {
         // one-number operations on everything found so far: √ (no index cube), and with the Middle cards
         // Number of Factors / Smallest Prime (× in front) and factorial (!). They may stack (√√16, ××12, 3!!)
         // as far as the cubes (and the two ! signs) allow. Multiple Operations: √ may repeat, up to 3 deep.
-        var reps = (unOps.length ? 3 : (multi ? 3 : 1));
+        var reps = (RU.div && multi) ? 12 : (unOps.length ? 3 : (multi ? 3 : 1)); // (TOURNEY: with Multiple Operations a one-number op may repeat without limit (manual F5); the loop stops when nothing new appears)
         var pre = unOps.filter(function (o) { return OPDEF[o].kind === 'pre'; }), post = unOps.filter(function (o) { return OPDEF[o].kind === 'post'; });
         for (var rep = 0; rep < reps; rep++) {
+          if (RU.div && nowMs() > base.deadline) throw TIMEOUT; // (TOURNEY: deep repeats with Multiple Operations keep to the time cap)
           var adds = [];
           m.forEach(function (vm, u) {
             if (hasRoot) {
               var u2 = useOp(u, 'r');
               if (u2 >= 0) vm.forEach(function (e) {
-                if (e.v.d !== 1 || e.v.n < 0) return;
-                var r = opCore('r', TWO, e.v, false);
+                if (!RU.mpow && (e.v.d !== 1 || e.v.n < 0)) return;
+                var r = opCore('r', TWO, e.v, false, RU); // (TOURNEY: Middle list: square roots of fractions too, √(1/4) = 1/2)
                 if (typeof r !== 'string') adds.push([u2, { v: r, s: 'r' + wrap(e, 4), p: preP, o: e.o + 1 }]);
               });
             }
             pre.forEach(function (o) {
               var u3 = useOp(u, OPDEF[o].cube); if (u3 < 0) return;
-              vm.forEach(function (e) { var r = unCore(o, e.v, fr); if (typeof r !== 'string') adds.push([u3, { v: r, s: o + wrap(e, 4), p: preP, o: e.o + 1 }]); });
+              vm.forEach(function (e) { var r = unCore(o, e.v, fr, RU); if (typeof r !== 'string') adds.push([u3, { v: r, s: o + wrap(e, 4), p: preP, o: e.o + 1 }]); });
             });
             post.forEach(function (o) {
               var u4 = useOp(u, OPDEF[o].cube); if (u4 < 0) return;
-              vm.forEach(function (e) { var r = unCore(o, e.v, fr); if (typeof r !== 'string') adds.push([u4, { v: r, s: wrap(e, 4) + o, p: 4, o: e.o + 1 }]); });
+              vm.forEach(function (e) { var r = unCore(o, e.v, fr, RU); if (typeof r !== 'string') adds.push([u4, { v: r, s: wrap(e, 4) + o, p: 4, o: e.o + 1 }]); });
             });
           });
           var before = 0; m.forEach(function (vm) { before += vm.size; });
@@ -1155,6 +1238,8 @@ var Eq = (function () {
     OPDEF: OPDEF, UD: UD, SW: SW, EX: EX, POB: POB, POBK: POBK, cubeOf: cubeOf, orient: orient, withOrient: withOrient, isNumSym: isNumSym,
     exOf: exOf, pobOf: pobOf, resolve: resolve, multOk: multOk, tagExp: tagExp, bangsIn: bangsIn, isPrime: isPrime, numFactors: numFactors,
     cubeTokens: cubeTokens, expCounts: expCounts,
+    // TOURNEY: several cards at once
+    NS: NS, NPOB: NPOB, NPOBK: NPOBK, nsOf: nsOf, npobOf: npobOf, goalVals: goalVals, powQ: powQ,
     // BONUS dice (house rule)
     BIG: BIG, BIG_FACES: BIG_FACES, POWER_FACES: POWER_FACES, bigOf: bigOf, bigIdx: bigIdx, isBonusOp: isBonusOp, digitSum: digitSum
   };

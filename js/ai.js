@@ -22,7 +22,7 @@
 //   likes.sol   = sets of symbols it tries to work into its Solutions, in order (e.g. [['*','+'], ['*']])
 //   likes.mix   = true: tries Solutions that mix two different operations (Zog)
 var AI = (function () {
-  var VERSION = 7; // (CAREER: 7) bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
+  var VERSION = 8; // (CAREER: 7; TOURNEY: 8) bump when the messages between the page and the worker change (or ai.js/engine.js change, so a cached old worker is never used)
 
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function assign(a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
@@ -305,7 +305,7 @@ var AI = (function () {
     }
     if (bonusFan(o) && Math.random() < 0.7) { var bi = ideas.filter(function (g) { return g.tokens.some(isBonusSym); }); if (bi.length) ideas = bi.concat(ideas.filter(function (g) { return bi.indexOf(g) < 0; })); } // BONUS: show the bonus cube off
     var t0 = now(), pick = null, liked = false, seen = 0;
-    for (var i = 0; i < ideas.length && i < 30 && now() - t0 < 1000; i++) {
+    for (var i = 0; i < ideas.length && i < 30 && now() - t0 < (RU.div ? 2000 : 1000); i++) { // (TOURNEY: several cards make each check slower)
       var g = ideas[i], gt = Eq.cubeTokens(g.tokens, freeZ, fractions), usedG = {};
       if (gt.some(function (t) { return typeof t === 'object' && t.id < 0; })) continue;
       gt.forEach(function (t) { if (typeof t === 'object') usedG[t.id] = 1; });
@@ -314,7 +314,7 @@ var AI = (function () {
       // (0 Wild / Factorial: the solver also needs the Goal's symbols: a 0 in the Goal may stand for another digit,
       //  and ! signs in the Goal use up the two allowed)
       // (Three-operation: a Solution needs 3 signs, so it looks at up to 4 number cubes)
-      var p = { goal: g.value, req: [], opt: rest, mode: 'free', tagged: true, fractions: Eq.withGoal(fractions, g.tokens), maxDigits: RU.three ? Math.max(4, goalDigits(o)) : goalDigits(o), timeMs: 60 };
+      var p = { goal: g.value, req: [], opt: rest, mode: 'free', tagged: true, fractions: Eq.withGoal(fractions, g.tokens), maxDigits: RU.three ? Math.max(4, goalDigits(o)) : goalDigits(o), timeMs: RU.div ? 150 : 60 };
       if (!Eq.solve(p).found) continue;
       if (!pick) pick = g;
       if (!L) break; // no taste: the first Goal it can solve, as always
@@ -360,6 +360,54 @@ var AI = (function () {
     return cards[Math.floor(rand() * cards.length)];
   }
 
+  // ---- TOURNEY: tournament practice (js/tourney.js, RULES_SUMMARY.md section 8) ----
+  // Every player MUST pick a card each shake (II-B). legal = [{id, sets: [setting, ...] or null}], only cards the
+  // rules allow right now (the game checked "can it change the shake", "already chosen" and "not offered yet").
+  // A creature picks by strength: weaker creatures stay with the easier cards, stronger ones reach for the harder
+  // ones and for their math taste. Returns {id, set} or null when nothing is legal.
+  var EASE = { twodigit: 1, multiops: 1, wild0: 2, upside: 2, factorial: 2, sideways: 3, remainder: 3, powbase: 3, multk: 3,
+    lcm: 4, gcf: 4, nfactors: 4, basem: 4, expo: 4, threeops: 5 };
+  function chooseTourneyCard(o, legal, rand) {
+    rand = rand || Math.random;
+    legal = (legal || []).filter(function (c) { return c.id !== 'threeops' || (o.maxDigits || 0) >= 4; }); // long Solutions only for creatures that see 4+ number cubes
+    if (!legal.length) return null;
+    var stars = o.stars || 1, L = o.likes || {}, fav = {};
+    if (has(L.ops, '+') || has(L.ops, '*') || L.mix) fav.multiops = 1;
+    if (has(L.ops, '/') || L.goal === 'div') { fav.remainder = 1; fav.sideways = 1; }
+    if (L.goal === 'big') { fav.twodigit = 1; fav.factorial = 1; fav.powbase = 1; }
+    if (L.goal === 'long') fav.threeops = 1;
+    if (L.goal === 'pow' || L.goal === 'square' || has(L.ops, '^')) { fav.gcf = 1; fav.expo = 1; }
+    if (L.goal === 'prime') fav.nfactors = 1;
+    if (has(L.ops, 'r')) fav.lcm = 1;
+    if (has(L.ops, '-')) fav.upside = 1;
+    if (L.mix) { fav.multk = 1; fav.upside = 1; }
+    var scored = legal.map(function (c) {
+      var e = EASE[c.id] || 3, s = (e <= stars + 1 ? 1 : -1.5) - Math.abs(e - Math.min(5, stars)) * 0.35 + (fav[c.id] ? 1 : 0) + rand() * 2.4;
+      return { c: c, s: s };
+    }).sort(function (a, b) { return b.s - a.s; });
+    var c = scored[0].c, set = null;
+    if (c.sets && c.sets.length) set = c.sets[Math.floor(rand() * c.sets.length)];
+    return { id: c.id, set: set };
+  }
+  // A Mover who is not leading may first make a bonus move: one cube to Forbidden (IV-C, V-C). The creature only does
+  // it when it finds a cube whose loss keeps the Goal possible (so it never spoils the shake by accident), and the
+  // stronger it is the more often it bothers. Then it takes its normal turn on the mat as it is after the bonus cube.
+  // -> {challenge} | {bonus: {id} | null, move}
+  function turnT(o, st, res, goal, fractions, mayChallenge, nowOk, mayBonus) {
+    if (mayChallenge) { var d = decideChallenge(o, st, goal, fractions, nowOk, 1, false); if (d) return { challenge: d }; }
+    var bonus = null, st2 = st, res2 = res;
+    if (mayBonus && res.length >= 3 && Math.random() < 0.03 * (o.stars || 1)) {
+      var base = { goal: goal, fractions: fractions, maxDigits: o.maxDigits, timeMs: 60 }, seen = {};
+      var list = shuffle(res.filter(function (c) { return !c.locked; }).slice());
+      for (var i = 0; i < list.length && i < 6; i++) {
+        var c = list[i]; if (seen[c.s]) continue; seen[c.s] = 1;
+        var after = applySym(st, c.s, 'forbidden');
+        if (Eq.solve(assign(base, { req: after.req, opt: after.perm, res: after.res, mode: 'impossible' })).found) { bonus = { id: c.id }; st2 = after; res2 = res.filter(function (x) { return x.id !== c.id; }); break; }
+      }
+    }
+    return { bonus: bonus, move: chooseMove(o, st2, res2, goal, fractions) };
+  }
+
   // "No Goal" was called: can the creature find ANY Goal plus a Solution? (free = Resource symbols)
   function findAnyEquation(free, fractions) {
     var ideas = shuffle(Eq.goalIdeas(free, { fractions: fractions }).filter(function (g) { return g.value.d === 1; }));
@@ -376,10 +424,10 @@ var AI = (function () {
     VERSION: VERSION, skill: skill, plain: plain, viewDigits: viewDigits, goalDigits: goalDigits, applySym: applySym,
     decideChallenge: decideChallenge, callsLastImpossible: callsLastImpossible, interject: interject,
     chooseMove: chooseMove, turn: turn, write: write, thirdParty: thirdParty, chooseGoal: chooseGoal, findAnyEquation: findAnyEquation,
-    chooseVariation: chooseVariation, MIDDLE: MIDDLE,
+    chooseVariation: chooseVariation, MIDDLE: MIDDLE, chooseTourneyCard: chooseTourneyCard, turnT: turnT, // (TOURNEY)
     tasteSolve: tasteSolve, goalLooksLiked: goalLooksLiked, reachableWith: reachableWith, padded: padded,
     // what the worker may run
-    TASKS: ['decideChallenge', 'callsLastImpossible', 'interject', 'chooseMove', 'turn', 'write', 'thirdParty', 'chooseGoal', 'findAnyEquation']
+    TASKS: ['decideChallenge', 'callsLastImpossible', 'interject', 'chooseMove', 'turn', 'write', 'thirdParty', 'chooseGoal', 'findAnyEquation', 'turnT']
   };
 })();
 

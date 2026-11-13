@@ -169,7 +169,7 @@ A **variation** is an extra rule for one shake. In the game each one is a **vari
 | A card that changes nothing | Costs 1 point and you pick again (II-B-2). The rules' example: choosing 0 Wild when no 0 was rolled | Such cards are simply not offered, so nobody can lose a point |
 | Computer players | — | A creature that sets the Goal sometimes picks a card: Snoozy about 4% of the time, Penny 10%, Rusty 24%, Ollie 41%, Mondo 55%, King Zog 70%. Its math taste nudges which card |
 
-The engine can play several cards at once (they are tested together a little), but the game only offers one.
+The engine can play several cards at once, but normal play only offers one. Several at once happen only in **Tournament practice** (section 8).
 
 ### The five cards in the game
 
@@ -394,8 +394,8 @@ two-digit numerals are allowed in Solutions; 8 and 9 don't exist in base eight.
 
 ### Left out, and why
 - **Base 11 and 12**: Junior division only (above).
-- **Combinations of cards** (and the Middle 0 Wild, where 0 may stand for an operation): one card per shake, so
-  combinations are neither offered nor tested. The engine flags are independent, but no combination is promised to work.
+- **Combinations of cards** (and the Middle 0 Wild, where 0 may stand for an operation): one card per shake in normal play.
+  Tournament practice (section 8) plays up to three cards together; the supported pairs are listed and tested there.
 
 ### How the game reads every new symbol (for parents and other helpers)
 Each new meaning is one internal character, so the solver's text still splits into tokens: an upside-down digit is
@@ -527,3 +527,122 @@ short line, and is marked VARIATION CARD or BONUS TWIST at the bottom.
   "one way that works"). A search that runs out of time never claims anything: Impossible! hints only come from a
   complete search, and the end-of-shake "I couldn't find one" now adds "(I ran out of searching time, so that does
   not prove there is none)" when the search was cut short.
+
+---
+
+## 8. Tournament practice and Judge Pip (several variation cards at once)
+
+Sources, read for this section on 2026-11-13: the *Equations Tournament Rules 2026-27* PDF (sections I-D, II-B, IV-C, IV-D,
+V, VI, VII, VIII, IX, X, XI, XII, XIII, III-C) and the judges' manual (General Principles 1-13, Sections A and F, plus
+E39-E57 on default groupings). The manual is copyrighted: the game and this file only cite situation numbers (A27, F17, …);
+every explanation is in our own words. Code: `js/tourney.js` (rules core `TourneyRules` + the mode + Judge Pip),
+the `TOURNEY` lines in `js/engine.js`, `js/game.js`, `js/variations.js`, `js/builder.js`, `js/ai.js`. Tests: block
+"TOURNEY" in `tests/engine.test.js`; `node tests/playtest.js 6 4 tourney` (also `tourney:M`, `tourney2`, `tourney2:M`).
+
+**Nothing in this section changes normal play.** A shake outside Tournament practice still has at most one card, and the
+engine only switches on the rules below when a second card or the tournament flag (`div: 'E' | 'M'`) is in the math mode.
+
+### What the mode does (official, as implemented)
+
+| Step | Official rule | In the game |
+|---|---|---|
+| Players | Two- or three-player matches (I-A) | Three by default: the kid + two creatures, or + people on the same device (any mix); two-player matches too |
+| First Goal-setter | Everyone rolls a red cube; highest digit; an operation sign is out unless everyone rolls one; ties roll again (I-D, A1) | Exactly that, shown roll by roll. Then the Goal-setter moves to the left each shake (I-D) |
+| Cards | Every player picks one card from the division's list, Goal-setter first, then to the left (II-B-1). Two players: the non-setter picks **two** (II-B-3) | Exactly that. The Elementary list by default; the Middle list when every card is unlocked or Tata allows it |
+| Which card is legal | It must be able to change the shake; not one already chosen; not one that conflicts (II-B-2, General Principle 1). Illegal = −1 and pick again; a second illegal pick = −1 and no card (II-B-2, A17, A18) | Judge Pip explains why (with the reference) and the player picks again. The −1s only in **strict mode** |
+| 2026-27 lists | Elementary: XIII-A-1..7 every year + the odd-year group A-8..11. Middle: B-1..5, B-6, B-7, B-8 (Number of Factors in 2026-27), B-9, B-10 | Elementary: Sideways, Upside-down, 0 Wild, Factorial, Multiple Operations, Three-operation, Remainder, Two-digit, LCM, GCF, Number of Factors (≤ 200). Middle: Sideways, Upside-down, Factorial, Multiple Operations, Base 8/9/10, Multiple of k (6-11), Number of Factors (≤ 1000), Exponent, Powers of the Base (0 Wild: see "not offered yet") |
+| Bonus moves | A player NOT leading may say "Bonus" and put one cube in Forbidden, then make a normal move; the Goal-setter may do it before the first Goal cube; tied for the lead is fine; the leader may not (−1) (IV-C, V-C) | A "Bonus move" button for people; creatures sometimes take one (only a cube whose loss keeps the Goal possible). A leader's try is refused by the Judge (−1 in strict mode). After a Goal-setter's bonus move, "No Goal" is not allowed (IV-D-1 comment (c)) |
+| Challenges | Anyone may challenge the latest Mover, even out of turn (VI-A, General Principle 9); Now! needs 2 cubes in Resources and something in Required/Permitted (VI-A-2); invalid challenge = −1 (VI-B) | As in Three at the table, plus: an invalid Now!/Impossible! is explained by the Judge (−1 in strict mode) |
+| Last cube | Never to Forbidden (VIII-A); everyone writes, 4/2 (X-C) | Same; the Judge explains a try (no penalty, as in VIII-A) |
+| Scoring a shake | X-A, X-B (6/2, Third Party 6/4/2), X-C | `Eq.scoreChallenge` (unit-tested), unchanged |
+| Scoring the round | Places give match points: 3 players 6 / 5 / 4 / 4 / 3 / 2; 2 players 6 / 5 / 4 (XII-A) | Shown at the end with each player's shake points, place and match points. Saved in `S.tourney` (rounds, first places, shared firsts, match points, best, the last 20 rounds) |
+| Fractions, operations | No fractions rule in the tournament; all six operations on the cubes | Fractions always on. All six operations by default when the ladder is finished; otherwise the setup offers "only the ones I unlocked" (locked ones are rolled again, as in normal play) ⚠ |
+
+### Left out or changed (also listed on the mode's intro screen)
+
+- ⚠ **No sand timer.** An optional **practice clock** (Parent corner, off by default) shows the XI-A limits (15 s per card,
+  2 min for the Goal and the first move after it, 1 min per move, 2 min to write). It never acts by itself and never costs a
+  point unless **strict penalties** is also on; then each time-out is −1 (at most twice per task), with no forced loss of turn.
+- ⚠ **Penalties only in strict mode** (off by default): illegal card pick (II-B-2), bonus move while leading (IV-C-2, V-C-2),
+  invalid challenge (VI-B), the clock (XI-A). Without strict mode the Judge explains and the player tries again.
+- ⚠ The game checks every Solution itself: no paper, no 2-minute checking, no −1 for extra checking time, no
+  "prove it ambiguous" step (VII-C). It still reads expressions in school order (section 4 #2). When two default groupings
+  pull on the same number (√9!, ×7!, ×12², manual E41, E46, E54, E55; VII-B-6-c), Judge Pip says a real checker could read it
+  two ways and the game shows the reading it used.
+- ⚠ Insulation (IX-B, General Principle 4) and "nobody noticed" (II-B-2, A10, A23) never come up: the game never lets an
+  illegal action through. The Rulings list explains them.
+- ⚠ No 30-minute round: each player sets the Goal once or twice (setup). No late arrivals (X-D), no five-minute "stop" rule (XI-B).
+- ⚠ Hints stay available (it is practice); Judge Pip never gives hints (the manual's officiating guidelines: a judge never
+  helps a player decide whether to challenge or how to solve).
+- ⚠ The Goal-setter places any `!` in the Goal when setting it (section 6, Factorial), as in normal play.
+
+### Several cards at once: what the engine does now
+
+| Pair | Rule | Engine |
+|---|---|---|
+| Sideways + Upside-down | One cube may be both, in a Solution only: −1/d (XIII-A-2 comment (a), XIII-B-2 comment, F1) | New symbols (`Eq.NS`); refused in the Goal ("bothgoal") |
+| 0 Wild + Sideways / Upside-down | A wild 0 may be turned; every 0 stands for the same digit, each turned its own way (F2, F3, F2 comment) | A turned 0 cube takes the wild digit; the solver maps it to the 0 cube |
+| 0 Wild + Upside-down, Goal | A 0 in the Goal looks the same upside-down, so it may be read either way (General Principle 11) | `Eq.goalVals` tries both readings for every Goal 0 (checker and solver) |
+| Factorial + Multiple Operations | Any number of ! in a Solution; at most two in the Goal (XIII-A-5, XIII-A-4 example (b)) | Budget lifted for Solutions only |
+| Factorial + Three-operation | ! counts as an operation symbol (XIII-A-6) | Counted (the solver already did) |
+| Decimal Point + Three-operation | A decimal point is not an operation symbol (XIII-A-6 comment) | Not counted (not on the 2026-27 lists; fixed anyway) |
+| Factorial + Sideways / Upside-down | ! needs a whole number (F6, F7) | Already true |
+| Number of Factors + Multiple Operations | × may count factors again and again and multiply too (F4, F5) | One-number operations may repeat up to 12 deep (stops when nothing new appears) |
+| Number of Factors + Sideways / Upside-down | needs a counting number (F8) | Already true |
+| LCM / GCF + Multiple Operations | One √ (^) used as LCM (GCF) and as root (power) (F10, E47) | Already true (tested) |
+| Number of Factors limit | Elementary A ≤ 200 (XIII-A-11, example (f)); Middle A ≤ 1000 (XIII-B-8) | By division (normal play keeps 1000) |
+| Base m + Sideways / Upside-down | No two-digit numeral of turned cubes (F15, F16); no turned 8/9 in base 8 | Turned cubes can't touch digits (already); base check added for sideways |
+| Base m + Multiple of k | Goal to base ten first, then multiples of k (F23) | Values are base ten inside, so already true (tested) |
+| Base m + Powers of the Base | A 1 is a power of the base (XIII-B-10 example (b)) | Powers of m, not of ten |
+| Base m + Exponent | An exponent digit must exist in the base (A27) | Base check added (evaluator and solver) |
+| Powers of the Base + Upside-down | −10, −100, −0.1 … (F17, also with Base m) | New symbols (`Eq.NPOB`) |
+| Powers of the Base + Sideways | Legal but adds nothing (F14) | No new symbol needed (the negative powers already exist) |
+| Middle list, powers and roots | No Elementary "General Rule" in Middle (III-C; manual E53 kind) | With the Middle list: negative and fractional powers and any rational root index, kept exact (III-C examples (a)-(d) are tests). ⚠ A value that is not a fraction (√2) is refused, so (√2)² can't be used |
+| Everything else in the lists | No interaction | Each card does its own job (tested by brute force) |
+
+**Legal picks** (TourneyRules.check). A card "can change the shake" when: Sideways / Upside-down: a nonzero digit (< the base
+if Base m was chosen), or a 0 with 0 Wild; 0 Wild: a 0; Factorial, Multiple of k: a digit; Multiple Operations: an operation
+cube; Three-operation: ⚠ at least three operation signs could ever be written (cubes, + 2 for Factorial, any with Multiple
+Operations); Remainder: ÷; Two-digit: ⚠ 3+ digits; LCM: √; GCF: ^; Number of Factors: ×; Base 8/9: a digit, Base 10: 3+ digits;
+Exponent: a digit of that colour (< the base: A27; XIII-B-9 comment (c)); Powers of the Base: a 1. ⚠ The rulebook names no
+contradictory pair in these two lists, so the only "conflict" the game enforces is a card already picked (II-B-2), even with
+another k, base or colour.
+
+**Not offered in practice yet** (the picker shows 🔒 and why; never a penalty):
+- Middle **0 Wild** (a 0 may stand for any symbol, even an operation, XIII-B-3): the game only knows the digit-only 0.
+- Middle pairs **Exponent + Sideways** (E52), **Exponent + Upside-down** (E53): a turned cube can itself be an exponent;
+  **Exponent + Powers of the Base** (F25); **Exponent + Factorial** (a ! behind an exponent may belong to the exponent,
+  XIII-B-9 comment (b)). The engine has no symbols for these readings yet, so it would wrongly call some Goals impossible.
+- Supported: all **55** Elementary pairs and **32** of the 36 Middle pairs; triples whose three pairs are supported.
+
+**Proof (tests/engine.test.js, block TOURNEY, 117 checks):** hand-checked cases for every row above with the manual
+numbers; a round trip for every supported pair (4 random positions each, Now! and Impossible!) and 10 triples where every
+solver Solution, mapped to real cubes with `Eq.cubeTokens`, passes `Eq.checkSolution`; an independent brute-force
+enumerator on small cube sets for **every** supported pair (with Multiple Operations it sees a subset, so: everything it
+reaches must be found and everything found must check); the rules core (lists, picks, A27, order, bonus eligibility,
+match points, the red-cube roll). The solver never says "impossible" unless its search finished; deep repeats keep to the
+time cap. Slowest round-trip search with a 700 ms cap: about 730-800 ms on this PC when run alone (the cap is checked
+between steps); slowest brute-force solve: under 150 ms.
+
+### Judge Pip
+
+A referee version of Pip (Pip in a black-and-white cap with a whistle; an original drawing). In this mode, from the action
+bar ("Judge"), in normal matches too, and in the builder ("Ask the Judge"). Answers are worked out by the engine from the
+position right now:
+- **Is this move legal?** where the selected cube may go, the last-cube rule, whether this player may take a bonus move.
+- **Can I pick this card?** every card in the list with ✔/✘ and the reason and reference (during the pick); otherwise
+  what this shake's cards do together (the pair notes above).
+- **Is this Goal legal?** cube count, value, every wild-0 value, the upside-down reading of a Goal 0, ambiguity notes.
+- **Does this Solution count? Why not?** each reason from `Eq.checkSolution` with its rule number (in the builder, and for
+  every Solution after the shake).
+- **Who can challenge now?** every player: Impossible! yes/no, Now! yes/no and why (VI-A-2), always against the latest Mover.
+- **How is this shake scored?** during a challenge: what each player gets if the writer is right or wrong; otherwise the
+  scoring rules, and the match points if the round ended now.
+- **Rulings:** 26 common situations in our own words, each with a tiny example and the official references.
+It says what is allowed, never what is clever (it never tells a player whether to challenge or how to solve).
+
+### Unlocking (house rule, proposed)
+
+Opens when the ladder has finished + − × ÷ (stage "Bigger Goals" or later, or the ladder is switched off) **and** the kid has
+beaten 3 creatures, or Tata switches it on. The Middle list needs every variation card unlocked, or Tata's switch.
+Parent corner switches: open now, Middle list, practice clock, strict penalties (all off by default).

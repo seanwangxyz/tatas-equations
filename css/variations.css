@@ -54,6 +54,7 @@ button.vari-card:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,
 .vtok small{font-size:13px;font-weight:900;line-height:1;color:#fff3bf;background:rgba(0,0,0,.35);border-radius:6px;padding:1px 4px;white-space:nowrap}
 .vtok.vt-ud > .cube > span{display:inline-block;transform:rotate(180deg)}
 .vtok.vt-sw > .cube > span{display:inline-block;transform:rotate(90deg)}
+.vtok.vt-ns > .cube > span{display:inline-block;transform:rotate(270deg)} /* TOURNEY: sideways AND upside-down (manual F1) */
 .vtok.vt-exp{align-self:flex-start;margin-left:-2px}
 .vtok.vt-exp > .cube{width:30px;height:30px;font-size:17px;outline:2px solid #fff3bf}
 .vtok .vx{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:#16203c;color:#fff;font-size:11px;line-height:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
