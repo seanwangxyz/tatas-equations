@@ -36,7 +36,7 @@ var Cabinet = (function () {
       Cup.CUPS.forEach(function (c) {
         var n = (cs.won && cs.won[c.id]) || 0, firstWin = (cs.list || []).filter(function (x) { return x.id === c.id; })[0];
         var nl = (c.opps || []).map(function (i) { return opp(i).name; }), names = nl.length > 1 ? nl.slice(0, -1).join(', ') + ' and ' + nl[nl.length - 1] : nl.join('');
-        out.push({ id: 'cup-' + c.id, type: 'cup', won: n > 0, count: n, title: c.name, metal: c.metal, ribbon: c.ribbon, icon: '🏆',
+        out.push({ id: 'cup-' + c.id, type: 'cup', won: n > 0, count: n, title: c.name, metal: c.metal, ribbon: c.ribbon, icon: '🏆', date: firstWin && firstWin.date ? String(firstWin.date) : '', hint: 'Win 3 in a row',
           story: n > 0 ? 'You lifted the ' + c.name + (n > 1 ? ' ' + n + ' times' : '') + '! ' + (firstWin && firstWin.date ? 'The first time was on ' + firstWin.date + '. ' : '') + 'You beat ' + names + ' in a row to win it.'
             : c.blurb + ' Win the quarter-final, semi-final and final (against ' + names + ') to put this cup on the shelf.' + (Cup.isOpen && !Cup.isOpen(c) && c.lockText ? ' ' + c.lockText : '') });
       });
@@ -79,17 +79,34 @@ var Cabinet = (function () {
           story: 'Finish season ' + L.n + ' of the ' + name + ' (' + (Season.MY_GAMES - L.k) + ' fixture' + (Season.MY_GAMES - L.k === 1 ? '' : 's') + ' to go) and a pennant goes here. Every place wins one!' });
       });
     }
+    // SHOWPIECES: league shields (finish 1st in a season of that league) and two framed photos on the back wall
+    if (typeof Season !== 'undefined' && Season.pennants && Season.LEAGUES) {
+      var pens = Season.pennants();
+      (Season.ids ? Season.ids() : ['c', 'm']).forEach(function (lg) {
+        var L = Season.LEAGUES[lg]; if (!L) return;
+        var golds = pens.filter(function (p) { return p.lg === lg && p.place === 1; }), first = golds[golds.length - 1];
+        out.push({ id: 'shield-' + lg, type: 'shield', won: golds.length > 0, count: golds.length, lg: lg, title: L.name + ' champions', short: L.name.replace(' League', ''), icon: '🛡️', date: first && first.date ? String(first.date) : '',
+          story: golds.length ? 'Champions of the ' + L.name + (golds.length > 1 ? ' ' + golds.length + ' times' : '') + '! ' + (first && first.date ? 'The first title came on ' + first.date + '.' : '') : 'Finish first in a season of the ' + L.name + ' and its champions shield hangs here.' });
+      });
+    }
+    var album = (typeof Album !== 'undefined' && Album.list) ? Album.list() : [];
+    out.push({ id: 'photo-best', type: 'photo', kind: 'best', won: album.length > 0, album: album, title: 'My best Solutions', icon: '🖼️',
+      story: album.length ? 'Your best Solutions so far: the longest one, the one with the biggest Goal and the cleverest one. Beat them and the photo changes!' : 'Make a correct Solution in a match and its picture goes in this frame.' });
+    var beatenList = (typeof OPPONENTS !== 'undefined' ? OPPONENTS : []).map(function (o, i) { return S.beaten && S.beaten[i] ? { kind: o.kind, pack: o.pack || 'classic', name: o.name, emoji: o.emoji, color: o.color } : null; }).filter(function (x) { return x; });
+    out.push({ id: 'photo-team', type: 'photo', kind: 'team', won: beatenList.length > 0, faces: beatenList.slice(-5), me: { name: S.name, jersey: S.jersey, shirt: S.kit && S.kit.shirt },
+      portrait: window.T3 && typeof T3.portrait === 'function' && T3.active && T3.active() ? function (f) { try { return T3.portrait(f.kind, f.pack, 160); } catch (e) { return null; } } : null,
+      title: 'Team photo', icon: '📸', story: beatenList.length ? 'You and the creatures you have beaten: ' + beatenList.map(function (x) { return x.name; }).join(', ') + '. Good games, all of them!' : 'Beat a creature and it joins you in the team photo.' });
     return out;
   }
   function counts() {
-    var it = items(), won = it.filter(function (x) { return x.won; }).length, total = it.filter(function (x) { return x.id.indexOf('pen-next') !== 0; }).length;
+    var it = items().filter(function (x) { return x.type !== 'photo'; }), won = it.filter(function (x) { return x.won; }).length, total = it.filter(function (x) { return x.id.indexOf('pen-next') !== 0; }).length;
     return { won: won, total: total };
   }
   var cache = null;
   function byId(id) { for (var i = 0; i < (cache || []).length; i++) if (cache[i].id === id) return cache[i]; return null; }
 
   // ---------- story card ----------
-  var TYPE_EMOJI = { cup: '🏆', crown: '👑', plaque: '🖼️', medal: '🏅', pennant: '🚩' };
+  var TYPE_EMOJI = { cup: '🏆', crown: '👑', plaque: '🖼️', medal: '🏅', pennant: '🚩', shield: '🛡️', photo: '📸' };
   function story(it) {
     var el = document.getElementById('cabStory'); if (!el || !it) return;
     el.innerHTML = '<div class="cab-sic">' + (it.type === 'medal' || it.type === 'plaque' ? (it.won ? it.icon : '❔') : TYPE_EMOJI[it.type]) + '</div><div class="cab-stx"><b>' + E(it.title) + '</b><p>' + E(it.story) + '</p></div>' +
@@ -100,7 +117,7 @@ var Cabinet = (function () {
   // ---------- the screen ----------
   function use3d() { return !force2d && typeof S !== 'undefined' && S.set && S.set.three !== false && window.T3 && T3.supported; }
   function shelf2d(list) {
-    var groups = [['cup', 'Cups'], ['crown', 'Crowns'], ['plaque', 'Creatures beaten'], ['medal', 'Badges'], ['pennant', 'Season pennants']];
+    var groups = [['cup', 'Cups'], ['shield', 'League shields'], ['crown', 'Crowns'], ['plaque', 'Creatures beaten'], ['medal', 'Badges'], ['pennant', 'Season pennants']];
     return groups.map(function (g) {
       var l = list.filter(function (x) { return x.type === g[0]; }); if (!l.length) return '';
       return '<h3 class="cab-h">' + TYPE_EMOJI[g[0]] + ' ' + g[1] + ' <small>' + l.filter(function (x) { return x.won; }).length + ' / ' + l.filter(function (x) { return x.id.indexOf('pen-next') !== 0; }).length + '</small></h3><div class="cab-shelf">' +
