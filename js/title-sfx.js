@@ -273,6 +273,22 @@ var TitleSfx = (function () {
     });
   }
 
+  // BIRTHDAY (docs/handoff/audio2.md): the show (js/three/birthday.js) only loads the choir 9.6 s in, just before the
+  // song. As soon as the show starts (it puts .bday-on on <body>), load js/birthday-sfx.js here as a plain script so
+  // the whole song is rendered offline while the parade runs (it renders itself when it loads; about 1.5 s on a laptop).
+  (function watchBirthday() {
+    try {
+      if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.body) { if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', watchBirthday); return; }
+      var mo = new MutationObserver(function () {
+        if (!document.body.classList.contains('bday-on')) return;
+        if (window.BirthdaySfx) { try { if (BirthdaySfx.prerender) BirthdaySfx.prerender(); } catch (e) {} return; }
+        if (watchBirthday.loading) return; watchBirthday.loading = true;
+        var s = document.createElement('script'); s.src = 'js/birthday-sfx.js'; s.onerror = function () { watchBirthday.loading = false; }; document.head.appendChild(s);
+      });
+      mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    } catch (e) {}
+  })();
+
   return {
     unlock: unlock, begin: begin, play: play, cancel: cancel, ambience: ambience, ui: ui, stopAll: stopAll,
     stats: function () { return { ctx: ac ? ac.state : null, live: liveSrc, created: created, ambience: ambOn, level: level(), scheduled: score.length }; },
