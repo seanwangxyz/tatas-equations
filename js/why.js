@@ -178,7 +178,7 @@ var Why = (function () {
   // so every mix of facts reads as 1 to 3 short true sentences. "Live" leaves out after-move challenge facts
   // and any example that is still a Solution after the move.
   function tokText(toks) {
-    return toks.map(function (t) { var s = sym(t); return s === '(' || s === ')' ? s : show(s); }).join(' ')
+    return toks.map(function (t) { var s = sym(t); return s === '(' || s === ')' ? s : s === 'a' ? '+' : show(s); }).join(' ') // (Average card: the kid sees a + cube)
       .replace(/\( /g, '(').replace(/ \)/g, ')');
   }
   function many(n) { return n >= WAYCAP ? 'lots of ways' : n >= 2 ? 'a few ways' : n === 1 ? 'one way' : 'no way'; }
@@ -226,6 +226,9 @@ var Why = (function () {
     else if (F.resLeft <= 3) add(30, 'low', 'Only ' + F.resLeft + ' cubes are left in Resources.');
     return pick(F, head, L);
   }
+  // Priority order for the end-of-shake pop-up: made the Goal impossible > made Now! possible > took a way
+  // away (Forbidden) or ruled one out (Required) > the last cube > the rest (quiet moves are never picked).
+  var IMP = { gone: 100, lost: 90, ruledout: 90, last: 65, never: 55, unused: 40, needed: 40, maybegone: 30, quiet: 20, quietperm: 10, unsure: 10, one: 10, low: 5 };
   var EXLABEL = { before: 'Before the move:', after: 'Still works:', now: 'With one cube from Resources:' };
   function pick(F, head, L) {
     var top = L.slice().sort(function (a, b) { return b.p - a.p || a.i - b.i; });
@@ -244,7 +247,9 @@ var Why = (function () {
       var e = keep[i].ex;
       if (e && e.tokens && (!F.live || e.when === 'before')) ex = { tokens: e.tokens, when: e.when, label: EXLABEL[e.when] };
     }
-    return { head: head, lines: lines, ex: ex, kinds: kinds, score: best + (F.mine ? 0 : 3),
+    // How important the move was (for the end-of-shake pop-up): the biggest change among ALL the facts.
+    var score = 0; L.forEach(function (x) { var v = x.kind === 'now' ? x.p : (IMP[x.kind] || 0); if (v > score) score = v; });
+    return { head: head, lines: lines, ex: ex, kinds: kinds, score: score + (score && !F.mine ? 3 : 0),
       note: F.live ? 'I\'ll tell you the rest after the shake, so I don\'t spoil your turn.' : '' };
   }
   // facts + words in one go (synchronous: node tests, and the page through run() below).
@@ -276,7 +281,162 @@ var Why = (function () {
 
   var api = { analyze: analyze, facts: facts, compose: compose, run: run, applyMove: applyMove, stOf: stOf, tokText: tokText,
     LIMITS: { maxDigits: MAXD, sliceMs: SLICE, budgetMs: BUDGET, wayCap: WAYCAP } };
-  //UI-HERE
+  // ======================= UI (page side) =======================
+  if (typeof window === 'undefined' || typeof document === 'undefined') return api;
+  var NOTES = [], SEQ = 0, QUEUE = [], WORKING = null, OPEN = null;
+  var BG = { sliceMs: 40, budgetMs: 1200 };          // background: small slices while the game goes on
+  var FG = { sliceMs: 120, budgetMs: 1400 };         // the kid is waiting on the card: a little bigger
+  function escH(s) { return typeof esc === 'function' ? esc(s) : String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function hasG() { return typeof G !== 'undefined' && G; }
+  // On: the Setting (S.set.why, on unless switched off), a real match (not online, not the guided tutorial).
+  function on() {
+    if (typeof S === 'undefined' || !S || !S.set || S.set.why === false) return false;
+    return !!(hasG() && G.mode !== 'online' && G.mode !== 'tutorial' && G.goal);
+  }
+  function aiOf(who) { return hasG() && G.players && G.players[who] && G.players[who].ai || null; }
+  // game.js placeCube calls this BEFORE the cube moves: Why.note('move', {before: G.cubes, cubeId, zone, who}).
+  function note(kind, d) {
+    if (kind !== 'move' || !d || !on()) return;
+    var who = d.who, ai = aiOf(who), P = G.players && G.players[who];
+    var n = { seq: ++SEQ, shake: G.shake, who: who, id: d.cubeId, zone: d.zone, isAI: !!ai, mine: who === 0 && !ai,
+      input: { cubes: copyCubes(d.before || G.cubes), id: d.cubeId, zone: d.zone, goal: G.goal ? { n: G.goal.n, d: G.goal.d } : null,
+        fractions: G.fractions, name: P ? String(P.name || '').replace(/<[^>]+>/g, '') : 'They', isAI: !!ai, mine: who === 0 && !ai,
+        taste: ai ? { text: ai.taste || '', syms: (ai.likes && ai.likes.syms) || [] } : null },
+      F: null, busy: false, err: null };
+    var c = n.input.cubes.filter(function (x) { return x.id === d.cubeId; })[0];
+    if (!c || c.zone !== 'resources' || !n.input.goal) return;
+    n.sym = c.s; NOTES.push(n); if (NOTES.length > 40) NOTES.shift();
+    QUEUE.push(n); pump();
+  }
+  function reset() { NOTES = []; QUEUE = []; WORKING = null; closeCard(); }
+  // One analysis at a time, one solver call per slice, with a breath between slices for the picture.
+  function pump() {
+    if (WORKING || !QUEUE.length) return;
+    var n = QUEUE.shift(); if (n.F || n.busy) { pump(); return; }
+    WORKING = n; n.busy = true;
+    var fg = OPEN && OPEN.n === n, gen = NOTES;
+    run(n.input, fg ? FG : BG, function (r, e) {
+      n.busy = false; if (WORKING === n) WORKING = null;
+      if (gen !== NOTES) return;                      // a new shake started meanwhile
+      if (r) n.F = r.facts; else n.err = e || 'none';
+      if (OPEN && OPEN.n === n) renderCard();
+      refreshShake();
+      pump();
+    }, function (fn) { setTimeout(fn, (OPEN && OPEN.n === n) ? 0 : 24); });
+  }
+  function latest() { return NOTES.length ? NOTES[NOTES.length - 1] : null; }
+  function stillLatest(n) {
+    return !!(n && hasG() && G.phase === 'move' && n.shake === G.shake && G.lastMover === n.who && G.cubes && G.cubes[n.id] && G.cubes[n.id].zone === n.zone);
+  }
+  // Live = the shake is on, this is the latest move, and a person other than the mover could still challenge it.
+  function liveFor(n) {
+    if (!stillLatest(n)) return false;
+    return G.players.some(function (p, i) { return i !== n.who && !p.ai; });
+  }
+  function textFor(n, live) {
+    if (!n.F) return null;
+    var F = Object.assign({}, n.F, { live: live, isAI: n.isAI });
+    return compose(F);
+  }
+  // ---- Buttons ----
+  function buttonHTML() {
+    var n = latest();
+    if (!on() || !n || !stillLatest(n) || G.carrying) return '';
+    return '<button class="btn small why-btn" data-act="whyOpen" data-arg="' + n.seq + '" title="What did that move change?">🤔 ' + (n.mine ? 'What did my move do?' : 'Why?') + '</button>';
+  }
+  function shakeLabel(n) {
+    var c = show(n.sym);
+    if (n.mine) return 'What did my ' + c + ' in ' + ZN[n.zone] + ' do?';
+    var name = n.input.name;
+    return n.zone === 'forbidden' ? 'Why did ' + name + ' forbid the ' + c + '?' : n.zone === 'required' ? 'Why did ' + name + ' make the ' + c + ' Required?' : 'Why did ' + name + ' put the ' + c + ' in Permitted?';
+  }
+  // The two most important moves of this shake (score from the full story; quiet moves are left out).
+  function topMoves() {
+    var sh = hasG() ? G.shake : null;
+    return NOTES.filter(function (n) { return n.shake === sh && n.F; })
+      .map(function (n) { return { n: n, t: textFor(n, false) }; })
+      .filter(function (x) { return x.t && x.t.score >= 75; })
+      .sort(function (a, b) { return b.t.score - a.t.score || b.n.seq - a.n.seq; }).slice(0, 2)
+      .sort(function (a, b) { return a.n.seq - b.n.seq; });
+  }
+  function shakeInner() {
+    return topMoves().map(function (x) { return '<button class="btn small why-btn" data-act="whyOpen" data-arg="' + x.n.seq + '">🤔 ' + escH(shakeLabel(x.n)) + '</button>'; }).join('');
+  }
+  function shakeHTML() {
+    if (!on()) return '';
+    return '<div class="why-shake" id="whyShake">' + shakeInner() + '</div>';
+  }
+  function refreshShake() { var el = document.getElementById('whyShake'); if (el) el.innerHTML = shakeInner(); }
+  // ---- The card (the Explain card's look: its own layer just above the pop-ups) ----
+  function cubeMap(cubes) { var m = {}; (cubes || []).forEach(function (c) { m[c.id] = { color: c.color || 'none' }; }); return m; }
+  function drawTokens(toks, cubes, mode) {
+    var cols = cubeMap(cubes);
+    if (window.Vari && Vari.exprHTML) return Vari.exprHTML(toks, cols, mode);
+    if (typeof tokensHTML === 'function') return tokensHTML(toks, cols);
+    return escH(tokText(toks));
+  }
+  var ZICON = { required: '✅', permitted: '👍', forbidden: '⛔' };
+  function moveHTML(n) {
+    var c = n.input.cubes.filter(function (x) { return x.id === n.id; })[0];
+    return '<div class="why-move"><span class="why-who">' + escH(n.mine ? 'You' : n.input.name) + '</span>' +
+      '<span class="expr vari-expr why-cube">' + drawTokens([{ s: c.s, id: c.id }], n.input.cubes, n.input.fractions) + '</span>' +
+      '<span class="why-arrow" aria-hidden="true">→</span><span class="why-zone z-' + n.zone + '">' + ZICON[n.zone] + ' ' + ZN[n.zone] + '</span></div>';
+  }
+  function speakText(s) { return s.replace(/×/g, ' times ').replace(/÷/g, ' divided by ').replace(/−/g, ' minus ').replace(/√/g, ' root ').replace(/\s+/g, ' '); }
+  function sayIt(s) { try { if (typeof S !== 'undefined' && S.set && S.set.voice === true && typeof Snd !== 'undefined' && Snd.speak) Snd.speak(speakText(s), 'pip'); } catch (e) {} }
+  function renderCard() {
+    if (!OPEN) return;
+    var n = OPEN.n, ov = document.getElementById('whyOv');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'whyOv'; ov.className = 'xp-back why-back'; document.body.appendChild(ov); ov.addEventListener('click', function (ev) { if (ev.target === ov) closeCard(); }); }
+    var body, t = null, spoken = '';
+    if (n.F) t = textFor(n, OPEN.live);
+    if (t) {
+      body = '<p class="why-text"><b>' + escH(t.head) + '</b></p>' + t.lines.map(function (l) { return '<p class="why-text">' + escH(l) + '</p>'; }).join('');
+      if (t.ex) body += '<div class="why-ex"><div class="why-exlabel">' + escH(t.ex.label) + '</div><div class="expr vari-expr">' + drawTokens(t.ex.tokens, n.input.cubes, n.input.fractions) +
+        '</div><div class="why-goal">= ' + escH(Eq.fmt(n.input.goal)) + (Eq.rulesOf(n.input.fractions).multk ? ' <small>(a multiple of ' + Eq.rulesOf(n.input.fractions).k + ' away counts)</small>' : '') + '</div></div>';
+      if (t.note) body += '<p class="why-note">' + escH(t.note) + '</p>';
+      spoken = [t.head].concat(t.lines).join(' ');
+    } else if (n.err) {
+      body = '<p class="why-text">I can\'t be sure what this move changed. Some puzzles are too big for me to check quickly!</p>';
+      spoken = 'I can\'t be sure what this move changed.';
+    } else body = '<p class="why-text why-wait">Let me look at that move…</p>';
+    ov.innerHTML = '<div class="xp-card why-card" role="dialog" aria-modal="true" aria-label="Why?">' +
+      '<div class="xp-head"><h2>🤔 ' + (n.mine ? 'What did my move do?' : 'Why?') + '</h2><button class="btn small xp-x" data-act="whyClose" aria-label="Close">✕</button></div>' +
+      moveHTML(n) + '<div class="xp-body">' + body + '</div>' +
+      '<div class="row xp-nav"><button class="btn small green" data-act="whyClose">Got it</button></div></div>';
+    ov.classList.add('on');
+    if (spoken && !OPEN.spoke) { OPEN.spoke = true; sayIt(spoken); }
+  }
+  function openCard(seq) {
+    var n = NOTES.filter(function (x) { return x.seq === +seq; })[0];
+    if (!n) return;
+    OPEN = { n: n, live: liveFor(n), spoke: false };
+    if (typeof Snd !== 'undefined' && Snd.pop) Snd.pop();
+    document.removeEventListener('keydown', onKey); document.addEventListener('keydown', onKey);
+    renderCard();
+    if (!n.F && !n.err) { QUEUE = QUEUE.filter(function (x) { return x !== n; }); QUEUE.unshift(n); pump(); }
+  }
+  function closeCard() {
+    OPEN = null; document.removeEventListener('keydown', onKey);
+    var ov = document.getElementById('whyOv'); if (ov) { ov.classList.remove('on'); ov.innerHTML = ''; }
+    try { if (typeof S !== 'undefined' && S.set && S.set.voice === true && typeof Snd !== 'undefined' && Snd.stopSpeak) Snd.stopSpeak(); } catch (e) {}
+  }
+  function onKey(e) { if (OPEN && e.key === 'Escape') { closeCard(); e.preventDefault(); } }
+  function settingsHTML() {
+    var onS = typeof S !== 'undefined' && S.set && S.set.why !== false;
+    return '<div class="setrow"><label>Why? button<br><small style="font-weight:600">After a move, a "🤔 Why?" button tells what that move changed. It never says what to play next.</small></label>' +
+      '<button class="btn small ' + (onS ? 'green' : '') + '" data-act="toggleSet" data-arg="why" data-def="1">' + (onS ? '✔ On' : 'Off') + '</button></div>';
+  }
+  function hook() {
+    if (typeof ACT === 'undefined') return false;
+    ACT.whyOpen = function (el) { openCard(el && el.dataset ? el.dataset.arg : null); };
+    ACT.whyClose = function () { closeCard(); };
+    return true;
+  }
+  if (!hook()) document.addEventListener('DOMContentLoaded', hook);
+  api.note = note; api.reset = reset; api.buttonHTML = buttonHTML; api.shakeHTML = shakeHTML; api.settingsHTML = settingsHTML;
+  api.open = openCard; api.close = closeCard; api.isOpen = function () { return !!OPEN; };
+  api._notes = function () { return NOTES; };
   return api;
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = Why;
