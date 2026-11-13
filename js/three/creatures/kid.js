@@ -79,10 +79,13 @@ export function kitFromSave(k) {
 export const KID = {
   SH_Y: 1.55, SH_X: 0.8,     // shoulders
   NECK_Y: 1.98, HEAD_UP: 0.62, HEAD_R: 0.74,
-  TOP: 3.42, HIP_LOW: -0.66, // top of the hair, bottom of the shorts (local units)
+  TOP: 3.42, HIP_LOW: -1.05, // top of the hair, the hem of the shorts (local units)
   FOOT: -2.28,               // soles of the boots
-  // body build (the grown-up uses other values)
-  torsoX: 1, torsoY: 1, neckLen: 0.5, hipY: -0.6, thigh: 0.55, shin: 1.0, legR: 1, shortsY: -0.3, shortsH: 0.72, shortsR: 0.82,
+  // body build (the grown-up uses other values). Legs: hip joint at hipY, thigh (hip -> knee), shin (knee -> sole
+  // minus 0.14). Shorts: waistTop (top of the waistband), hemL (hem below the hip joint: mid-thigh), shortsRb (the
+  // round top of each shorts leg, centred on the hip joint, so a swinging leg never tears the shorts), hipX (hip joints)
+  torsoX: 1, torsoY: 1, neckLen: 0.5, hipY: -0.6, thigh: 0.75, shin: 0.8, legR: 1, hipX: 0.38,
+  waistTop: 0.13, hemL: 0.45, shortsRb: 0.28, zs: 1, muscle: 0,
   L1: 0.92, L2: 0.98, armR: 1, handS: 0.6,
   // a soft oval: a little taller than wide, full round cheeks, a small chin, a round back of the head
   head: { sx: 0.95, sy: 1.06, sz: 0.98, jaw: 0.18, chin: 0, cheek: 0.075, back: 0.04 },
@@ -101,7 +104,7 @@ const TORSO_CTRL = [[0.001, 0], [0.62, 0.04], [0.82, 0.3], [0.86, 0.75], [0.84, 
 const SEAM = -Math.PI / 2, TAU = Math.PI * 2;
 export function torsoProfile(D) {
   D = D || KID;
-  const pts = new THREE.SplineCurve(TORSO_CTRL.map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(56);
+  const pts = new THREE.SplineCurve((D.torsoCtrl || TORSO_CTRL).map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(56);
   pts[0].x = 0.001; pts[pts.length - 1].x = 0.001;
   const n = pts.length, S = new Float32Array(n);           // S[j]: arc length from the top (S[n-1] = 0) down to point j
   for (let j = n - 2; j >= 0; j--) S[j] = S[j + 1] + pts[j].distanceTo(pts[j + 1]);
@@ -137,6 +140,29 @@ export function torsoProfile(D) {
     return best;
   }
   return { D, pts, S, n, sTot, at, sAtY, sAtR, pos, nrm, nearS };
+}
+// A fit build under the shirt (dims.muscle, Tata): a chest with two soft pecs and a breastbone groove, an upper back with
+// the shoulder blades either side of the spine. A small lift along the surface normal; 0 for the kid. The torso mesh,
+// the collar band and the badge decals all use it, so they stay on the surface.
+const _bo = {};
+const gauss = (x, w) => Math.exp(-(x / w) * (x / w));
+function torsoBump(P, phi, s) {
+  const D = P.D, m = D.muscle || 0; if (!m) return 0;
+  const y = P.at(s, _bo).y / D.torsoY;
+  let a = phi; while (a > Math.PI) a -= TAU; while (a <= -Math.PI) a += TAU;
+  const b = Math.PI - Math.abs(a);                                    // angle from the middle of the back
+  // pecs: soft on top, a clearer lower edge
+  const yp = y - 1.27, pecY = yp > 0 ? gauss(yp, 0.2) : gauss(yp, 0.1);
+  const pec = 0.066 * (gauss(Math.abs(a) - 0.42, 0.3)) * pecY * (Math.abs(a) < Math.PI / 2 ? 1 : 0);
+  const sternum = -0.012 * gauss(a, 0.07) * gauss(y - 1.2, 0.22);
+  const blades = 0.042 * gauss(b - 0.55, 0.36) * gauss(y - 1.3, 0.22), spine = -0.012 * gauss(b, 0.08) * gauss(y - 1.0, 0.5);
+  return m * (pec + sternum + blades + spine) * D.torsoX;
+}
+// after computeVertexNormals on a lathe: the first and the last column are the same points, so share their normals
+function fixSeam(geo, nu, nv) {
+  const N = geo.attributes.normal, a = new THREE.Vector3(), b = new THREE.Vector3();
+  for (let j = 0; j < nv; j++) { a.fromBufferAttribute(N, j); b.fromBufferAttribute(N, nu * nv + j); a.add(b).normalize(); N.setXYZ(j, a.x, a.y, a.z); N.setXYZ(nu * nv + j, a.x, a.y, a.z); }
+  N.needsUpdate = true;
 }
 const _PROF = new Map();
 function profileOf(D) { let p = _PROF.get(D); if (!p) { p = torsoProfile(D); _PROF.set(D, p); } return p; }
@@ -398,6 +424,15 @@ export function kidJerseyTexture(kit, num, name, front, D) {
   const Y = (s) => s / P.sTot * H, pyU = H / P.sTot;
   const pxU = (s) => W / (TAU * Math.max(0.05, P.at(s).r));        // pixels per unit round the body at s
   const place = (phi, s) => g.setTransform(pxU(s), 0, 0, pyU, X(phi), Y(s));
+  // Draws something (in body units, centred on the origin) onto the body at (phi, sC) without stretching it: it is
+  // drawn flat first, then copied row by row with each row's own width scale. On a tapering torso (Tata's V shape) a
+  // number placed with one scale would come out wider where the body is wider.
+  const warp = (phi, sC, wU, hU, draw) => {
+    const pxR = pxU(sC), wP = Math.ceil(wU * pxR) + 8, hP = Math.ceil(hU * pyU) + 8, off = artCanvas(wP, hP), o = off.getContext('2d');
+    o.setTransform(pxR, 0, 0, pyU, wP / 2, hP / 2); draw(o, pxR);
+    const x0 = X(phi), y0 = Y(sC) - hP / 2;
+    for (let y = 0; y < hP; y++) { const w = wP * pxU(sC + (y + 0.5 - hP / 2) / pyU) / pxR; g.drawImage(off, 0, y, wP, 1, x0 - w / 2, y0 + y, w, 1); }
+  };
   const pat = kit.pattern || (kit.waves ? 'waves' : null), light = kit.light || kit.waves || mixHex(kit.jersey, '#ffffff', 0.24);
   const accent = kit.accent || (lumOf(kit.jersey) > 0.55 ? '#1d2b3a' : ICY);
   g.fillStyle = kit.jersey; g.fillRect(0, 0, W, H);
@@ -455,32 +490,31 @@ export function kidJerseyTexture(kit, num, name, front, D) {
   const showFront = kit.frontNum != null ? kit.frontNum : !!front;
   const edge = dark ? (lumOf(kit.trim) > 0.5 ? kit.dark : '#ffffff') : kit.trim === '#ffffff' ? kit.dark : kit.trim, cols = { a: accent, e: edge, s: kit.jersey };
   if (showFront) {
-    place(0, P.sAtY(0.76 * ty));
-    styledNumber(g, num, 0.62 * ty, kit.numStyle, 'f', cols, dark ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.22)');
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    warp(0, P.sAtY(0.76 * ty), 1.6 * 0.62 * ty, 1.4 * 0.62 * ty, (o) => styledNumber(o, num, 0.62 * ty, kit.numStyle, 'f', cols, dark ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.22)'));
   }
   // the back: the name in an arc over a big number
   const nm = String(name || '').toUpperCase().slice(0, 12), FONT = '"Arial Black", Impact, "Trebuchet MS", sans-serif';
   if (nm) {
-    const sN = P.sAtY(1.33 * ty), sx = pxU(sN), k = sx / pyU;
-    let fs = 0.15 * ty * pyU; g.font = '900 ' + fs + 'px ' + FONT;
-    const maxW = 1.05 * tx * sx; let wid = g.measureText(nm).width * k;
-    if (wid > maxW) { fs *= maxW / wid; g.font = '900 ' + fs + 'px ' + FONT; wid = maxW; }
-    const R = 1.7 * tx * sx, x0 = X(Math.PI), y0 = Y(sN), sp = fs * 0.06;
-    let cur = -(wid + sp * (nm.length - 1)) / 2;
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    for (const ch of nm) {
-      const cw = g.measureText(ch).width * k, a = (cur + cw / 2) / R;
-      g.setTransform(1, 0, 0, 1, x0 + Math.sin(a) * R, y0 + (1 - Math.cos(a)) * R); g.rotate(a); g.scale(k, 1);
-      g.lineWidth = fs * 0.16; g.strokeStyle = dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.3)'; g.strokeText(ch, 0, fs * 0.04);
-      g.fillStyle = accent; g.fillText(ch, 0, 0);
-      cur += cw + sp;
-    }
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sN = P.sAtY(1.33 * ty);
+    // drawn in a box whose centre is 0.08 below the name's middle (the arc's ends hang lower than its middle)
+    warp(Math.PI, sN + 0.08 * ty, 1.3 * tx, 0.5 * ty, (o, sx) => {
+      const k = sx / pyU;
+      let fs = 0.15 * ty * pyU; o.font = '900 ' + fs + 'px ' + FONT;
+      const maxW = 1.05 * tx * sx; let wid = o.measureText(nm).width * k;
+      if (wid > maxW) { fs *= maxW / wid; o.font = '900 ' + fs + 'px ' + FONT; wid = maxW; }
+      const R = 1.7 * tx * sx, x0 = o.canvas.width / 2, y0 = o.canvas.height / 2 - 0.08 * ty * pyU, sp = fs * 0.06;
+      let cur = -(wid + sp * (nm.length - 1)) / 2;
+      o.textAlign = 'center'; o.textBaseline = 'middle'; o.lineJoin = 'round';
+      for (const ch of nm) {
+        const cw = o.measureText(ch).width * k, a = (cur + cw / 2) / R;
+        o.setTransform(1, 0, 0, 1, x0 + Math.sin(a) * R, y0 + (1 - Math.cos(a)) * R); o.rotate(a); o.scale(k, 1);
+        o.lineWidth = fs * 0.16; o.strokeStyle = dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.3)'; o.strokeText(ch, 0, fs * 0.04);
+        o.fillStyle = accent; o.fillText(ch, 0, 0);
+        cur += cw + sp;
+      }
+    });
   }
-  place(Math.PI, P.sAtY(0.76 * ty));
-  styledNumber(g, num, 0.76 * ty, kit.numStyle, 'b', cols, dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.35)');
-  g.setTransform(1, 0, 0, 1, 0, 0);
+  warp(Math.PI, P.sAtY(0.76 * ty), 1.6 * 0.76 * ty, 1.4 * 0.76 * ty, (o) => styledNumber(o, num, 0.76 * ty, kit.numStyle, 'b', cols, dark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.35)'));
   const tex = artTexture(cv); return tex;
 }
 
@@ -511,24 +545,57 @@ function bandTexture(kit, repeat) {
   for (let x = 0; x < W; x += 8) { g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x, 0, 3, H); g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x + 5, 0, 2, H); }
   const t = artTexture(cv); t.wrapS = THREE.RepeatWrapping; t.repeat.set(repeat || 1, 1); return t;
 }
-// shorts: a side stripe in the trim colour with a thin shirt-colour line, a hem band, a small number on his left leg
-function shortsTexture(kit, num, D) {
-  const W = 1024, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d'), R = D.shortsR, Hh = D.shortsH;
-  const pxX = W / (TAU * R), pxY = H / Hh, X = (phi) => { let u = phi / TAU; u -= Math.floor(u); return u * W; };
-  g.fillStyle = kit.shorts; g.fillRect(0, 0, W, H);
+// shorts (see buildHuman): the seat and the two legs each get their own texture, laid out by arc length up their
+// profile (canvas y) and angle round (canvas x). The side stripe in the trim colour with a thin shirt-colour line, the
+// same as a hem band round each leg, a small number on his left leg, a ribbed elastic waistband.
+function shortsInk(kit) {
   const lightShorts = lumOf(kit.shorts) > 0.6, ink = lightShorts ? (lumOf(kit.trim) < 0.4 ? kit.trim : '#1d2b3a') : (kit.accent && lumOf(kit.accent) > 0.5 ? kit.accent : '#ffffff');
   const stripe = lumOf(kit.trim) > 0.85 && lightShorts ? kit.jersey : kit.trim, line = stripe === kit.jersey ? kit.trim : kit.jersey;
-  g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0, 0, W, 0.05 * pxY);           // the waistband shadow
-  [Math.PI / 2, -Math.PI / 2].forEach((phi) => {
-    const x = X(phi), hw = 0.05 * pxX;
-    g.fillStyle = stripe; g.fillRect(x - hw, 0, hw * 2, H); if (x - hw < 0) g.fillRect(x - hw + W, 0, hw * 2, H);
-    g.fillStyle = line; g.fillRect(x - 0.008 * pxX, 0, 0.016 * pxX, H); if (x < 0.01 * pxX) g.fillRect(x - 0.008 * pxX + W, 0, 0.016 * pxX, H);
+  return { ink, stripe, line };
+}
+// the seat: u = 0 the back seam, 0.25 his right side, 0.5 the front, 0.75 his left.
+// L: { t: [v of each profile point], tot: arc length, R: hip radius, band: [j bottom, j top] }
+function seatTexture(kit, L) {
+  const W = 1024, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d'), C = shortsInk(kit), Y = (t) => (1 - t) * H;
+  const pxX = W / (TAU * L.R), pyU = H / L.tot, yb0 = Y(L.t[L.band[0]]), yb1 = Y(L.t[L.band[1]]);
+  g.fillStyle = kit.shorts; g.fillRect(0, 0, W, H);
+  // a soft shadow under the waistband; the centre seams front and back
+  const gr = g.createLinearGradient(0, yb0, 0, yb0 + 0.07 * pyU); gr.addColorStop(0, 'rgba(0,0,0,.2)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, yb0, W, 0.07 * pyU);
+  g.fillStyle = 'rgba(0,0,0,.22)'; [0, W / 2, W].forEach((x) => g.fillRect(x - 1.5, yb0, 3, H - yb0));
+  // side stripes, from the crotch up to the waistband
+  [W / 4, 3 * W / 4].forEach((x) => { const hw = 0.05 * pxX; g.fillStyle = C.stripe; g.fillRect(x - hw, yb0, hw * 2, H - yb0); g.fillStyle = C.line; g.fillRect(x - 0.008 * pxX, yb0, 0.016 * pxX, H - yb0); });
+  // the elastic waistband: a shade darker, ribbed, a light top edge
+  g.fillStyle = mixHex(kit.shorts, '#000000', 0.1); g.fillRect(0, yb1, W, yb0 - yb1);
+  for (let x = 0; x < W; x += 7) { g.fillStyle = 'rgba(255,255,255,.1)'; g.fillRect(x, yb1, 2, yb0 - yb1); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 4, yb1, 1.5, yb0 - yb1); }
+  g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, yb1, W, 2); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, yb0 - 2, W, 2);
+  // inside the waist (seen only when he bends right over): dark
+  g.fillStyle = mixHex(kit.shorts, '#000000', 0.45); g.fillRect(0, 0, W, Math.max(0, yb1 - 1));
+  return artTexture(cv);
+}
+// one leg: u = 0 the inner seam, 0.5 the outside (the stripe); the front is u = 0.25 on his left leg, 0.75 on his right.
+// L: { t, tot, hem: j of the hem's outer edge, R: radius, sc: size }
+function legTexture(kit, num, left, L) {
+  const W = 512, H = 256, cv = artCanvas(W, H), g = cv.getContext('2d'), C = shortsInk(kit), Y = (t) => (1 - t) * H;
+  const pxX = W / (TAU * L.R), pyU = H / L.tot, yHem = Y(L.t[L.hem]);
+  g.fillStyle = kit.shorts; g.fillRect(0, 0, W, H);
+  // a few soft fold shadows rising from the hem
+  [0.12, 0.38, 0.62, 0.86].forEach((u, i) => {
+    const x = u * W, h = (0.12 + 0.05 * (i % 2)) * L.sc * pyU, gr = g.createLinearGradient(0, yHem, 0, yHem - h);
+    gr.addColorStop(0, 'rgba(0,0,0,.16)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr;
+    g.beginPath(); g.moveTo(x - 9, yHem); g.quadraticCurveTo(x - 2, yHem - h * 0.5, x, yHem - h); g.quadraticCurveTo(x + 2, yHem - h * 0.5, x + 9, yHem); g.fill();
   });
-  g.fillStyle = stripe; g.fillRect(0, H - 0.045 * pxY, W, 0.045 * pxY);
-  g.fillStyle = line; g.fillRect(0, H - 0.062 * pxY, W, 0.01 * pxY);
-  g.setTransform(pxX, 0, 0, pxY, X(0.5), 0.6 * Hh * pxY);
-  styledNumber(g, num, 0.17, kit.numStyle, 'f', { a: ink, e: kit.shorts, s: kit.shorts });
-  g.setTransform(1, 0, 0, 1, 0, 0);
+  // the inner seam, the outside stripe
+  g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, 0, 2, H); g.fillRect(W - 2, 0, 2, H);
+  const hw = 0.05 * pxX; g.fillStyle = C.stripe; g.fillRect(W / 2 - hw, 0, hw * 2, H); g.fillStyle = C.line; g.fillRect(W / 2 - 0.008 * pxX, 0, 0.016 * pxX, H);
+  // the hem band (outside, folding round to the inside)
+  const yb = yHem - 0.05 * L.sc * pyU;
+  g.fillStyle = C.stripe; g.fillRect(0, yb, W, H - yb); g.fillStyle = C.line; g.fillRect(0, yb - 0.012 * L.sc * pyU, W, 0.01 * L.sc * pyU);
+  if (left) {
+    g.setTransform(pxX, 0, 0, pyU, 0.31 * W, yHem - 0.18 * L.sc * pyU);
+    styledNumber(g, num, 0.15 * L.sc, kit.numStyle, 'f', { a: C.ink, e: kit.shorts, s: kit.shorts });
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
   return artTexture(cv);
 }
 // socks: a band in the trim colour near the top, with a thin line under it
@@ -780,14 +847,24 @@ export function buildHuman(spec) {
   const shirtM = std(0xffffff, { map: kidJerseyTexture(K, spec.num, spec.name, spec.front, D), roughness: 0.85 });
   const sleeveM = std(0xffffff, { map: sleeveTexture(K), roughness: 0.85 });
   const bandM = std(0xffffff, { map: bandTexture(K, 1), roughness: 0.8, side: THREE.DoubleSide }), cuffM = std(0xffffff, { map: bandTexture(K, 14), roughness: 0.8 });
-  const shortsM = std(0xffffff, { map: shortsTexture(K, spec.num, D), roughness: 0.8 });
   const add = (geo, mat, parent, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); parent.add(m); return m; };
 
   // ----- torso: a lathe whose texture runs by arc length (see torsoProfile); the seam is under his right arm -----
+  // the shirt group: torso, collar band and badges. A grown-up's chest is less deep than wide (dims.zs squashes it front
+  // to back; the texture is not stretched at the front or the back, where the tangent round the body runs along x)
+  const shirtG = new THREE.Group(); shirtG.scale.z = D.zs || 1; chest.add(shirtG);
   const torsoGeo = new THREE.LatheGeometry(P.pts, 64, SEAM, TAU);
   { const uv = torsoGeo.attributes.uv; for (let i = 0; i <= 64; i++) for (let j = 0; j < P.n; j++) uv.setY(i * P.n + j, 1 - P.S[j] / P.sTot); }
+  if (D.muscle) {
+    const pa = torsoGeo.attributes.position, nn = new THREE.Vector3();
+    for (let i = 0; i <= 64; i++) for (let j = 0; j < P.n; j++) {
+      const phi = SEAM + i / 64 * TAU, lift = torsoBump(P, phi, P.S[j]); if (!lift) continue;
+      P.nrm(phi, P.S[j], nn); const k = i * P.n + j; pa.setXYZ(k, pa.getX(k) + nn.x * lift, pa.getY(k) + nn.y * lift, pa.getZ(k) + nn.z * lift);
+    }
+    torsoGeo.computeVertexNormals(); fixSeam(torsoGeo, 64, P.n);
+  }
   const basePos = torsoGeo.attributes.position.array.slice();
-  const torso = add(torsoGeo, shirtM, chest);
+  const torso = add(torsoGeo, shirtM, shirtG);
   // ----- the collar: a raised knitted band along the neckline. For a V-neck the shirt inside the V is sunk a little
   // (the opening) and painted as skin; round the back the band stands up against the neck -----
   let band = null, collarKind = null;
@@ -800,7 +877,7 @@ export function buildHuman(spec) {
   function applyCollar(kind) {
     if (kind === collarKind) return; collarKind = kind;
     const NL = necklinePath(P, kind), m = NL.pts.length, Pp = [], Nn = [];
-    NL.pts.forEach((q) => { Pp.push(P.pos(q.phi, q.s, 0, new THREE.Vector3())); Nn.push(P.nrm(q.phi, q.s, new THREE.Vector3())); });
+    NL.pts.forEach((q) => { Pp.push(P.pos(q.phi, q.s, torsoBump(P, q.phi, q.s), new THREE.Vector3())); Nn.push(P.nrm(q.phi, q.s, new THREE.Vector3())); });
     // per segment: the direction across the band, toward the neck (mitred at the corners and at the point of the V)
     const Bs = []; let total = 0;
     for (let k = 0; k < m - 1; k++) {
@@ -836,8 +913,8 @@ export function buildHuman(spec) {
     for (let i = 0; i < m - 1; i++) [[0, 1], [2, 3], [3, 4], [5, 6]].forEach((e) => { const A = i * 7 + e[0], B = i * 7 + e[1], C = A + 7, E = B + 7; idx.push(A, C, B, B, C, E); });
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(V, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(UVs, 2));
     geo.setIndex(idx); geo.computeVertexNormals();
-    if (band) { chest.remove(band); band.geometry.dispose(); }
-    band = add(geo, bandM, chest);
+    if (band) { shirtG.remove(band); band.geometry.dispose(); }
+    band = add(geo, bandM, shirtG);
     // the opening: sink the shirt inside the band's inner edge (it is painted skin there)
     const pa = torsoGeo.attributes.position, na = torsoGeo.attributes.normal; pa.array.set(basePos);
     if (NL.v && inner.length > 2) {
@@ -865,7 +942,7 @@ export function buildHuman(spec) {
     return g;
   }
   // fa: across (+ = toward his left), fb: up
-  const torsoDecal = (phi0, sc, w, h, mat) => add(gridGeo(10, 10, (fa, fb, o) => { const s = sc - fb * h; P.pos(phi0 + fa * w / Math.max(0.05, P.at(s).r), s, 0.004, o); }), mat, chest);
+  const torsoDecal = (phi0, sc, w, h, mat) => add(gridGeo(10, 10, (fa, fb, o) => { const s = sc - fb * h, ph = phi0 + fa * w / Math.max(0.05, P.at(s).r); P.pos(ph, s, 0.004 + torsoBump(P, ph, s), o); }), mat, shirtG);
   const sBadge = P.sAtY(1.29 * D.torsoY);
   const crestMesh = torsoDecal(0.46, sBadge, 0.25 * D.torsoX, 0.25 * D.torsoX * CREST_H, crestM);
   const markMesh = torsoDecal(-0.46, sBadge - 0.01, 0.19 * D.torsoX, 0.19 * D.torsoX, markM);
@@ -877,21 +954,125 @@ export function buildHuman(spec) {
     put(crestM, crestCanvas(k.crest, 512)); put(markM, markCanvas(k.mark, k.accent || ICY, 256));
     crestMesh.visible = !!CRESTS[k.crest]; const mv = !!MARKS[k.mark]; markMesh.visible = mv; shoulderMarks.forEach((s) => { s.visible = mv; });
   }
-  const shortsMesh = add(new THREE.CylinderGeometry(D.shortsR - 0.02, D.shortsR + 0.02, D.shortsH, 32, 1, true), shortsM, body, 0, D.shortsY, 0);
+  // ----- shorts: football shorts in three pieces of the same cloth. The seat (elastic waistband with a little bow,
+  // hips, crotch) hangs on root, not on the leaning upper body, so it stays with the legs. Each leg of the shorts hangs
+  // on its thigh: its top is a ball centred on the hip joint (a swinging, crouching or kneeling leg turns inside it, so
+  // nothing tears) and its hem ends mid-thigh, cut a little higher on the inside, loose and standing away from the
+  // thigh, with a darker inside and a couple of folds. Bare thighs, knees, then the socks. -----
+  const lr = D.legR, mus = D.muscle || 0, hipX = D.hipX || 0.38 * D.torsoX, Rb = D.shortsRb || 0.26 * lr, sc = Rb / 0.26, zs = D.zs || 1;
+  const yTop = D.waistTop != null ? D.waistTop : 0.13, bandH = 0.11 * sc, hemL = D.hemL || 0.38, yH = D.hipY;
+  // the shirt's radius at a height (its tucked-in lower edge), so the waistband sits just outside it
+  const shirtR = (y) => { const q = P.pts; for (let j = 1; j < q.length; j++) if (q[j].y >= y) { const a = q[j - 1], b = q[j], t = (y - a.y) / ((b.y - a.y) || 1e-6); return a.x + (b.x - a.x) * t; } return q[q.length - 1].x; };
+  const wR = shirtR(yTop) + 0.03 * sc, hipR = Math.max(wR - 0.01, hipX + Rb * 0.92);
+  // a lathe from [r, y] points listed bottom to top; uv: u round (from phi0), v = arc length (0 first point .. 1 last)
+  function lathe(pts, segs, phi0, deform, shadeFn) {
+    const geo = new THREE.LatheGeometry(pts.map((q) => new THREE.Vector2(q[0], q[1])), segs, phi0, TAU), n = pts.length, S = [0];
+    for (let j = 1; j < n; j++) S.push(S[j - 1] + Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]));
+    const uv = geo.attributes.uv, pa = geo.attributes.position, v3 = new THREE.Vector3(), col = shadeFn ? new Float32Array(pa.count * 3) : null;
+    for (let i = 0; i <= segs; i++) for (let j = 0; j < n; j++) {
+      const k = i * n + j, phi = phi0 + i / segs * TAU, t = S[j] / S[n - 1];
+      uv.setXY(k, i / segs, t);
+      if (deform) { v3.fromBufferAttribute(pa, k); deform(v3, phi, j, t); pa.setXYZ(k, v3.x, v3.y, v3.z); }
+      if (col) col[k * 3] = col[k * 3 + 1] = col[k * 3 + 2] = shadeFn(j, t, phi);
+    }
+    if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.computeVertexNormals(); fixSeam(geo, segs, n);
+    geo.userData.t = S.map((x) => x / S[n - 1]); geo.userData.tot = S[n - 1];
+    return geo;
+  }
+  // a smooth profile through radii rs at fractions ts (0 = top .. 1 = bottom) between y0 (top) and y1, bottom to top
+  function smoothProfile(rs, ts, y0, y1, n) {
+    const c = new THREE.SplineCurve(rs.map((r, i) => new THREE.Vector2(r, y0 + (y1 - y0) * ts[i])).reverse()).getPoints(n);
+    return c.map((p) => [p.x, p.y]);
+  }
+  const radial = (v, phi, amt) => { v.x += Math.sin(phi) * amt; v.z += Math.cos(phi) * amt; };
+  // the seat
+  // the crotch sits just below the hip joints, so the two legs of the shorts part clearly below it
+  const yB = yTop - bandH, cr = 0.08 * sc;
+  const seatPts = [[0.001, yH - cr], [0.16 * sc, yH - cr * 0.92], [0.33 * sc, yH - cr * 0.6], [hipR * 0.9, yH + 0.02 * sc], [hipR, yH + 0.14 * sc],
+    [hipR + (wR - hipR) * 0.6, (yH + yB) / 2 + 0.05], [wR - 0.006, yB - 0.012],
+    [wR + 0.014, yB + 0.006], [wR + 0.02, yTop - bandH * 0.5], [wR + 0.014, yTop - 0.008], [wR - 0.004, yTop],
+    [wR - 0.03 * sc, yTop - 0.012], [wR * 0.55, yTop - 0.03 * sc], [0.001, yTop - 0.035 * sc]];
+  const SEAT_BAND = [7, 10];
+  const seatGeo = lathe(seatPts, 40, Math.PI, (v, phi) => {
+    // a rounder seat at the back (two soft halves either side of the seam), a little flatter front to back lower down
+    if (v.z < 0) radial(v, phi, 0.035 * sc * gauss(v.y - (yH + 0.06 * sc), 0.18 * sc) * Math.pow(-Math.cos(phi), 2) * (1 - 0.7 * gauss(v.x, 0.06 * sc)));
+    // front to back the seat narrows from the waist (as deep as the shirt) down toward the legs of the shorts
+    v.z *= zs * (1 - 0.5 * Math.pow(clamp((yB - v.y) / (yB - yH + 0.08 * sc), 0, 1), 1.3));
+  }, (j) => j >= 11 ? 0.42 : j <= 1 ? 0.82 : 1);
+  const seatM = std(0xffffff, { roughness: 0.8, vertexColors: true });
+  const seatL = { t: seatGeo.userData.t, tot: seatGeo.userData.tot, R: hipR, band: SEAT_BAND };
+  // The seat bends at the hips with him: from the waistband up it follows the leaning upper body (body), the hips stay
+  // with the legs (root), blended in between. A two-bone skinned mesh, one bone on root and one on body (both at the
+  // origin, bound while the whole figure is at rest), so the GPU keeps it in step with every lean and twist.
+  const seatW = seatPts.map((q) => sstep01((q[1] - (yH + 0.1 * sc)) / (yB - 0.012 - (yH + 0.1 * sc))));
+  {
+    const cnt = seatGeo.attributes.position.count, si = new Uint16Array(cnt * 4), sw = new Float32Array(cnt * 4);
+    for (let k = 0; k < cnt; k++) { const w = seatW[k % seatPts.length]; si[k * 4 + 1] = 1; sw[k * 4] = 1 - w; sw[k * 4 + 1] = w; }
+    seatGeo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); seatGeo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  }
+  const hipBone = new THREE.Bone(), waistBone = new THREE.Bone(); root.add(hipBone); body.add(waistBone);
+  const shortsMesh = new THREE.SkinnedMesh(seatGeo, seatM); shortsMesh.frustumCulled = false; root.add(shortsMesh);
+  root.updateMatrixWorld(true); shortsMesh.bind(new THREE.Skeleton([hipBone, waistBone]));
+  // the drawstring: a tiny bow at the front of the waistband (it moves with the waistband, i.e. with body)
+  const cordM = std(0xffffff, { roughness: 0.6 });
+  const bow = new THREE.Group(); bow.position.set(0, yTop - bandH * 0.5, (wR + 0.02) * zs + 0.006 * sc); body.add(bow);
+  {
+    const loopG = new THREE.TorusGeometry(0.026 * sc, 0.0075 * sc, 6, 14), tailG = new THREE.CylinderGeometry(0.0075 * sc, 0.0075 * sc, 0.09 * sc, 6);
+    add(new THREE.SphereGeometry(0.014 * sc, 8, 6), cordM, bow);
+    [-1, 1].forEach((sd) => {
+      const l = add(loopG, cordM, bow, sd * 0.03 * sc, 0.006 * sc, 0); l.scale.set(1.15, 0.7, 0.6); l.rotation.z = sd * 0.25;
+      const t = add(tailG, cordM, bow, sd * 0.016 * sc, -0.048 * sc, 0.004 * sc); t.rotation.z = sd * 0.22;
+    });
+  }
+  // the legs of the shorts (one shape, mirrored): inner lip, hem, the tube up the thigh, the ball round the hip joint
+  const hemR = Rb * 1.1;
+  const legPts = [[hemR - 0.035 * sc, -hemL + 0.09 * sc], [hemR - 0.016 * sc, -hemL + 0.004], [hemR, -hemL], [hemR * 0.99, -hemL + 0.07 * sc], [Rb * 1.005, -hemL * 0.45], [Rb, -0.04]];
+  for (let k = 1; k <= 7; k++) { const a = k / 8 * Math.PI / 2; legPts.push([Rb * Math.cos(a), Rb * Math.sin(a)]); }
+  legPts.push([0.001, Rb]);
+  const LEG_HEM = 2;
+  const shortLegs = [-1, 1].map((sd) => {
+    // seam on the inside of the leg: phi0 puts u = 0 there (left leg: -x, right leg: +x)
+    const geo = lathe(legPts, 32, -sd * Math.PI / 2, (v, phi) => {
+      const w = clamp((-v.y - 0.35 * hemL) / (0.65 * hemL), 0, 1), inner = Math.max(0, -sd * Math.sin(phi));
+      const f = 1 + w * w * (0.03 * Math.sin(3 * phi + sd) + 0.02 * Math.sin(5 * phi + 2));     // a couple of soft folds
+      v.x *= f; v.z *= f; v.x += sd * 0.016 * sc * w;                                            // the hem stands away a little
+      v.y += 0.07 * sc * inner * w;                                                            // cut higher on the inside
+    }, (j) => j <= 1 ? 0.5 : j === LEG_HEM ? 0.72 : 1);
+    return { geo, mat: std(0xffffff, { roughness: 0.8, vertexColors: true }), L: { t: geo.userData.t, tot: geo.userData.tot, hem: LEG_HEM, R: Rb, sc } };
+  });
+  function setShortsTex(k, n) {
+    const swap = (m, t) => { const o = m.map; m.map = t; m.needsUpdate = true; if (o && o !== t) o.dispose(); };
+    swap(seatM, seatTexture(k, seatL));
+    shortLegs.forEach((q, i) => swap(q.mat, legTexture(k, n, i === 1, q.L)));
+    cordM.color.set(lumOf(k.shorts) > 0.6 ? k.trim : '#f1f3f5');
+  }
+  setShortsTex(K, spec.num);
   // legs with a knee each (hip -> thigh -> knee -> shin, sock and boot). Children of root, so a lean bends only the
-  // upper body. The knee lets him crouch, jump and kneel in the celebrations.
-  const sockM = std(0xffffff, { map: sockTexture(K), roughness: 0.85 }), bootM = std(0x1f2430, { roughness: 0.45 });
-  const lr = D.legR, thighG = new THREE.CylinderGeometry(0.19 * lr, 0.17 * lr, D.thigh + 0.07, 10), sockG = new THREE.CylinderGeometry(0.18 * lr, 0.15 * lr, D.shin * 0.95, 10), bootG = new THREE.SphereGeometry(1, 12, 8);
-  const kneeG = new THREE.SphereGeometry(0.175 * lr, 10, 8);
+  // upper body. The knee lets him crouch, jump and kneel in the celebrations. Thighs taper to the knee (a fit grown-up
+  // gets fuller quads and the teardrop above the knee), a kneecap, calves fuller at the back, socks to just under the knee.
+  const sockM = std(0xffffff, { map: sockTexture(K), roughness: 0.85 }), bootM = std(0x1f2430, { roughness: 0.45 }), bootG = new THREE.SphereGeometry(1, 12, 8);
+  const thighPts = smoothProfile([0.2, 0.198 + 0.014 * mus, 0.186 + 0.022 * mus, 0.166 + 0.008 * mus, 0.155].map((r) => r * lr), [0, 0.3, 0.55, 0.85, 1], 0.02, -D.thigh, 14);
+  const thighGs = [-1, 1].map((sd) => lathe(thighPts, 18, 0, (v, phi, j, t) => {
+    if (!mus) return; const u = 1 - t;                                                         // u: 0 hip .. 1 knee
+    radial(v, phi, mus * lr * (0.016 * gauss(u - 0.5, 0.22) * Math.max(0, Math.cos(phi)) + 0.02 * gauss(u - 0.83, 0.08) * Math.max(0, Math.cos(phi + sd * 0.9))));
+  }));
+  const kneeG = new THREE.SphereGeometry(0.152 * lr, 14, 10), capG = new THREE.SphereGeometry(0.058 * lr, 10, 8);
+  const sockTop = -(0.12 * lr + 0.02);
+  const sockPts = smoothProfile([0.168, 0.17, 0.174 + 0.02 * mus, 0.152 + 0.008 * mus, 0.122, 0.126].map((r) => r * lr), [0, 0.06, 0.28, 0.58, 0.88, 1], sockTop, -D.shin + 0.04, 16);
+  sockPts.push([0.135 * lr, sockTop + 0.01]);                                                  // the top edge turns in (no hole)
+  const sockG = lathe(sockPts, 18, 0, (v, phi, j, t) => radial(v, phi, (0.022 + 0.012 * mus) * lr * gauss(t - 0.7, 0.18) * Math.max(0, -Math.cos(phi))));
   // boots: the upper in his colour, a contrasting sole with studs underneath, laces on top and a heel tab
   const soleM = std(0xf1f3f5, { roughness: 0.5 }), studM = std(0xadb5bd, { roughness: 0.4, metalness: 0.3 });
   const laceG = new THREE.BoxGeometry(0.11 * lr, 0.016, 0.024), studG = new THREE.CylinderGeometry(0.02 * lr, 0.026 * lr, 0.03, 8);
   const legs = [-1, 1].map((s) => {
-    const leg = new THREE.Group(); leg.position.set(s * 0.38 * D.torsoX, D.hipY, 0); root.add(leg);
-    add(thighG, skin, leg, 0, -D.thigh / 2 + 0.02, 0);
+    const leg = new THREE.Group(); leg.position.set(s * hipX, D.hipY, 0); root.add(leg);
+    const sl = shortLegs[s < 0 ? 0 : 1]; add(sl.geo, sl.mat, leg);
+    add(thighGs[s < 0 ? 0 : 1], skin, leg);
     const knee = new THREE.Group(); knee.position.set(0, -D.thigh, 0); leg.add(knee);
-    add(kneeG, skin, knee, 0, 0, 0);
-    add(sockG, sockM, knee, 0, -D.shin * 0.45, 0);
+    add(kneeG, skin, knee, 0, 0.005, 0).scale.set(1, 1.1, 1.02);
+    add(capG, skin, knee, 0, 0.005, 0.105 * lr).scale.set(1.1, 1.2, 0.6);
+    add(sockG, sockM, knee);
     const bt = new THREE.Group(); bt.position.set(0, -D.shin, 0.1); knee.add(bt);
     const b = add(bootG, bootM, bt); b.scale.set(0.2 * lr, 0.13, 0.32 * lr);
     const so = add(bootG, soleM, bt, 0, -0.088, 0.008); so.scale.set(0.213 * lr, 0.045, 0.334 * lr);
@@ -1022,6 +1203,22 @@ export function buildHuman(spec) {
   cuffPts.push([0.995, 0.0], [0.96, 0.035], [0.88, 0.03]);
   const cuffGeo = new THREE.LatheGeometry(cuffPts.map((q) => new THREE.Vector2(q[0], q[1])), 28); cuffGeo.rotateX(Math.PI / 2);
   arms.forEach((arm) => { if (arm.ring) { arm.ring.geometry.dispose(); arm.ring.geometry = cuffGeo; arm.ring.material = cuffM; } });
+  // a fit grown-up's arms: the unit segments the ArmRig scales (radius, length, radius) get muscle profiles: biceps
+  // fullest just below the sleeve, tapering to the elbow; forearms full near the elbow, tapering to the wrist; the
+  // sleeve snug, narrowing a little toward its cuff (the round shoulder ball is the deltoid)
+  const sleeveK = D.sleeveK || 1;
+  if (mus) {
+    const seg = (rs, ts) => lathe(smoothProfile(rs, ts, 0.5, -0.5, 18), 18, 0);            // listed from the +y end (elbow / wrist)
+    const upperG = seg([0.84, 1.0, 1.19, 1.18, 1.07, 1.0], [0, 0.18, 0.4, 0.55, 0.8, 1]);
+    const foreG = seg([0.66, 0.7, 0.9, 1.1, 1.15, 1.0], [0, 0.12, 0.4, 0.7, 0.85, 1]);
+    const sleeveG = lathe([[1.0, -0.5], [0.985, -0.2], [0.94, 0.2], [sleeveK, 0.5]], 22, 0);
+    const cuffK = sleeveK + 0.05, cuffGm = cuffGeo.clone().scale(cuffK, cuffK, 1);
+    arms.forEach((arm) => {
+      arm.upper.geometry = upperG; arm.fore.geometry = foreG;
+      if (arm.sleeve) arm.sleeve.geometry = sleeveG;
+      if (arm.ring) arm.ring.geometry = cuffGm;
+    });
+  }
   shoulderMarks = arms.map((arm) => {
     const side = arm.side, dir = new THREE.Vector3(side * 0.85, 1, 0.04).normalize();
     const up = new THREE.Vector3(-side, 0, 0).projectOnPlane(dir).normalize(), right = new THREE.Vector3().crossVectors(up, dir), A = 0.6;
@@ -1040,12 +1237,13 @@ export function buildHuman(spec) {
   // wrist bands for long sleeves (the knitted cuff, at the end of the forearm)
   const wristGeo = new THREE.LatheGeometry(cuffPts.map((q) => new THREE.Vector2(q[0], q[1])), 24);
   const wrists = arms.map((arm) => onSegment(new THREE.Mesh(wristGeo, cuffM), arm.fore, (m, r, len) => {
-    m.scale.set(1.18, 1.18 * r / len, 1.18); m.position.set(0, 0.5 - 0.05 * r / len, 0);
+    const wk = mus ? 0.84 : 1.18;                                            // a muscled forearm tapers to a slimmer wrist
+    m.scale.set(wk, wk * r / len, wk); m.position.set(0, 0.5 - 0.05 * r / len, 0);
   }));
   // the captain's armband: on his left upper arm (arms[1]), over the sleeve just above the cuff
   const bandArmM = std(0xffffff, { roughness: 0.6 });
   const armband = onSegment(new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.06, 1, 28, 1, true), bandArmM), arms[1].sleeve || arms[1].upper, (m, r, len) => {
-    const h = 0.15 * D.armR; m.scale.set(1, h / len, 1); m.position.set(0, 0.5 - (0.12 * D.armR + h / 2) / len, 0);
+    const h = 0.15 * D.armR, ak = mus ? sleeveK + 0.04 : 1; m.scale.set(ak, h / len, ak); m.position.set(0, 0.5 - (0.12 * D.armR + h / 2) / len, 0);
   });
   function armbandTexture(col) {
     const W = 512, H = 64, cv = artCanvas(W, H), g = cv.getContext('2d'), ink = lumOf(col) > 0.6 ? '#1d2b3a' : '#ffffff';
@@ -1112,7 +1310,7 @@ export function buildHuman(spec) {
     const swap = (m, t) => { const o = m.map; m.map = t; m.needsUpdate = true; if (o && o !== t) o.dispose(); };
     swap(shirtM, kidJerseyTexture(K, n, nm, front == null ? spec.front : front, D));
     swap(sleeveM, sleeveTexture(K)); swap(bandM, bandTexture(K, 1)); swap(cuffM, bandTexture(K, 14));
-    swap(shortsM, shortsTexture(K, n, D)); swap(sockM, sockTexture(K));
+    setShortsTex(K, n); swap(sockM, sockTexture(K));
     applyCollar(K.collar); setBadges(K); applyGear(K);
   }
   function setHair(col, styleId) {

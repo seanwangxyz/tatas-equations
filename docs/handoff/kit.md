@@ -4,6 +4,62 @@ Files changed or added (all mine): `js/three/creatures/kid.js` (rewritten), `js/
 new calls), new `js/three/creatures/grownup.js`, new `js/kit.js`, new `css/kit.css`. Nothing else was touched.
 Everything below is for the lead to wire. All calls are guarded, so missing pieces never break anything.
 
+## Update 3: real football shorts (both), Tata's V-shaped fit build
+
+Owner: "make Tyson's pants look more like shorts (and mine too) ... make me V-shaped, lean but muscular".
+Files: `js/three/creatures/kid.js`, `js/three/creatures/grownup.js`, `js/three/player.js` (one line: `disposeModel`
+also disposes a skeleton), this file. Nothing for the lead to wire; no API or save change. Tests: 831 passed.
+
+**Shorts (both figures)** - the old single cylinder (a skirt) is gone. Now three pieces of the same cloth:
+- *The seat* (on `root`, so it stays with the legs): a ribbed elastic waistband just outside the tucked-in shirt hem with
+  a tiny drawstring bow at the front (white cord, or the trim colour on light shorts), the hips, a rounder seat at the
+  back with a centre seam, narrowing front-to-back toward the legs, the crotch just below the hip joints. It is a
+  two-bone `SkinnedMesh` (one bone on `root`, one on `body`, both at the origin): from the waistband up it follows the
+  leaning upper body, the hips stay with the legs, blended in between, so a deep lean (reach, kneel, tummy on the rim)
+  bends at the hips instead of opening a gap at the back. GPU skinning, nothing per frame on the CPU.
+- *Two legs of the shorts* (each on its thigh group): the top is a ball centred on the hip joint, so the leg turns
+  inside it whatever the swing (walk, crouch, knee slide, jump, kneel) and nothing tears; the hem ends mid-thigh
+  (`hemL` below the hip joint), cut a little higher on the inside (inseam), flares slightly and stands away from the
+  thigh, a darker inside lip, two soft folds near the hem (geometry + texture shading). Clear gap between the thighs.
+- Kept: trim side stripe with the thin shirt-colour line (now running down the seat and the outside of each leg), the
+  hem band round each leg, the small number on his left leg (number style follows the kit). Kit colours / home / away /
+  third / light shorts all work (`setKit` redraws the three shorts textures and the cord colour).
+- *Legs:* proportions changed for bare thighs + knees: kid thigh 0.75 / shin 0.80 (was 0.55 / 1.0), Tata 1.15 / 1.20
+  (was 0.95 / 1.4); the sums are unchanged, so `FOOT`, `TOP`, the seat placement and every pose height are the same.
+  Thighs taper to the knee, a knee with a small kneecap, calves fuller at the back, the long socks (same texture and
+  band) start just below the knee.
+- New dims: `hipX`, `waistTop`, `hemL`, `shortsRb` (radius of the ball top), `zs`, `muscle`, `torsoCtrl`, `sleeveK`;
+  `shortsY/H/R` are gone (nothing outside kid.js read them); `HIP_LOW` is now the hem height.
+
+**Tata's build** (`TATA` in grownup.js; face and hair untouched):
+- *V shape:* his own shirt profile (`torsoCtrl`): waist about 0.69, chest about 1.0 (radius), shoulders `SH_X` 0.98
+  (was 0.9) with the round sleeve caps as deltoids; chest less deep than wide (`zs: 0.8`, the shirt group is squashed
+  front-to-back, which does not stretch anything at the front or back).
+- *Under the shirt* (`torsoBump`, `muscle: 1`): two soft pecs with a clearer lower edge, a breastbone groove, the
+  shoulder blades either side of a spine groove. The collar band and badge decals use the same lift, so they sit on it.
+- *Arms:* muscle-profile segments (biceps fullest just below the sleeve, forearms full near the elbow tapering to a
+  slimmer wrist), `armR` 1.22, a snug sleeve narrowing to its cuff, cuff / long-sleeve wrist band / armband resized to
+  fit. Gloves unchanged (they fit).
+- *Legs:* fuller quads with the teardrop above the knee, fuller calves. Neck a touch thicker.
+- *Shirt texture:* the front number, back number and back name are now drawn row by row with each row's own width
+  (`warp` in `kidJerseyTexture`), so on the tapering V torso they are not wider at the top. (The kid's shirt is almost
+  a cylinder there, so his look is unchanged.)
+
+The kid keeps his child's build; only his shorts and legs changed.
+
+Judgment calls: the shirt is worn tucked into the waistband (the waistband and bow have to show); the kid's seat
+still bulges a bit in a strict side view because his shirt is a round tummy and the waistband must sit outside it;
+V ratio kept "fit dad", not bodybuilder (shoulder span about 1.75 x the waist).
+
+Verified in the browser (port 3521): close renders of both figures front / back / side / 3/4 / from above, walking,
+crouch, kneel, deep lean, tummy-on-rim; before / after renders from the previous commit's modules; in a match: the
+kid's bottom seat, a walk-and-place move (permitted: tummy grab, run round, kneel on the table), all four celebrations
+(jump, spin, robot, slide); Tata as the main player (seat, jump, slide, a move); Team-up (Tata at the left seat,
+standing and knee slide); 2 Players (Tata across the table, from the seat camera); the kit panel previews (front,
+back, chest close-up), Tata's third kit with long sleeves, gloves and armband, the kid's away kit with gloves,
+armband, long sleeves; white shorts; the title screen kid. No console errors. Not verified: real devices / 60 fps,
+online, every kit colour combination, a strict check of the left seat spacing numbers (it looked right).
+
 ## Update 2: the shirt front, home / away / third kits, and gear
 
 Files: `js/three/creatures/kid.js`, `js/three/creatures/grownup.js` (comments only), `js/kit.js`, `css/kit.css`, this

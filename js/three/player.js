@@ -101,7 +101,7 @@ if (T3 && T3.ctx) (function () {
   function specKey(sp) { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
   function disposeModel(m) {
     if (!m) return; if (m.root.parent) m.root.parent.remove(m.root);
-    m.root.traverse(function (o) { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (x) { if (x.map) x.map.dispose(); x.dispose(); }); });
+    m.root.traverse(function (o) { if (o.skeleton) o.skeleton.dispose(); if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (x) { if (x.map) x.map.dispose(); x.dispose(); }); });
   }
   // build or update the model for an avatar; returns true when the body itself changed (placement must be redone)
   function refreshAvatar(A, parent) {
