@@ -68,7 +68,8 @@ function aiPlace(id, zone, who) {
 // Which person at the table reaches over for a human's move (3D): this device's player, or the second human (mate).
 // (Online keeps the plain move: remote moves are applied in one step by js/online.js.)
 function avatarMoveFn(who) {
-  if (!T3.active() || !T3.playerMove || G.mode === 'online' || G.mode === 'tutorial') return null;
+  if (!T3.active() || !T3.playerMove || G.mode === 'tutorial') return null;
+  if (G.mode === 'online') return window.Online && Online.moveFn ? Online.moveFn(who) : null; // host: its player / the mate carry the cube
   if (G.team && who === 0) return G.team.cur === 0 ? T3.playerMove : T3.mateMove;   // Team-up: whoever's go it is
   if (who === 0) return T3.playerMove;
   if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3')) return T3.mateMove;
