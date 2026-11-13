@@ -203,7 +203,8 @@ export const MonstersPack = {
     const findClip = (key) => { const cands = (slot.clips && slot.clips[key]) ? [].concat(slot.clips[key]) : (DEFAULT_CLIPS[key] || []); for (const n of cands) { const c = entry.clips.find((cl) => cl.name === n) || entry.clips.find((cl) => cl.name.toLowerCase().indexOf(String(n).toLowerCase()) >= 0); if (c) return c; } return null; };
     if (entry.clips.length) {
       mixer = new THREE.AnimationMixer(model);
-      const ic = findClip('idle'); if (ic) { idle = mixer.clipAction(ic); idle.play(); rig.clipMode = true; }
+      // no looping idle clip unless the manifest slot asks for one ("idleLoop": true): at rest nothing moves
+      const ic = slot.idleLoop ? findClip('idle') : null; if (ic) { idle = mixer.clipAction(ic); idle.play(); rig.clipMode = true; }
       mixer.addEventListener('finished', (ev) => { if (ev.action === moodAct && idle) { idle.reset().play(); moodAct.crossFadeTo(idle, 0.35, false); moodAct = null; } });
     }
 
@@ -211,13 +212,21 @@ export const MonstersPack = {
     const hp = B.head.getWorldPosition(new THREE.Vector3()), top = box.max.y * 0 + (size.y - hipsAt * size.y) * sc;
     const headC = new THREE.Vector3(hp.x, hp.y + (box.max.y - hp.y) * 0.5, hp.z + (slot.gazeFwd !== undefined ? slot.gazeFwd : 0.04 * H));
     if (slot.gazeAt) headC.add(_v.fromArray(slot.gazeAt));
+    // the face's centre and radius for the acting poses (the head bone sits at the bottom of the head)
+    const headTop = (size.y - hipsAt * size.y) * sc, faceR = clamp((headTop - hp.y) * 0.42, 0.4, 1.2);
+    const faceC = new THREE.Vector3(hp.x, hp.y + faceR, hp.z + faceR * 0.35);
     const invBody = new THREE.Matrix4();
     const styleName = slot.style || kind, style = STYLE[styleName] || STYLE.fox;
     const bodyShare = rig.pose.bodyShare;
     const actor = {
       kind, root, body, arms, style, top: slot.top || (top + 0.35), headC, invBody,
       fit: slot.fit || 1, fitY: slot.fitY || 0, lean: slot.lean || 0, portrait: slot.portrait || null,   // framing: size tweak, hip height offset (actor units), resting lean (rad, <0 = back)
-      styleKey: slot.entrance || styleName,       // which entrance / exit / idle-flair set the gestures use
+      styleKey: slot.entrance || styleName,       // which entrance / exit set the gestures use
+      mouthless: true,                             // the face is painted: talking shows as small nods instead of a mouth
+      headR: slot.headR || faceR, faceC: faceC, chestZ: slot.chestZ,   // measurements for the acting poses (js/three/acting.js)
+      // how far up the head may tip to look at the (high) seat camera: the puglins already carry their head lifted
+      // (pose.headDown), and tipping it further turns the face away from the camera
+      pitchMin: slot.pitchMin != null ? slot.pitchMin : (slot.pose && slot.pose.headDown < -0.3 ? 0.2 : null),
       playMood(name) {
         if (!mixer) return; const cl = findClip(name); if (!cl) return;
         const a = mixer.clipAction(cl); a.reset().setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false;

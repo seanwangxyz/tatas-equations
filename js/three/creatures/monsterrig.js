@@ -131,10 +131,10 @@ export class MonsterRig {
 
   solveArm(a, tx, ty, tz, align, yaw) {
     const cfg = this.cfg, sc = this.sc, S = a.S, side = a.side, clip = this.clipMode;
-    // talking: the nearer hand makes small speaking gestures when the target is (near) the rest position
+    // talking: the nearer hand comes up a little, palm open, and stays there while the line lasts (one move, no waving)
     if (this.talk > 0 && a.idx === 1) {
-      const dr = Math.hypot(tx - a.rest.x, ty - a.rest.y, tz - a.rest.z), g = this.talk * (1 - sstep(dr / 0.7)), t = this.talkT;
-      if (g > 0) { tx += 0.4 * Math.sin(t * 3.1) * g; ty += (0.55 + 0.35 * Math.sin(t * 2.3 + 1)) * g; tz += 0.35 * g; align = 0.3; }
+      const dr = Math.hypot(tx - a.rest.x, ty - a.rest.y, tz - a.rest.z), g = this.talk * (1 - sstep(dr / 0.7));
+      if (g > 0) { tx -= 0.12 * g; ty += 0.6 * g; tz += 0.4 * g; align += (0.3 - align) * g; }
     }
     // clip mode: leave the clip's arm alone unless something asks for a target away from the rest position
     if (clip) {
