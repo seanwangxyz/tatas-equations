@@ -64,7 +64,7 @@
   }
 
   // ---- the words: one syllable per note. [consonant before the vowel, vowel, vowel it glides to (or ''), word]
-  //   consonants: h (breath), p t (stop + a puff), b d (voiced stop: a short dip), y (glide from "ee"), s (a soft hiss)
+  //   consonants: h (breath), p t (stop + a puff), b d (voiced stop: a short dip), y (a glide out of an ee sound), s (a soft hiss)
   var L1 = [['h', 'ae', '', 'Hap'], ['p', 'i', '', 'py'], ['b', 'er', '', 'birth'], ['d', 'e', 'i', 'day'], ['t', 'u', '', 'to'], ['y', 'u', '', 'you']];
   var L3 = [['h', 'ae', '', 'Hap'], ['p', 'i', '', 'py'], ['b', 'er', '', 'birth'], ['d', 'e', 'i', 'day'], ['d', 'i', 'er', 'dear'], ['t', 'ah', 'i', 'Ty'], ['s', 'uh', 'n', 'son']];
   var LYRICS = L1.concat(L1, L3, L1), LINE_START = [0, 6, 12, 19], LINE_END = [5, 11, 18, 24];
