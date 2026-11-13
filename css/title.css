@@ -133,7 +133,7 @@ body.tour-on #title .t-greet{visibility:hidden}   /* the What's new card replace
   #title.t3 .mm-tile{min-height:52px;font-size:18px}
   #title.t3 .mm .bi{width:34px;height:34px}
   #title.t3 .mm-mini{min-height:54px;padding-top:5px}
-  #title.t3 .mm-foot .btn{min-height:40px}
+  #title.t3 .mm-foot .btn{min-height:44px}
 }
 /* portrait (phones, iPad upright): the scene on top, the panel at the bottom */
 @media not all and (min-aspect-ratio:11/10), (max-width:699px){
@@ -152,7 +152,7 @@ body.tour-on #title .t-greet{visibility:hidden}   /* the What's new card replace
   #title.t3 .mm .bi .ico{width:21px;height:21px}
   #title.t3 .mm-mini{min-height:56px;font-size:12.5px}
   #title.t3 .mm-mini .ico{width:23px;height:23px}
-  #title.t3 .mm-foot .btn{min-height:40px;font-size:15px}
+  #title.t3 .mm-foot .btn{min-height:44px;font-size:15px}
 }
 @media (max-width:360px){
   #title .mm-tile{font-size:16px}

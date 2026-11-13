@@ -226,7 +226,7 @@ function newShake(fixedCubes) {
       G.rolling = false; renderGame();
       setTimeout(function () {
         if (!G || G !== g0 || G.cubes !== c0) return;
-        var toGoal = function () { G.phase = 'goal'; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700); };
+        var toGoal = function () { G.phase = 'goal'; G.busy = true; renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) startGoalPhase(); }, 700); }; // (busy: no Build the Goal button before a card or die is offered)
         if (fixedCubes) { lockOps(); if (G.cubes.some(function (c) { return c.locked; })) say('pip', '🔒 Operations you haven\'t unlocked yet go to Forbidden. Coming soon!'); toGoal(); }
         else rerollOps(toGoal);
       }, 500);
@@ -267,8 +267,9 @@ function startGoalPhase() {
   if (window.Career && Career.beforeGoal(startGoalPhase)) return; // CAREER: the creature's signature card is dealt
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
-  if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); creatureAt(G.setter, function () { if (T3.creatureMood) T3.creatureMood('think'); }); /* ACTING */ setTimeout(aiSetGoal, 1100); }
+  if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); creatureAt(G.setter, function () { if (T3.creatureMood) T3.creatureMood('think'); }); /* ACTING */ var gS = G, cS = G.cubes; setTimeout(function () { if (G === gS && G.cubes === cS) aiSetGoal(); }, 1100); }
   else {
+    G.busy = false; // (newShake kept it busy until now)
     if (G.mode !== 'tutorial') say('pip', (multiHuman() ? '<b>' + esc(P.name) + '</b>, you' : 'You') + ' rolled the cubes, so you set the <b>Goal</b>! Use 1 to 6 cubes. Two digit cubes side by side make a two-digit number, like 2 and 4 → 24.');
     renderGame();
   }
@@ -308,7 +309,7 @@ function renderGame() {
     return cubeHTML(c, cls);
   }).join('') || '<span class="empty">empty</span>';
   if (!$('#gTop')) el.innerHTML = '<div id="gTop" class="game-top"></div><div id="gGoal"></div><div id="gMat"></div><div id="gAct" class="actionbar"></div>';
-  el.classList.toggle('three', three);
+  el.classList.toggle('three', three); el.classList.toggle('has-goal', !!(three && G.goal)); // (has-goal: the table chips move below the Goal bar on narrow screens)
   $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
     '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>' + (G.tour && window.Tourney ? Tourney.topHTML() : ''); // (TOURNEY: division, penalties, practice clock)
   if (three) {
@@ -369,7 +370,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); $('#builder').classList.remove('on'); G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); if (window.Missions && Missions.close) Missions.close(); $('#builder').classList.remove('on'); B = null; G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once
@@ -411,7 +412,7 @@ function placeCube(id, zone, who) {
   if (G.team) Team.sync(); // the other teammate takes the team's next turn
   if (!T3.active()) Snd.thunk();
   var left = zoneCubes('resources').length;
-  if (left === 0) { renderGame(); setTimeout(lastCubePlayed, 600); return; }
+  if (left === 0) { renderGame(); var gL = G, cL = G.cubes; setTimeout(function () { if (G === gL && G.cubes === cL) lastCubePlayed(); }, 600); return; } // (not after he left the match)
   G.turn = nextP(who); // play passes to the left
   if (G.clever && window.Commentary) Commentary.say('clever', { by: G.players[who].name });
   crowdSay(G.clever ? 'ooh' : 'clap'); G.clever = false;
@@ -547,8 +548,9 @@ function challenge(kind, who) {
   if (isAI(who)) say('opp', kind === 'now' ? G.players[who].ai.now : G.players[who].ai.imp);
   else say('pip', kind === 'now' ? esc(cname) + ' says Now! and must write a Solution using the mat plus at most ONE Resource cube.' : 'Impossible! Now ' + esc(mname) + ' must try to write a Solution.', 'cheer');
   renderGame();
-  var writer = kind === 'now' ? who : mover;
+  var writer = kind === 'now' ? who : mover, gC = G, chC = G.ch;
   setTimeout(function () {
+    if (G !== gC || G.ch !== chC) return; // he left the match during the banner
     writeSolution(writer, kind, function (ok, tokens, chk) {
       if (G.ch.tp === null) resolveChallenge(ok, tokens, chk, null);
       else askThirdParty(G.ch.tp, kind, function (tpRes) { resolveChallenge(ok, tokens, chk, tpRes); });
@@ -673,7 +675,9 @@ ACT.noGoal = function () {
   if (ai !== undefined) {
     var o = G.players[ai].ai; G.busy = true;
     say('opp', pick(o.think)); renderGame();
+    var gN = G, cN = G.cubes;
     setTimeout(function () {
+      if (G !== gN || G.cubes !== cN) return;
       var found = aiFindAnyEquation(o);
       G.busy = false;
       if (found) {
@@ -793,8 +797,9 @@ function endShake(r) {
     rcXP() +
     (window.Why ? Why.shakeHTML() : '') + // WHY: the two most important moves of the shake
     '<div class="row"><button class="btn green big" data-act="closeModal">' + (G.shake >= G.shakes ? 'See the results' : 'Next shake') + ' ' + ico('play') + '</button></div></div>';
+  var gR = G;
   var showResult = function () {
-    if (!G) return;
+    if (!G || G !== gR) return; // (a replay that ends after he left must not open this pop-up on the next match)
     var rp = window.Replay ? Replay.popupHTML(r) : '';
     modal(rp ? html.replace('<!--replay-->', rp) : html, function () { drainQueue(nextShake); });
   };
@@ -823,7 +828,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over') playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over' && !(window.Matchday && Matchday.active())) playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');

@@ -30,6 +30,10 @@ button.vari-card:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,
 .vari-chip.dealt{animation:variDeal .55s cubic-bezier(.2,1.2,.4,1) both}
 @keyframes variDeal{from{transform:translateY(-14px) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.vari-chip.dealt{animation:none}}
+/* 3D without the side column (phones, iPad upright): the Goal bar sits at the top, so the chip goes below it */
+@media not all and (min-width:1000px) and (min-aspect-ratio:5/4){
+  #game.three.has-goal .vari-chip{top:max(120px,calc(var(--sat) + 116px))}
+}
 
 /* the builders */
 .vari-note{display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;margin:2px auto 6px;max-width:640px;

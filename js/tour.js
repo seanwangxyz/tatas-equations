@@ -109,7 +109,8 @@ var Tour = (function () {
       if (inMatch()) return;
       var el = document.getElementById('title');
       var opening = el && el.classList.contains('t3') && !el.classList.contains('t3-rest') && Date.now() - t0 < 9000;
-      if (opening || modalUp() || Date.now() - t0 < 900) { waitT = setTimeout(check, 300); return; }
+      var bdayOn = !!(window.TataBirthday && TataBirthday.active && TataBirthday.active()); // (the birthday show owns the title while it plays)
+      if (opening || bdayOn || modalUp() || Date.now() - t0 < 900) { waitT = setTimeout(check, 300); return; }
       begin(list);
     })();
   }

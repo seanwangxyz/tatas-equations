@@ -21,7 +21,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const C = (a, b, aAt = 1, bAt = 2) => AM.combine(a, b, { aAt, bAt }); // b is newer by default
 
 // Keys other features add to S outside defaults() (found with: grep -ohE "\bS\.[a-zA-Z_]+" js/*.js js/three/*.js)
-const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday', 'missions', 'pace', 'pin'];
+const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday', 'missions', 'pace', 'pin', 'career', 'mmLast'];
 const ALL_KEYS = Object.keys(defaults()).concat(FEATURE_KEYS);
 
 // ---------------- every top-level key has an explicit rule and a plain-words description ----------------
@@ -112,6 +112,8 @@ r = C({ season: { v: 1, last: 'c', c: lg(2, 3, 6), m: lg(1, 9, 18), hist: [{ lg:
 ok('season', r.season.c.n === 2 && r.season.m.k === 9 && r.season.hist.length === 1 && r.season.won.silver === 1 && r.season.last === 'm');
 r = C({ fans: { v: 1, k: { chef: { d: '2026-03-02', at: ['stadium'] } } } }, { fans: { v: 1, k: { chef: { d: '2026-03-01', at: ['beach'] }, cat: { d: '2026-04-01', at: ['night'] } } } });
 ok('fans', r.fans.k.chef.d === '2026-03-01' && r.fans.k.chef.at.length === 2 && r.fans.k.cat);
+A.career = { seen: { flip: 1 } }; B.career = { seen: { chroma: 1 } }; r = C(A, B); ok('career seen union', r.career.seen.flip === 1 && r.career.seen.chroma === 1);
+A.mmLast = 3; B.mmLast = 5; ok('mmLast latest', C(A, B).mmLast === 5);
 // unknown keys from a future feature: kept from either side, objects merged key by key
 r = C({ newThing: { a: 1, deep: { x: 1 } } }, { newThing: { b: 2, deep: { y: 2 } }, other: 5 }); ok('unknown keys kept', r.newThing.a === 1 && r.newThing.b === 2 && r.newThing.deep.x === 1 && r.newThing.deep.y === 2 && r.other === 5);
 
@@ -154,6 +156,7 @@ function randomSave() {
   s.season = { v: 1, last: 'c', c: lg(1 + ri(3), ri(11), ri(21)), m: lg(1 + ri(3), ri(11), ri(21)), hist: Array.from({ length: ri(4) }, (_, i) => ({ lg: coin() ? 'c' : 'm', n: i + 1, date: date(), place: 1 + ri(6) })), won: { gold: ri(3), silver: ri(3), bronze: ri(3), blue: ri(3) }, cer: null };
   s.fans = { v: 1, k: {} }; ['chef', 'cat', 'wizard'].forEach(k => { if (coin()) s.fans.k[k] = { d: date(), at: ['stadium'] }; });
   s.pin = { s: 'salt' + ri(99), h: 'ab' + ri(9999) };
+  s.career = { seen: {} }; ['flip', 'nugget'].forEach(k => { if (coin()) s.career.seen[k] = 1; }); s.mmLast = ri(15);
   s.pace = { v: 1, lv: { 0: { n: ri(9), avg: 2000 + ri(6000), slack: ri(2000) } } };
   s.missions = { v: 1, n: ri(300), s: {} }; if (coin()) s.missions.cv = 'blue'; ['g_set', 'c_now', 'o_div', 'f_frac'].forEach(id => { if (coin()) s.missions.s[id] = [1 + ri(6), date(), ri(15) - 1, ri(9), ri(3)]; });
   return s;

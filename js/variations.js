@@ -325,7 +325,8 @@ var Vari = (function () {
   // The small reminder card on the table while a card is in play (tap it to read the rule again).
   function chip(dealt) {
     var host = document.getElementById('game');
-    var el = document.getElementById('variChip');
+    var el = document.getElementById('variChip'), bc = document.getElementById('bonusChip');
+    if (bc) bc.classList.toggle('below', !!(G && G.vari)); // (a card picked after the Twist chip was drawn: the Twist chip steps down)
     if (!G || !G.vari || !host) { if (el) el.remove(); return; }
     var c = card(G.vari), all = inPlay();
     if (!el || el.parentNode !== host) { if (el) el.remove(); el = document.createElement('button'); el.id = 'variChip'; el.className = 'vari-chip'; el.setAttribute('data-act', 'variInfo'); host.appendChild(el); }
