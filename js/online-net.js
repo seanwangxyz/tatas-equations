@@ -201,3 +201,27 @@ var Net = (function () {
   };
 })();
 // /ACCOUNT
+
+// VOICE (docs/handoff/voice.md): two helpers for talking inside the game (js/voice.js). Its notes live under
+// rooms/CODE/rtc/<seat>; no sound or picture ever goes through the database.
+//   Net.rtcWrite(path, val) -> Promise   like Net.write, but rejects when the database refuses (rules without the
+//                                        rtc part). Testing: ?onlinetest=1&rtcrules=0 refuses the same way.
+//   Net.rtcOnDisconnect(path) -> cancel  remove path when this device disconnects (Firebase onDisconnect; local: pagehide)
+(function () {
+  var NORULES = Net.test && /[?&]rtcrules=0(&|$)/.test(location.search);
+  Net.rtcWrite = function (path, val) {
+    if (NORULES) { var e = new Error('PERMISSION_DENIED (test: rtcrules=0)'); e.code = 'PERMISSION_DENIED'; return Promise.reject(e); }
+    try { return Promise.resolve(Net.write(path, val)); } catch (e) { return Promise.reject(e); }
+  };
+  Net.rtcOnDisconnect = function (path) {
+    if (Net.kind() === 'firebase' && window.firebase && firebase.apps && firebase.apps.length) {
+      var od = firebase.database().ref(path).onDisconnect();
+      od.remove().catch(function () {});
+      return function () { od.cancel().catch(function () {}); };
+    }
+    var bye = function () { try { Net.write(path, null); } catch (e) {} };
+    window.addEventListener('pagehide', bye);
+    return function () { window.removeEventListener('pagehide', bye); };
+  };
+})();
+// /VOICE

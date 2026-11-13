@@ -222,6 +222,7 @@ var Online = (function () {
     GUEST_SLOTS.forEach(function (s) { O.subs.push(Net.subscribe(base() + '/acts/' + s, function (v) { onActs(s, v); })); });
     O.subs.push(Net.presence(base() + '/here', 0, onPresence));
     watchConnection();
+    voiceRoom(); // VOICE
   }
   function onSeats(v) {
     if (!O || O.role !== 'host') return;
@@ -229,6 +230,7 @@ var Online = (function () {
     GUEST_SLOTS.forEach(function (s) {
       var info = seatFrom(v[s]);
       if (info && !O.seats[s] && O.joinedAt[s] === undefined) O.joinedAt[s] = O.round;
+      if (!info && O.seats[s] && window.VoiceChat) VoiceChat.seatGone(s); // VOICE: a freed seat's talking notes go too
       if (info) O.seats[s] = info; else { delete O.seats[s]; delete O.joinedAt[s]; }
     });
     if (O.inLobby) lobbyHost();
@@ -275,7 +277,8 @@ var Online = (function () {
         '<div class="row ol-share"><button class="btn small" data-act="olShare">' + ico('people') + ' Share the code</button></div>' +
         '<p style="text-align:center">Read this code to the other players (one or two). They tap <b>Online</b>, then <b>Join a game</b>, and type it in.</p>') +
       '<div class="ol-seats">' + rows + '</div>' + picks + bonusRow +
-      '<p style="text-align:center;font-size:16px">' + (S.set.shakes || 3) + ' shakes. Talk on FaceTime while you play!</p>' +
+      '<p style="text-align:center;font-size:16px">' + (S.set.shakes || 3) + ' shakes.' + (window.VoiceChat ? '' : ' Talk on FaceTime while you play!') + '</p>' + voiceLobby() + // VOICE: the talking block
+
       '<div class="row"><button class="btn green big" data-act="olKick"' + (ready.length ? '' : ' disabled') + '>' + ico('play') + ' ' + (again ? 'Start the next match!' : 'Kick off!') + '</button><button class="btn" data-act="olCancel">' + (again ? 'Leave' : 'Cancel') + '</button></div>');
     var sel = $('#olCre'); if (sel) sel.onchange = function () { if (O) { O.creature = +sel.value; save(); } };
   }
@@ -521,6 +524,7 @@ var Online = (function () {
     }));
     O.subs.push(Net.presence(base() + '/here', O.slot, onPresence));
     watchConnection();
+    voiceRoom(); // VOICE
   }
   function roomList(readyFor) {
     return '<div class="ol-seats">' + [0, 1, 2].filter(function (s) { return O.seats[s]; }).map(function (s) {
@@ -533,7 +537,7 @@ var Online = (function () {
   function guestLobby() {
     if (!O || O.role !== 'guest' || on()) return;
     O.inLobby = true;
-    modal('<h2 class="hero">' + ico('people') + ' You joined!</h2>' + roomList() + '<p class="ol-wait">Waiting for <b>' + hostName() + '</b> to kick off…</p><div class="row"><button class="btn" data-act="olCancel">Leave</button></div>');
+    modal('<h2 class="hero">' + ico('people') + ' You joined!</h2>' + roomList() + '<p class="ol-wait">Waiting for <b>' + hostName() + '</b> to kick off…</p>' + voiceLobby() + /* VOICE */ '<div class="row"><button class="btn" data-act="olCancel">Leave</button></div>');
   }
   function send(act) {
     if (!O) return;
@@ -1002,7 +1006,25 @@ var Online = (function () {
     var e = window.Social && Social.emotes ? Social.emotes.filter(function (x) { return x.id === id; })[0] : null;
     if (e && Social.bubble) Social.bubble('opp', e.say, { big: e.label.length <= 2 });
   }
-  function stopSubs(o) { (o.subs || []).forEach(function (f) { try { f(); } catch (e) {} }); o.subs = []; clearTimeout(bannerTimer); missSince = {}; }
+  function stopSubs(o) { if (window.VoiceChat) VoiceChat.leaveRoom(); /* VOICE: hang up first (before the seat is freed) */ (o.subs || []).forEach(function (f) { try { f(); } catch (e) {} }); o.subs = []; clearTimeout(bannerTimer); missSince = {}; }
+  // VOICE (docs/handoff/voice.md): talking inside the game. js/voice.js does the work; these two helpers give it
+  // the room (code, own seat, names, a way to redraw the lobby) and put its block into the lobby pop-ups.
+  function voiceRoom() {
+    if (!window.VoiceChat || !O) return;
+    VoiceChat.room(O.code, O.slot, function (s) { if (!O) return ''; if (s === O.slot) return cleanName(S.name); var i = O.seats[s]; return i ? i.name : (s === 0 ? 'The host' : 'Player'); },
+      function () { if (!O || !O.inLobby) return; if (O.role === 'host') lobbyHost(); else guestLobby(); });
+  }
+  function voiceLobby() { return window.VoiceChat ? VoiceChat.lobbyHTML() : ''; }
+  // Load js/voice.js + css/voice.css if index.html doesn't list them yet.
+  (function () {
+    var go = function () {
+      if (!document.querySelector('link[href*="voice.css"]')) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/voice.css'; document.head.appendChild(l); }
+      if (window.VoiceChat || document.querySelector('script[src*="js/voice.js"]')) return;
+      var s = document.createElement('script'); s.src = 'js/voice.js'; s.onload = function () { if (O) voiceRoom(); }; document.head.appendChild(s);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+  })();
+  // /VOICE
   // Leave on purpose: the host closes the room; a guest says goodbye (their seat stays theirs during a match, so the
   // same code brings them back; after a match or in the lobby it is freed).
   function leave() {
