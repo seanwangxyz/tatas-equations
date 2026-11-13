@@ -1322,7 +1322,7 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   ok('bonus goalIdeas: never glues a digit to the big-number die', !ideas.some(s => /[0-9]/.test(s) && s.length === 2 && s.includes(b12)));
   ok('bonus goalIdeas: binary gold ops', Eq.goalIdeas(['7', 'M', '3'], { fractions: true }).some(g => g.tokens.join('') === '7M3' && Eq.fmt(g.value) === '1'));
   ok('bonus goalIdeas: with a Middle card nothing crashes and turned cubes are digits only', (() => { try { return Eq.goalIdeas(['4', b12, '+', '2'], { fractions: Eq.mathMode(true, ['upside']) }).every(g => g.tokens.every(s => s !== undefined)); } catch (e) { return false; } })());
-  // --- with the Twist die's cards ---
+  // --- with the Twist deck's cards ---
   const base8 = Eq.mathMode(true, ['basem'], null, { base: 8 });
   ok('bonus + Base 8: the big-number die keeps its ordinary value (12 is twelve)', val(b12 + '+1', { fractions: base8 }) === '13' && val('17', { fractions: base8 }) === '15');
   ok('bonus + Base 8: solver uses the big die at its value', Eq.solve({ goal: F(13), req: [b12], opt: ['1', '+'], mode: 'free', fractions: base8, maxDigits: 4, timeMs: 1000 }).found);
@@ -1340,6 +1340,28 @@ solveCheck('negative goal 0−3 style: −3 = 2−5', { goal: F(-3), req: [], op
   ok('bonus + Use It Again: cubeTokens never re-uses the big-number die', (() => { const toks = Eq.cubeTokens(t(b12 + '+' + b12), [{ id: 0, s: b12, zone: 'required' }, { id: 1, s: '+', zone: 'permitted' }], multiM); return toks[0].id === 0 && toks[2].id === -1; })());
   const mk = Eq.mathMode(true, ['multk'], null, { k: 6 });
   ok('bonus + Multiple of 6: 4! = 24 misses the Goal 18 by 6', Eq.checkSolution([{ s: '4', id: 0 }, { s: 'F', id: 24 }], Object.assign(ctxA(18), { fractions: mk })).ok);
+  // --- the Twist deck (js/bonus.js, loaded with small stand-ins for the page and js/variations.js) ---
+  {
+    const bsrc = fs.readFileSync(path.join(root, 'js', 'bonus.js'), 'utf8');
+    const st = { earned: {}, off: {}, noEffect: {} };
+    const V = { card: id => ({ id, icon: 'I-' + id, name: 'N-' + id, rule: 'R' }), cardOn: id => !st.off[id], unlocked: () => Object.keys(st.earned).map(id => ({ id })),
+      hasEffect: id => !st.noEffect[id], cardName: (id, set) => 'N-' + id + (set && (set.k || set.base) ? ' ' + (set.k || set.base) : ''), randomSet: id => id === 'expo' ? { ecol: 'red' } : null };
+    const Gs = { cubes: [] }, Ss = { stats: {}, bonus: { force: { twist: true } } };
+    const Bn = new Function('Eq', 'S', 'ACT', 'Vari', 'G', 'window', bsrc + '\nreturn Bonus;')(Eq, Ss, {}, V, Gs, { Vari: V });
+    const D = Bn.TWIST, kinds = k => D.filter(c => c.k === k).length;
+    ok('twist deck: 20 cards, one per face of the old die (same odds)', D.length === 20 && D.filter(c => c.card).length === 15 && kinds('golden') === 2 && kinds('bonus2') === 2 && kinds('freehint') === 1);
+    ok('twist deck: the 15 variation cards are all different', new Set(D.filter(c => c.card).map(c => c.k)).size === 15);
+    ok('twist deck: every card has one short line (60 characters at most)', D.every(c => typeof c.line === 'string' && c.line.length > 10 && c.line.length <= 60));
+    ok('twist deck: a variation card shows its card\'s icon, a scoring twist its own', Bn.cardInfo(3).icon === 'I-upside' && Bn.cardInfo(15).icon === '🌟' && Bn.cardInfo(19).icon === '💡' && Bn.cardInfo(0, { base: 8 }).name === 'N-basem 8');
+    ok('twist deck: the Exponent card names its colour on the card', /red cube/.test(Bn.cardInfo(9, { ecol: 'red' }).line));
+    const playable = () => D.map((c, i) => i).filter(i => Bn.twistOk(i));
+    ok('twist deck: no card earned and no bonus cube: only Golden Goal and Free hint can be drawn', JSON.stringify(playable()) === '[15,16,19]');
+    Gs.cubes = [{ id: 24, color: 'power', s: 'F' }];
+    ok('twist deck: Bonus +2 can be drawn only with a bonus cube in play', JSON.stringify(playable()) === '[15,16,17,18,19]');
+    st.earned = { upside: 1, basem: 1, expo: 1 }; st.off = { expo: true }; st.noEffect = { basem: true };
+    ok('twist deck: a variation card needs to be earned, switched on and able to change the shake', JSON.stringify(playable()) === '[3,15,16,17,18,19]');
+    ok('twist deck: the save key is still "twist" (old saves keep their deck)', Bn.DIE.twist.id === 'twist' && Bn.unlocked('twist') && Bn.ORDER.join() === 'big,power,twist');
+  }
 }
 // ================= END BONUS DICE =================
 

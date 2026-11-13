@@ -47,7 +47,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var res = level >= 2 ? 512 : 256;
     if (res !== texRes || (meshes.length && meshes[0].userData.matLevel !== (level > 0))) {
       texRes = res;
-      if (meshes.length) { Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); }); texCache = {}; meshes.forEach(buildMats); if (twistMesh) buildMats(twistMesh); if (api.lastG && !pour) api.sync(api.lastG); } // (BONUS: + the Twist die)
+      if (meshes.length) { Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); }); texCache = {}; meshes.forEach(buildMats); if (api.lastG && !pour) api.sync(api.lastG); }
     }
     dirty = true;
   }
@@ -217,10 +217,10 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return new THREE.Quaternion().setFromRotationMatrix(T.multiply(L.transpose()));
   });
   var NORMALS = FACES.map(function (f) { return new THREE.Vector3().fromArray(f[0]); });
-  // ---- BONUS dice (house rule, js/bonus.js): twenty-sided dice (icosahedra) for the Big-number, Power and Twist dice ----
-  // Meshes 24 and 25 are the bonus CUBES (their role, 'big' or 'power', follows G.cubes[id].color each shake); the Twist
-  // die is a separate mesh (not a cube: it is read once and set aside on the rim). Each face k shows face k of
-  // Eq.CUBE_FACES[color] (the Twist die: Bonus.TWIST[k]). Resting on a face, the centre is D20IN above the felt
+  // ---- BONUS dice (house rule, js/bonus.js): twenty-sided dice (icosahedra) for the Big-number and Power dice ----
+  // Meshes 24 and 25 are the bonus CUBES (their role, 'big' or 'power', follows G.cubes[id].color each shake). (The Twist
+  // deck is not a die: see the BONUS Twist deck block near the end.) Each face k shows face k of
+  // Eq.CUBE_FACES[color]. Resting on a face, the centre is D20IN above the felt
   // (a little bigger than a cube, 0.5). At rest a die is still (no idle animation).
   var D20IN = 0.575, D20R = D20IN / 0.7946544722917661;
   var d20Geo = (function () {
@@ -242,7 +242,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var T = new THREE.Matrix4().makeBasis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1));
     return new THREE.Quaternion().setFromRotationMatrix(T.multiply(L.transpose()));
   });
-  var D20COL = { power: ['#ffe066', '#e8590c', '#5c3c00'], big: ['#b197fc', '#5f3dc4', '#ffffff'], twist: ['#63e6be', '#0b7285', '#ffffff'] };
+  var D20COL = { power: ['#ffe066', '#e8590c', '#5c3c00'], big: ['#b197fc', '#5f3dc4', '#ffffff'] };
   function d20Label(color, k) { try { return window.Bonus ? Bonus.faceLabel(color, k) : String(k + 1); } catch (e) { return String(k + 1); } }
   function d20Tex(color) {
     var res = Math.min(256, texRes || 256), key = 'd20' + color + res;
@@ -284,7 +284,6 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function restY(m) { return isD20(m) ? D20IN : 0.5; }
   function restQ(m, k) { return isD20(m) ? D20Q[k] || D20Q[0] : FACEQ[k]; }
   function facesOf(m) { return Eq.CUBE_FACES[m.userData.color] || []; }
-  var twistMesh = null, twistOn = false, twistNext = false, twistFaceK = null; // twistNext: roll it with the NEXT pour only (a pour nobody asked about, like online play's, never has it)
   // ---- end BONUS block ----
 
   function skin() { return S.cos.skin || 'classic'; }
@@ -315,17 +314,15 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
         scene.add(m); meshes.push(m); id++;
       }
     });
-    // BONUS: meshes 24 and 25 (the bonus cubes) and the Twist die
-    ['big', 'power', 'twist'].forEach(function (color, k) {
+    // BONUS: meshes 24 and 25 (the bonus cubes)
+    ['big', 'power'].forEach(function (color, k) {
       var m = new THREE.Mesh(d20Geo, null);
-      m.userData = { id: k < 2 ? 24 + k : 'twist', color: color, d20: true, jit: (Math.random() - 0.5) * 0.12 };
+      m.userData = { id: 24 + k, color: color, d20: true, jit: (Math.random() - 0.5) * 0.12 };
       buildMats(m); m.castShadow = true; m.receiveShadow = true; m.visible = false;
       var lk = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false })); lk.visible = false; m.add(lk); m.userData.lock = lk;
       scene.add(m);
-      if (k < 2) {
-        var bl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0, fog: false })); bl.rotation.x = -Math.PI / 2; bl.visible = false; bl.renderOrder = 1; scene.add(bl); blobs.push(bl);
-        meshes.push(m);
-      } else twistMesh = m;
+      var bl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0, fog: false })); bl.rotation.x = -Math.PI / 2; bl.visible = false; bl.renderOrder = 1; scene.add(bl); blobs.push(bl);
+      meshes.push(m);
     });
   }
   // BONUS: a d20 mesh takes the role (Big-number or Power) of the bonus cube with its id this shake
@@ -658,7 +655,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   api.retheme = function () {
     Object.keys(texCache).forEach(function (k) { texCache[k].dispose(); });
     texCache = {};
-    meshes.forEach(buildMats); if (twistMesh) buildMats(twistMesh); // (BONUS: + the Twist die)
+    meshes.forEach(buildMats);
     if (layout) buildTable();
     dirty = true;
   };
@@ -835,12 +832,12 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     ensureCubes(); if (!world) buildWorld();
     meshes.forEach(function (m) { m.visible = false; m.userData.tpos = null; m.userData.zone = null; m.userData.lock.visible = false; tint(m, 0xffffff, 0); });
     cubes.forEach(function (c) { d20Role(meshes[c.id], c.color); }); // BONUS: the bonus cubes' roles this shake
-    if (twistMesh) { twistMesh.visible = false; twistMesh.userData.tpos = null; } twistFaceK = null; twistOn = twistNext; twistNext = false;
+    twistPour(); // BONUS: the Twist deck for this shake (its drawn card goes back on the deck)
     anims = []; parenSprites.forEach(function (sp) { sp.visible = false; });
     Object.keys(zonePlanes).forEach(function (z) { setGlow(z, 0, true); });
     var W = layout.W, D = layout.D, side = layoutName === 'tall';
     var ids = cubes.map(function (c) { return c.id; }).filter(function (i) { return !!meshes[i]; }); // (BONUS: the cubes in play, not every mesh)
-    pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(ids), n: ids.length, tw: null, done: done, settledAt: 0, sim: 0,
+    pour = { t0: performance.now(), bodies: [], spawned: 0, order: shuffle(ids), n: ids.length, done: done, settledAt: 0, sim: 0,
       from: new THREE.Vector3(W / 2 + 5, 8, side ? -3 : -1.5), at: new THREE.Vector3(W / 2 - (side ? 1.5 : 2.6), 6.2, side ? -3 : -1.5) };
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0);
     Snd.cupRattle();
@@ -849,7 +846,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     startLoop();
   };
   function spawnDie(i) {
-    var m = i === 'twist' ? twistMesh : meshes[i], mouth = new THREE.Vector3(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
+    var m = meshes[i], mouth = new THREE.Vector3(0, 1.5, 0).applyMatrix4(cup.matrixWorld);
     var b = new CANNON.Body({ mass: 1, material: world.diceMat }); b.addShape(isD20(m) ? d20Shape(1) : new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))); // (BONUS: an icosahedron)
     b.position.set(mouth.x + (Math.random() - 0.5) * 0.9, Math.max(1.2, mouth.y + (Math.random() - 0.5) * 0.6), mouth.z + (Math.random() - 0.5) * 1.2);
     // never outside the rim (the walls only keep in what starts inside)
@@ -866,18 +863,16 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       if (v > 4 && b.position.y < 1.2 && !document.hidden) spawnPuff(b.position.x, b.position.z, 0.8, Math.min(1, v / 12));
       if (v > 6.5 && e.body && e.body.material === world.diceMat && n - lastSpark > 45) { lastSpark = n; var c = e.contact; spawnSparks(c.bi.position.x + c.ri.x, c.bi.position.y + c.ri.y, c.bi.position.z + c.ri.z, Math.min(1, v / 12)); }
     });
-    world.addBody(b); if (i === 'twist') pour.tw = b; else pour.bodies[i] = b; m.visible = true; m.scale.setScalar(1);
+    world.addBody(b); pour.bodies[i] = b; m.visible = true; m.scale.setScalar(1);
   }
-  // BONUS: every body in the pour, the Twist die's too
-  function pourBodies() { var all = pour.bodies.filter(function (b) { return !!b; }); if (pour.tw) all.push(pour.tw); return all; }
-  function meshOfBody(b) { if (pour.tw === b) return twistMesh; var i = pour.bodies.indexOf(b); return meshes[i]; }
+  function pourBodies() { return pour.bodies.filter(function (b) { return !!b; }); }
+  function meshOfBody(b) { return meshes[pour.bodies.indexOf(b)]; }
   function syncBodies() {
     var ip = !!slow;
     pour.bodies.forEach(function (b, i) {
       if (!b) return; var p = ip ? b.interpolatedPosition : b.position, q = ip ? b.interpolatedQuaternion : b.quaternion;
       meshes[i].position.set(p.x, p.y, p.z); meshes[i].quaternion.set(q.x, q.y, q.z, q.w);
     });
-    if (pour.tw && twistMesh) { var tb = pour.tw, tp = ip ? tb.interpolatedPosition : tb.position, tq = ip ? tb.interpolatedQuaternion : tb.quaternion; twistMesh.position.set(tp.x, tp.y, tp.z); twistMesh.quaternion.set(tq.x, tq.y, tq.z, tq.w); } // (BONUS)
   }
   // the face of a cube that points most nearly up (index into FACES / Eq.CUBE_FACES[color]) and how well (1 = flat)
   function upFace(q, m) {
@@ -908,28 +903,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
       return Eq.CUBE_FACES[meshes[i].userData.color][best];
     });
     api._lastPour = { fixed: fixed, raw: raw, W: layout.W, D: layout.D, at: meshes.map(function (m) { return [+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)]; }) }; // checks / debugging
-    if (pour.tw && twistMesh) { // BONUS: the Twist die is read where it landed, then hops onto the rim and stays there (still)
-      var tb = pour.tw, tq = new THREE.Quaternion(tb.quaternion.x, tb.quaternion.y, tb.quaternion.z, tb.quaternion.w);
-      twistFaceK = upFace(tq, twistMesh).k; world.removeBody(tb);
-      twistMesh.position.set(tb.position.x, tb.position.y, tb.position.z); twistMesh.quaternion.copy(tq);
-      settleInside(twistMesh, tq, twistFaceK);
-      twistToRim(twistFaceK, null);
-    }
     cup.visible = false; slow = null;
     var done = pour.done; pour = null; dirty = true;
     done(results);
   }
-  // BONUS: where the Twist die rests: on the right-hand rim, near the far end, a little smaller than in play
-  function twistRim() { return layout ? { x: layout.W / 2 + 0.3, y: 0.65 + D20IN * 0.6, z: -layout.D / 2 + 1.3, s: 0.6 } : null; }
-  function twistToRim(k, cb) {
-    var r = twistRim(); if (!r || !twistMesh) { if (cb) cb(); return; }
-    var q = new THREE.Quaternion().setFromAxisAngle(YAXIS, -0.35).multiply(restQ(twistMesh, k));
-    tweenTo(twistMesh, new THREE.Vector3(r.x, r.y, r.z), q, r.s, { dur: 900, arc: 1.6, quiet: true });
-    setTimeout(function () { try { if (Snd.thunk) Snd.thunk(); } catch (e) {} if (cb) cb(); }, 920);
-  }
   function finishPourFast() {
     cup.updateMatrixWorld(); cup.position.copy(pour.at); cup.rotation.z = 2.0; cup.updateMatrixWorld();
-    pour.order.forEach(spawnDie); if (twistOn && twistMesh) spawnDie('twist'); // (BONUS)
+    pour.order.forEach(spawnDie);
     for (var k = 0; k < 600; k++) world.step(1 / 60);
     syncBodies(); finishPour();
   }
@@ -943,7 +923,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     if (t > 1.45) cup.position.lerpVectors(pour.at, pour.from, e((t - 1.45) / 0.6));
     if (t > 2.1) cup.visible = false;
     cup.updateMatrixWorld();
-    if (t > 0.72) { var want = Math.min(pour.n, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); if (pour.spawned === pour.n && twistOn && twistMesh && !pour.tw) spawnDie('twist'); } // (BONUS: pour.n cubes, then the Twist die)
+    if (t > 0.72) { var want = Math.min(pour.n, Math.floor((t - 0.72) * 55) + 1); while (pour.spawned < want) spawnDie(pour.order[pour.spawned++]); } // (BONUS: pour.n = the cubes in play)
     if (pour.spawned) {
       var ts = slowScale(now); world.step(1 / 60, dt * ts, 5); pour.sim += dt * ts; syncBodies();
       if (!pour.slowDone && pour.spawned === pour.n && !pour.settledAt && !document.hidden && qual >= 1) {
@@ -1355,17 +1335,153 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
   };
   api.isPouring = function () { return !!pour; };
-  // ---- BONUS: the Twist die (js/bonus.js). twistDie(on): roll it with the next pour (off: hidden). twistFace(): the face it
-  // landed on (0-19, or null). twistShow(k, done): it hops and lands on face k (a re-roll), then done(). ----
-  api.twistDie = function (on) { twistNext = !!on; if (!on && twistMesh) { twistOn = false; twistMesh.visible = false; twistFaceK = null; dirty = true; } };
-  api.twistFace = function () { return twistOn && twistMesh && twistMesh.visible ? twistFaceK : null; };
-  api.twistShow = function (k, done) {
-    var fin = function () { if (done) done(); };
-    if (!twistMesh || !twistMesh.visible || !layout || document.hidden) { twistFaceK = k; fin(); return; }
-    twistFaceK = k; var r = twistRim(); try { if (Snd.clatter) Snd.clatter(); } catch (e) {}
-    tweenTo(twistMesh, new THREE.Vector3(r.x, r.y, r.z), new THREE.Quaternion().setFromAxisAngle(YAXIS, -0.35 + 2.5).multiply(restQ(twistMesh, k)), r.s, { dur: 800, arc: 2.2, quiet: true });
-    dirty = true; startLoop(); setTimeout(function () { try { if (Snd.thunk) Snd.thunk(); } catch (e) {} fin(); }, 820);
+  // ---- BONUS: the Twist deck (house rule, js/bonus.js). A deck of teal cards on a small stand just outside the right-hand
+  // rim, near the player's end: clear of the felt (no cube lands on it), the zones, the cup's path, the creature behind the
+  // far side and the kid at the near centre. On top: the deck (near) and a marked spot for the drawn card (far).
+  // twistDeck(on): show / hide it; the next pour keeps it only if asked (a pour nobody asked about, like online play's,
+  // hides it), and puts last shake's card back on the deck. twistDraw(info, reveal): the top card lifts and flips, glides
+  // up in front of the camera so its face can be read, then settles face up on its spot (about 1.9 s, once; a tap skips
+  // to the end). reveal() runs once, as the face turns to the camera (at once without a picture). At rest nothing moves.
+  // info = Bonus.cardInfo(): { icon, name, line, card } (card: a variation card). ----
+  var TW = { on: false, next: false, g: null, top: null, front: null, frontTex: null, anim: null, lay: '' }, CW = 0.95, CH = 1.33, TWH = 0.55;
+  var twV = new THREE.Vector3(), twQ = new THREE.Quaternion(), twFwd = new THREE.Vector3();
+  var TWQDOWN = new THREE.Quaternion().setFromAxisAngle(YAXIS, Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+  var TWQUP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), TWFLIP = new THREE.Vector3(0, 0, 1);
+  function twCanvas(w, h) { var cv = document.createElement('canvas'); cv.width = w; cv.height = h; return cv; }
+  function twTex(cv) { var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; }
+  function twWrap(g, text, maxW) { var out = [], line = ''; String(text).split(' ').forEach(function (w) { var t = line ? line + ' ' + w : w; if (line && g.measureText(t).width > maxW) { out.push(line); line = w; } else line = t; }); if (line) out.push(line); return out; }
+  var TWFONT = '"Trebuchet MS", "Segoe UI", sans-serif', TWEMO = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+  // the back of every card: teal, a woven diamond pattern, a gold frame, a swirl and TWIST (640 x 896, rounded corners)
+  function twBackTex() {
+    var cv = twCanvas(640, 896), g = cv.getContext('2d');
+    rr(g, 0, 0, 640, 896, 56); g.save(); g.clip();
+    var bg = g.createLinearGradient(0, 0, 640, 896); bg.addColorStop(0, '#20c997'); bg.addColorStop(0.55, '#0c8599'); bg.addColorStop(1, '#0b5563'); g.fillStyle = bg; g.fillRect(0, 0, 640, 896);
+    g.strokeStyle = 'rgba(255,255,255,.13)'; g.lineWidth = 6;
+    for (var i = -896; i < 896 + 640; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 896, 896); g.stroke(); g.beginPath(); g.moveTo(i, 896); g.lineTo(i + 896, 0); g.stroke(); }
+    g.restore();
+    g.strokeStyle = '#fff'; g.lineWidth = 14; rr(g, 26, 26, 588, 844, 38); g.stroke();
+    g.strokeStyle = '#fcc419'; g.lineWidth = 7; rr(g, 46, 46, 548, 804, 28); g.stroke();
+    // the swirl: one spiral line, gold on a dark disc
+    g.fillStyle = 'rgba(8,50,60,.55)'; g.beginPath(); g.arc(320, 400, 190, 0, 6.283); g.fill();
+    g.strokeStyle = '#ffe066'; g.lineWidth = 16; g.lineCap = 'round'; g.beginPath();
+    for (var a = 0; a <= 4.2 * Math.PI; a += 0.08) { var r = 12 + a * 12.5, x = 320 + Math.cos(a) * r, y = 400 + Math.sin(a) * r; if (a === 0) g.moveTo(x, y); else g.lineTo(x, y); }
+    g.stroke();
+    g.font = '900 120px ' + TWFONT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 18; g.strokeStyle = '#0b4a55'; g.strokeText('TWIST', 320, 700); g.fillStyle = '#fff'; g.fillText('TWIST', 320, 700);
+    return twTex(cv);
+  }
+  // the face of one card: a big icon, the name, one short line (a variation card or a bonus twist, marked at the bottom)
+  function twFrontTex(info) {
+    var cv = twCanvas(640, 896), g = cv.getContext('2d'), gold = !info.card;
+    rr(g, 0, 0, 640, 896, 56); g.fillStyle = '#fffaf0'; g.fill();
+    g.strokeStyle = '#0c8599'; g.lineWidth = 22; rr(g, 22, 22, 596, 852, 40); g.stroke();
+    g.fillStyle = '#0c8599'; rr(g, 22, 22, 596, 96, 40); g.fill(); g.fillRect(22, 80, 596, 38);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.font = '900 50px ' + TWFONT; g.fillText('TWIST', 320, 72);
+    var halo = g.createRadialGradient(320, 300, 20, 320, 300, 170); halo.addColorStop(0, gold ? 'rgba(255,212,59,.55)' : 'rgba(99,230,190,.5)'); halo.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = halo; g.fillRect(120, 120, 400, 360);
+    g.font = '200px ' + TWEMO; g.fillStyle = '#1d2340'; g.fillText(info.icon || '🌀', 320, 305);
+    g.font = '900 68px ' + TWFONT; var nl = twWrap(g, info.name, 540); if (nl.length > 2) { g.font = '900 54px ' + TWFONT; nl = twWrap(g, info.name, 540); }
+    var y = 520 - (nl.length - 1) * 36; g.fillStyle = '#1d2340';
+    nl.forEach(function (l) { g.fillText(l, 320, y); y += 72; });
+    g.font = '700 44px ' + TWFONT; g.fillStyle = '#343a40'; y += 4;
+    twWrap(g, info.line || '', 530).slice(0, 3).forEach(function (l) { g.fillText(l, 320, y); y += 54; });
+    g.fillStyle = gold ? '#fcc419' : '#c3fae8'; rr(g, 150, 776, 340, 56, 28); g.fill();
+    g.fillStyle = gold ? '#5c3c00' : '#0b7285'; g.font = '900 32px ' + TWFONT; g.fillText(gold ? 'BONUS TWIST' : 'VARIATION CARD', 320, 805);
+    return twTex(cv);
+  }
+  function twPlateTex() { // the stand's top: dark teal felt, a gold frame, the deck's place and the card's dashed spot
+    var cv = twCanvas(300, 740), g = cv.getContext('2d');
+    g.fillStyle = '#0b4f5a'; g.fillRect(0, 0, 300, 740);
+    g.strokeStyle = '#fcc419'; g.lineWidth = 8; rr(g, 10, 10, 280, 720, 26); g.stroke();
+    g.setLineDash([16, 12]); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 6; rr(g, 52, 70, 196, 272, 22); g.stroke(); g.setLineDash([]);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(255,255,255,.75)'; g.font = '900 120px ' + TWFONT; g.fillText('?', 150, 210);
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 4; rr(g, 52, 398, 196, 272, 22); g.stroke();
+    return twTex(cv);
+  }
+  function twSignTex() { // the stand's front: TWIST
+    var cv = twCanvas(600, 220), g = cv.getContext('2d');
+    var bg = g.createLinearGradient(0, 0, 0, 220); bg.addColorStop(0, '#12b886'); bg.addColorStop(1, '#0b7285'); g.fillStyle = bg; g.fillRect(0, 0, 600, 220);
+    g.strokeStyle = '#fcc419'; g.lineWidth = 10; g.strokeRect(5, 5, 590, 210);
+    g.font = '900 150px ' + TWFONT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 16; g.strokeStyle = '#08414a'; g.strokeText('TWIST', 300, 118); g.fillStyle = '#fff'; g.fillText('TWIST', 300, 118);
+    return twTex(cv);
+  }
+  function twShape() { var s = new THREE.Shape(); rrp(s, -CW / 2, -CH / 2, CW, CH, 0.08); return s; }
+  function twFace(mat) { // a flat rounded card face whose UVs cover the whole texture
+    var geo = new THREE.ShapeGeometry(twShape(), 4), p = geo.attributes.position, uv = geo.attributes.uv;
+    for (var i = 0; i < p.count; i++) uv.setXY(i, (p.getX(i) + CW / 2) / CW, (p.getY(i) + CH / 2) / CH);
+    return new THREE.Mesh(geo, mat);
+  }
+  function twLit(map, k) { return new THREE.MeshStandardMaterial({ map: map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: k, roughness: 0.55, transparent: false }); }
+  function twBuild() {
+    if (TW.g) return;
+    var g = new THREE.Group(), backTex = twBackTex(), backMat = twLit(backTex, 0.18), edgeMat = new THREE.MeshStandardMaterial({ color: 0xf8f9fa, roughness: 0.6 });
+    var lacq = new THREE.MeshPhysicalMaterial({ color: 0x0b7285, roughness: 0.35, clearcoat: 0.6 }), goldM = new THREE.MeshPhysicalMaterial({ color: 0xfcc419, metalness: 0.8, roughness: 0.3 });
+    var block = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 3.7), lacq); block.position.y = TWH - 0.25; block.castShadow = true; block.receiveShadow = true; g.add(block);
+    var plate = new THREE.Mesh(new THREE.PlaneGeometry(1.46, 3.66), new THREE.MeshStandardMaterial({ map: twPlateTex(), roughness: 0.9 })); plate.rotation.x = -Math.PI / 2; plate.position.y = TWH + 0.002; plate.receiveShadow = true; g.add(plate);
+    var sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.46), new THREE.MeshStandardMaterial({ map: twSignTex(), emissiveMap: null, roughness: 0.5 })); sign.position.set(0, TWH - 0.25, 1.852); g.add(sign);
+    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, TWH - 0.5 - FLOOR_Y, 16), lacq); stem.position.y = (TWH - 0.5 + FLOOR_Y) / 2; stem.castShadow = true; g.add(stem);
+    var foot = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.16, 24), goldM); foot.position.y = FLOOR_Y + 0.08; g.add(foot);
+    // the deck: a stack of card edges, the back of the next card on top, and the top card (the one that is drawn)
+    var slab = new THREE.ExtrudeGeometry(twShape(), { depth: 0.022, bevelEnabled: false, curveSegments: 4 });
+    for (var i = 0; i < 6; i++) { var c = new THREE.Mesh(slab, i % 2 ? edgeMat : new THREE.MeshStandardMaterial({ color: 0xdee2e6, roughness: 0.6 })); c.rotation.x = -Math.PI / 2; c.position.set(0, TWH + 0.003 + i * 0.024, 0.85); c.castShadow = true; g.add(c); }
+    var under = twFace(backMat); under.rotation.x = -Math.PI / 2; under.position.set(0, TWH + 0.15, 0.85); g.add(under);
+    var top = new THREE.Group(), edge = new THREE.Mesh(new THREE.ExtrudeGeometry(twShape(), { depth: 0.014, bevelEnabled: false, curveSegments: 4 }), edgeMat); edge.position.z = -0.007; top.add(edge);
+    var back = twFace(backMat); back.rotation.y = Math.PI; back.position.z = -0.009; top.add(back);
+    TW.front = twFace(twLit(null, 0.32)); TW.front.position.z = 0.009; top.add(TW.front);
+    top.traverse(function (o) { o.castShadow = true; });
+    g.add(top); TW.top = top; TW.g = g; g.visible = false; scene.add(g);
+  }
+  function twBase() { return new THREE.Vector3(layout.W / 2 + 1.75, 0, layout.D / 2 - 2.2); }
+  function twDeckPose(p, q) { p.set(0, TWH + 0.168, 0.85); q.copy(TWQDOWN); }
+  function twRestPose(p, q) { p.set(0, TWH + 0.012, -0.85); q.copy(twQ.setFromAxisAngle(YAXIS, 0.06)).multiply(TWQUP); }
+  function twPlace() { if (!TW.g || !layout) return; TW.g.position.copy(twBase()); TW.g.updateMatrixWorld(true); TW.lay = layoutName; dirty = true; }
+  function twToDeck() { if (!TW.top) return; TW.anim = null; twDeckPose(TW.top.position, TW.top.quaternion); dirty = true; }
+  function twToRest() { if (!TW.top) return; twRestPose(TW.top.position, TW.top.quaternion); dirty = true; }
+  function twShow(on) { if (on) twBuild(); if (TW.g) { TW.g.visible = !!on; twPlace(); } }
+  function twistPour() { TW.on = TW.next; TW.next = false; twShow(TW.on); twToDeck(); }
+  // one clean motion: lift + flip (0-0.35 s), glide up to the camera (to 0.85 s), hold (to 1.45 s), settle (to 1.9 s)
+  var TWT = [0.35, 0.85, 1.45, 1.9];
+  function twFinish() { var a = TW.anim; if (!a) return; TW.anim = null; twToRest(); if (a.reveal) { var r = a.reveal; a.reveal = null; r(); } try { if (Snd.thunk) Snd.thunk(); } catch (e) {} }
+  function twShowPose(p, q) { // in front of the camera as it is now, facing it, about 45% of the picture's height (local to the stand)
+    var th = 2 * Math.tan(camera.fov * Math.PI / 360), d = Math.max(CH / (0.46 * th), CW / (0.62 * th * camera.aspect), 1.2);
+    camera.getWorldDirection(twFwd); p.copy(camera.position).addScaledVector(twFwd, d); TW.g.worldToLocal(p);
+    q.copy(TW.g.quaternion).invert().multiply(camera.quaternion);
+  }
+  var twA = { p0: new THREE.Vector3(), q0: new THREE.Quaternion(), p1: new THREE.Vector3(), q1: new THREE.Quaternion(), ps: new THREE.Vector3(), qs: new THREE.Quaternion() };
+  function twStep(now) {
+    var a = TW.anim, t = (now - a.t0) / 1000, s = function (x) { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); }, m = TW.top;
+    if (t >= TWT[3]) { twFinish(); return; }
+    twDeckPose(twA.p0, twA.q0); twA.p1.copy(twA.p0); twA.p1.y += 0.9;
+    twA.q1.setFromAxisAngle(TWFLIP, Math.PI).multiply(twA.q0); // turned over about the axis pointing at the player
+    if (t < TWT[0]) { var k = s(t / TWT[0]); m.position.lerpVectors(twA.p0, twA.p1, k); m.quaternion.setFromAxisAngle(TWFLIP, Math.PI * k).multiply(twA.q0); return; }
+    twShowPose(twA.ps, twA.qs);
+    if (t < TWT[1]) { var k2 = s((t - TWT[0]) / (TWT[1] - TWT[0])); m.position.lerpVectors(twA.p1, twA.ps, k2); m.quaternion.copy(twA.q1).slerp(twA.qs, k2); if (k2 > 0.7 && a.reveal) { var r = a.reveal; a.reveal = null; r(); } return; }
+    if (a.reveal) { var r2 = a.reveal; a.reveal = null; r2(); }
+    if (t < TWT[2]) { m.position.copy(twA.ps); m.quaternion.copy(twA.qs); return; }
+    var k3 = s((t - TWT[2]) / (TWT[3] - TWT[2])); twRestPose(twA.p0, twA.q0);
+    m.position.lerpVectors(twA.ps, twA.p0, k3); m.position.y += Math.sin(k3 * Math.PI) * 0.4; m.quaternion.copy(twA.qs).slerp(twA.q0, k3);
+  }
+  hooks.frame.push(function (now) {
+    if (TW.g && TW.g.visible && TW.lay !== layoutName) twPlace();
+    if (TW.anim) { twStep(now); dirty = true; talkUntil = Math.max(talkUntil, now + 40); } // (drawn at full rate, not as a low-rate ambient redraw)
+  });
+  // a tap anywhere on the picture during the draw skips straight to the card lying face up (and is not a tap on the table)
+  renderer.domElement.addEventListener('pointerdown', function (ev) { if (!TW.anim) return; ev.stopImmediatePropagation(); twFinish(); dirty = true; startLoop(); }, true);
+  api.twistDeck = function (on) { TW.next = !!on; if (!on) { TW.on = false; twShow(false); } else { TW.on = true; twShow(true); twToDeck(); } dirty = true; };
+  api.twistDraw = function (info, reveal) {
+    var once = false, fin = function () { if (once) return; once = true; if (typeof reveal === 'function') reveal(); };
+    if (!TW.on || !layout) { fin(); return; }
+    twBuild();
+    if (TW.frontTex) TW.frontTex.dispose();
+    TW.frontTex = twFrontTex(info || {}); TW.front.material.map = TW.frontTex; TW.front.material.emissiveMap = TW.frontTex; TW.front.material.needsUpdate = true;
+    if (!host || document.hidden || current !== 'game') { twToRest(); fin(); return; }
+    twToDeck(); TW.anim = { t0: performance.now(), reveal: fin };
+    try { if (Snd.pickup) Snd.pickup(); } catch (e) {}
+    dirty = true; startLoop();
   };
+  api.twistDrawing = function () { return !!TW.anim; };
+  api._twistFace = function (info) { return twFrontTex(info).image; }; // test hook: one card face as a canvas
   // Text for the stadium scoreboard (e.g. 'GOAL 24'); a no-op in the other themes. Remembered across theme changes.
   api.setBoard = function (text) {
     boardText = text == null ? '' : String(text);

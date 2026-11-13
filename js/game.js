@@ -208,7 +208,7 @@ function speechHTML() {
 }
 
 function startGoalPhase() {
-  if (window.Bonus && Bonus.beforeGoal(startGoalPhase)) return; // BONUS: a newly earned die is celebrated, the Twist die is read (it may pick this shake's card)
+  if (window.Bonus && Bonus.beforeGoal(startGoalPhase)) return; // BONUS: a newly earned die is celebrated, the Twist card is drawn (it may pick this shake's card)
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
   if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); setTimeout(aiSetGoal, 1100); }
@@ -429,7 +429,7 @@ ACT.callImp = function (el) {
 };
 ACT.hint = function () {
   if (!humanTurn()) return;
-  G.hintUsed = !(window.Bonus && Bonus.freeHint()); // BONUS: the Twist die's Free hint
+  G.hintUsed = !(window.Bonus && Bonus.freeHint()); // BONUS: the Twist card Free hint
   var st = snapshot(), strong = { fractions: G.fractions, maxDigits: 5, timeMs: 500 };
   if (!nowCheck()) {
     var r = Eq.solve(Object.assign({ goal: G.goal, req: st.req, opt: st.perm, res: st.res, mode: 'now' }, strong));
@@ -636,7 +636,7 @@ function solHTML(i, s) {
 }
 function endShake(r) {
   G.phase = 'over'; G.busy = false; G.carrying = false;
-  if (window.Bonus) Bonus.adjust(r); // BONUS: Twist die scoring (Golden Goal doubles, Bonus +2); never takes points away
+  if (window.Bonus) Bonus.adjust(r); // BONUS: Twist card scoring (Golden Goal doubles, Bonus +2); never takes points away
   Snd.setMood('play');
   idxs().forEach(function (i) { var v = r.pts[i] || 0; G.players[i].score += v; G.players[i].list.push(v); });
   var best = Math.max.apply(null, G.players.map(function (p) { return p.score; }));
