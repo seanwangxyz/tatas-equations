@@ -64,6 +64,7 @@ var T3 = window.T3;
   var saved = null, dirty = true, stats = { renders: 0, builds: 0, disposes: 0, buildMs: 0, lastRender: 0, slowFrames: 0, frames: 0 };
   var camState = { yaw: 0, pitch: PITCH, dist: 1, lift: 0 }, fit = null, sizeKey = '', bubbleKey = '';
   var shownSplash = false, lastFrameT = 0, frameGaps = [];
+  var bday = { own: false, abort: null, taps: [] };   // BIRTHDAY: the easter egg (js/three/birthday.js) owns the scene while bday.own
 
   // ---------------------------------------------------------------- the cubes' faces (one atlas for every cube)
   var CUBECOL = { red: ['#ff6b6b', '#c92a2a'], blue: ['#4dabf7', '#1864ab'], green: ['#51cf66', '#2b8a3e'], black: ['#6c7078', '#16171a'] };
@@ -701,6 +702,7 @@ var T3 = window.T3;
   function kick() { if (running && !raf) raf = requestAnimationFrame(frame); }
   function frame(now) {
     raf = 0; if (!running || !B) return;
+    if (bday.own) return;                    // BIRTHDAY: the birthday show draws this scene itself while it plays
     now = now || performance.now();
     var dt = Math.min(0.05, (now - (lastFrameT || now)) / 1000); lastFrameT = now;
     var busy = false, t = intro ? (now - intro.t0) / 1000 : 99, kind = intro ? intro.kind : 'none';
@@ -873,6 +875,7 @@ var T3 = window.T3;
     kick();
   }
   function stop() {
+    if (bday.own && bday.abort) { try { bday.abort(); } catch (e) { bday.own = false; } }   // BIRTHDAY: leaving the title ends the show at once
     running = false; mode = 'off';
     if (raf) cancelAnimationFrame(raf); raf = 0; clearTimeout(wakeT); wakeT = 0;
     if (sfx()) sfx().stopAll();
@@ -934,6 +937,65 @@ var T3 = window.T3;
   // any tap skips the opening (the tap still does what it was for: the menu works at once)
   document.addEventListener('pointerdown', function () { if (running && intro && !intro.skipped && intro.kind !== 'none' && mode === 'title') skip(); }, true);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && running) { sizeKey = ''; dirty = true; kick(); } });
+
+  // ---------------------------------------------------------------- BIRTHDAY: the easter egg (js/three/birthday.js)
+  // Five quick taps (within 2.5 s) on the "T" of EQUATIONS start the birthday show; TataBirthday.play() replays it.
+  // Only taps that reach the scene count (not the menu panel or any button). The show module is loaded on demand.
+  function bdayTapOnT(e) {
+    if (!B || !running || (mode !== 'title' && mode !== 'splash')) return false;
+    var t = null; B.cubes.forEach(function (c) { if (!c.d.loose && c.d.row === 0 && c.d.ch === 'T') t = c; });
+    if (!t || !host) return false;
+    var r = host.getBoundingClientRect(), W = r.width || innerWidth, H = r.height || innerHeight;
+    t.m.getWorldPosition(_p); _p.project(B.camera); var cx = (_p.x + 1) / 2 * W + r.left, cy = (1 - _p.y) / 2 * H + r.top;
+    t.m.getWorldPosition(_p); _p.x += C * 0.5 * 1.4; _p.project(B.camera); var rad = Math.abs((_p.x + 1) / 2 * W + r.left - cx);
+    var dx = e.clientX - cx, dy = e.clientY - cy;
+    return dx * dx + dy * dy <= rad * rad;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (bday.own || !running) return;
+    var tg = e.target; if (tg && tg.closest && tg.closest('button, a, input, select, textarea, label, .t-panel, .mm, .tapgo, [role="button"]')) return;
+    if (!bdayTapOnT(e)) { bday.taps = []; return; }
+    var now = performance.now(); bday.taps = bday.taps.filter(function (x) { return now - x < 2500; }); bday.taps.push(now);
+    if (bday.taps.length >= 5) { bday.taps = []; bdayPlay(); }
+  }, true);
+  function bdayLoad() { return import('./birthday.js'); }
+  function bdayPlay() {
+    if (bday.own || !running || !B || (mode !== 'title' && mode !== 'splash')) return Promise.resolve(false);
+    return bdayLoad().then(function (m) { return m.play(bdayHooks()); }, function (e) { console.warn('birthday', e); return false; });
+  }
+  function bdayHooks() {
+    return {
+      THREE: THREE, B: B, renderer: renderer, host: host, mode: mode, FY: FY, C: C, STEP: STEP, TOPY: TOPY, STAGE: STAGE, KID_H: KID_H,
+      cubeGeometry: cubeGeometry, buildAtlas: buildAtlas, neutralP: neutralP, fxOn: fxOn, calm: calmA11y, qLevel: qLevel, sfx: sfx, save: save,
+      startConfetti: function () { startConfetti(); }, stepConfetti: function (now, dt) { return stepConfetti(now, dt); },
+      // take the scene: the opening (if any) jumps to its end, the title's figures hide, the title stops drawing
+      take: function (abort) {
+        if (!B || bday.own) return false;
+        if (intro) { var ik = intro.kind; intro.skipped = true; if (sfx()) sfx().cancel(); endIntroQuiet(); rest = true; try { if (typeof API.onIntroEnd === 'function') API.onIntroEnd(ik); } catch (e) {} }
+        B.splashPush = null; B.confP = null; B.conf.visible = false; try { B.venue.dispose(); } catch (e) {}
+        bday.own = true; bday.abort = abort || null; bday.mode = mode;
+        if (raf) cancelAnimationFrame(raf); raf = 0; clearTimeout(wakeT); wakeT = 0;
+        bday.vis = { kid: B.kid.model.root.visible, actors: B.actors.map(function (a) { return a.actor.root.visible; }) };
+        B.kid.model.root.visible = false; B.actors.forEach(function (a) { a.actor.root.visible = false; });
+        return true;
+      },
+      // give it back exactly as it was: figures, camera fit, a fresh picture, then still again
+      give: function () {
+        if (!bday.own) return;
+        bday.own = false; bday.abort = null;
+        if (!B) return;
+        var v = bday.vis || { kid: true, actors: [] };
+        B.kid.model.root.visible = v.kid; B.actors.forEach(function (a, i) { a.actor.root.visible = v.actors[i] !== false; a.hop = null; a.wave = null; a.armUp = 0; applyActor(a, performance.now()); });
+        kidPose(B.kid, 'rest', 1, performance.now());
+        try { B.venue.dispose(); } catch (e) {}   // the crowd straight back at rest
+        B.confP = null; B.conf.visible = false; for (var i = 0; i < B.conf.count; i++) B.conf.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); B.conf.instanceMatrix.needsUpdate = true;
+        camState = bday.mode === 'splash' ? { yaw: -4, pitch: -17, dist: 1.3, lift: 0 } : { yaw: 0, pitch: PITCH, dist: 1, lift: 0 };
+        renderer.toneMappingExposure = bday.mode === 'splash' ? 0.78 : 1.0;
+        sizeKey = ''; dirty = true; lastFrameT = 0; if (running) kick();
+      }
+    };
+  }
+  window.TataBirthday = { play: function () { return bdayPlay(); }, active: function () { return bday.own; } };
 
   var API = {
     ok: ok, show: show, screen: screen, skip: skip,
