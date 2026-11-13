@@ -25,6 +25,11 @@
 .bonus-chip b{display:block;font-size:15px;line-height:1.1}
 .bonus-chip.dealt{animation:variDeal .55s cubic-bezier(.2,1.2,.4,1) both}
 @media (prefers-reduced-motion:reduce){.bonus-chip.dealt{animation:none}}
+/* 3D without the side column: below the Goal bar (and below the variation chip) once a Goal is set */
+@media not all and (min-width:1000px) and (min-aspect-ratio:5/4){
+  #game.three.has-goal .bonus-chip{top:max(120px,calc(var(--sat) + 116px))}
+  #game.three.has-goal .bonus-chip.below{top:max(184px,calc(var(--sat) + 180px))}
+}
 #game:not(.three) .bonus-chip{position:static;order:-1;align-self:flex-start;margin:0}
 /* flat mat: a small deck, and the drawn card next to it. The card flips from its back to its face ONCE (.flip), then
    stays face up; without .flip it is simply face up (a re-draw of the chip never flips it again). */

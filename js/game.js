@@ -309,7 +309,7 @@ function renderGame() {
     return cubeHTML(c, cls);
   }).join('') || '<span class="empty">empty</span>';
   if (!$('#gTop')) el.innerHTML = '<div id="gTop" class="game-top"></div><div id="gGoal"></div><div id="gMat"></div><div id="gAct" class="actionbar"></div>';
-  el.classList.toggle('three', three);
+  el.classList.toggle('three', three); el.classList.toggle('has-goal', !!(three && G.goal)); // (has-goal: the table chips move below the Goal bar on narrow screens)
   $('#gTop').innerHTML = '<button class="btn small ghost" data-act="quitGame" aria-label="Menu">' + ico('back') + '<span class="lbl">Menu</span></button><div class="scores">' + scores + '</div>' +
     '<div class="shake-no">' + (G.mode === 'tutorial' ? '<b>Practice</b>' : '<small>Shake</small><b>' + G.shake + '/' + G.shakes + '</b>') + '</div>' + (G.tour && window.Tourney ? Tourney.topHTML() : ''); // (TOURNEY: division, penalties, practice clock)
   if (three) {
