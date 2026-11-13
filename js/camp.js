@@ -163,6 +163,7 @@ function renderDrill() {
     '<div class="row" style="margin-top:14px">' + btns + '</div>';
 }
 function campDone(ok, title, bodyHTML) {
+  if (window.Parent && CAMP && CAMP.drill !== 'make' && CAMP.drill !== 'bonus') Parent.note('drill', { id: CAMP.drill, ok: ok }); // PARENT page (make/bonus come through recordSolution)
   var note = campResult(CAMP.drill, ok), id = CAMP.drill;
   if (ok) { Snd.chime(); FX.confetti(50); } else Snd.boop();
   checkBadges({ type: 'camp' });

@@ -272,6 +272,7 @@ function gotoTitle() {
     '<div class="t-panel">' +
     '<div class="mm-me"><div class="playercard"><span class="jersey">' + esc(S.jersey || '7') + '</span><div class="pc-main"><div class="pc-name">' + esc(S.name) + '</div>' + xpBarHTML() + '</div></div>' +
     '<div id="acctSlot" class="mm-acct"></div></div>' + // ACCOUNT: the account chip goes in here (another helper's snippet); while empty it takes no space
+    (window.Account ? '<div class="acct-wrap">' + Account.chipHTML() + '</div>' : '') + // ACCOUNT
     '<div class="stagechip">' + st.icon + ' Playing with: ' + st.name + (ladderOff() || stageIdx() === STAGES.length - 1 ? '' : ' · ' + ico('star') + ' ' + S.ladder.stars + '/' + STAGES[S.ladder.stage].need + ' to unlock the next one') + '</div>' +
     '<nav class="mm" aria-label="Main menu">' +
     '<div class="mm-hero">' +

@@ -189,7 +189,7 @@ function renderStats() {
   var chart = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Correct answers per day"><line x1="24" y1="' + (H - 25) + '" x2="' + (W - 6) + '" y2="' + (H - 25) + '" stroke="#ced4da"/>' + (bars || '<text x="' + W / 2 + '" y="' + H / 2 + '" text-anchor="middle" fill="#868e96">No games yet</text>') + '</svg>';
   function st(v, l) { return '<div class="stat"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>'; }
   var opsLine = Eq.OPS.map(function (o) { return show(o) + ' ' + (S.opsUsed[o] || 0); }).join(' &nbsp; ');
-  $('#stats').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('chart') + ' My Stats</h2></div><div class="panel">' +
+  $('#stats').innerHTML = '<div class="hdr"><button class="btn small" data-act="home">' + ico('back') + ' Back</button><h2>' + ico('chart') + ' My Stats</h2><button class="btn small" data-act="parentOpen" data-arg="stats">For Tata</button></div><div class="panel">' +
     '<div class="better">' + msg + '</div>' +
     '<div class="statgrid">' + st(S.stats.correct, 'Correct Solutions') + st(acc(h) === null ? '–' : acc(h) + '%', 'Accuracy (all time)') + st(S.best.fastMs ? fmtMs(S.best.fastMs) : '–', 'Fastest Solution') +
     st(S.best.hardGoalText || '–', 'Hardest Goal reached') + st(S.best.mostCubes || '–', 'Most cubes in a Solution') + st(S.stats.challengeWins + ' / ' + S.stats.challenges, 'Challenges won') +
@@ -224,11 +224,13 @@ function renderSettings() {
     (T3.supported ? '<div class="setrow"><label>Look around the table<br><small style="font-weight:600">Drag the background with the mouse, or two fingers on a tablet. Pinch or scroll to zoom.</small></label><button class="btn small ' + (S.set.orbit !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="orbit" data-def="1">' + (S.set.orbit !== false ? '✔ On' : 'Off') + '</button></div>' : '') +
     (T3.supported ? '<div class="setrow"><label>3D picture quality<br><small style="font-weight:600">Auto picks what this device can run smoothly.</small></label><div class="seg">' + [['auto', 'Auto'], ['low', 'Fast'], ['high', 'Pretty']].map(function (q) { return '<button class="' + ((S.set.quality || 'auto') === q[0] ? 'on' : '') + '" data-act="setQuality3d" data-arg="' + q[0] + '">' + q[1] + '</button>'; }).join('') + '</div></div>' : '') +
     '<div class="setrow"><label>Watch the intro again</label><button class="btn small" data-act="replayIntro">Play intro</button></div></div>' +
+    (window.Account ? Account.panelHTML() : '') + // ACCOUNT
     '<div class="group"><h3>' + ico('disk') + ' Move progress to another device</h3>' +
     '<p>Copy this code, then paste it into Settings on the other device and tap <b>Load</b>.</p>' +
     '<textarea id="exportBox" readonly>' + exportCode() + '</textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small" data-act="copyCode">Copy code</button></div>' +
     '<textarea id="importBox" placeholder="Paste a TATA-… code here"></textarea><div class="row" style="justify-content:flex-start;margin:6px 0"><button class="btn small blue" data-act="importIt">Load</button></div></div>' +
     '<div class="group"><h3>' + ico('cap') + ' Parent corner</h3>' +
+    '<div class="setrow"><label>For Tata: how he is doing<br><small style="font-weight:600">Skills, where he gets stuck, playing time. Grown-ups only (press and hold).</small></label><button class="btn small blue" data-act="parentOpen" data-arg="settings">Open</button></div>' +
     '<div class="setrow"><label>Operations in play<br><small style="font-weight:600">Tap to switch each one on or off. Locked ones start in Forbidden with a 🔒.</small></label><div class="row" style="gap:6px;justify-content:flex-start">' +
       Eq.OPS.map(function (o) { var on = st.ops.indexOf(o) >= 0; return '<button class="btn small ' + (on ? 'green' : '') + '" data-act="opToggle" data-arg="' + o + '" style="min-width:52px;font-size:20px">' + show(o) + '</button>'; }).join('') +
       '<button class="btn small ' + (st.fractions ? 'green' : '') + '" data-act="opToggle" data-arg="frac">Fractions</button></div></div>' +

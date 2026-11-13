@@ -108,6 +108,7 @@ function startMatch(mode, oppIdx, cfg) {
   else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
   else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
   if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
+  if (window.Parent) Parent.note('matchStart'); // PARENT page
   for (var fa = 0; fa < G.players.length; fa++) if (G.players[fa].ai) { G.act = fa; break; }
   go('game'); Snd.setMood('play');
   var ai = firstAI();
@@ -401,7 +402,7 @@ function setGoal(tokens, val) {
   if (Snd.getMood && Snd.getMood() === 'think') Snd.setMood('play');
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (window.Commentary) Commentary.say('goal', { goal: Eq.fmt(val), by: G.players[G.setter].name, cubes: tokens.filter(function (t) { return typeof t === 'object'; }).length });
-  if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; checkBadges({ type: 'goal' }); }
+  if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; if (window.Parent) Parent.note('goal', { tokens: tokens, value: val }); checkBadges({ type: 'goal' }); }
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
 }
@@ -526,6 +527,7 @@ function resolveChallenge(ok, tokens, chk, tpRes) {
     } else if (ch.mover === 0 && pts[0] === 6 && ch.kind === 'now') addXP(15, 'Clever move: their Now! failed');
     else if (ch.tp === 0 && pts[0] >= 4) addXP(15, 'Smart Third Party play');
   }
+  if (window.Parent && !isAI(0) && G.mode !== 'tutorial') { var pRole = ch.challenger === 0 ? 'caller' : ch.mover === 0 ? 'mover' : 'third'; Parent.note('challenge', { kind: ch.kind, role: pRole, won: pRole === 'caller' ? pts[0] === 6 : (pts[0] || 0) >= 4 }); } // PARENT page
   var sols = {}; sols[ch.kind === 'now' ? ch.challenger : ch.mover] = { ok: ok, tokens: tokens, chk: chk };
   if (tpRes && tpRes.presented) sols[ch.tp] = { ok: tpRes.ok, tokens: tpRes.tokens, chk: tpRes.chk };
   endShake({ pts: pts, lines: lines, sols: sols });
@@ -645,6 +647,7 @@ function endShake(r) {
     S.stats.shakes++;
     if (G.mode === 'pvp' || G.mode === 'p3' || G.mode === 'online') S.stats.pvpShakes++;
     if (G.hintUsed) S.stats.noHint = 0; else S.stats.noHint++;
+    if (window.Parent) Parent.note('shake', { pts: r.pts }); // PARENT page
     checkBadges({ type: 'shake' });
     persist();
   }
@@ -694,6 +697,7 @@ function nextShake() {
 }
 function endMatch() {
   if (window.Commentary) { var cmTop = Math.max.apply(null, G.players.map(function (p) { return p.score; })), cmN = G.players.filter(function (p) { return p.score === cmTop; }).length, cmMe = G.players[0].score === cmTop; Commentary.say('final', { won: cmMe && cmN === 1, tie: cmMe && cmN > 1 }); }
+  if (window.Parent && G.mode !== 'tutorial') Parent.note('match'); // PARENT page (reads G; peeks at Pip's review notes)
   if (G.team) { Team.endMatch(); return; } // team celebration naming both teammates (js/team.js)
   var a = G.players[0].score, html;
   if (G.mode === 'ai') {

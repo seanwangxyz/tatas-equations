@@ -63,6 +63,13 @@ var AccountMerge = (function () {
     return pickNewer(a, b, c);
   }
 
+  // counters and per-day buckets (the parent page): objects merge key by key, numbers keep the highest, anything else the newer
+  function deepMax(a, b, c) {
+    if (!has(a)) return clone(b); if (!has(b)) return clone(a);
+    if (isObj(a) && isObj(b)) return eachKey(a, b, function (x, y) { return deepMax(x, y, c); });
+    if (typeof a === 'number' && typeof b === 'number') return Math.max(a, b);
+    return pickNewer(a, b, c);
+  }
   var STAT_LATEST = { streak: 1, noHint: 1, lastWrong: 1 }; // "right now" values, not totals
   var RULES = {
     v: maxNum,
@@ -173,6 +180,8 @@ var AccountMerge = (function () {
       out.last = pickNewer(a.last, b.last, c) || 'c';
       return out;
     },
+    tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
+    parent: function (a, b, c) { return deepMax(a, b, c); },
     fans: function (a, b) {
       a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
       var k = eachKey(a.k, b.k, function (x, y) {
@@ -195,7 +204,8 @@ var AccountMerge = (function () {
     bonus: 'dice seen: union; earliest start; Tata\'s switches: latest', teamWins: 'highest per creature', tutorialDone: 'done on either', dailyDone: 'union',
     camp: 'per drill: the side that played more; done: highest', wx: 'count: highest; current sky: latest', puz: 'same day: furthest; else the later day',
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
-    fans: 'union (earliest date, places from both)'
+    fans: 'union (earliest date, places from both)',
+    tour: 'tour stops seen on either device', parent: 'each counter and each day: highest'
   };
 
   function newerSide(o) { o = o || {}; return num(o.bAt) > num(o.aAt) ? 'b' : 'a'; }

@@ -179,6 +179,7 @@ ACT.bSubmit = function () { if (typeof playerMood === 'function') playerMood(nul
 // Record a Solution attempt by the device owner: stats, XP, personal bests, badges.
 function recordSolution(chk, ms, tokens, mode, goal, noStar) {
   var ok = !!(chk && chk.ok);
+  if (window.Parent) Parent.note('solution', { chk: chk, ms: ms, tokens: tokens, mode: mode, goal: goal }); // PARENT page
   S.stats.attempts++;
   S.history.push({ t: Date.now(), ok: ok, ms: ms, g: goal ? Eq.fmt(goal) : '', c: chk ? chk.cubes : 0 });
   if (S.history.length > 600) S.history.shift();

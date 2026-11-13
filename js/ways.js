@@ -206,6 +206,7 @@ function waysFreshOp() {
 function waysChecked(tokens) {
   if (!tokens) return; // closed the builder
   var W = WAYS, P = W.P, chk = Eq.checkSolution(tokens, waysCtx(P));
+  if (window.Parent) Parent.note('solution', { chk: chk, ms: 0, tokens: tokens, mode: 'ways', goal: P.goal, fr: P.fractions }); // PARENT page
   if (!chk.ok) {
     waysSnd('boop');
     W.retry = tokens;
