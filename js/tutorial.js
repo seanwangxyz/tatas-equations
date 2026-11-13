@@ -16,6 +16,7 @@ function startTutorial() {
   S.unlockAll = saveUnlock; S.opsManual = saveManual; S.ladder.stage = saveStage;
   say('pip', 'Hi! I\'m Pip! Let\'s play one practice shake together. First the cubes get rolled…', 'cheer');
   setTimeout(function () {
+    if (!TUT) return;   // he left the tutorial before Pip finished the first line
     TUT.step = 1;
     say('pip', 'These cubes are the <b>Resources</b>. 🔒 Locked cubes are operations you\'ll unlock later. You rolled, so YOU set the Goal. Tap <b>Build the Goal</b> and make the Goal <b>7</b>.');
     renderGame();
