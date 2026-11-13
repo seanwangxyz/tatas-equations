@@ -81,11 +81,11 @@ h1,h2,h3{margin:.2em 0;font-family:var(--display);font-weight:400;letter-spacing
 .c-green{background:linear-gradient(145deg,#51cf66,#2b8a3e)}
 .c-black{background:linear-gradient(145deg,#5c5f66,#121316)}
 .c-none{background:linear-gradient(145deg,#adb5bd,#5c636a)}
-.skin-candy .c-red{background:repeating-linear-gradient(45deg,#ff8fab 0 7px,#ffc2d1 7px 14px)}
-.skin-candy .c-blue{background:repeating-linear-gradient(45deg,#74c0fc 0 7px,#c5e6ff 7px 14px)}
-.skin-candy .c-green{background:repeating-linear-gradient(45deg,#8ce99a 0 7px,#d3f9d8 7px 14px)}
-.skin-candy .c-black{background:repeating-linear-gradient(45deg,#9775fa 0 7px,#d0bfff 7px 14px)}
-.skin-candy .cube{color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.45)}
+.skin-candy .c-red{background:repeating-linear-gradient(45deg,#ffadc2 0 7px,#ffd0dc 7px 14px);color:#6e0f2c}
+.skin-candy .c-blue{background:repeating-linear-gradient(45deg,#a5d6fd 0 7px,#d3ecff 7px 14px);color:#0a3d6b}
+.skin-candy .c-green{background:repeating-linear-gradient(45deg,#b5f1bf 0 7px,#dcfbe1 7px 14px);color:#14532d}
+.skin-candy .c-black{background:repeating-linear-gradient(45deg,#c0aafc 0 7px,#ded2ff 7px 14px);color:#2a1260}
+.skin-candy .cube{text-shadow:0 1px 0 rgba(255,255,255,.7)}
 .skin-lava .cube{background:radial-gradient(circle at 30% 30%,#ffd43b,#f76707 40%,#5c1a00 85%)}
 .skin-lava .c-red{box-shadow:0 0 0 3px #ff6b6b inset,0 4px 10px rgba(255,80,0,.6)}
 .skin-lava .c-blue{box-shadow:0 0 0 3px #4dabf7 inset,0 4px 10px rgba(255,80,0,.6)}

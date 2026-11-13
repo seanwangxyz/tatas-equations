@@ -100,7 +100,7 @@ function install(T3, ctx) {
   registerKinds();
 
   // ---------------- the cards ----------------
-  var CW = 1.3, CH = 1.72, CT = 0.05, MAXC = 16;
+  var CW = 1.3, CH = 1.72, CT = 0.075, MAXC = 16; // (CRAFT: real card stock, a little thicker)
   var cardAtlas = null, cardSig = null;
   function cardAtlasTex() {
     var sig = a11ySig();
@@ -108,9 +108,13 @@ function install(T3, ctx) {
     var cw = 256, ch = 340, cv = document.createElement('canvas'); cv.width = 4 * cw; cv.height = 4 * ch; var g = cv.getContext('2d');
     for (var card = 0; card < 16; card++) {
       g.save(); g.translate((card % 4) * cw, Math.floor(card / 4) * ch);
-      var bg = g.createLinearGradient(0, 0, 0, ch); bg.addColorStop(0, '#fffdf6'); bg.addColorStop(1, '#f1ece0'); g.fillStyle = bg; g.fillRect(0, 0, cw, ch);
-      g.lineWidth = 7; g.strokeStyle = '#d6cfbd'; rr(g, 9, 9, cw - 18, ch - 18, 24); g.stroke();
-      ORDER.forEach(function (c, k) { if (card & (1 << k)) dot(g, cw * (k % 2 ? 0.7 : 0.3), ch * (k < 2 ? 0.31 : 0.69), cw * 0.165, c); });
+      // CRAFT: card stock with a faint linen grain, a fine printed frame, and BIG dots in the same 2 x 2 places on every
+      // card (blue top left, red top right, green bottom left, yellow bottom right), so a card reads at a glance
+      var bg = g.createLinearGradient(0, 0, 0, ch); bg.addColorStop(0, '#fffdf7'); bg.addColorStop(1, '#f3eee2'); g.fillStyle = bg; g.fillRect(0, 0, cw, ch);
+      var Rn = card * 977 + 13; for (var ln = 0; ln < ch; ln += 3) { Rn = (Rn * 9301 + 49297) % 233280; g.fillStyle = 'rgba(120,100,60,' + (0.015 + (Rn / 233280) * 0.025) + ')'; g.fillRect(0, ln, cw, 1); }
+      g.lineWidth = 6; g.strokeStyle = '#d9d1bd'; rr(g, 8, 8, cw - 16, ch - 16, 24); g.stroke();
+      g.lineWidth = 2; g.strokeStyle = 'rgba(150,130,90,.35)'; rr(g, 17, 17, cw - 34, ch - 34, 18); g.stroke();
+      ORDER.forEach(function (c, k) { if (card & (1 << k)) dot(g, cw * (k % 2 ? 0.725 : 0.275), ch * (k < 2 ? 0.285 : 0.715), cw * 0.2, c); });
       g.restore();
     }
     if (cardAtlas) cardAtlas.dispose();
@@ -134,7 +138,7 @@ function install(T3, ctx) {
     g.setAttribute('aCell', new THREE.InstancedBufferAttribute(new Float32Array(MAXC * 2), 2));
     return g;
   })();
-  var bodyMat = new THREE.MeshStandardMaterial({ color: 0xf3efe4, roughness: 0.7 });
+  var bodyMat = new THREE.MeshStandardMaterial({ color: 0xe6dfcc, roughness: 0.75 }); // (CRAFT: the edge a shade darker than the face, so the thickness reads)
   var faceMat = new THREE.MeshStandardMaterial({ map: null, roughness: 0.55, metalness: 0 });
   faceMat.onBeforeCompile = function (sh) {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aCell;')
@@ -148,9 +152,23 @@ function install(T3, ctx) {
   })();
   var haloGeo = new THREE.PlaneGeometry(CW * 1.5, CH * 1.42); haloGeo.rotateX(-Math.PI / 2);
   var haloMat = new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
-  var bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, MAXC), faces = new THREE.InstancedMesh(faceGeo, faceMat, MAXC), halos = new THREE.InstancedMesh(haloGeo, haloMat, MAXC);
-  bodies.castShadow = true; bodies.receiveShadow = true; faces.receiveShadow = true; halos.renderOrder = 2;
-  [bodies, faces, halos].forEach(function (m) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(m); });
+  // CRAFT: a soft contact shadow under every card (the low quality tier has no shadow map). It darkens what is under
+  // it (dst x (1 - src)), so each card's shadow can pale on its own as the card lifts (its instance colour drops).
+  var shTex = (function () {
+    var cv = document.createElement('canvas'); cv.width = 128; cv.height = 160; var g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, 128, 160);
+    try { g.filter = 'blur(9px)'; } catch (e) {}
+    g.fillStyle = '#8c8c8c'; rr(g, 24, 24, 80, 112, 12); g.fill();
+    try { g.filter = 'none'; } catch (e) {}
+    var t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  var shGeo = new THREE.PlaneGeometry(CW * 1.5, CH * 1.42); shGeo.rotateX(-Math.PI / 2);
+  var shMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false, fog: false, toneMapped: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.OneMinusSrcColorFactor });
+  var bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, MAXC), faces = new THREE.InstancedMesh(faceGeo, faceMat, MAXC), halos = new THREE.InstancedMesh(haloGeo, haloMat, MAXC), shades = new THREE.InstancedMesh(shGeo, shMat, MAXC);
+  bodies.castShadow = true; bodies.receiveShadow = true; faces.receiveShadow = true; halos.renderOrder = 2; shades.renderOrder = 1;
+  shades.setColorAt(0, new THREE.Color(1, 1, 1));
+  [bodies, faces, halos, shades].forEach(function (m) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(m); });
   faces.setColorAt(0, new THREE.Color(1, 1, 1));
   // the label above the lifted cards (and next to the Goal at the end of a replay)
   var labelCv = document.createElement('canvas'); labelCv.width = 1024; labelCv.height = 192;
@@ -208,11 +226,15 @@ function install(T3, ctx) {
       P.set(x, y + l * 0.5 * s, z); E.set(0.24 * l, rotY, 0); Q.setFromEuler(E); SC.set(s, s, s);
       M.compose(P, Q, SC); bodies.setMatrixAt(i, M); faces.setMatrixAt(i, M);
       SC.setScalar(Math.max(0.0001, s * l)); P.y = 0.02; E.set(0, 0, 0); Q.setFromEuler(E); M.compose(P, Q, SC); halos.setMatrixAt(i, M);
+      // (CRAFT) the contact shadow: widens a touch and pales as the card lifts; while a card flies in, it grows with it
+      var ds = dl ? s * Math.max(0, Math.min(1, k * 1.25)) : s; SC.setScalar(Math.max(0.0001, ds * (1 + 0.12 * l))); P.y = 0.008; M.compose(P, Q, SC); shades.setMatrixAt(i, M);
+      var shk = 1 - 0.6 * l; C.setRGB(shk, shk, shk); shades.setColorAt(i, C);
       var d = st.dim[i]; C.setRGB(1 - 0.48 * d, 1 - 0.48 * d, 1 - 0.44 * d); faces.setColorAt(i, C);
       cells.setXY(i, (st.uni[i] % 4) * 0.25, 1 - (Math.floor(st.uni[i] / 4) + 1) * 0.25);
     }
-    bodies.count = faces.count = halos.count = n;
-    bodies.instanceMatrix.needsUpdate = faces.instanceMatrix.needsUpdate = halos.instanceMatrix.needsUpdate = true;
+    bodies.count = faces.count = halos.count = shades.count = n;
+    bodies.instanceMatrix.needsUpdate = faces.instanceMatrix.needsUpdate = halos.instanceMatrix.needsUpdate = shades.instanceMatrix.needsUpdate = true;
+    if (shades.instanceColor) shades.instanceColor.needsUpdate = true;
     if (faces.instanceColor) faces.instanceColor.needsUpdate = true;
     cells.needsUpdate = true;
     label.material.opacity = labelK; label.visible = labelK > 0.01;
