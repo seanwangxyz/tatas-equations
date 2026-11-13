@@ -10,7 +10,8 @@
 //   and the matching sound plays. Does nothing when S.set.crowd === false. Never throws.
 var CrowdSfx = (function () {
   var ac = null, own = false, out = null, noise = null, last = -1e9, hooked = false, GAP = 950, dst = null;
-  var KTRIM = { clap: 1.0, ooh: 0.78, gasp: 2.7, cheer: 0.95, aw: 1.28 };
+  // clap re-measured with the settled meter (docs/handoff/music.md): -24.8, target -27
+  var KTRIM = { chant: 0.7, clap: 0.78, ooh: 0.78, gasp: 2.7, cheer: 0.95, aw: 1.28 };
   function setg() { return (typeof S !== 'undefined' && S && S.set) ? S.set : {}; }
   function sharedOK() { return typeof Snd !== 'undefined' && Snd && typeof Snd.bus === 'function' && typeof Snd.context === 'function'; }
   function level() {

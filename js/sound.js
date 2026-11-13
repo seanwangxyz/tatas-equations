@@ -657,9 +657,9 @@ var Snd = (function () {
     if (!sfxOn() || !rl('card.' + kind, 0.06)) return;
     var p = rnd(-0.25, 0.25);
     withTrim('card', function () {
-      if (kind === 'place') { hiss({ dur: 0.07, vol: 0.12, type: 'lowpass', f: 1100, attack: 0.003, pan: p, dest: uiIn }); note({ f: 180, f2: 140, dur: 0.08, vol: 0.06, attack: 0.002, dest: uiIn }); }
-      else if (kind === 'flip') { hiss({ dur: 0.09, vol: 0.09, type: 'bandpass', f: 1400, f2: 2200, q: 0.8, attack: 0.01, pan: p, dest: uiIn }); hiss({ dur: 0.05, vol: 0.08, delay: 0.07, type: 'lowpass', f: 1000, attack: 0.003, pan: p, dest: uiIn }); }
-      else { hiss({ dur: 0.16, vol: 0.07, type: 'bandpass', f: 700, f2: 1500, q: 0.9, attack: 0.04, pan: p, dest: uiIn, pink: true }); note({ f: mtof(76), f2: mtof(79), glide: 0.1, dur: 0.18, vol: 0.025, delay: 0.03, attack: 0.01, dest: uiIn }); }
+      if (kind === 'place') { hiss({ dur: 0.07, vol: 0.06, type: 'lowpass', f: 1100, attack: 0.003, pan: p }); note({ f: 180, f2: 140, dur: 0.08, vol: 0.03, attack: 0.002 }); }
+      else if (kind === 'flip') { hiss({ dur: 0.09, vol: 0.09, type: 'bandpass', f: 1400, f2: 2200, q: 0.8, attack: 0.01, pan: p }); hiss({ dur: 0.05, vol: 0.08, delay: 0.07, type: 'lowpass', f: 1000, attack: 0.003, pan: p }); }
+      else { hiss({ dur: 0.16, vol: 0.07, type: 'bandpass', f: 700, f2: 1500, q: 0.9, attack: 0.04, pan: p, pink: true }); note({ f: mtof(76), f2: mtof(79), glide: 0.1, dur: 0.18, vol: 0.025, delay: 0.03, attack: 0.01 }); }
     });
   }
   // A correct Solution reads itself out: one rising note per cube (its value sets the step), ending on the Goal note.
@@ -727,11 +727,14 @@ var Snd = (function () {
     withTrim('slam', slamBody);
   }
   // Level trims, from the offline loudness audit (docs/handoff/sound.md): each sound is pulled to its category target.
-  var TRIM = { slam: 0.35, fanfare: 0.39, chime: 0.41, boop: 0.76,
-    dice: 0.5, click: 2.2, pop: 0.87, pickup: 0.48, thunk: 0.5, cupRattle: 0.6, whistle: 0.62, roar: 0.54,
+  // music round (docs/handoff/music.md): click, pop, thunk and boop re-trimmed after measuring with the settled meter
+  // (preroll): they really played at -20 LUFS with peaks near -3 dBFS (click 2.2 -> 0.31, pop 0.87 -> 0.19,
+  // thunk 0.5 -> 0.2, boop 0.76 -> 0.54, emote 1.6 -> 0.64).
+  var TRIM = { slam: 0.35, fanfare: 0.39, chime: 0.41, boop: 0.54,
+    dice: 0.5, click: 0.31, pop: 0.19, pickup: 0.48, thunk: 0.2, cupRattle: 0.6, whistle: 0.62, roar: 0.54,
     'theme.sloth': 0.28, 'theme.owl': 0.36, 'theme.wizard': 0.52, 'theme.penguin': 0.79, 'theme.fox': 2.46, 'theme.pip': 1.73,
-    'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 1.6, 'sting.levelup': 0.55,
-    readout: 1, slide: 1, card: 1 };
+    'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 0.64, 'sting.levelup': 0.55,
+    readout: 0.7, slide: 20, card: 13 };
   var REACT_TRIM = { ooh: 0.84, aww: 0.9, cheer: 0.62, gasp: 0.8, laugh: 1, clap: 0.4, chant: 1.0 };
   var MOOD_GAIN = { challenge: 0.83, win: 0.84 };
   function withTrim(k, fn) { var tr = trims && trims[k]; if (tr) { defDest = tr.d; defRev = tr.r; } try { fn(); } finally { defDest = null; defRev = null; } }
@@ -1219,7 +1222,7 @@ var Snd = (function () {
     owl:     { base: 196, span: 0.6,  blip: 0.095, gap: 0.07,  wave: 'triangle', saw: 0.3, sub: 0.5,  body: 0.9, shim: 0,    q: 2.5, fs: 0.86, glide: 1.12, vol: 0.18,  slow: 1.2, tail: 1.7 },
     wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.28,  slow: 1.4, tail: 1.8 },
     // Monster League: gruff, careful, crackly, sly, blustery
-    grub:    { base: 120, span: 0.5,  blip: 0.09,  gap: 0.06,  wave: 'sawtooth', saw: 0.7, sub: 0.5,  body: 0.8, shim: 0,    q: 3,   fs: 0.8,  glide: 1.15, vol: 0.26, slow: 1.1, tail: 1.6, soft: 1 },
+    grub:    { base: 120, span: 0.5,  blip: 0.09,  gap: 0.06,  wave: 'sawtooth', saw: 0.7, sub: 0.5,  body: 0.8, shim: 0,    q: 3,   fs: 0.8,  glide: 1.15, vol: 0.22, slow: 1.1, tail: 1.6, soft: 1 },
     splosh:  { base: 210, span: 0.4,  blip: 0.08,  gap: 0.075, wave: 'triangle', saw: 0.4, sub: 0.2,  body: 0.5, shim: 0,    q: 3.5, fs: 0.95, glide: 0.96, vol: 0.32, slow: 1.3, tail: 1.5, soft: 1 },
     blaze:   { base: 330, span: 1.1,  blip: 0.04,  gap: 0.025, wave: 'sawtooth', saw: 0.9, sub: 0,    body: 0.1, shim: 0,    q: 7,   fs: 1.12, glide: 1.2,  vol: 0.4,  slow: 0.6, tail: 1.1 },
     hex:     { base: 250, span: 1.2,  blip: 0.065, gap: 0.045, wave: 'sawtooth', saw: 0.7, sub: 0,    body: 0.2, shim: 0,    q: 6,   fs: 1.05, glide: 0.75, vol: 0.42, slow: 1.0, tail: 1.4 },
@@ -1658,7 +1661,11 @@ var Snd = (function () {
     var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!OAC || measuring) return Promise.reject(new Error(measuring ? 'busy' : 'no OfflineAudioContext'));
     opts = opts || {}; measuring = true;
-    var sr = opts.sampleRate || 48000, off = new OAC(2, Math.ceil(sr * (sec || 3)), sr), keepSet = null;
+    // opts.preroll (default 0.5 s): render that much silence first and cut it off. A fresh compressor starts clamped
+    // and lets go over its release time, so a sound started at 0 measured 10-20 dB too quiet (the click, thunk and
+    // dice in the first audit). Live, the compressors are always settled. opts.preroll = 0 gives the old behaviour.
+    var PRE = opts.preroll == null ? 0.5 : Math.max(0, +opts.preroll || 0);
+    var sr = opts.sampleRate || 48000, off = new OAC(2, Math.ceil(sr * ((sec || 3) + PRE)), sr), keepSet = null;
     stopMusic(); if (ambTimer) { clearTimeout(ambTimer); ambTimer = null; } stopDance();
     var saved = { ctx: ctx, master: master, limiter: limiter, shaper: shaper, sfx: sfx, sfxRev: sfxRev, musMix: musMix, musRev: musRev, revIn: revIn, diceBus: diceBus, stingBus: stingBus,
       voiceBus: voiceBus, crowdBus: crowdBus, ambOut: ambOut, danceMix: danceMix, danceBus: danceBus, trims: trims, noiseBuf: noiseBuf, pinkBuf: pinkBuf, bank: bank, L: L,
@@ -1679,14 +1686,20 @@ var Snd = (function () {
       onceBuses = {}; reactBus = {}; wantedMood = 'off'; ambWant = 'off';
       build(off); try { off.onstatechange = null; } catch (e) {}
       musVol = vol('music', 0.35) * 0.8; refreshMus(0); applyCats(); master.gain.value = muted() ? 0 : 0.8; sfx.gain.value = sfxRev.gain.value = vol('sfx', 0.8);
-      var api = { ctx: off, bus: bus, at: function (t, f) { if (t <= 0) { f(); return; } off.suspend(t).then(function () { try { f(); } catch (e) {} off.resume(); }); },
-        bar: function (t, mood) { wantedMood = mood; applyLevels(true); return scheduleBar(t, barNo++) || BAR; }, BAR: BAR };
+      var api = { ctx: off, bus: bus, PRE: PRE, at: function (t, f) { var w = PRE + Math.max(0, t); if (w <= off.currentTime + 1e-4) { f(); return; } off.suspend(w).then(function () { try { f(); } catch (e) {} off.resume(); }, function () { try { f(); } catch (e) {} }); },
+        bar: function (t, mood) { wantedMood = mood; applyLevels(true); return scheduleBar(PRE + t, barNo++) || BAR; }, BAR: BAR };
       if (Score) Score.reset();
-      fn(api);
-      stopMusic();   // bars are scheduled by api.bar only; no live scheduler on the offline context
+      if (PRE > 0) off.suspend(PRE).then(function () { try { fn(api); } catch (e) {} stopMusic(); off.resume(); });
+      else { fn(api); stopMusic(); }   // bars are scheduled by api.bar only; no live scheduler on the offline context
     } catch (e) { restore(); return Promise.reject(e); }
-    // the offline graph stays current while it renders (timed api.at() events need it); it takes well under a second
-    return off.startRendering().then(function (b) { restore(); return b; }, function (e) { restore(); throw e; });
+    // the offline graph stays current while it renders (timed api.at() events need it); the settle time is cut off
+    return off.startRendering().then(function (b) { restore(); return PRE > 0 ? cut(b, PRE) : b; }, function (e) { restore(); throw e; });
+  }
+  function cut(b, pre) {
+    var s = Math.round(pre * b.sampleRate), n = b.length - s, o;
+    try { o = new AudioBuffer({ length: n, numberOfChannels: b.numberOfChannels, sampleRate: b.sampleRate }); } catch (e) { return b; }
+    for (var c = 0; c < b.numberOfChannels; c++) o.copyToChannel(b.getChannelData(c).subarray(s), c);
+    return o;
   }
 
   // ---------------------------------------------------------------- public API

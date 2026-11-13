@@ -456,7 +456,8 @@ var Music = (function () {
     nugget: { inst: 'horn', bpm: 84, n: [[0, 55, 0.8], [0.8, 60, 0.8], [1.6, 64, 2]], ch: 0, extra: ['timp', [[0, 36], [1.6, 36]]], vol: 1 }, // head, a dragon's horn call
     chroma: { inst: 'harp', bpm: 120, n: [[0, 65, 0.4], [0.33, 69, 0.4], [0.66, 72, 0.4], [1, 76, 0.8], [1.8, 65, 0.4], [2.13, 68, 0.4], [2.46, 72, 0.4], [2.8, 75, 0.4], [3.2, 76, 1.2]], ch: 3, vol: 1 } // rise, changing colour
   };
-  var MTRIM = {};
+  // level trims from the offline audit (docs/handoff/music.md): each motif about -21 LUFS
+  var MTRIM = { snoozy: 0.6, bleep: 2.2 };
   function motifId(id) { return MOTIFS[id] ? id : (KIND_ID[id] || 'pip'); }
   function motif(id, how) {
     if (!H || !C()) return 0;
