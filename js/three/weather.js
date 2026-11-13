@@ -30,6 +30,8 @@
 //   T3.weather() -> the weather in use       T3.weatherLine() -> a short line Pip could say about it
 import * as THREE from 'three';
 import { THEMES, gradientBg } from './environment.js';
+import { makeSky, makeBackdrop } from './sky.js';
+import { placeRig } from './lighting.js';
 
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function gS() { return typeof window !== 'undefined' && window.S ? window.S : null; }
@@ -117,15 +119,37 @@ export function weatherLine(w) {
 // ===================================================================== looks per time of day (THEMES.stadium)
 // The table reads the lights, the sky gradient and the fog from THEMES[mat] when it builds the table; the same
 // numbers are pushed into the live scene here so a new weather shows without waiting for a rebuild.
+// LIGHT design per time of day (the table is always the brightest, clearest thing; js/three/lighting.js places the lights):
+//   day    : a warm, high sun from the front-left (shadows fall away from the seat, never over the Goal row), a cool sky fill
+//            from the back-right, a blue sky with a few still cumulus clouds.
+//   golden : a low warm sun from the left raking across the table (long soft shadows to the right; cube tops stay lit), a
+//            lavender fill from the right, a sky going from deep blue to peach with the sun low on the left and sunlit clouds.
+//   dusk   : the sun just set on the right (a rose glow on that horizon, indigo overhead, first stars); a faint warm rim;
+//            the floodlights come on ONCE at kick-off (stadium.js) and become the key.
+//   night  : the floodlights are the key (front-left tower), pools of light on the pitch, a dark crowd with a few phone
+//            lights, a deep navy sky with round stars and a moon.
+// sunPos / fillPos: where the table's sun and fill DirectionalLights go. sky: the dome (sky.js makeSky), far: the backdrop.
 var LOOK = {
-  day:    { sun: 0xfff4e2, sunI: 2.25, fill: 0xb8d0ff, fillI: 0.5, sky: 0xdcecff, ground: 0x2c5a2c, hemiI: 0.72, env: 0.48, bg: ['#5aa6e6', '#cfe7fa'], fog: [0xbdd6ea, 70, 200],
-            dome: [0x3d8fe0, 0xbfe0fa, 0x5d8a5a], glowI: 0.28, dim: 1 },
-  golden: { sun: 0xffb466, sunI: 2.1, fill: 0x9a8cff, fillI: 0.42, sky: 0xffcf98, ground: 0x3b3a26, hemiI: 0.62, env: 0.42, bg: ['#41549c', '#ffb36e'], fog: [0xe4a476, 64, 180],
-            dome: [0x46589e, 0xffb06a, 0x4d5a3a], glowI: 0.5, dim: 0.93 },
-  dusk:   { sun: 0xffb895, sunI: 1.3, fill: 0x8090ff, fillI: 0.5, sky: 0xa3a6dc, ground: 0x1b2a24, hemiI: 0.46, env: 0.3, bg: ['#1d2352', '#c7706c'], fog: [0x3b2f52, 58, 160],
-            dome: [0x161c48, 0xc9726a, 0x1d2a22], glowI: 0.8, dim: 0.62 },
+  day:    { sun: 0xfff1dc, sunI: 2.3, fill: 0xbcd2ff, fillI: 0.5, sky: 0xdcecff, ground: 0x3a5f30, hemiI: 0.72, env: 0.48, bg: ['#5aa6e6', '#cfe7fa'], fog: [0xbdd6ea, 70, 200],
+            dome: [0x3d8fe0, 0xbfe0fa, 0x5d8a5a], glowI: 0.28, dim: 1, sunPos: [-7, 22, 10], fillPos: [14, 10, -12],
+            stops: [[0, 0xd6ebfb], [0.12, 0xa9d2f5], [0.4, 0x66aaea], [1, 0x2f78d2]], low: 0x8fae8a, haze: 0xe4f1fb,
+            skySun: { az: -2.2, el: 0.95, col: 0xfff6dd, halo: 70 }, clouds: { n: 22, kind: 'cumulus', lit: 0xffffff, shade: 0xc4d3e6, rim: 0xffffff, seed: 11 },
+            far: { near: 0x6f9a7a, far: 0xb3cfe2, ground: 0xa9c6d8, lights: 0 } },
+  golden: { sun: 0xffc48a, sunI: 2.55, fill: 0x9c94ff, fillI: 0.5, sky: 0xffd9ae, ground: 0x46402a, hemiI: 0.66, env: 0.42, bg: ['#41549c', '#ffb36e'], fog: [0xe6b088, 64, 185],
+            dome: [0x46589e, 0xffb06a, 0x4d5a3a], glowI: 0.5, dim: 0.93, sunPos: [-26, 15, 5], fillPos: [16, 9, 6],
+            stops: [[0, 0xffc98a], [0.06, 0xf6a676], [0.2, 0xc98f9a], [0.45, 0x7d86c0], [1, 0x3b4f9c]], low: 0x8a6a52, haze: 0xffd9a0,
+            skySun: { az: -1.25, el: 0.07, col: 0xffb35c, disc: 3.2, halo: 75 }, clouds: { n: 13, kind: 'mixed', lit: 0xffd2a6, shade: 0x9a7f9e, rim: 0xfff0c8, seed: 23 },
+            far: { near: 0x5e5468, far: 0xd59a8a, ground: 0xc79a80, lights: 0.15 } },
+  dusk:   { sun: 0xffb8a0, sunI: 0.75, fill: 0x8f9cff, fillI: 0.5, sky: 0xa9acdf, ground: 0x1e2c26, hemiI: 0.52, env: 0.32, bg: ['#1d2352', '#c7706c'], fog: [0x3b3456, 58, 160],
+            dome: [0x161c48, 0xc9726a, 0x1d2a22], glowI: 0.8, dim: 0.62, sunPos: [24, 7, -14], fillPos: [-14, 12, 12],
+            stops: [[0, 0xe39a7c], [0.05, 0xb97b8a], [0.16, 0x6e5f96], [0.4, 0x2c2f6c], [1, 0x0f1440]], low: 0x2a2632, haze: 0xf0a888,
+            skySun: { az: 1.55, el: -0.04, col: 0xff8f6a, halo: 80 }, clouds: { n: 9, kind: 'streak', lit: 0xf2a08c, shade: 0x5a4a78, seed: 37 }, stars: 70,
+            far: { near: 0x1c1e30, far: 0x5a4a6e, ground: 0x2a2838, lights: 0.8 } },
   night:  { sun: 0xf0f5ff, sunI: 1.15, fill: 0x7d96ff, fillI: 0.35, sky: 0x8ea4d8, ground: 0x0b1d12, hemiI: 0.22, env: 0.2, bg: ['#040818', '#000105'], fog: [0x030714, 55, 140],
-            dome: [0x02040e, 0x0b1430, 0x05080c], glowI: 0.9, dim: 0.34 }
+            dome: [0x02040e, 0x0b1430, 0x05080c], glowI: 0.9, dim: 0.34, sunPos: [-6, 22, 10], fillPos: [14, 10, -12],
+            stops: [[0, 0x1b2a52], [0.08, 0x111c3e], [0.3, 0x08102a], [1, 0x03061a]], low: 0x05070c, haze: 0x26335e,
+            skySun: null, clouds: { n: 6, kind: 'streak', lit: 0x2a3866, shade: 0x0a1028, seed: 41, high: true }, stars: 320, moon: { az: -0.55, el: 0.62 },
+            far: { near: 0x070a14, far: 0x141c34, ground: 0x0a0e18, lights: 1 } }
 };
 function mixHex(a, b, k) { return new THREE.Color(a).lerp(new THREE.Color(b), k).getHex(); }
 function mixCss(a, b, k) { return '#' + new THREE.Color(a).lerp(new THREE.Color(b), k).getHexString(); }
@@ -151,6 +175,14 @@ export function lookFor(w, mat) {
     L.bg = [mixCss(L.bg[0], dark ? '#262c3a' : '#b4bcc6', 0.8), mixCss(L.bg[1], dark ? '#323a48' : '#d4dae0', 0.8)];
     L.dome = [mixHex(L.dome[0], dark ? 0x232a36 : 0xaeb8c2, 0.85), mixHex(L.dome[1], dark ? 0x2e3644 : 0xd0d6dc, 0.85), mixHex(L.dome[2], dark ? 0x202630 : 0xb0b8c0, 0.7)];
   }
+  // the sky dome and the far ring follow the weather: grey and low for rain and snow, almost gone in fog
+  if (w.sky !== 'clear') {
+    var grey = w.sky === 'rain' ? (dark ? 0x1c2230 : 0x8e98a6) : w.sky === 'snow' ? (dark ? 0x262c3a : 0xc9d1dc) : (dark ? 0x2c3242 : 0xc2cad2), k = w.sky === 'fog' ? 0.85 : 0.72;
+    L.stops = L.stops.map(function (s) { return [s[0], mixHex(s[1], grey, k)]; }); L.haze = mixHex(L.haze, grey, k); L.low = mixHex(L.low, grey, 0.6);
+    L.skySun = null; L.stars = 0; L.moon = null;
+    L.clouds = w.sky === 'fog' ? null : { n: 20, kind: 'cumulus', lit: mixHex(grey, 0xffffff, dark ? 0.15 : 0.35), shade: mixHex(grey, 0x000000, 0.25), seed: 59 };
+    L.far = { near: mixHex(L.far.near, grey, w.sky === 'fog' ? 0.9 : 0.5), far: mixHex(L.far.far, grey, w.sky === 'fog' ? 0.95 : 0.7), ground: mixHex(L.far.ground, grey, 0.7), lights: L.far.lights * 0.7 };
+  }
   L.time = t; L.dark = dark; L.sky0 = w.sky;
   return L;
 }
@@ -175,6 +207,8 @@ export function applyLook(w, mat) {
   });
   if (dirs[0]) { dirs[0].color.setHex(T.sun); dirs[0].intensity = T.sunI; }
   if (dirs[1]) { dirs[1].color.setHex(T.fill); dirs[1].intensity = T.fillI; }
+  // where the sun and the fill come from (lighting.js); the night venue keeps the defaults (its key is a floodlight)
+  placeRig(dirs, mat === 'stadium' ? L : null);
   scene.environmentIntensity = T.env;
   if (scene.fog && T.fog) { scene.fog.color.setHex(T.fog[0]); scene.fog.near = T.fog[1]; scene.fog.far = T.fog[2]; }
   if (scene.background && scene.background.isTexture) { var old = scene.background; scene.background = gradientBg(T.bg); old.dispose(); }
@@ -196,6 +230,11 @@ export function setWeather(w, quiet) {
   else if (T3 && T3.kick) T3.kick();
   return w2;
 }
+// one listener for "a new match is starting" (the stadium on screen uses it to switch the dusk floodlights off again,
+// so they come on at kick-off) and the number of the match in progress
+var matchHook = null;
+export function onMatchStart(fn) { matchHook = fn; }
+export function matchNo() { var S = gS(); return S && S.wx ? S.wx.n || 0 : 0; }
 // the next match's weather (call once per match, at its start)
 export function matchWeather() {
   var S = gS(), choice = choiceOf(S && S.set ? S.set.weather : 'auto'), w;
@@ -204,29 +243,19 @@ export function matchWeather() {
   wx.n = (wx.n || 0) + 1;
   w = choice === 'auto' ? pickFor(wx.n, prev) : norm(CHOICE[choice]);
   var out = setWeather(w);
+  if (matchHook) { try { matchHook(wx.n); } catch (e) {} } // the venue that stayed up (no rebuild) gets ready for kick-off again
   return { time: venueMat() === 'night' ? 'night' : out.time, sky: out.sky, rainbow: out.rainbow, ambience: ambienceOf(out), line: weatherLine(out), n: wx.n };
 }
 
 // ===================================================================== scenery pieces used by stadium.js
 // A sky dome (gradient by height, a sun glow, stars at night). depthWrite off: never in the camera's way.
+// The sky (sky.js): a painted dome with still clouds, the sun's glow, round stars and a moon at night. Static.
 export function skyDome(L) {
-  var g = new THREE.SphereGeometry(165, 32, 16);
-  var m = new THREE.ShaderMaterial({
-    uniforms: { cTop: { value: new THREE.Color(L.dome[0]) }, cHor: { value: new THREE.Color(L.dome[1]) }, cLow: { value: new THREE.Color(L.dome[2]) },
-      sunDir: { value: new THREE.Vector3(-0.55, L.time === 'golden' ? 0.08 : L.time === 'dusk' ? 0.02 : 0.5, -0.83).normalize() },
-      sunCol: { value: new THREE.Color(L.time === 'golden' ? 0xffc070 : L.time === 'dusk' ? 0xff8a70 : 0xfff6dd) },
-      sunK: { value: L.time === 'night' || L.sky0 !== 'clear' ? 0.0 : L.time === 'day' ? 0.35 : 0.8 }, stars: { value: L.time === 'night' && L.sky0 === 'clear' ? 1.0 : L.time === 'dusk' && L.sky0 === 'clear' ? 0.35 : 0.0 } },
-    vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'uniform vec3 cTop; uniform vec3 cHor; uniform vec3 cLow; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunK; uniform float stars; varying vec3 vD;\n' +
-      'float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }\n' +
-      'void main(){ float y = vD.y; vec3 c = y > 0.0 ? mix(cHor, cTop, pow(clamp(y, 0.0, 1.0), 0.55)) : mix(cHor, cLow, clamp(-y * 6.0, 0.0, 1.0));\n' +
-      '  float s = max(dot(vD, sunDir), 0.0); c += sunCol * sunK * (pow(s, 24.0) * 0.9 + pow(s, 3.0) * 0.25);\n' +
-      '  if (stars > 0.0 && y > 0.05) { vec3 q = floor(vD * 180.0); float r = h(q); c += vec3(0.9, 0.93, 1.0) * stars * step(0.9965, r) * (0.5 + 0.5 * h(q + 3.1)) * smoothstep(0.05, 0.3, y); }\n' +
-      '  gl_FragColor = vec4(c, 1.0); }',
-    side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false
-  });
-  var dome = new THREE.Mesh(g, m); dome.renderOrder = -20; dome.frustumCulled = false; dome.name = 'sky';
-  return dome;
+  return makeSky({ stops: L.stops, low: L.low, haze: L.haze, sun: L.skySun, clouds: L.clouds, stars: L.stars || 0, moon: L.moon || null });
+}
+// The far ring of hills and a little town round the stadium (lit windows at dusk and night)
+export function farRing(L, FY, seed) {
+  return makeBackdrop({ kind: 'town', near: L.far.near, far: L.far.far, ground: L.far.ground, lights: L.far.lights, seed: seed || 3, y0: FY, r: 122, h: 36 });
 }
 // A soft rainbow arc far behind the back stand (static)
 export function rainbow(FY, zBack) {
