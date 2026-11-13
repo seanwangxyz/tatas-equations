@@ -1,0 +1,126 @@
+/* ======================= PARENT PAGE ("For Tata", js/parent.js) =======================
+   Calm and readable: a grown-up's page inside the game's look. Charts are plain CSS bars,
+   so they stay legible from phone to desktop, and the page prints cleanly. */
+#parent .pp{display:flex;flex-direction:column;gap:6px;-webkit-user-select:text;user-select:text}
+#parent .pp h3{font-size:24px;color:var(--ink)}
+#parent .pp h4{margin:14px 0 6px;font-size:16px;font-weight:900;color:var(--ink2);text-transform:uppercase;letter-spacing:.6px}
+#parent .pp p{margin:4px 0;line-height:1.45}
+#parent small{font-weight:700;color:var(--mute)}
+.pp-muted{color:var(--ink2);font-size:15px}
+.pp-note{font-size:14px;color:var(--ink2);background:#f1f5fb;border-radius:12px;padding:8px 12px}
+.pp-since{display:inline-block;color:var(--sky);font-size:.9em;cursor:help}
+.pp-foot{font-size:13px;color:var(--mute);text-align:center;margin-top:10px}
+.pp-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px}
+.pp-actions{display:flex;flex-wrap:wrap;gap:8px}
+.pp-sec{background:#fff;border-radius:22px;padding:12px 16px 16px;margin-top:12px;box-shadow:0 5px 0 #dde2ee}
+
+/* tiles */
+.pp-wins{display:grid;grid-template-columns:1fr;gap:4px}
+.pp-win .pp-tiles{grid-template-columns:repeat(5,1fr)}
+.pp-win h4{margin-top:4px}
+.pp-tiles,.pp-habits{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px}
+.pp-habits{margin-top:14px}
+.pp-tile{background:#f6f8fc;border-radius:16px;padding:10px 8px;text-align:center}
+.pp-v{font-family:var(--display);font-size:28px;color:var(--sky);line-height:1.05}
+.pp-v small{font-size:.6em;color:var(--ink2)}
+.pp-l{font-size:13px;color:var(--ink2);font-weight:800;margin-top:3px}
+.pp-sub{font-size:12px;color:var(--mute);margin-top:2px}
+
+/* bar charts (CSS) */
+.pp-chart{margin-top:14px}
+.pp-ch-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.pp-ch-h b{font-family:var(--display);font-weight:400;font-size:18px}
+.pp-key{font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:6px}
+.pp-key i{display:inline-block;width:12px;height:12px;border-radius:3px}
+.pp-plot{display:flex;gap:6px;height:150px}
+.pp-y{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:var(--mute);padding-bottom:18px;text-align:right;min-width:20px}
+.pp-cols{flex:1;display:flex;align-items:stretch;gap:2px;border-left:1px solid var(--line);background:linear-gradient(to bottom,transparent calc(50% - 9px),var(--line) calc(50% - 9px),var(--line) calc(50% - 8px),transparent calc(50% - 8px))}
+.pp-col{flex:1;display:flex;flex-direction:column;min-width:0}
+.pp-bar{flex:1;display:flex;flex-direction:column-reverse;border-bottom:1px solid #c5ccda}
+.pp-seg{display:block;width:100%;border-radius:3px 3px 0 0}
+.pp-ok{background:var(--good)}
+.pp-no{background:#c9d3e6}
+.pp-min{background:var(--sky)}
+.pp-na{height:100%;background:repeating-linear-gradient(135deg,transparent 0 4px,#eef1f7 4px 8px);border-radius:0}
+.pp-seg.pp-no{border-radius:3px 3px 0 0}
+.pp-seg.pp-ok+.pp-seg.pp-no{border-radius:3px 3px 0 0}
+.pp-bar .pp-ok:not(:last-child){border-radius:0}
+.pp-x{height:18px;font-size:10px;color:var(--mute);text-align:center;white-space:nowrap;overflow:visible;line-height:18px}
+.pp-today .pp-x{color:var(--ink);font-weight:900}
+.pp-today .pp-bar{background:rgba(47,140,255,.07)}
+
+/* skills */
+.pp-table{width:100%;border-collapse:collapse;font-size:15px;margin-top:6px}
+.pp-table th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mute);padding:6px 6px;border-bottom:2px solid var(--line)}
+.pp-table td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+.pp-table td small{font-size:12px}
+.pp-rate{display:inline-block;width:46px;height:8px;border-radius:5px;background:#e9edf5;margin-right:6px;vertical-align:middle;overflow:hidden}
+.pp-rate i{display:block;height:100%;background:var(--good)}
+.pp-lv{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:900;white-space:nowrap}
+.pp-lv-solid{background:#d3f9d8;color:#1b6b34}
+.pp-lv-getting{background:#fff3bf;color:#7a5600}
+.pp-lv-new{background:#dbeafe;color:#1d4ed8}
+.pp-lv-none{background:#eef0f4;color:#5c6378}
+.pp-tr{font-size:13px;color:var(--ink2);white-space:nowrap}
+.pp-tr.up{color:#1b8a4b}.pp-tr.down{color:#b4540f}.pp-tr.na{color:var(--mute)}
+.pp-rules{background:#f6f8fc;border-radius:16px;padding:10px 14px;margin-top:12px;font-size:14px}
+.pp-rules ul{margin:6px 0;padding-left:0;list-style:none}
+.pp-rules li{margin:5px 0}
+
+/* stuck + suggestions */
+.pp-stuck{margin:6px 0 10px;padding-left:22px}
+.pp-stuck li{margin:8px 0;line-height:1.4}
+.pp-n{display:inline-block;background:#eef1f7;border-radius:999px;padding:1px 8px;font-size:13px;margin-left:4px}
+.pp-ex{font-family:ui-monospace,Menlo,Consolas,monospace;background:#f1f3f8;border-radius:6px;padding:1px 6px;color:var(--ink)}
+.pp-try{background:#fffbea;box-shadow:0 5px 0 #f1e3a6}
+.pp-sug{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:10px 0;border-bottom:1px dashed #ead98f}
+.pp-sug:last-child{border-bottom:none}
+.pp-sug p{flex:1 1 320px;margin:0}
+
+/* progress */
+.pp-ladder{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.pp-step{border-radius:14px;padding:8px 10px;background:#f1f3f8;color:var(--mute);display:flex;flex-direction:column;gap:2px}
+.pp-step span{font-size:22px}
+.pp-step.got{background:#e6f7ec;color:var(--ink)}
+.pp-step.cur{outline:3px solid var(--good)}
+.pp-chips{display:flex;flex-wrap:wrap;gap:6px}
+.pp-chipc{background:#f1f3f8;border-radius:999px;padding:5px 12px;font-size:14px}
+.pp-opps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.pp-opp{background:#f6f8fc;border-radius:14px;padding:8px 10px;display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:center}
+.pp-opp span{font-size:24px;grid-row:span 2}
+.pp-opp.got{background:#e6f7ec}
+.pp-list{margin:4px 0;padding-left:20px}
+.pp-copybox{width:100%;min-height:200px;font-family:inherit;font-size:14px;border-radius:12px;border:1px solid var(--line);padding:10px;-webkit-user-select:text;user-select:text}
+
+/* the grown-ups gate */
+.pp-gate{text-align:center;max-width:520px}
+.pp-gate p{color:var(--ink2)}
+.pp-hold{overflow:hidden;margin:14px auto 6px;-webkit-touch-callout:none;touch-action:none}
+.pp-hold .pp-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(34,181,115,.35);border-radius:inherit;transition:width .15s linear}
+.pp-hold.holding .pp-fill{width:100%;transition:width 2s linear}
+.pp-holdt{position:relative}
+
+/* phone */
+@media (max-width:640px){
+  .pp-tiles,.pp-habits{grid-template-columns:repeat(2,1fr)}
+  .pp-win .pp-tiles{grid-template-columns:repeat(3,1fr)}
+  .pp-hide-s{display:none}
+  .pp-table{font-size:14px}
+  .pp-table td,.pp-table th{padding:6px 4px}
+  .pp-rate{width:30px}
+  .pp-plot{height:120px}
+  .pp-x{font-size:9px}
+  #parent .pp h3{font-size:21px}
+  .pp-sec{padding:10px 12px 14px}
+}
+
+/* print: only this page, no buttons, no backgrounds */
+@media print{
+  html,body{height:auto!important;overflow:visible!important;background:#fff!important}
+  body>*:not(#parent){display:none!important}
+  #parent{display:block!important;position:static!important;overflow:visible!important;padding:0!important;animation:none!important}
+  #parent .panel{width:100%!important;box-shadow:none!important;background:#fff!important;padding:0!important}
+  .pp-sec{box-shadow:none!important;border:1px solid #ddd;break-inside:avoid}
+  .pp-noprint{display:none!important}
+  .pp-ok,.pp-min,.pp-no,.pp-rate i,.pp-lv{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
