@@ -151,25 +151,7 @@ function lightPool(aims) {
 }
 function stdm(color, rough, extra) { return new THREE.MeshStandardMaterial(Object.assign({ color: color, roughness: rough == null ? 0.8 : rough, flatShading: true }, extra || {})); }
 
-// Draws text on the big scoreboard
-function paintBoard(cv, text, frame) {
-  var g = cv.getContext('2d'), w = cv.width, h = cv.height;
-  var bg = g.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#0b1a45'); bg.addColorStop(1, '#050b24'); g.fillStyle = bg; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(255,255,255,.035)'; for (var y = 0; y < h; y += 6) g.fillRect(0, y, w, 2); // LED rows
-  var hb = Math.round(h * 0.17); g.fillStyle = '#12306e'; g.fillRect(0, 0, w, hb);
-  g.font = '800 ' + Math.round(hb * 0.55) + 'px "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#8fd3ff'; g.fillText("⚽  TATA'S EQUATIONS  ⚽", w / 2, hb / 2 + 2);
-  var lines = String(text == null || text === '' ? 'LET’S PLAY!' : text).split('\n').slice(0, 3), avail = h - hb - 24, lh, size = Math.min(210, Math.floor(avail / lines.length / 1.05));
-  g.textBaseline = 'middle';
-  for (;;) {
-    g.font = '900 ' + size + 'px "Trebuchet MS", "Segoe UI", sans-serif';
-    var mx = 0; lines.forEach(function (l) { mx = Math.max(mx, g.measureText(l).width); });
-    if (mx < w - 110 || size < 26) break; size -= 6;
-  }
-  lh = size * 1.05; var top = hb + (h - hb) / 2 - (lines.length - 1) * lh / 2;
-  g.shadowColor = '#ffb000'; g.shadowBlur = 22; g.fillStyle = '#ffd43b';
-  lines.forEach(function (l, i) { g.fillText(l, w / 2, top + i * lh); });
-  g.shadowBlur = 0; g.strokeStyle = frame || '#2b4a9a'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
-}
+// (the big scoreboard is drawn by bigscreen.js)
 
 // ----- the player's kit colours, cups and crowns (read from the saved progress) -----
 function kitCols() {

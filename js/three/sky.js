@@ -90,6 +90,7 @@ export function makeSky(o) {
   }
   var tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.wrapS = THREE.RepeatWrapping;
   var mat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex } }, vertexShader: VS, fragmentShader: FS, side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false });
+  mat.skyTex = tex; // an own property, so the table's disposeTree() frees it with the venue
   var dome = new THREE.Mesh(new THREE.SphereGeometry(165, 40, 20), mat);
   dome.renderOrder = 50; dome.frustumCulled = false; dome.name = 'sky'; dome.userData.glow = false; // drawn after the solid scene: only the sky's own pixels
   var grp = new THREE.Group(); grp.name = 'skyGroup'; grp.add(dome);
