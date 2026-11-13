@@ -172,7 +172,7 @@
 @keyframes osDock{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @media (min-width:900px) and (min-aspect-ratio:4/3){ #osB.os-dock .os-bbox{max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px)} }
 /* wide windows: exactly over the match screen's right-hand column (same width as css/style.css gives it) */
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   #osB.os-dock{padding:0;align-items:stretch}
   #osB.os-dock .os-bbox{width:clamp(280px,23vw,350px);max-height:none;border-radius:0;border-width:0 0 0 4px;box-sizing:border-box}
 }

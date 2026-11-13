@@ -453,7 +453,7 @@ textarea{width:100%;min-height:70px;-webkit-user-select:text;user-select:text}
 
 /* ===== Match screen, wide windows: scores, Goal, Pip's line and the buttons stand in a column on the right,
    so the 3D picture keeps the full height of the window (it used to lose a third of it to the bar below). ===== */
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   #game.three.on{display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,23vw,350px);grid-template-rows:auto auto minmax(0,1fr);gap:8px 0;align-items:stretch;justify-items:stretch;padding:0}
   #game.three #gMat{grid-column:1;grid-row:1 / span 3;min-height:0;height:100%;width:100%}
   #game.three #gTop{grid-column:2;grid-row:1;max-width:none;width:auto;padding:10px 12px 0;flex-wrap:wrap;justify-content:space-between;gap:8px}
@@ -472,7 +472,7 @@ textarea{width:100%;min-height:70px;-webkit-user-select:text;user-select:text}
   #game.three #gAct .emote-bar{justify-content:center;flex-wrap:wrap}
 }
 /* Everywhere else in 3D: a slimmer bar, so the picture keeps more room */
-@media not all and (min-width:1100px) and (min-aspect-ratio:8/5){
+@media not all and (min-width:1000px) and (min-aspect-ratio:5/4){
   #game.three .actionbar{padding:6px 10px;gap:4px 10px;border-radius:18px}
   #game.three .speech .who{width:40px;height:40px}
   #game.three .speech .txt{font-size:15px;padding:6px 12px;line-height:1.25}
@@ -482,10 +482,10 @@ textarea{width:100%;min-height:70px;-webkit-user-select:text;user-select:text}
 }
 /* The commentator's caption must not cover the Goal banner or the creature's face */
 body .wh-comm{top:calc(var(--sat, 0px) + 112px)}
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   body .wh-comm{left:calc((100vw - clamp(280px,23vw,350px)) * 0.24);top:auto;bottom:calc(var(--sab, 0px) + 14px)}   /* bottom left of the picture, clear of his head */
 }
-@media not all and (min-width:1100px) and (min-aspect-ratio:8/5){
+@media not all and (min-width:1000px) and (min-aspect-ratio:5/4){
   #game.three .emote-bar{width:auto;flex:0 1 auto}
 }
 
@@ -680,7 +680,7 @@ details.group>p{margin:8px 0 4px;font-size:15px;color:var(--ink2)}
 
 /* ---------- Match: side column and bottom bar ---------- */
 .actionbar .acts>.btn:not(.big):not(.now):not(.imp):not(.green):not(.blue):not(.purple):not(.orange):not(.pink):not(.yellow){background:var(--soft);--edge:#cdd4e4;color:var(--ink2)}
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   #game.three #gAct{gap:12px}
   #game.three #gAct .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   #game.three #gAct .acts>*{grid-column:1 / -1}
@@ -697,3 +697,28 @@ details.group>p{margin:8px 0 4px;font-size:15px;color:var(--ink2)}
 }
 html.a11y-calm .screen.stagger [data-st],html.a11y-calm .modal.fresh>*,html.a11y-calm .modal.fresh>.rc>*{animation:none!important}
 html.a11y-calm .modal-back.leaving{display:none}
+
+/* LEAD: the match side column on shorter screens (iPad landscape, small laptops): everything fits without scrolling */
+@media (min-width:1000px) and (min-aspect-ratio:5/4) and (max-height:840px){
+  #game.three #gAct{gap:6px}
+  #game.three #gAct .speech .txt{font-size:14px;line-height:1.25;padding:7px 10px}
+  #game.three #gAct .acts{gap:6px}
+  #game.three #gAct .acts .btn.now,#game.three #gAct .acts .btn.imp{min-height:48px;font-size:21px;padding:6px 14px}
+  #game.three #gAct .acts .btn{min-height:44px}
+  #game.three #gAct .emote-bar{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;padding-top:2px;scrollbar-width:none}
+  #game.three #gAct .emote-bar::-webkit-scrollbar{display:none}
+  #game.three #gAct .emote-bar > *{flex:0 0 auto}
+}
+
+/* LEAD: phone-width match screen: the panel under the picture stays short (missions on one line, small buttons three across, emotes in one scrolling row) */
+@media (max-width:640px){
+  #game #gAct .msn-chips{flex-wrap:nowrap;gap:4px;overflow:hidden}
+  #game #gAct .msn-head{display:none}
+  #game #gAct .msn-chip{flex:1 1 0;min-width:0;min-height:32px;padding:2px 8px 2px 4px;font-size:12px}
+  #game #gAct .msn-chip .msn-t{max-width:none;min-width:0}
+  #game #gAct .acts .btn:not(.now):not(.imp):not(.big){flex:1 1 30%;min-width:0;width:auto;min-height:44px;padding:6px 8px}
+  #game #gAct .acts .why-btn{order:0}
+  #game #gAct .emote-bar{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;scrollbar-width:none;width:100%}
+  #game #gAct .emote-bar::-webkit-scrollbar{display:none}
+  #game #gAct .emote-bar > *{flex:0 0 auto}
+}

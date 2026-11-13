@@ -132,13 +132,13 @@ html.ts-l .modal.wide,html.ts-xl .modal.wide{width:min(900px,calc(98vw / var(--t
 html.ts-l #title .mm,html.ts-xl #title .mm,html.ts-l #title .mm-me,html.ts-xl #title .mm-me{max-width:100%}
 html.ts-l #game>:is(#gTop,#gAct,#gGoal),html.ts-xl #game>:is(#gTop,#gAct,#gGoal){width:min(calc(1180px / var(--ts)),calc((100vw - 20px) / var(--ts)));max-width:none}
 html.ts-l #game.three>:is(#gTop,#gAct,#gGoal),html.ts-xl #game.three>:is(#gTop,#gAct,#gGoal){width:min(calc(1180px / var(--ts)),calc(100vw / var(--ts)))}
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   html.ts-l #game.three>:is(#gTop,#gAct,#gGoal),html.ts-xl #game.three>:is(#gTop,#gAct,#gGoal){width:auto;max-width:none}
 }
 /* a zoomed page's own panels never get wider than the page (980 px x 1.3 would run off a 1280 window) */
 html.ts-l .screen:not(#title)>*,html.ts-xl .screen:not(#title)>*{max-width:100%}
 /* a bigger column for the bigger text on wide windows */
-@media (min-width:1100px) and (min-aspect-ratio:8/5){
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
   html.ts-l #game.three.on{grid-template-columns:minmax(0,1fr) clamp(300px,26vw,400px)}
   html.ts-xl #game.three.on{grid-template-columns:minmax(0,1fr) clamp(320px,29vw,440px)}
 }
