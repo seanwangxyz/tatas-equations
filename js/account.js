@@ -190,6 +190,14 @@ var AccountMerge = (function () {
     },
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
+    tourney: function (a, b, c) { // TOURNEY: counters highest, options newest, round log union by time (20 newest)
+      if (!has(a)) return clone(b); if (!has(b)) return clone(a);
+      var out = eachKey(a, b, function (x, y, k) { return k === 'opt' ? pickNewer(x, y, c) : k === 'log' ? null : max(x, y); });
+      var seen = {}, log = [];
+      (Array.isArray(a.log) ? a.log : []).concat(Array.isArray(b.log) ? b.log : []).forEach(function (r) { if (r && !seen[r.t]) { seen[r.t] = 1; log.push(clone(r)); } });
+      out.log = log.sort(function (x, y) { return num(x.t) - num(y.t); }).slice(-20);
+      return out;
+    },
     /*RIVALS-MERGE-START*/
     rivals: function rivalsMerge(a, b) {
     var isO = function (x) { return !!x && typeof x === 'object' && !Array.isArray(x); };
@@ -243,6 +251,7 @@ var AccountMerge = (function () {
     cards: 'union (earliest date)', stadiumTierSeen: 'highest', season: 'each league: the one further along; finished seasons: union; pennants: highest',
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
+    tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',
     rivals: 'per creature: the side with more matches; milestones: union (earliest); best streak, biggest Goal, admired Solution: best of both',
     tour: 'tour stops seen on either device', parent: 'each counter and each day: highest'
   };

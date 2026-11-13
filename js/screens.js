@@ -123,11 +123,12 @@ function renderSetup() {
     sPart('opps') + '<h3 class="tierh" style="margin-top:0">' + ico('paw') + ' Play the creatures</h3><div class="opps">' + opps + '</div>' +
     '<h3 class="tierh">👹 Monster League <span style="font-weight:600;opacity:.7;font-size:14px">(the tough ones)</span></h3><div class="opps">' + monsters + '</div>' +
     (legends ? '<h3 class="tierh">🌟 Legend League <span style="font-weight:600;opacity:.7;font-size:14px">(each brings a special rule)</span> ' + (window.Career ? Career.buttonHTML('small') : '') + '</h3><div class="opps">' + legends + '</div>' : '') + // CAREER
-    '</div>' + sPart('trio') + (window.Trio ? Trio.setupHTML() : '') + '</div>' +
+    '</div>' + sPart('trio') + (window.Trio ? Trio.setupHTML() : '') + (window.Tourney ? '<h3 class="tierh">⚖️ Tournament practice</h3><div class="opps">' + Tourney.tileHTML() + '</div>' : '') + '</div>' + // TOURNEY
     sPart('cups') + (window.Cup ? Cup.setupHTML() : '') + '</div>' +
     sPart('people') + '<h3 class="tierh" style="margin-top:0">' + ico('people') + ' Play with people</h3><div class="opps">' +
     (window.Online ? Online.setupCardHTML() : '') +
     (window.Team ? Team.setupCardHTML() : '') +
+    (window.Tourney ? Tourney.tileHTML() : '') + // TOURNEY
     (typeof giftTileHTML === 'function' ? giftTileHTML() : '') +
     '<div class="opp mode" data-act="playP3"><span class="avatar lg" style="background:#ffe8cc;color:#c2410c;font-size:46px">' + ico('people') + '</span><h3>3 Players</h3><div class="otitle">Family game: 3 people, or 2 people + a creature</div></div>' +
     '<div class="opp mode" data-act="playPvp"><span class="avatar lg" style="background:#ffd6d6;color:#c92a2a;font-size:46px">' + ico('people') + '</span><h3>2 Players</h3><div class="otitle">Pass-and-play on this device</div></div>' +
@@ -248,6 +249,7 @@ function renderSettings() {
     '<div class="setrow"><label>' + (S.opsManual ? 'You picked these by hand. Stars are not unlocking anything right now.' : 'Automatic: he unlocks more by earning skill stars (now on <b>' + st.icon + ' ' + st.name + '</b>).') + '</label><button class="btn small ' + (S.opsManual ? '' : 'green') + '" data-act="opsAuto">' + (S.opsManual ? 'Back to automatic' : '✔ Automatic') + '</button><button class="btn small" data-act="opsAll">All on</button></div>' +
     '<div class="setrow"><label>Variation cards<br><small style="font-weight:600">An extra official rule for one shake (like "0 is Wild"). They start once + − × ÷ are mastered, one new card every 4 stars. Unlocked: ' + (window.Vari ? Vari.unlockedCount() : 0) + ' of ' + (window.Vari ? Vari.CARDS.length : 5) + '.</small></label><button class="btn small ' + (S.set.variations !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="variations" data-def="1">' + (S.set.variations !== false ? '✔ On' : 'Off') + '</button></div>' +
     (window.Vari && Vari.parentHTML ? Vari.parentHTML() : '') +
+    (window.Tourney ? Tourney.parentHTML() : '') + // TOURNEY: open now / Middle list / practice clock / strict penalties
     (window.Bonus ? Bonus.parentHTML() : '') + // BONUS dice (house rule): a switch per die and per Power face, unlock now
     (window.VoiceChat ? VoiceChat.parentHTML() : '') + // VOICE: allow talking in online games (press and hold), per device
     '<div class="setrow"><label>Pip\'s tip after a match<br><small style="font-weight:600">A "💡 One thing Pip spotted" button on the results screen. It only shows a moment the game can prove. Tips opened: ' + ((S.tips && S.tips.seen) || 0) + '</small></label><button class="btn small ' + (S.set.review !== false ? 'green' : '') + '" data-act="toggleSet" data-arg="review" data-def="1">' + (S.set.review !== false ? '✔ On' : 'Off') + '</button></div>' +
