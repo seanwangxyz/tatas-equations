@@ -1,0 +1,34 @@
+/* ======================= WHY DID THEY DO THAT? (js/why.js) =======================
+   The card reuses the Explain card (css/explain.css: .xp-back .xp-card .xp-head .xp-body .xp-nav), so the two
+   look like one family. Only the extra bits live here. Calm on purpose: nothing moves, loops or wiggles. */
+.why-btn{font-size:14px;min-height:40px;padding:6px 12px}
+.acts .why-btn{order:5}
+.why-back{z-index:66}
+
+.why-move{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin:4px 0 6px;font-weight:900}
+.why-who{font-size:17px;color:var(--ink2,#3d4768)}
+.why-cube{margin:0;display:inline-flex}
+.why-arrow{font-size:22px;line-height:1;color:var(--mute,#6b7592)}
+.why-zone{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:15px;background:#eef1f7;color:var(--ink,#16203c)}
+.why-zone.z-required{background:#e9fbf2;color:#0f7a4a}
+.why-zone.z-permitted{background:#e7f1ff;color:#1c5fb8}
+.why-zone.z-forbidden{background:#ffecec;color:#a61e1e}
+
+.why-text{font-size:18px;line-height:1.4;font-weight:700;margin:8px 4px;text-align:center}
+.why-text b{color:var(--ink,#16203c)}
+.why-wait{color:var(--mute,#6b7592)}
+.why-ex{margin:10px 2px 4px;padding:8px 10px 10px;border-radius:16px;background:#f4f6fb}
+.why-exlabel{text-align:center;font-size:14px;font-weight:900;letter-spacing:.5px;color:var(--mute,#6b7592);text-transform:uppercase;margin:0 0 4px}
+.why-ex .expr{margin:2px 0}
+.why-goal{text-align:center;font-size:18px;font-weight:900;margin-top:4px}
+.why-goal small{font-weight:700;color:var(--mute,#6b7592)}
+.why-note{font-size:14px;font-weight:700;color:var(--mute,#6b7592);text-align:center;margin:8px 4px 2px}
+
+.why-shake{display:flex;flex-direction:column;align-items:center;gap:6px;margin:6px 0}
+.why-shake:empty{display:none}
+.why-shake .why-btn{max-width:100%;white-space:normal;text-align:center}
+
+@media (max-width:480px){
+  .why-text{font-size:17px}
+  .why-btn{font-size:13px;padding:6px 10px}
+}
