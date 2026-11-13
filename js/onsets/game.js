@@ -331,7 +331,7 @@ function osPlace(id, zone, who) {
   var c = OG.cubes[id];
   c.zone = zone; c.order = ++osOrder; OG.justMoved = id; OG.highlight = null; OG.lastMover = who;
   if (Snd.thunk && !os3d()) Snd.thunk();
-  if (osCubes('resources').length === 0) { osRender(); setTimeout(osLastCubePlayed, 600); return; }
+  if (osCubes('resources').length === 0) { osRender(); var gL = OG, cL = OG.cubes; setTimeout(function () { if (OG === gL && OG.cubes === cL) osLastCubePlayed(); }, 600); return; }
   OG.turn = osNext(who);
   osCrowd('clap');
   if (!osIsAI(who) && osAIs().length) { osSay('pip', pick(['Nice move!', 'Good thinking!', 'Placed!', 'Ooh, interesting!'])); if (Math.random() < 0.25) osMood(osAIs()[0], pick(['nod', 'gasp'])); }
