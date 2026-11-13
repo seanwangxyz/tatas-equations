@@ -50,7 +50,7 @@ function mateMood(m) { if (T3.mateMood) T3.mateMood(m); }
 // Who the people at the table look like. This device's player is a kid unless Settings says grown-up.
 function seatPeople(mode, cfg) {
   var grown = S.set.me === 'tata';
-  if (T3.playerSet) T3.playerSet({ who: grown ? 'tata' : 'kid', name: S.name, number: S.jersey || '7' });
+  if (T3.playerSet) T3.playerSet({ who: grown ? 'tata' : 'kid', name: grown ? S.name : backName(), number: S.jersey || '7' });
   var other = grown ? 'kid' : 'tata', p1 = G.players[1];
   if (mode === 'pvp') mateShow({ who: other, seat: 'far', name: p1.name, number: grown ? '7' : '17' });
   else if (mode === 'online') mateShow({ who: other, seat: 'far', name: p1.name, number: p1.jersey || (grown ? '7' : '17') });

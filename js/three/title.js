@@ -122,11 +122,11 @@ var T3 = window.T3;
   }
   // who he is, exactly as the table builds him (T3.playerSpec from player.js); a copy of its rules as a fallback
   function kidSpec() {
-    var s = save(), grown = s.set && s.set.me === 'tata', o = { who: grown ? 'tata' : 'kid', name: s.name, number: s.jersey || '7' }, sp = null;
+    var s = save(), grown = s.set && s.set.me === 'tata', o = { who: grown ? 'tata' : 'kid', name: grown ? s.name : (s.backName != null ? s.backName : 'TYSON W.'), number: s.jersey || '7' }, sp = null;
     try { if (T3.playerSpec) sp = T3.playerSpec(o); } catch (e) { sp = null; }
     if (!sp) {
       if (grown) sp = { who: 'tata', dims: TATA, kit: kitFromSave(Object.assign({}, TATA_KIT)), num: String(o.number), name: String(s.name || ''), look: Object.assign({}, TATA_LOOK) };
-      else { var sk = Object.assign({}, KIT_DEFAULT, s.kit || {}); sp = { who: 'kid', dims: KID, kit: kitFromSave(sk), num: String(o.number), name: String(s.name || ''), look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' } }; }
+      else { var sk = Object.assign({}, KIT_DEFAULT, s.kit || {}); sp = { who: 'kid', dims: KID, kit: kitFromSave(sk), num: String(o.number), name: String(o.name || ''), look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' } }; }
     }
     sp = Object.assign({}, sp, { front: true });            // seen from the front here: his number on the chest too
     return sp;

@@ -208,6 +208,7 @@ function renderSettings() {
     '<div class="setrow"><label>Mute everything</label><button class="btn small ' + (S.set.mute ? 'pink' : '') + '" data-act="toggleMute">' + (S.set.mute ? 'Muted' : 'Sound on') + '</button></div></div>' +
     '<div class="group"><h3>' + ico('people') + ' You</h3>' +
     '<div class="setrow"><label>Your name</label><input type="text" maxlength="14" value="' + esc(S.name) + '" id="nameInput"><button class="btn small" data-act="saveName">Save</button></div>' +
+    '<div class="setrow"><label>Name on the back of the shirt</label><input type="text" maxlength="12" value="' + esc(backName()) + '" id="backInput"><button class="btn small" data-act="saveBack">Save</button></div>' +
     '<div class="setrow"><label>Your jersey number</label><input type="text" maxlength="2" style="width:70px" value="' + esc(S.jersey || '7') + '" id="jerseyInput"><button class="btn small" data-act="saveJersey">Save</button></div></div>' +
     '<div class="group"><h3>' + ico('paw') + ' Name your creatures</h3>' + OPPONENTS.map(function (o, i) { return '<div class="setrow"><label>' + o.emoji + ' ' + esc(o.title.replace(/^the /, 'The ')) + ' #' + o.num + '</label><input type="text" maxlength="14" class="oppName" data-i="' + i + '" placeholder="' + esc(DEFAULT_OPP_NAMES[i]) + '" value="' + esc((S.oppNames || [])[i] || '') + '"></div>'; }).join('') +
     '<div class="row" style="justify-content:flex-start;margin:8px 0 4px"><button class="btn small" data-act="saveOppNames">Save names</button></div></div>' +
@@ -276,3 +277,5 @@ ACT.setMe = function (el) { S.set.me = el.dataset.arg; persist(); Snd.click(); r
 ['saveJersey', 'saveName'].forEach(function (k) { var f = ACT[k]; if (f) ACT[k] = function () { var r = f.apply(this, arguments); if (T3.playerRefresh) T3.playerRefresh(); return r; }; });
 
 ACT.setWeatherPick = function (el) { S.set.weather = el.dataset.arg; persist(); Snd.click(); renderSettings(); };
+
+ACT.saveBack = function () { var v = ($('#backInput').value || '').trim().slice(0, 12); S.backName = v; persist(); Snd.chime(); if (T3.playerRefresh) T3.playerRefresh(); renderSettings(); };

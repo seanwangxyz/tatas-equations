@@ -125,7 +125,7 @@ var Kit = (function () {
     var art = window.KitArt;
     if (back) {
       h += '<text x="100" y="128" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="62" fill="' + acc + '" stroke="' + (lum(k.shirt) > 0.55 ? '#ffffff' : k.trim) + '" stroke-width="3" paint-order="stroke">' + esc(num) + '</text>' +
-        '<text x="100" y="62" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="15" fill="' + acc + '">' + esc(String(S.name || '').toUpperCase().slice(0, 12)) + '</text>';
+        '<text x="100" y="62" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="15" fill="' + acc + '">' + esc(String(typeof backName === 'function' ? backName() : (S.name || '')).toUpperCase().slice(0, 12)) + '</text>';
     } else {
       if (k.frontNum !== false) h += '<text x="100" y="132" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="56" fill="' + acc + '" transform="translate(100 0) scale(.62 1) translate(-100 0)">' + esc(num) + '</text>';
       if (art && k.crest !== 'none') h += '<image href="' + art.crestURL(k.crest, 64) + '" x="118" y="44" width="20" height="23"/>';

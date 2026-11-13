@@ -306,7 +306,7 @@ function fmtMs(ms) { var s = Math.round(ms / 1000); return s < 60 ? s + ' sec' :
 // ----- Saving (works even if storage is blocked) -----
 function defaults() {
   return {
-    v: 1, name: 'Champ', xp: 0, badges: {},
+    v: 1, name: 'Champ', backName: 'TYSON W.', xp: 0, badges: {},
     stats: { correct: 0, attempts: 0, nowWins: 0, impWins: 0, goalsSet: 0, pvpShakes: 0, daily: 0, fractionSolutions: 0, streak: 0, noHint: 0, lastWrong: false, bestMatch: 0, shakes: 0, challenges: 0, challengeWins: 0 },
     history: [], best: { fastMs: 0, hardGoal: null, hardGoalText: '', mostCubes: 0 }, opsUsed: {},
     ladder: { stage: 1, stars: 0 }, unlockAll: false, opsManual: null, beaten: OPPONENTS.map(function () { return false; }),
@@ -351,3 +351,6 @@ function importCode(code) {
 // The 3D table loads as a module (js/three/table.js). Until it does, this stand-in says "not ready",
 // and the game uses the flat 2D mat. The module fills in the real functions on this same object.
 var T3 = { supported: false, handlers: {}, active: function () { return T3.supported && S.set.three !== false; } };
+
+// The name printed on the back of the kid's shirt (Settings can change it; separate from the name Pip greets).
+function backName() { return (typeof S !== 'undefined' && S && S.backName != null) ? String(S.backName) : 'TYSON W.'; }

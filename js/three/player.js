@@ -95,7 +95,7 @@ if (T3 && T3.ctx) (function () {
     }
     // the kid: his saved kit, with any override on top
     var sk = Object.assign({}, savedKit(s), over.kit && !over.kit.jersey ? over.kit : {});   // the kit he wears (home / away / third)
-    return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.name || ''),
+    return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.backName != null ? s.backName : 'TYSON W.'),
       look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role === 'mate' };
   }
   function specKey(sp) { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
