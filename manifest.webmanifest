@@ -1,7 +1,10 @@
 {
+  "id": "./index.html",
   "name": "Tata's Equations",
   "short_name": "Equations",
-  "description": "A math dice game of creative equations.",
+  "description": "A math dice game of creative equations. Plays without internet on one device.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
@@ -9,10 +12,12 @@
   "orientation": "any",
   "background_color": "#0f4d33",
   "theme_color": "#0f4d33",
+  "categories": ["games", "education", "kids"],
   "icons": [
     { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "assets/icons/icon-full.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }
