@@ -236,9 +236,12 @@ var OS3D = (function () {
   }
   function goalSet(v) {
     var t = T();
-    if (t.setBoard) t.setBoard('GOAL' + String.fromCharCode(10) + v + (v === 1 ? ' CARD' : ' CARDS'));
+    var ex = ''; try { if (OG && OG.goal) ex = OSE.goalText(OG.goal); } catch (e) {}
+    if (ex === String(v)) ex = '';
+    // the big screen shows the sum and the number of cards ('OSGOAL' = bigscreen.js ONSETS branch)
+    if (t.setBoard) t.setBoard('OSGOAL' + String.fromCharCode(10) + v + (ex ? String.fromCharCode(10) + ex : ''));
     try { // the Goal's sewn label on the felt ("2 × 3 = 6") and the brass frame warming once
-      if (t.onsets && t.onsets.goal && OG && OG.goal) { var ex = OSE.goalText(OG.goal); t.onsets.goal((ex === String(v) ? '' : ex + ' ') + '= ' + v); }
+      if (t.onsets && t.onsets.goal && ex !== undefined) t.onsets.goal((ex ? ex + ' ' : 'Goal ') + '= ' + v);
       if (t._craft) t._craft('plinth');
     } catch (e) {}
     if (t.shot) t.shot('goal');
