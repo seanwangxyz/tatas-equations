@@ -156,7 +156,7 @@ var Snd = (function () {
   // make (but do not unlock) the context, so other files can build their sounds on it before the first tap
   function ensure() {
     if (ctx) return ctx;
-    try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; build(new AC()); hookLife(); loadManifest(); apply(); } catch (e) { ctx = null; }
+    try { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; build(new AC()); hookLife(); loadManifest(); loadMusic(); apply(); } catch (e) { ctx = null; }
     return ctx;
   }
   function init() {
@@ -306,26 +306,54 @@ var Snd = (function () {
   }
   function lowpass1(d, a) { var y = 0; for (var i = 0; i < d.length; i++) { y += (d[i] - y) * a; d[i] = y; } }
   // A die striking a surface. kind 'felt' (muffled body) | 'die' (hard plastic clack) | 'soft' (gentle)
-  function genHit(kind) {
-    var dur = kind === 'die' ? 0.13 : 0.16;
+  // The five cube skins sound like what they look like: Classic plastic, Candy (hard candy), Lava (stone), Galaxy
+  // (glass) and Gold (metal). body = the knock's pitch range, tick = the bright strike and its partial ratios, dec = how
+  // fast the strike rings away (lower = longer ring). Kept below 4 kHz so nothing is piercing on a small speaker.
+  var MATS = {
+    plastic: { body: [190, 300], bAmp: 0.35, bDec: 90, tick: [1700, 3300], tickA: 0.55, dec: [110, 220], ratios: [2.31, 3.7], click: 0.8 },
+    candy:   { body: [290, 400], bAmp: 0.3,  bDec: 110, tick: [2100, 2900], tickA: 0.42, dec: [80, 120], ratios: [1.52, 2.9], click: 0.55 },
+    stone:   { body: [120, 180], bAmp: 0.75, bDec: 55, tick: [1000, 1500], tickA: 0.16, dec: [200, 300], ratios: [2.1, 3.3], click: 1.0, lp: 0.45 },
+    glass:   { body: [230, 320], bAmp: 0.22, bDec: 100, tick: [1700, 2300], tickA: 0.3, dec: [38, 60], ratios: [2.7, 5.1], click: 0.4 },
+    metal:   { body: [190, 250], bAmp: 0.2,  bDec: 80, tick: [900, 1250], tickA: 0.32, dec: [20, 30], ratios: [2.76, 5.4], click: 0.45 }
+  };
+  var SKIN_MAT = { classic: 'plastic', candy: 'candy', lava: 'stone', galaxy: 'glass', gold: 'metal' };
+  function matNow() { try { var s = (typeof S !== 'undefined' && S && S.cos) ? S.cos.skin : 'classic'; return SKIN_MAT[s] || 'plastic'; } catch (e) { return 'plastic'; } }
+  function genHit(kind, mat) {
+    var M = MATS[mat] || MATS.plastic, die = kind === 'die', dur = die ? (M.dec[0] < 50 ? 0.32 : 0.14) : 0.16;
     return mkBuf(dur, function (d, sr, n) {
-      var body = kind === 'die' ? rnd(190, 300) : rnd(85, 150), bAmp = kind === 'die' ? 0.35 : 1.0;
-      var clickA = kind === 'die' ? 0.8 : (kind === 'soft' ? 0.18 : 0.5), clickLp = kind === 'die' ? 0.7 : 0.3;
-      var tickF = rnd(1700, 3300), tickA = kind === 'die' ? 0.55 : (kind === 'soft' ? 0.03 : 0.14), tickDecay = rnd(110, 220);
-      var ph = 0, lpn = 0, i;
+      var body = die ? rnd(M.body[0], M.body[1]) : rnd(85, 150), bAmp = die ? M.bAmp : 1.0, bDec = die ? M.bDec : 55;
+      var clickA = die ? M.click : (kind === 'soft' ? 0.18 : 0.5), clickLp = die ? (M.lp || 0.7) : 0.3;
+      // on the felt the material only shows a little (the strike is muffled)
+      var tickF = rnd(M.tick[0], M.tick[1]), tickA = die ? M.tickA : (kind === 'soft' ? 0.03 : 0.14) * (mat && mat !== 'plastic' ? 1.3 : 1), tickDecay = die ? rnd(M.dec[0], M.dec[1]) : rnd(110, 220);
+      var r1 = M.ratios[0], r2 = M.ratios[1], ph = 0, lpn = 0, i;
       for (i = 0; i < n; i++) {
         var t = i / sr, f = body * (1 + 1.3 * Math.exp(-t * 75));
         ph += 2 * Math.PI * f / sr;
-        var v = Math.sin(ph) * Math.exp(-t * (kind === 'die' ? 90 : 55)) * bAmp;
+        var v = Math.sin(ph) * Math.exp(-t * bDec) * bAmp;
         lpn += ((Math.random() * 2 - 1) - lpn) * clickLp;
         v += lpn * Math.exp(-t * 330) * clickA;
-        v += (Math.sin(2 * Math.PI * tickF * t) * 1 + Math.sin(2 * Math.PI * tickF * 2.31 * t) * 0.45 + Math.sin(2 * Math.PI * tickF * 3.7 * t) * 0.2) * Math.exp(-t * tickDecay) * tickA;
+        v += (Math.sin(2 * Math.PI * tickF * t) * 1 + Math.sin(2 * Math.PI * tickF * r1 * t) * 0.45 + Math.sin(2 * Math.PI * tickF * r2 * t) * 0.2) * Math.exp(-t * tickDecay) * tickA;
         d[i] = v;
       }
       if (kind === 'soft') lowpass1(d, 0.22);
     });
   }
-  function genThunk(f0) {
+  // one material's set of sounds, made the first time that skin is used
+  function matBank(mat) {
+    if (!bank) return null;
+    if (!mat || mat === 'plastic') return bank;
+    bank.mats = bank.mats || {};
+    if (!bank.mats[mat]) {
+      var b = { felt: [], die: [], soft: bank.soft, thunk: [], click: bank.click, cup: bank.cup, pickup: bank.pickup }, i;
+      for (i = 0; i < 4; i++) b.felt.push(genHit('felt', mat));
+      for (i = 0; i < 5; i++) b.die.push(genHit('die', mat));
+      [165, 185, 205].forEach(function (f) { b.thunk.push(genThunk(f, mat)); });
+      bank.mats[mat] = b;
+    }
+    return bank.mats[mat];
+  }
+  function genThunk(f0, mat) {
+    var M = mat && mat !== 'plastic' ? MATS[mat] : null, tf = M ? rnd(M.tick[0], M.tick[1]) : 0, td = M ? rnd(M.dec[0], M.dec[1]) * 1.3 : 0;
     return mkBuf(0.34, function (d, sr, n) {
       var ph = 0, lpn = 0;
       for (var i = 0; i < n; i++) {
@@ -333,8 +361,9 @@ var Snd = (function () {
         ph += 2 * Math.PI * f / sr;
         var v = Math.sin(ph) * Math.exp(-t * 17) + Math.sin(2 * Math.PI * f0 * 2.76 * t) * 0.38 * Math.exp(-t * 34) + Math.sin(2 * Math.PI * f0 * 5.4 * t) * 0.16 * Math.exp(-t * 70);
         v += Math.sin(2 * Math.PI * 62 * t) * 0.55 * Math.exp(-t * 26);
-        lpn += ((Math.random() * 2 - 1) - lpn) * 0.18;
+        lpn += ((Math.random() * 2 - 1) - lpn) * (M && M.lp ? 0.12 : 0.18);
         v += lpn * Math.exp(-t * 260) * 0.6;
+        if (M) v += (Math.sin(2 * Math.PI * tf * t) + 0.4 * Math.sin(2 * Math.PI * tf * M.ratios[0] * t)) * Math.exp(-t * td) * M.tickA * 0.32;   // the skin's own ring, small
         d[i] = v;
       }
     });
@@ -409,10 +438,15 @@ var Snd = (function () {
         var w = Math.random() * 2 - 1; lp1 += (w - lp1) * 0.35; lp2 += (w - lp2) * 0.06;
         d[i] = (lp1 - lp2) * e * 0.5;
       }
+      // each shake: the cup's leather "thup" as the dice hit its wall, then the dice knocking each other (dense, fading)
       for (s = 0; s < shakes.length; s++) {
-        var cnt = 4 + Math.floor(Math.random() * 4);
+        var t0 = shakes[s] + 0.012, at0 = Math.floor(t0 * sr), ph = 0;
+        for (i = 0; i < Math.floor(sr * 0.09) && at0 + i < n; i++) { var tt = i / sr; ph += 2 * Math.PI * (95 + 60 * Math.exp(-tt * 40)) / sr; d[at0 + i] += Math.sin(ph) * Math.exp(-tt * 38) * 0.35 * (1 - s * 0.1); }
+      }
+      for (s = 0; s < shakes.length; s++) {
+        var cnt = 7 + Math.floor(Math.random() * 5);
         for (c = 0; c < cnt; c++) {
-          var src = hits[Math.floor(Math.random() * hits.length)], off = Math.floor((shakes[s] + Math.random() * 0.07) * sr), g = rnd(0.25, 0.8) * (1 - s * 0.12), sd = src.getChannelData(0);
+          var u = Math.pow(Math.random(), 1.6), src = hits[Math.floor(Math.random() * hits.length)], off = Math.floor((shakes[s] + u * 0.1) * sr), g = rnd(0.2, 0.7) * (1 - 0.5 * u) * (1 - s * 0.12), sd = src.getChannelData(0);
           for (i = 0; i < sd.length && off + i < n; i++) d[off + i] += sd[i] * g;
         }
       }
@@ -574,9 +608,9 @@ var Snd = (function () {
     lastDiceWhen = when;
     var vv = Math.pow(v, 1.15), amp = 0.1 + 0.9 * vv;
     if (sample('diceHit', { vol: amp, delay: delay, pan: rnd(-0.5, 0.5), dest: diceBus })) return;
-    var set;
-    if (v < 0.3) set = bank.soft; else set = Math.random() < 0.12 + 0.5 * v ? bank.die : bank.felt;
-    var key = set === bank.die ? 'd' : (set === bank.soft ? 's' : 'f'), buf = set[pickVariant(key, set.length)];
+    var set, mat = matNow(), mb = matBank(mat) || bank;
+    if (v < 0.3) set = mb.soft; else set = Math.random() < 0.12 + 0.5 * v ? mb.die : mb.felt;
+    var key = (set === mb.die ? 'd' : (set === mb.soft ? 's' : 'f')) + mat, buf = set[pickVariant(key, set.length)];
     var src = playBuf(buf, { vol: amp * 1.3, rate: rnd(0.92, 1.1) * (1 + 0.06 * (v - 0.5)), pan: rnd(-0.5, 0.5), delay: delay, dest: diceBus });
     diceVoices++; var prev = src.onended; src.onended = function () { diceVoices--; prev(); };
   }
@@ -597,12 +631,60 @@ var Snd = (function () {
     if (sample('pickup', { vol: 0.6, dest: uiIn })) return;
     playBuf(bank.pickup[pickVariant('p', bank.pickup.length)], { vol: 0.45 * TRIM.pickup, rate: rnd(0.95, 1.08), pan: rnd(-0.15, 0.15), dest: uiIn });
   }
-  function thunk() {
+  // A cube set down in a zone. zone (optional): 'required' firm and low, 'permitted' plain, 'forbidden' muffled and
+  // soft (never a "wrong" sound), 'goal' bright, 'resources' soft felt. Without a zone: one of the three, at random.
+  var ZONE_SET = { required: [0, 0.95, 1.05, 0.25], permitted: [1, 1.0, 1.0, 0.25], forbidden: [0, 0.9, 0.8, 0.12], goal: [2, 1.04, 1.0, 0.4], resources: [1, 1.02, 0.75, 0.3] };
+  function thunk(zone) {
     if (!sfxOn() || !rl('thunk', 0.03)) return;
     if (sample('thunk', { vol: 0.9 })) return;
-    playBuf(bank.thunk[pickVariant('t', bank.thunk.length)], { vol: 1.25 * TRIM.thunk, rate: rnd(0.94, 1.07), dest: mkBusOnce('thunk') });
-    // a tiny felt-on-cube tick on top so it reads as a cube landing in a zone
-    playBuf(bank.felt[pickVariant('f', bank.felt.length)], { vol: 0.25 * TRIM.thunk, rate: rnd(1.0, 1.2), delay: 0.004 });
+    var mb = matBank(matNow()) || bank, z = ZONE_SET[zone], i = z ? z[0] : pickVariant('t', mb.thunk.length);
+    var dest = zone === 'forbidden' ? mufBus() : mkBusOnce('thunk');
+    playBuf(mb.thunk[i], { vol: 1.25 * TRIM.thunk * (z ? z[2] : 1), rate: (z ? z[1] : 1) * rnd(0.95, 1.06), dest: dest });
+    // a tiny cube-on-felt tick on top so it reads as a cube landing in a zone
+    playBuf(mb.felt[pickVariant('f', mb.felt.length)], { vol: (z ? z[3] : 0.25) * TRIM.thunk, rate: rnd(1.0, 1.2), delay: 0.004 });
+  }
+  var mufB = null;
+  function mufBus() { if (!mufB || mufB.ctx !== ctx) { var f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; f.Q.value = 0.5; f.connect(mkBusOnce('thunk')); f.ctx = ctx; mufB = f; } return mufB; }
+  // A cube slid across the felt (a drag): a soft brushed swish, its length in seconds (hook: js/three/table.js)
+  function slide(sec) {
+    if (!sfxOn() || !rl('slide', 0.12)) return;
+    sec = Math.max(0.12, Math.min(0.8, +sec || 0.25));
+    hiss({ dur: sec, vol: 0.06 * TRIM.slide, type: 'bandpass', f: 520, f2: 760, q: 0.9, attack: Math.min(0.06, sec * 0.3), pink: true, dest: uiIn, pan: rnd(-0.2, 0.2) });
+  }
+  // On-Sets cards: 'lift' (a soft paper lift with a tiny rising tone), 'place' (a paper pat on the felt),
+  // 'flip' (a quick card turn). Gentle, in the UI family; hooks in js/onsets/* and js/three/onsets3d.js.
+  function card(kind) {
+    if (!sfxOn() || !rl('card.' + kind, 0.06)) return;
+    var p = rnd(-0.25, 0.25);
+    withTrim('card', function () {
+      if (kind === 'place') { hiss({ dur: 0.07, vol: 0.12, type: 'lowpass', f: 1100, attack: 0.003, pan: p, dest: uiIn }); note({ f: 180, f2: 140, dur: 0.08, vol: 0.06, attack: 0.002, dest: uiIn }); }
+      else if (kind === 'flip') { hiss({ dur: 0.09, vol: 0.09, type: 'bandpass', f: 1400, f2: 2200, q: 0.8, attack: 0.01, pan: p, dest: uiIn }); hiss({ dur: 0.05, vol: 0.08, delay: 0.07, type: 'lowpass', f: 1000, attack: 0.003, pan: p, dest: uiIn }); }
+      else { hiss({ dur: 0.16, vol: 0.07, type: 'bandpass', f: 700, f2: 1500, q: 0.9, attack: 0.04, pan: p, dest: uiIn, pink: true }); note({ f: mtof(76), f2: mtof(79), glide: 0.1, dur: 0.18, vol: 0.025, delay: 0.03, attack: 0.01, dest: uiIn }); }
+    });
+  }
+  // A correct Solution reads itself out: one rising note per cube (its value sets the step), ending on the Goal note.
+  // values: the cubes in order (numbers or operator strings); goal: the Goal's value. Returns ms. (hook: game.js)
+  function readout(values, goal) {
+    if (!sfxOn() || !rl('readout', 1.0) || !roomFor(30)) return 0;
+    values = (values || []).slice(0, 12); if (!values.length) return 0;
+    var sc = [0, 2, 4, 7, 9], d = 0, step = values.length > 7 ? 0.085 : 0.11;   // C major pentatonic
+    function midi(k) { return 60 + 12 * Math.floor(k / 5) + sc[((k % 5) + 5) % 5]; }
+    var k = 4;   // G4
+    withTrim('readout', function () {
+      values.forEach(function (v, i) {
+        var n = typeof v === 'number' ? Math.abs(v) : parseFloat(v), inc = isFinite(n) ? 1 + (Math.round(n) % 2) : 1;
+        if (i) k += inc;
+        if (midi(k) > 88) k -= 5;
+        var f = mtof(midi(k)); note({ f: f, dur: 0.6, vol: 0.12, delay: i * step, attack: 0.003, reverb: 0.3 }); note({ f: f * 3, dur: 0.12, vol: 0.02, delay: i * step, attack: 0.002 });
+        d = i * step;
+      });
+      // the Goal note: the next C (or E, G) above, held, with a soft fifth under it
+      var gk = k + 1; while (sc[((gk % 5) + 5) % 5] !== 0 && sc[((gk % 5) + 5) % 5] !== 4) gk++;
+      var gf = mtof(midi(gk)), gt = d + step * 1.6;
+      bell(gf, gt, 0.13, 1.6); note({ f: gf / 2, dur: 1.2, vol: 0.06, delay: gt, attack: 0.02, reverb: 0.4 }); note({ f: gf * 0.75, dur: 1.1, vol: 0.04, delay: gt, attack: 0.03, reverb: 0.4 });
+      d = gt + 1.6;
+    });
+    return Math.round(d * 1000);
   }
   function cupRattle() {
     if (!sfxOn() || !rl('cupRattle', 0.25)) return;
@@ -648,7 +730,8 @@ var Snd = (function () {
   var TRIM = { slam: 0.35, fanfare: 0.39, chime: 0.41, boop: 0.76,
     dice: 0.5, click: 2.2, pop: 0.87, pickup: 0.48, thunk: 0.5, cupRattle: 0.6, whistle: 0.62, roar: 0.54,
     'theme.sloth': 0.28, 'theme.owl': 0.36, 'theme.wizard': 0.52, 'theme.penguin': 0.79, 'theme.fox': 2.46, 'theme.pip': 1.73,
-    'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 1.6, 'sting.levelup': 0.55 };
+    'sting.card': 0.57, 'sting.vs': 0.43, 'sting.emote': 1.6, 'sting.levelup': 0.55,
+    readout: 1, slide: 1, card: 1 };
   var REACT_TRIM = { ooh: 0.84, aww: 0.9, cheer: 0.62, gasp: 0.8, laugh: 1, clap: 0.4, chant: 1.0 };
   var MOOD_GAIN = { challenge: 0.83, win: 0.84 };
   function withTrim(k, fn) { var tr = trims && trims[k]; if (tr) { defDest = tr.d; defRev = tr.r; } try { fn(); } finally { defDest = null; defRev = null; } }
@@ -710,9 +793,12 @@ var Snd = (function () {
     ap.connect(apf); apf.connect(apg); apg.connect(bus); ap.start(t0 + 0.6); outs.push(ap, apf, apg); track(ap, []);
     // individual "aaah / yeah" voices rising at the start
     for (i = 0; i < 16; i++) voiceBurst(rnd(160, 330) * (Math.random() < 0.3 ? 1.5 : 1), rnd(0, 1.6), rnd(0.9, 1.8), 0.012, pick(['ah', 'ah', 'eh', 'oh']), bus, rnd(-0.8, 0.8));
-    // a chant: five accented shouts "o-le o-le OH-LE" style, lower in the mix
-    var base = 2.1, pat = [0, 0.26, 0.52, 0.78, 1.2], pit = [196, 196, 220, 196, 262];
-    pat.forEach(function (p, k) { for (var v = 0; v < 5; v++) voiceBurst(pit[k] * rnd(0.98, 1.02) * (v % 2 ? 2 : 1), base + p + rnd(0, 0.02), k === 4 ? 0.55 : 0.2, k === 4 ? 0.016 : 0.012, k === 4 ? 'oh' : 'eh', bus, rnd(-0.7, 0.7)); });
+    // the crowd's own chant (original): the game's theme head G C E D E, sung and clapped on its rhythm, lower in the mix
+    var base = 2.1, pat = [0, 0.25, 0.5, 1.25, 1.5], pit = [196, 261.6, 329.6, 293.7, 329.6], dl = [0.2, 0.2, 0.6, 0.2, 0.55];
+    pat.forEach(function (p, k) {
+      for (var v = 0; v < 5; v++) voiceBurst(pit[k] * rnd(0.99, 1.01) * (v % 3 === 2 ? 0.5 : 1), base + p + rnd(0, 0.02), dl[k], k >= 2 ? 0.014 : 0.012, dl[k] > 0.4 ? 'oh' : 'eh', bus, rnd(-0.7, 0.7));
+      playBuf(bank.gclap[k % 3], { vol: 0.3, rate: rnd(0.95, 1.05), delay: base + p, dest: bus });
+    });
     // referee-style whistles in the distance
     whistleAt(0.5, 2900, 0.22, 0.03); whistleAt(0.8, 2900, 0.5, 0.03); whistleAt(3.2, 3200, 0.35, 0.025);
     setTimeout(function () { for (var k = 0; k < outs.length; k++) { try { outs[k].disconnect(); } catch (e) {} } }, (D + 1) * 1000);
@@ -725,7 +811,7 @@ var Snd = (function () {
 
   // ---------------------------------------------------------------- adaptive music
   // Layers fade in and out with the mood; everything is scheduled a bar at a time on the audio clock.
-  var BPM = 88, BEAT = 60 / BPM, BAR = BEAT * 4, LOOKAHEAD = 1.6;
+  var BPM = 88, BEAT = 60 / BPM, BAR = BEAT * 4, LOOKAHEAD = 1.1;
   var PROG_MAJ = [
     { r: 36, p: [55, 60, 64, 71] }, { r: 33, p: [57, 60, 64, 67] }, { r: 41, p: [53, 60, 64, 69] }, { r: 43, p: [55, 59, 62, 64] },
     { r: 36, p: [55, 60, 64, 71] }, { r: 40, p: [52, 59, 62, 67] }, { r: 41, p: [53, 60, 64, 69] }, { r: 43, p: [55, 59, 62, 64] }
@@ -738,7 +824,7 @@ var Snd = (function () {
   var MOODS = {
     menu:      { pad: 1.0, pluck: 0.55, bass: 0.0, perc: 0.0, tens: 0.0 },
     play:      { pad: 0.75, pluck: 0.65, bass: 0.6, perc: 0.35, tens: 0.0 },
-    think:     { pad: 0.85, pluck: 0.3, bass: 0.3, perc: 0.0, tens: 0.0 },
+    think:     { pad: 1.0, pluck: 0.55, bass: 0.4, perc: 0.0, tens: 0.0 },   // the score keeps think sparse; levels from the music audit (docs/handoff/music.md)
     challenge: { pad: 0.4, pluck: 0.0, bass: 0.0, perc: 0.0, tens: 0.65 },
     win:       { pad: 0.95, pluck: 0.75, bass: 0.45, perc: 0.3, tens: 0.0 },
     off:       { pad: 0, pluck: 0, bass: 0, perc: 0, tens: 0 }
@@ -756,18 +842,46 @@ var Snd = (function () {
     var pre = ctx.createGain(), dl = ctx.createDelay(2), fb = ctx.createGain(), lp = ctx.createBiquadFilter(), es = ctx.createGain();
     dl.delayTime.value = BEAT * 0.75; fb.gain.value = 0.36; lp.type = 'lowpass'; lp.frequency.value = 1500; es.gain.value = 0.42;
     pre.connect(L.pluck.out); pre.connect(es); es.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(L.pluck.out);
-    L.pluck.in = pre;
+    L.pluck.in = pre; L.dly = dl;
   }
-  function applyLevels() {
+  // ---------------------------------------------------------------- the score (js/music.js, loaded on demand) and its helpers
+  var Score = null, scoreTag = false, motifBus = null;
+  function isOffline(c) { var O = typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext); return !!(O && c instanceof O); }
+  var HOST = {
+    ctx: function () { return ctx; },
+    layer: function (k) { return L[k].in; },
+    sting: function () { return stingBus; },
+    bank: function () { return bank; },
+    track: function (s, outs) { track(s, outs); },
+    echo: function (sec, t) { try { L.dly.delayTime.setValueAtTime(Math.min(1.9, sec), t); } catch (e) {} },
+    // disconnect shared nodes once their notes are over (an offline render keeps them: it is thrown away whole)
+    release: function (nodes, at) { if (isOffline(ctx)) return; var c = ctx; setTimeout(function () { for (var i = 0; i < nodes.length; i++) { try { nodes[i].disconnect(); } catch (e) {} } }, Math.max(0, at - c.currentTime) * 1000 + 100); },
+    out: function () {
+      if (!motifBus || motifBus.ctx !== ctx) { var b = ctx.createGain(); b.connect(sfx); var s = ctx.createGain(); s.gain.value = 0.3; b.connect(s); s.connect(sfxRev); b.ctx = ctx; motifBus = b; }
+      return motifBus;
+    }
+  };
+  function attachMusic(M) { try { if (M && M.attach) { M.attach(HOST); Score = M; } } catch (e) {} }
+  function loadMusic() {
+    if (Score || scoreTag || typeof document === 'undefined') return;
+    if (typeof Music !== 'undefined') { attachMusic(Music); return; }
+    scoreTag = true;
+    try { var s = document.createElement('script'); s.src = 'js/music.js'; s.async = true; s.onerror = function () { scoreTag = false; }; document.head.appendChild(s); } catch (e) { scoreTag = false; }
+  }
+  // Layer levels follow the mood. Calm changes (menu / play / think) start on the next bar line that has not been
+  // scheduled yet, so the old bar finishes and the new music begins with its own bar; urgent ones (challenge, win, off,
+  // the music starting) move now.
+  function applyLevels(urgent) {
     if (!ctx || !L) return;
     var m = MOODS[wantedMood] || MOODS.off, on = musicActive(), now = ctx.currentTime;
-    var mg = MOOD_GAIN[wantedMood] || 1;
-    for (var k in L) L[k].out.gain.setTargetAtTime(on ? m[k] * mg : 0, now, on ? 0.55 : 0.12);
+    var mg = MOOD_GAIN[wantedMood] || 1, calm = on && !urgent && timer && nextBar > now && nextBar - now < 4;
+    var at = calm ? Math.max(now, nextBar - 0.3) : now, tc = calm ? 0.45 : (on ? 0.4 : 0.12);
+    for (var k in L) { if (!L[k].out) continue; var g = L[k].out.gain; try { g.cancelScheduledValues(now + 0.001); } catch (e) {} g.setTargetAtTime(on ? m[k] * mg : 0, at, tc); }
   }
-  function syncMusic() {
+  function syncMusic(urgent) {
     if (!ctx) return;
     musVol = vol('music', 0.35) * 0.8; refreshMus(0.05);
-    applyLevels();
+    applyLevels(urgent !== false);
     if (musicActive()) {
       if (offTimer) { clearTimeout(offTimer); offTimer = null; }
       startMusic();
@@ -786,7 +900,7 @@ var Snd = (function () {
       if (!ctx || !musicActive()) return;
       var now = ctx.currentTime;
       if (nextBar < now) nextBar = now + 0.05;            // after a stall or suspend, restart on the clock
-      while (nextBar < now + LOOKAHEAD) { scheduleBar(nextBar, barNo++); nextBar += BAR; }
+      while (nextBar < now + LOOKAHEAD) { var bl = scheduleBar(nextBar, barNo++); nextBar += (bl > 0.5 && bl < 8) ? bl : BAR; }
     } catch (e) {}
     timer = setTimeout(tick, 200);
   }
@@ -807,6 +921,11 @@ var Snd = (function () {
   function chordTones(c) { var pcs = c.p.map(function (m) { return m % 12; }), out = []; for (var m = 60; m <= 79; m++) if (pcs.indexOf(m % 12) >= 0 || PENT.indexOf(m % 12) >= 0) out.push(m); return out; }
   var walk = 7;
   function scheduleBar(t, bar) {
+    if (Score) { try { return Score.bar(t, bar, wantedMood); } catch (e) {} }
+    oldBar(t, bar); return BAR;
+  }
+  // the older built-in bed: plays until js/music.js has loaded (or if it cannot load)
+  function oldBar(t, bar) {
     var mood = wantedMood, lv = MOODS[mood] || MOODS.off, minor = mood === 'challenge';
     var prog = minor ? PROG_MIN : PROG_MAJ, c = prog[bar % prog.length], E = BEAT / 2, i, k;
     // pad: soft triangle + quiet octave sine through a slow low-pass, long overlap between chords
@@ -892,10 +1011,23 @@ var Snd = (function () {
       m = (typeof m === 'string' && MOODS[m]) ? m : 'off';
       var was = wantedMood; wantedMood = m;
       if (!ctx) return;
-      syncMusic();
-      if (m === 'win' && was !== 'win') winSting();
+      syncMusic(m === 'challenge' || m === 'win' || m === 'off' || was === 'off' || was === 'challenge');
+      if (m === 'win' && was !== 'win') { if (Score && musicActive()) Score.coda('win'); else winSting(); }
+      // a shake just ended (endShake sets phase 'over' then asks for 'play'): a short cadence, warm when it went well,
+      // kind when it did not; after a challenge it resolves the tension (bright for right, gentle for wrong)
+      if (m === 'play' && was !== 'play' && Score && musicActive()) {
+        var g = shakeGame();
+        if (g && rl('coda', 2)) { var good = shakeGood(g); Score.coda(was === 'challenge' ? (good ? 'challengeRight' : 'challengeWrong') : (good ? 'shakeGood' : 'shakeKind')); }
+      }
     } catch (e) {}
   }
+  function shakeGame() {
+    try { var g = typeof G !== 'undefined' ? G : null, og = typeof OG !== 'undefined' ? OG : null; if (g && g.phase === 'over') return g; if (og && og.phase === 'over') return og; } catch (e) {}
+    return null;
+  }
+  function shakeGood(g) { try { var r = g.lastShake; if (r && r.pts) return (r.pts[0] || 0) >= 4; } catch (e) {} return true; }
+  // the kid lost the match (the creature dances): a kind, hopeful coda after the dance
+  function lostMatch() { try { var g = typeof G !== 'undefined' ? G : null; return !!(g && g.phase === 'over' && g.players && g.players.length > 1); } catch (e) { return false; } }
   function musicOn() { try { if (wantedMood === 'off') wantedMood = 'menu'; setMood(wantedMood); } catch (e) {} }
   function musicOff() { setMood('off'); }
 
@@ -1085,8 +1217,22 @@ var Snd = (function () {
     penguin: { base: 360, span: 0.9,  blip: 0.046, gap: 0.032, wave: 'sawtooth', saw: 0.6, sub: 0,    body: 0.15, shim: 0,   q: 5,   fs: 1.1,  glide: 0.9,  vol: 0.45, slow: 0.75, tail: 1.3 },
     fox:     { base: 270, span: 1.05, blip: 0.058, gap: 0.04,  wave: 'sawtooth', saw: 0.8, sub: 0,    body: 0.1, shim: 0,    q: 8,   fs: 1.16, glide: 1.0,  vol: 0.46, slow: 0.9, tail: 1.2 },
     owl:     { base: 196, span: 0.6,  blip: 0.095, gap: 0.07,  wave: 'triangle', saw: 0.3, sub: 0.5,  body: 0.9, shim: 0,    q: 2.5, fs: 0.86, glide: 1.12, vol: 0.18,  slow: 1.2, tail: 1.7 },
-    wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.28,  slow: 1.4, tail: 1.8 }
+    wizard:  { base: 92,  span: 0.7,  blip: 0.11,  gap: 0.08,  wave: 'sawtooth', saw: 0.5, sub: 0.5,  body: 0.5, shim: 0.2,  q: 4,   fs: 0.82, glide: 1.0,  vol: 0.28,  slow: 1.4, tail: 1.8 },
+    // Monster League: gruff, careful, crackly, sly, blustery
+    grub:    { base: 120, span: 0.5,  blip: 0.09,  gap: 0.06,  wave: 'sawtooth', saw: 0.7, sub: 0.5,  body: 0.8, shim: 0,    q: 3,   fs: 0.8,  glide: 1.15, vol: 0.26, slow: 1.1, tail: 1.6, soft: 1 },
+    splosh:  { base: 210, span: 0.4,  blip: 0.08,  gap: 0.075, wave: 'triangle', saw: 0.4, sub: 0.2,  body: 0.5, shim: 0,    q: 3.5, fs: 0.95, glide: 0.96, vol: 0.32, slow: 1.3, tail: 1.5, soft: 1 },
+    blaze:   { base: 330, span: 1.1,  blip: 0.04,  gap: 0.025, wave: 'sawtooth', saw: 0.9, sub: 0,    body: 0.1, shim: 0,    q: 7,   fs: 1.12, glide: 1.2,  vol: 0.4,  slow: 0.6, tail: 1.1 },
+    hex:     { base: 250, span: 1.2,  blip: 0.065, gap: 0.045, wave: 'sawtooth', saw: 0.7, sub: 0,    body: 0.2, shim: 0,    q: 6,   fs: 1.05, glide: 0.75, vol: 0.42, slow: 1.0, tail: 1.4 },
+    zog:     { base: 98,  span: 0.8,  blip: 0.1,   gap: 0.07,  wave: 'sawtooth', saw: 0.6, sub: 0.5,  body: 0.7, shim: 0,    q: 3.5, fs: 0.78, glide: 1.08, vol: 0.28, slow: 1.2, tail: 1.9, soft: 1 },
+    // Legend League: a robot, a bat, an octopus, a dragon, a queen
+    bleep:   { base: 300, span: 0.25, blip: 0.06,  gap: 0.05,  wave: 'square',   saw: 0.5, sub: 0,    body: 0.3, shim: 0,    q: 9,   fs: 1.0,  glide: 1.0,  vol: 0.3,  slow: 0.9, tail: 1.0 },
+    flip:    { base: 560, span: 0.9,  blip: 0.04,  gap: 0.035, wave: 'triangle', saw: 0.5, sub: 0,    body: 0.15, shim: 0,   q: 6,   fs: 1.25, glide: 0.85, vol: 0.32, slow: 0.8, tail: 1.2 },
+    squiggle:{ base: 300, span: 1.0,  blip: 0.07,  gap: 0.05,  wave: 'sine',     saw: 0.5, sub: 0,    body: 0.6, shim: 0.15, q: 4,   fs: 0.9,  glide: 1.25, vol: 0.4,  slow: 1.0, tail: 1.5 },
+    nugget:  { base: 115, span: 0.65, blip: 0.11,  gap: 0.075, wave: 'sawtooth', saw: 0.55, sub: 0.55, body: 0.8, shim: 0,   q: 3,   fs: 0.8,  glide: 1.05, vol: 0.27, slow: 1.3, tail: 1.8, soft: 1 },
+    chroma:  { base: 300, span: 0.95, blip: 0.08,  gap: 0.06,  wave: 'triangle', saw: 0.55, sub: 0,   body: 0.3, shim: 0,    q: 5,   fs: 1.12, glide: 0.9,  vol: 0.36, slow: 1.1, tail: 1.6 }
   };
+  var BAB_ALIAS = { snoozy: 'sloth', penny: 'penguin' };
+  function babCfg(who) { var id = creatureId(who); return BAB[id] || BAB[BAB_ALIAS[id]] || BAB[who] || BAB.pip; }
   var PSC = [0, 2, 4, 7, 9, 12, 14, 16];
   var VMAP = { a: 'ah', e: 'eh', i: 'ee', o: 'oh', u: 'oo', y: 'ee' };
   function babbleClean(text) {
@@ -1162,7 +1308,7 @@ var Snd = (function () {
   // One short pitched blip per syllable, formant-filtered so it sounds like a tiny vowel. Returns the planned length in ms (0 = nothing played).
   function babble(text, who) {
     if (!sfxOn() || !roomFor(12)) return 0;
-    var cfg = BAB[who] || BAB.pip, plan = planBabble(babbleClean(text), cfg);
+    var cfg = babCfg(who), plan = planBabble(babbleClean(text), cfg);
     if (!plan.n) return 0;
     stopBabble();
     var t0 = T(0.02), end = t0 + plan.ms / 1000, main = ctx.createOscillator(), eg = ctx.createGain(), mix = ctx.createGain(), i, b;
@@ -1180,7 +1326,7 @@ var Snd = (function () {
     }
     eg.connect(bp1); eg.connect(bp2); eg.connect(body); bp1.connect(mix); bp2.connect(mix); body.connect(bg); bg.connect(mix);
     mix.gain.value = 0.9; mix.connect(voiceIn);
-    var att = 0.005 + (who === 'sloth' || who === 'owl' ? 0.01 : 0);
+    var att = 0.005 + (who === 'sloth' || who === 'owl' || cfg.soft ? 0.01 : 0);
     for (i = 0; i < plan.blips.length; i++) {
       b = plan.blips[i];
       var tt = t0 + b.t, F = VOW[b.v], g0 = cfg.vol * b.a * (b.v === 'oo' || b.v === 'oh' ? 0.9 : 1), gl = Math.min(0.03, b.d * 0.5);
@@ -1292,13 +1438,13 @@ var Snd = (function () {
       ambSwell(1.5, 1.8);
     },
     clap: function (cb) { applause(0, 1.6, 0.9, cb); ambSwell(1.5, 1.6); },
-    chant: function (cb) { // clap, clap, clap, clap, CLAP
-      var ts = [0, 0.27, 0.54, 0.81, 1.08], vs = [0.8, 0.7, 0.7, 0.7, 1.0], i;
+    chant: function (cb) { // the theme's head clapped and sung: clap-clap CLAAP, clap CLAP (G C E D E)
+      var ts = [0, 0.25, 0.5, 1.25, 1.5], vs = [0.75, 0.75, 1.0, 0.75, 1.0], hz = [196, 261.6, 329.6, 293.7, 329.6], i;
       for (i = 0; i < 5; i++) {
         playBuf(bank.gclap[i % 3], { vol: vs[i] * 0.4, rate: rnd(0.95, 1.05), delay: ts[i], dest: cb });
-        crowdOf(2, { lo: 150, hi: 220, glide: 1, at: ts[i], spread: 0.02, d0: 0.15, d1: 0.18, vol: 0.04, v0: 'oh', v1: 'oh', att: 0.04, dest: cb });
+        crowdOf(3, { lo: hz[i] * 0.995, hi: hz[i] * 1.005, glide: 1, at: ts[i], spread: 0.02, d0: i === 2 || i === 4 ? 0.45 : 0.16, d1: i === 2 || i === 4 ? 0.5 : 0.19, vol: 0.035, v0: 'oh', v1: 'oh', att: 0.04, dest: cb });
       }
-      ambSwell(1.5, 1.7);
+      ambSwell(1.5, 2.2);
     }
   };
   var reactBus = {};
@@ -1362,8 +1508,27 @@ var Snd = (function () {
       return 1.6;
     }
   };
+  // Which of the 15 creatures is meant: game code passes ai.kind, and the Monster League shares its kinds with the
+  // Classic League (Grub is a 'sloth' model), so look the kind up among the players of the match being played.
+  function creatureId(who) {
+    who = String(who || 'pip');
+    try {
+      var gs = [typeof G !== 'undefined' ? G : null, typeof OG !== 'undefined' ? OG : null];
+      for (var j = 0; j < gs.length; j++) { var g = gs[j]; if (!g || !g.players) continue; for (var i = 0; i < g.players.length; i++) { var a = g.players[i] && g.players[i].ai; if (a && (a.kind === who || a.id === who) && a.id) return a.id; } }
+    } catch (e) {}
+    return who;
+  }
+  // creature leitmotif: how = 'enter' | 'win' (won a shake) | 'beaten'. Returns ms.
+  function motif(who, how) {
+    if (!sfxOn() || !roomFor(40) || !Score) return 0;
+    if (!rl('motif', 0.5)) return 0;
+    var ms = Score.motif(creatureId(who), how || 'enter');
+    if (ms) duck(0.5, ms / 1000 + 0.3);
+    return ms;
+  }
   function theme(who) {
     if (!sfxOn() || !roomFor(40)) return 0;
+    if (Score && !(man && man['theme_' + who])) return motif(who, 'enter');
     var th = THEMES[who] || THEMES.pip;
     if (!rl('theme', 0.5)) return 0;
     var dur;
@@ -1437,6 +1602,7 @@ var Snd = (function () {
     refreshDance(0.05);
     duck(0.2, sec + 0.9);
     danceTick();
+    if (Score && lostMatch() && rl('lossCoda', 20)) Score.coda('loss', sec + 1.5);   // after the dance, when the duck has lifted
     return Math.round(sec * 1000);
   }
 
@@ -1505,7 +1671,7 @@ var Snd = (function () {
       onceBuses = saved.onceBuses; reactBus = saved.reactBus; gate = saved.gate; curBab = saved.curBab; amb = saved.amb; ambWant = saved.ambWant; clarWave = saved.clarWave; lastDiceWhen = saved.lastDiceWhen;
       diceVoices = saved.diceVoices; voices = saved.voices; duckF = saved.duckF; musVol = saved.musVol; sbufs = saved.sbufs; sloading = saved.sloading; wantedMood = saved.mood; warm = saved.warm; gen = saved.gen;
       if (keepSet && typeof S !== 'undefined') S.set = keepSet;
-      measuring = false; stopMusic();
+      measuring = false; stopMusic(); if (Score) Score.reset();
       try { if (ctx) apply(); } catch (e) {}
     }
     try {
@@ -1514,7 +1680,8 @@ var Snd = (function () {
       build(off); try { off.onstatechange = null; } catch (e) {}
       musVol = vol('music', 0.35) * 0.8; refreshMus(0); applyCats(); master.gain.value = muted() ? 0 : 0.8; sfx.gain.value = sfxRev.gain.value = vol('sfx', 0.8);
       var api = { ctx: off, bus: bus, at: function (t, f) { if (t <= 0) { f(); return; } off.suspend(t).then(function () { try { f(); } catch (e) {} off.resume(); }); },
-        bar: function (t, mood) { wantedMood = mood; applyLevels(); scheduleBar(t, barNo++); }, BAR: BAR };
+        bar: function (t, mood) { wantedMood = mood; applyLevels(true); return scheduleBar(t, barNo++) || BAR; }, BAR: BAR };
+      if (Score) Score.reset();
       fn(api);
       stopMusic();   // bars are scheduled by api.bar only; no live scheduler on the offline context
     } catch (e) { restore(); return Promise.reject(e); }
@@ -1547,15 +1714,18 @@ var Snd = (function () {
     // One die hitting the table or another die (v: 0..1 = how hard)
     diceHit: guard(function (v) { hit(v, 0); }),
     cupRattle: guard(cupRattle), clatter: guard(clatter), pickup: guard(pickup), thunk: guard(thunk),
+    slide: guard(slide), readout: guard0(readout), card: guard(card), material: function () { try { return matNow(); } catch (e) { return 'plastic'; } },
     click: guard(click), pop: guard(pop), chime: guard(chime), boop: guard(boop),
     slam: guard(slam), fanfare: guard(fanfare), crowd: guard(crowd), whistle: guard(whistle),
     speak: speak, stopSpeak: stopSpeak,
     // character voices, crowd, themes, stingers (each returns a duration in ms, 0 if nothing played)
     babble: guard0(babble), stopBabble: guard(stopBabble), talk: guard0(talk),
     crowdReact: guard0(crowdReact), ambience: guard(ambience),
-    theme: guard0(theme), danceMusic: guard0(danceMusic), stopDance: guard(stopDance), sting: guard0(stingKind),
+    theme: guard0(theme), motif: guard0(motif), danceMusic: guard0(danceMusic),
+    // the score (js/music.js): null until it has loaded
+    score: function () { return Score; }, _attachMusic: function (M) { attachMusic(M); }, _creatureId: creatureId, stopDance: guard(stopDance), sting: guard0(stingKind),
     // diagnostics / tests
-    _plan: function (text, who) { return planBabble(babbleClean(text), BAB[who] || BAB.pip); },
+    _plan: function (text, who) { return planBabble(babbleClean(text), babCfg(who)); }, _babIds: function () { return Object.keys(BAB); },
     _danceAll: guard(function (ms) { var r = danceMusic(ms); while (dance && dance.next < dance.n) { danceBar(dance, dance.next++); } return r; }),
     _trims: function () { return trims; },
     _amb: function () { return amb ? { kind: amb.kind, level: amb.level } : null; },
