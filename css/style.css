@@ -479,3 +479,6 @@ body .wh-comm{top:calc(var(--sat, 0px) + 112px)}
 @media not all and (min-width:1100px) and (min-aspect-ratio:8/5){
   #game.three .emote-bar{width:auto;flex:0 1 auto}
 }
+
+@media (prefers-reduced-motion:reduce){.banner{animation:none!important;opacity:1!important}}
+html.a11y-calm .banner{animation:none!important;opacity:1!important}
