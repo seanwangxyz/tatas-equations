@@ -215,7 +215,7 @@ const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season',
 In `randomSave()`, before `return s;` add a random value:
 
 ```js
-  s.missions = { v: 1, n: ri(300), cv: coin() ? 'blue' : undefined, s: {} }; ['g_set', 'c_now', 'o_div', 'f_frac'].forEach(id => { if (coin()) s.missions.s[id] = [1 + ri(6), date(), ri(15) - 1, ri(9), ri(3)]; });
+  s.missions = { v: 1, n: ri(300), s: {} }; if (coin()) s.missions.cv = 'blue'; ['g_set', 'c_now', 'o_div', 'f_frac'].forEach(id => { if (coin()) s.missions.s[id] = [1 + ri(6), date(), ri(15) - 1, ri(9), ri(3)]; });
 ```
 
 and in the `checks` object of the random loop:

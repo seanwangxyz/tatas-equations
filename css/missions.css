@@ -38,7 +38,7 @@
 .msn-text{display:block;font-size:17px;margin:6px 0 2px}
 .msn-how{margin:0;font-size:14px;color:var(--ink2)}
 .msn-got{margin:6px 0 0;font-weight:900;color:var(--pitch-d)}
-.msn-swap{margin-top:6px}
+.msn-card .btn.msn-swap{margin-top:6px;background:#eef1f8;color:var(--ink2);border:2px solid #d3d9e8;box-shadow:none}
 .msn-dots{display:inline-flex;gap:3px;margin-left:auto}
 .msn-dots i{width:9px;height:9px;border-radius:50%;background:#dfe4ef;display:block}
 .msn-dots i.on{background:var(--gold-d)}
@@ -80,7 +80,8 @@
 .msn-slot.got{border-style:solid;border-color:var(--good);background:#f3fcf7}
 .msn-slot-top{display:flex;align-items:center;gap:6px;min-height:14px}
 .msn-slot-st{font-size:12px}
-.msn-ink{position:absolute;right:8px;top:30px;transform:rotate(-12deg);border:3px solid rgba(201,52,44,.75);color:rgba(201,52,44,.8);border-radius:8px;padding:0 6px;font:400 15px/1.4 var(--display);letter-spacing:.06em;pointer-events:none}
+.msn-slot.got{padding-bottom:34px}
+.msn-ink{position:absolute;right:10px;bottom:8px;transform:rotate(-12deg);border:3px solid rgba(201,52,44,.75);color:rgba(201,52,44,.8);border-radius:8px;padding:0 6px;font:400 15px/1.4 var(--display);letter-spacing:.06em;pointer-events:none}
 .msn-ticks{color:var(--good);font-weight:900;font-size:13px}
 
 @media (max-width:520px){
