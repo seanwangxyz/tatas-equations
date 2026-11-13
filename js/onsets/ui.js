@@ -3,6 +3,8 @@
 // Cards, cubes, the Goal picture, and the two builders (Set-Name and Goal). Uses the site's shared helpers
 // (esc, ico, $, Snd, ACT) and OSE (js/onsets/engine.js). Everything here is prefixed os / OSUI.
 var OSUI = (function () {
+  // ---- Card sounds (js/sound.js Snd.card: 'lift' | 'place' | 'flip'); a no-op where the sound module has none ----
+  function cardSnd(kind) { try { if (window.Snd && Snd.card) { Snd.card(kind); return true; } } catch (e) {} return false; }
   // ---- Cards ----
   function cardHTML(card, opts) {
     opts = opts || {};
@@ -94,12 +96,12 @@ var OSUI = (function () {
   }
   function renderSetBuilder() {
     if (!OB) return;
-    var u = used(), uni = OB.universe, ev = OB.tokens.length ? OSE.evaluate(OB.tokens, uni) : null, lit = null, live, liveCls = '';
+    var u = used(), uni = OB.universe, ev = OB.tokens.length ? OSE.evaluate(OB.tokens, uni) : null, lit = null, live, liveCls = '', cnt = null;
     var chk = OB.check ? OB.check(OB.tokens) : null;
     if (!OB.tokens.length) { live = 'Tap cubes to build a set. The cards in your set light up!'; liveCls = 'meh'; }
     else if (ev.ok && !ev.ambiguous) {
-      lit = ev.set; var n = ev.count;
-      live = '<b>' + n + '</b> card' + (n === 1 ? '' : 's') + ' in ' + esc(exprText(OB.tokens));
+      lit = ev.set; var n = ev.count; cnt = n;
+      live = 'card' + (n === 1 ? '' : 's') + ' in <b>' + esc(exprText(OB.tokens)) + '</b>';
       if (OB.goal != null) {
         if (n === OB.goal && (!chk || chk.ok)) { live += ' = the Goal!'; liveCls = 'good'; }
         else if (n === OB.goal) live += ': the right number! Now check the list below.';
@@ -109,7 +111,7 @@ var OSUI = (function () {
       var ks = Object.keys(ev.examples);
       live = 'This can be read two ways: ' + esc(ev.examples[ks[0]]) + ' (' + ks[0] + ') or ' + esc(ev.examples[ks[1]] || ev.examples[ks[0]]) + ' (' + (ks[1] || ks[0]) + '). Add ( ) to choose one.';
       liveCls = 'warn';
-      if (ev.counts.length === 1) { live = ev.counts[0] + ' cards either way you read it' + (OB.goal != null && ev.counts[0] === OB.goal ? ' = the Goal!' : '') + '. ( ) make it clearer.'; liveCls = OB.goal != null && ev.counts[0] === OB.goal ? 'good' : ''; }
+      if (ev.counts.length === 1) { cnt = ev.counts[0]; live = 'cards either way you read it' + (OB.goal != null && ev.counts[0] === OB.goal ? ' = the Goal!' : '') + '. ( ) make it clearer.'; liveCls = OB.goal != null && ev.counts[0] === OB.goal ? 'good' : ''; }
     } else {
       var pe = partial(OB.tokens, uni);
       if (pe) lit = pe.set;
@@ -131,24 +133,26 @@ var OSUI = (function () {
       if (OB.goal != null) items.push([ev && ev.ok && ev.counts.length === 1 && ev.counts[0] === OB.goal, OB.goal + ' card' + (OB.goal === 1 ? '' : 's') + ', like the Goal']);
       checks = '<div class="checks">' + items.map(function (x) { return '<span class="' + (x[0] ? 'y' : 'n') + '">' + (x[0] ? '✔' : '○') + ' ' + x[1] + '</span>'; }).join('') + '</div>';
     }
+    function trayKind(p) { return p.forb ? 'forb' : p.req ? 'req' : /Resources/.test(p.label) ? 'res' : 'perm'; }
+    function plain(l) { return String(l).replace(/^[^A-Za-z]+/, ''); } // (labels may still start with an emoji)
     var pools = OB.pools.map(function (p) {
       if (!p.ids.length && !p.req) return '';
       var cu = p.ids.filter(function (id) { return u[id]; }).length, full = p.max && cu >= p.max;
-      return '<div class="pool' + (p.forb ? ' forb' : '') + '"><h4>' + p.label + '</h4><div class="cubes">' + (p.ids.map(function (id) {
+      return '<div class="pool tray k-' + trayKind(p) + (p.forb ? ' forb' : '') + '"><h4><i class="tray-dot"></i>' + plain(p.label) + '</h4><div class="cubes">' + (p.ids.map(function (id) {
         var c = OB.cubes[id];
         return cubeHTML(c, 'mini' + (u[id] ? ' used' : '') + (full && !u[id] ? ' used' : ''), p.forb ? '' : 'osbAdd');
       }).join('') || '<span class="os-none">none</span>') + '</div></div>';
     }).join('');
-    var goalLine = OB.goal != null ? '<div class="os-bgoal">' + ico('target') + ' Goal: <b>' + OB.goal + '</b> card' + (OB.goal === 1 ? '' : 's') + (OB.goalPic ? ' ' + OB.goalPic : '') + '</div>' : '';
-    $('#osBBox').innerHTML = '<h2>' + OB.title + '</h2>' + (OB.note ? '<p class="os-note">' + OB.note + '</p>' : '') + goalLine +
+    var goalLine = OB.goal != null ? '<div class="os-bgoal"><span class="rc-chip gold">' + ico('target') + ' Goal <b>' + OB.goal + '</b> card' + (OB.goal === 1 ? '' : 's') + '</span>' + (OB.goalPic || '') + '</div>' : '';
+    $('#osBBox').innerHTML = '<h2 class="hero">' + OB.title + '</h2>' + (OB.note ? '<p class="os-note">' + OB.note + '</p>' : '') + goalLine +
       universeHTML(uni, lit, { small: true, cls: 'os-buni' }) +
-      '<div class="expr os-expr" id="osbExpr">' + (OB.tokens.length ? exprHTML(OB.tokens, OB.cubes, 'osbRemove') : '<span class="os-hint">tap cubes below…</span>') + '</div>' +
-      '<div class="b-live os-live ' + liveCls + '" aria-live="polite">' + live + '</div>' + checks +
-      '<div class="b-tools"><button class="btn" data-act="osbParen" data-arg="(">(</button><button class="btn" data-act="osbParen" data-arg=")">)</button><button class="btn" data-act="osbBack" aria-label="Take back the last one">⌫</button><button class="btn small" data-act="osbClear">Clear</button></div>' +
-      pools +
-      '<div class="row" style="margin-top:12px"><button class="btn big green" data-act="osbSubmit">' + ico('check') + ' ' + (OB.submitLabel || 'Check my Solution!') + '</button>' +
-      (OB.noGiveUp ? '' : '<button class="btn" data-act="osbGiveUp">' + (OB.giveUpLabel || 'I can\'t find one') + '</button>') + (OB.extraBtn ? '<button class="btn" data-act="' + OB.extraBtn.act + '">' + OB.extraBtn.label + '</button>' : '') + '</div>' +
-      '<p class="os-tip">Tip: tap a cube up top to take it back out. ′ goes right after a set, like G′.</p>';
+      '<div class="os-plate"><div class="os-plate-h">' + ico('cube') + ' Your Set Name</div><div class="expr os-expr" id="osbExpr">' + (OB.tokens.length ? exprHTML(OB.tokens, OB.cubes, 'osbRemove') : '<span class="os-hint">tap cubes below…</span>') + '</div>' +
+      '<div class="b-tools"><button class="btn small" data-act="osbParen" data-arg="(" aria-label="Open bracket">(</button><button class="btn small" data-act="osbParen" data-arg=")" aria-label="Close bracket">)</button><button class="btn small" data-act="osbBack" aria-label="Take back the last one">⌫</button><button class="btn small quiet" data-act="osbClear">Clear</button></div></div>' +
+      '<div class="os-count ' + liveCls + '" aria-live="polite"><span class="oc-n">' + (cnt == null ? '·' : cnt) + '</span><span class="oc-t">' + live + '</span></div>' + checks +
+      '<div class="os-trays">' + pools + '</div>' +
+      '<div class="row os-brow"><button class="btn big green" data-act="osbSubmit">' + ico('check') + ' ' + (OB.submitLabel || 'Check my Solution!') + '</button>' +
+      (OB.noGiveUp ? '' : '<button class="btn quiet" data-act="osbGiveUp">' + (OB.giveUpLabel || 'I can\'t find one') + '</button>') + (OB.extraBtn ? '<button class="btn quiet" data-act="' + OB.extraBtn.act + '">' + OB.extraBtn.label + '</button>' : '') + '</div>' +
+      '<p class="os-tip">Tip: tap a cube in your Set Name to take it back out. ′ goes right after a set, like G′.</p>';
   }
   ACT.osbAdd = function (el) {
     if (!OB) return;
@@ -176,6 +180,7 @@ var OSUI = (function () {
   function openGoalBuilder(cfg) {
     GB = cfg; GB.picked = []; GB.shape = null;
     var sh = shell(); sh.classList.toggle('os-dock', !!cfg.dock); sh.classList.add('on');
+    if (Snd.getMood && Snd.getMood() !== 'off') Snd.setMood('think'); // the music leans in while he builds
     renderGoalBuilder();
   }
   function goalNow() {
@@ -186,34 +191,35 @@ var OSUI = (function () {
   }
   function renderGoalBuilder() {
     if (!GB) return;
-    var g = goalNow(), n = GB.picked.length, live = 'Tap 1, 2 or 3 digit cubes.', cls = 'meh', okGoal = false;
+    var g = goalNow(), n = GB.picked.length, live = 'Tap 1, 2 or 3 digit cubes.', cls = 'meh', okGoal = false, num = null;
     if (n) {
       var v = OSE.goalValue(g);
       if (v.ok) {
-        live = esc(OSE.goalText(g)) + ' = <b>' + v.value + '</b>';
+        num = v.value;
+        live = 'for <b>' + esc(OSE.goalText(g)) + '</b>';
         if (v.value < 0) { live += '. That is below zero: no set can have fewer than 0 cards!'; cls = 'warn'; }
         else if (v.value > GB.universe.length) { live += '. There are only ' + GB.universe.length + ' cards, so no set could have that many.'; cls = 'warn'; }
-        else { live += ' card' + (v.value === 1 ? '' : 's') + '. A Solution must name a set with exactly ' + v.value + ' card' + (v.value === 1 ? '' : 's') + '.'; cls = 'good'; okGoal = true; }
+        else { live = 'card' + (v.value === 1 ? '' : 's') + ' for <b>' + esc(OSE.goalText(g)) + '</b>. A Solution must name a set with exactly ' + v.value + '.'; cls = 'good'; okGoal = true; }
       }
     }
     var shapes = OSE.SHAPES.filter(function (sh) { return sh.n === n; });
     var pickedIds = {}; GB.picked.forEach(function (p) { pickedIds[p.id] = 1; });
-    $('#osBBox').innerHTML = '<h2>' + (GB.title || 'Set the Goal') + '</h2>' +
-      '<p class="os-note">The Goal is a number of cards. <b>Side by side</b> means add. <b>Stacked</b> means multiply. Tap a placed cube to turn it upside down (that makes it negative).</p>' +
+    $('#osBBox').innerHTML = '<h2 class="hero">' + (GB.title || 'Set the Goal') + '</h2>' +
+      '<p class="os-note">The Goal is a number of cards. <b>Side by side</b> adds. <b>Stacked</b> multiplies. Tap a placed cube to turn it upside down (negative).</p>' +
       universeHTML(GB.universe, null, { small: true, cls: 'os-buni' }) +
-      '<div class="os-gbwrap">' + (n ? goalPicHTML(g, false, 'osgFlip') : '<span class="os-hint">no cubes yet</span>') + '</div>' +
+      '<div class="os-plate"><div class="os-plate-h">' + ico('target') + ' Your Goal</div><div class="os-gbwrap">' + (n ? goalPicHTML(g, false, 'osgFlip') : '<span class="os-hint">no cubes yet</span>') + '</div>' +
       (shapes.length > 1 ? '<div class="os-shapes">' + shapes.map(function (sh) { return '<button class="btn small' + (sh.id === GB.shape ? ' on' : '') + '" data-act="osgShape" data-arg="' + sh.id + '">' + shapeIcon(sh.id) + ' ' + esc(sh.label) + '</button>'; }).join('') + '</div>' : '') +
-      '<div class="b-live os-live ' + cls + '">' + live + '</div>' +
-      '<div class="pool"><h4>🎲 Digit cubes in Resources</h4><div class="cubes">' + GB.digits.map(function (c) { return cubeHTML(c, 'mini' + (pickedIds[c.id] ? ' used' : ''), 'osgAdd'); }).join('') + '</div></div>' +
-      '<div class="b-tools" style="margin-top:8px"><button class="btn" data-act="osgBack">⌫</button><button class="btn small" data-act="osgClear">Clear</button></div>' +
-      '<div class="row" style="margin-top:12px"><button class="btn big green" data-act="osgSubmit"' + (okGoal ? '' : ' disabled') + '>' + ico('target') + ' Set this Goal!</button>' + (GB.onCancel ? '<button class="btn" data-act="osgCancel">Back</button>' : '') + '</div>';
+      '<div class="b-tools"><button class="btn small" data-act="osgBack" aria-label="Take back the last one">⌫</button><button class="btn small quiet" data-act="osgClear">Clear</button></div></div>' +
+      '<div class="os-count ' + cls + '" aria-live="polite"><span class="oc-n">' + (num == null ? '·' : num) + '</span><span class="oc-t">' + live + '</span></div>' +
+      '<div class="os-trays"><div class="pool tray k-res"><h4><i class="tray-dot"></i>Digit cubes in Resources</h4><div class="cubes">' + GB.digits.map(function (c) { return cubeHTML(c, 'mini' + (pickedIds[c.id] ? ' used' : ''), 'osgAdd'); }).join('') + '</div></div></div>' +
+      '<div class="row os-brow"><button class="btn big green" data-act="osgSubmit"' + (okGoal ? '' : ' disabled') + '>' + ico('target') + ' Set this Goal!</button>' + (GB.onCancel ? '<button class="btn quiet" data-act="osgCancel">Back</button>' : '') + '</div>';
   }
   ACT.osgAdd = function (el) {
     if (!GB) return; var id = +el.dataset.arg;
     if (GB.picked.some(function (p) { return p.id === id; }) || GB.picked.length >= 3) { Snd.boop(); return; }
     var c = GB.digits.find(function (x) { return x.id === id; }); GB.picked.push({ id: id, s: c.s, neg: false }); Snd.click(); renderGoalBuilder();
   };
-  ACT.osgFlip = function (el) { if (!GB) return; var id = +el.dataset.arg, p = GB.picked.find(function (x) { return x.id === id; }); if (p) { p.neg = !p.neg; Snd.click(); renderGoalBuilder(); } };
+  ACT.osgFlip = function (el) { if (!GB) return; var id = +el.dataset.arg, p = GB.picked.find(function (x) { return x.id === id; }); if (p) { p.neg = !p.neg; if (!cardSnd('flip')) Snd.click(); renderGoalBuilder(); } };
   ACT.osgShape = function (el) { if (!GB) return; GB.shape = el.dataset.arg; Snd.click(); renderGoalBuilder(); };
   ACT.osgBack = function () { if (!GB) return; GB.picked.pop(); renderGoalBuilder(); };
   ACT.osgClear = function () { if (!GB) return; GB.picked = []; renderGoalBuilder(); };
@@ -226,6 +232,6 @@ var OSUI = (function () {
   function builderOpen() { return !!OB || !!GB; }
   function closeAll() { GB = null; close(); }
 
-  return { cardHTML: cardHTML, universeHTML: universeHTML, cubeHTML: cubeHTML, faceHTML: faceHTML, exprHTML: exprHTML, exprText: exprText, goalPicHTML: goalPicHTML, shapeIcon: shapeIcon,
+  return { cardSnd: cardSnd, cardHTML: cardHTML, universeHTML: universeHTML, cubeHTML: cubeHTML, faceHTML: faceHTML, exprHTML: exprHTML, exprText: exprText, goalPicHTML: goalPicHTML, shapeIcon: shapeIcon,
     openSetBuilder: openSetBuilder, openGoalBuilder: openGoalBuilder, builderOpen: builderOpen, closeAll: closeAll, rerender: function () { if (OB) renderSetBuilder(); else if (GB) renderGoalBuilder(); } };
 })();
