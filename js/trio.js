@@ -27,20 +27,29 @@ var Trio = (function () {
     }).join('');
     var n = OPPONENTS.filter(function (o, i) { return oppOpen(i); }).length;
     return '<h3 class="tierh">👑 Three at the table <span style="font-weight:600;opacity:.7;font-size:14px">(you against two · ' + crowns() + '/' + list().length + ' crowns)</span></h3><div class="opps">' + cards +
-      (n >= 2 ? '<div class="opp mode" data-act="trioPick"><span class="avatar lg" style="background:#e5dbff;color:#5f3dc4;font-size:46px">' + ico('people') + '</span><h3>Pick any two</h3><div class="otitle">Choose two creatures you have unlocked</div></div>' : '') + '</div>';
+      (n >= 2 ? '<div class="opp mode" data-act="trioPick"><span class="avatar lg" style="background:#e5dbff;color:#5f3dc4;font-size:46px">' + ico('people') + '</span><h3>Pick any two</h3><div class="otitle">Choose any two creatures you have unlocked</div></div>' : '') + '</div>';
   }
   var sel = [];
   function pickHTML() {
-    var chips = OPPONENTS.map(function (o, i) {
-      if (!oppOpen(i)) return '';
-      var on = sel.indexOf(i) >= 0;
-      return '<button class="btn small' + (on ? ' green' : '') + '" style="margin:4px" data-act="trioToggle" data-arg="' + i + '">' + esc(o.name) + (on ? ' ✔' : '') + '</button>';
-    }).join('');
-    return '<h2>👑 Pick two creatures</h2><div style="text-align:center">' + chips + '</div><div class="row" style="margin-top:14px"><button class="btn green" data-act="trioGo"' + (sel.length === 2 ? '' : ' disabled style="opacity:.5"') + '>Play!</button><button class="btn" data-act="closeModal">Back</button></div>';
+    // every creature, league by league; the ones not unlocked yet stay visible with how to unlock them
+    var groups = '', L, names = (typeof LEAGUE_NAMES !== 'undefined' && LEAGUE_NAMES) || [];
+    for (L = 0; L * LEAGUE < OPPONENTS.length; L++) {
+      var row = '';
+      for (var i = L * LEAGUE; i < Math.min(OPPONENTS.length, (L + 1) * LEAGUE); i++) {
+        var o = OPPONENTS[i], ok = oppOpen(i), on = sel.indexOf(i) >= 0;
+        row += ok
+          ? '<button class="trio-chip' + (on ? ' on' : '') + '" data-act="trioToggle" data-arg="' + i + '" aria-pressed="' + on + '">' + avatarHTML(o) + '<b>' + esc(o.name) + '</b>' + (on ? '<span class="trio-tick">✔</span>' : '') + '</button>'
+          : '<button class="trio-chip lock" data-act="trioLockedOne" data-arg="' + i + '" title="Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock">' + avatarHTML(o) + '<b>' + esc(o.name) + '</b><small>' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + '</small></button>';
+      }
+      groups += '<div class="trio-league"><div class="trio-lh">' + esc(names[L] || ('League ' + (L + 1))) + '</div><div class="trio-row">' + row + '</div></div>';
+    }
+    return '<h2>👑 Pick two creatures</h2><p style="text-align:center;margin:0 0 8px">' + (sel.length === 2 ? 'Ready!' : sel.length === 1 ? 'Now pick one more.' : 'Tap two creatures to play against both at once.') + '</p>' + groups +
+      '<div class="row" style="margin-top:14px"><button class="btn green" data-act="trioGo"' + (sel.length === 2 ? '' : ' disabled style="opacity:.5"') + '>Play!</button><button class="btn" data-act="closeModal">Back</button></div>';
   }
   ACT.playTrio = function (el) { var p = el.dataset.arg.split('-'); startMatch('ai3', null, { a: +p[0], b: +p[1] }); };
   ACT.lockedTrio = function () { Snd.boop(); modal('<h2>' + ico('lock') + ' Not yet!</h2><p style="text-align:center">Unlock both of these creatures in one-on-one games first. Then you can take them on together!</p><div class="row"><button class="btn green" data-act="closeModal">OK</button></div>'); };
   ACT.trioPick = function () { sel = []; modal(pickHTML()); };
+  ACT.trioLockedOne = function (el) { var i = +el.dataset.arg; Snd.boop(); var m = $('#modalBox'); var p = m && m.querySelector('p'); if (p) p.innerHTML = ico('lock') + ' <b>' + esc(OPPONENTS[i].name) + '</b> unlocks when you beat <b>' + esc(OPPONENTS[i - 1].name) + '</b> one-on-one.'; };
   ACT.trioToggle = function (el) { var i = +el.dataset.arg, k = sel.indexOf(i); if (k >= 0) sel.splice(k, 1); else { if (sel.length === 2) sel.shift(); sel.push(i); } Snd.click(); $('#modalBox').innerHTML = pickHTML(); };
   ACT.trioGo = function () { if (sel.length !== 2) return; var a = Math.min(sel[0], sel[1]), b = Math.max(sel[0], sel[1]); closeModal(); startMatch('ai3', null, { a: a, b: b }); };
   // Called from endMatch (mode 'ai3'). soleWin: the kid finished alone in first place.

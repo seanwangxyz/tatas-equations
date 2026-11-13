@@ -11,7 +11,7 @@ function firstAI() { for (var i = 0; i < G.players.length; i++) if (G.players[i]
 // With two creatures at the table (mode 'ai3') one of them is 'up': it is the one shown in 3D and the one speaking.
 function curAI() { return (G && G.act != null && G.players[G.act] && G.players[G.act].ai) || firstAI(); }
 // Which creature at the table plays for player i (two creatures: the first AI player is creature 0, the second is creature 1).
-function aiSeat(i) { var n = -1; for (var j = 0; j <= i && j < G.players.length; j++) if (G.players[j].ai) n++; return n < 0 ? 0 : n; }
+function aiSeat(i) { var n = -1; for (var j = 0; j <= i && j < G.players.length; j++) if (G.players[j].ai) n++; n = n < 0 ? 0 : n; return G && G.seatFlip && n < 2 ? 1 - n : n; } // CLOCKWISE: G.seatFlip puts the first creature on the kid's left
 // Run fn with player i's creature addressed by the T3.creature* calls (then the previous one again).
 function creatureAt(i, fn) { if (T3.creatureWith) T3.creatureWith(aiSeat(i), fn); else fn(); }
 function focusAI(i) {
@@ -121,7 +121,12 @@ function startMatch(mode, oppIdx, cfg) {
   go('game'); Snd.setMood('play');
   var ai = firstAI();
   var ais = G.players.filter(function (p) { return p.ai; });
-  if (ais.length > 1 && T3.setCreatures) T3.setCreatures(ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }));
+  // CLOCKWISE: play goes kid -> the creature on his left -> the one on his right. On wide screens creature seat 1 stands on
+  // the left (js/three/creatures.js PAIR), so the first creature to play takes seat 1 there; on the tall layout seat 0 is on the left.
+  var matEl = document.getElementById('gMat'), mw = (matEl && matEl.clientWidth) || innerWidth, mh = (matEl && matEl.clientHeight) || innerHeight;
+  G.seatFlip = ais.length === 2 && !(mw / Math.max(1, mh) < 0.9); // the same wide/tall test as js/three/table.js chooseLayout
+  var seatList = ais.map(function (p) { return { kind: p.ai.kind, pack: p.ai.pack || 'classic' }; }); if (G.seatFlip) seatList.reverse();
+  if (ais.length > 1 && T3.setCreatures) T3.setCreatures(seatList);
   else setCreature(ai ? ai.kind : null, ai && ai.pack);
   playerShow(); seatPeople(mode, cfg);
   if (T3.playerWalkSide) T3.playerWalkSide(mode === 'ai3' || (mode === 'tourney' && ais.length > 1) ? 'right' : 'auto'); // (TOURNEY: two creatures stand like Three at the table)   // the second creature stands at the far left corner
@@ -138,27 +143,58 @@ function startMatch(mode, oppIdx, cfg) {
 }
 // Operation cubes we are not playing with yet (say, powers and roots) are rolled again until they show something
 // usable, instead of being parked in Forbidden. (House rule; a fixed set of cubes, like the tutorial's, keeps the old lock.)
+// REROLL: cubes this shake can't use (an operation not unlocked yet, or a bonus-die face Tata switched off) are rolled again
+// by whoever rolled the cubes: up to two tries each. Still unusable after the second ("one last attempt"), the cube is not
+// meant to be played this shake and goes to Forbidden (locked), carried there by the roller.
 function rerollOps(done) {
-  var g0 = G, c0 = G.cubes, rounds = 0;
+  var g0 = G, c0 = G.cubes, round = 0, by = G.setter;
+  function alive() { return G && G === g0 && G.cubes === c0; }
   function okSym(s) { return Eq.isDigit(s) || G.ops.indexOf(s) >= 0; }
   function okC(c) { return (window.Bonus && Bonus.isCube(c)) ? Bonus.okFace(c.color, c.s) : okSym(c.s); } // BONUS: a bonus die's face Tata switched off is rolled again too
-  function bad() { return G.cubes.filter(function (c) { return !okC(c); }); }
+  function bad() { return G.cubes.filter(function (c) { return !c.locked && c.zone === 'resources' && !okC(c); }); }
+  function talk(text, mood) { if (isAI(by)) { creatureAt(by, function () { say('opp', esc(text)); }); } else say('pip', text, mood || 'think'); }
   var b = bad(); if (!b.length) { done(); return; }
   var names = { '^': 'powers', 'r': 'roots', '*': 'times', '/': 'dividing' }, miss = [];
   ['*', '/', '^', 'r'].forEach(function (s) { if (b.some(function (c) { return c.s === s && !(window.Bonus && Bonus.isCube(c)); })) miss.push(names[s]); });
   if (window.Bonus && b.some(Bonus.isCube)) miss.push('that bonus-die face'); // BONUS
   var list = miss.length > 1 ? miss.slice(0, -1).join(', ') + ' or ' + miss[miss.length - 1] : miss[0];
-  say('pip', 'We aren\'t playing with <b>' + list + '</b> yet, so let me roll ' + (b.length > 1 ? 'these ' + b.length + ' cubes' : 'this cube') + ' again to get something we can use!', 'think');
+  var mine = isAI(by) ? 'me' : 'us';
+  talk('We are not playing with ' + list + ' yet, so let ' + mine + ' roll ' + (b.length > 1 ? 'these ' + b.length + ' cubes' : 'this cube') + ' again to get something we can use!');
   renderGame();
+  // the roller's hands (3D): toss up to two cubes into the air; more go back into the cup. Flat table: a clatter.
+  function rollAnim(roll, next) {
+    if (T3.active() && T3.rerollToss) T3.rerollToss(roll, { by: rollerBy() }, next);
+    else if (T3.active() && T3.reroll) T3.reroll(roll, next);
+    else { Snd.clatter(); renderGame(); setTimeout(next, 700); }
+  }
+  function rollerBy() { return isAI(by) ? { who: 'ai', seat: aiSeat(by) } : (G.team && G.team.cur === 1) || (by !== 0 && !isAI(by) && G.mode === 'p3') ? { who: 'mate' } : { who: 'kid' }; }
+  function toForbidden(list2, then) {
+    var k = 0;
+    (function one() {
+      if (!alive()) return;
+      if (k >= list2.length) { renderGame(); then(); return; }
+      var c = list2[k++];
+      var land = function () { if (!alive()) return; c.zone = 'forbidden'; c.locked = true; c.order = ++orderCounter; G.carrying = false; renderGame(); setTimeout(one, 250); };
+      var fn = !isAI(by) ? avatarMoveFn(by) : null;
+      if (T3.active() && isAI(by) && T3.creatureMove) { G.carrying = true; if (T3.creatureUse) T3.creatureUse(aiSeat(by)); T3.creatureMove(c.id, 'forbidden', land); }
+      else if (fn) { G.carrying = true; fn(c.id, 'forbidden', land); }
+      else setTimeout(land, 400);
+    })();
+  }
   function step() {
-    if (!G || G !== g0 || G.cubes !== c0) return;
+    if (!alive()) return;
     var now = bad();
-    if (!now.length) { say('pip', 'There! Now every cube is one we can use.', 'happy'); renderGame(); setTimeout(function () { if (G && G === g0 && G.cubes === c0) done(); }, 500); return; }
-    rounds++;
-    var roll = now.map(function (c) { var f = Eq.CUBE_FACES[c.color]; if (rounds > 6) f = f.filter(function (s) { return okC({ color: c.color, s: s }); }); c.s = f[Math.floor(Math.random() * f.length)]; return { id: c.id, s: c.s }; }); // (BONUS: okC)
-    var next = function () { if (!G || G !== g0 || G.cubes !== c0) return; renderGame(); setTimeout(step, 350); };
-    if (T3.active() && T3.reroll) T3.reroll(roll, next);   // they hop up, tumble and land showing the new face (about 1 s, with the clatter)
-    else { Snd.clatter(); renderGame(); setTimeout(step, 700); }   // flat table: as before
+    if (!now.length) { talk('There! Now every cube is one we can use.', 'happy'); renderGame(); setTimeout(function () { if (alive()) done(); }, 600); return; }
+    round++;
+    if (round === 2) talk(now.length > 1 ? 'One last attempt for these ' + now.length + '!' : 'One last attempt!');
+    if (round >= 3) {
+      talk(now.length > 1 ? 'Those cubes are not meant to be played this round. Into Forbidden they go!' : 'That cube is not meant to be played this round. Into Forbidden it goes!');
+      setTimeout(function () { toForbidden(now, function () { setTimeout(function () { if (alive()) done(); }, 500); }); }, 900);
+      return;
+    }
+    var roll = now.map(function (c) { var f = Eq.CUBE_FACES[c.color]; c.s = f[Math.floor(Math.random() * f.length)]; return { id: c.id, s: c.s }; });
+    var next = function () { if (!alive()) return; renderGame(); setTimeout(step, round === 1 ? 500 : 700); };
+    setTimeout(function () { if (alive()) rollAnim(roll, next); }, round === 2 ? 900 : 0);
   }
   setTimeout(step, 1500);
 }
@@ -313,7 +349,6 @@ function actionsHTML() {
     }).join('') + '</div>';
   }
   if (window.Why) out += Why.buttonHTML(); // WHY: "Why?" for the latest move
-  if (G.wait) out += '<button class="btn big green" data-act="goOn">Go on ▶</button>';
   if (window.Social && Social.emoteBar && T3.active() && firstAI() && G.mode !== 'tutorial') out += Social.emoteBar();
   return out;
 }
@@ -385,30 +420,30 @@ function placeCube(id, zone, who) {
 }
 // In a 3-player game, a computer player who is NOT next may still challenge the move that was just made.
 // It thinks in the background: returns true while it is looking, then either challenges or carries on with nextTurn().
+// RACE: after every move, everyone except the mover may challenge, and it is a race. A creature that spots something calls
+// after its own reaction time (stronger creatures are quicker); the kid can beat it to the button. Any new move or
+// challenge cancels a call that has not happened yet (aiStill). It never blocks the turn.
+function reactMs(p) { var o = (G.players[p] && G.players[p].ai) || {}, s = o.stars || 3, f = o.fire || 0; return Math.max(1800, 6800 - s * 900 - f * 450) + Math.random() * 1200; }
 function aiInterject() {
   if (G.mode === 'tutorial' || nP() < 3) return false;
   var cands = idxs().filter(function (i) { return isAI(i) && i !== G.lastMover && i !== G.turn; });
   if (!cands.length || G.aiLooked === orderCounter) return false; // already looked at this move
-  G.aiLooked = orderCounter; G.busy = true; renderGame();
+  G.aiLooked = orderCounter;
   var sit = aiSituation(), list = cands.map(function (p) { return { p: p, o: AI.skill(G.players[p].ai), nowOk: !nowCheckFor(p) }; });
   AIThink.run('interject', [list, snapshot(), G.goal, G.fractions]).then(function (hit) {
-    if (!aiStill(sit)) return;
-    G.busy = false;
-    if (hit) { if (hit.d.kind === 'now') G.aiPlan = hit.d.plan; challenge(hit.d.kind, hit.p); }
-    else nextTurn();
+    if (!hit || !aiStill(sit)) return;
+    setTimeout(function () {
+      if (!aiStill(sit) || G.carrying || G.phase !== 'move') return; // someone moved or called first
+      if (hit.d.kind === 'now') G.aiPlan = hit.d.plan;
+      G.busy = false; challenge(hit.d.kind, hit.p);
+    }, reactMs(hit.p));
   }).catch(aiOops);
-  return true;
+  return false;
 }
 function nextTurn() {
   if (G.phase !== 'move') return;
   if (G.team) Team.sync(); // (also catches the Goal the team just set)
-  if (aiInterject()) return;
-  // (untimed) with two creatures, the kid gets to look at one creature's move before the other one plays
-  if (isAI(G.turn) && (G.mode === 'ai3' || G.mode === 'tourney') && G.lastMover !== null && isAI(G.lastMover)) { // (TOURNEY: + tourney)
-    G.wait = true; G.busy = false;
-    say('pip', '<b>' + esc(G.players[G.lastMover].name) + '</b> moved. Spot something? Call <b>Now!</b> or <b>Impossible!</b> Or tap <b>Go on</b> to let ' + esc(G.players[G.turn].name) + ' play. Take your time!');
-    renderGame(); return;
-  }
+  aiInterject(); // RACE: a creature that is not moving may call after its reaction time (never waits for a button)
   if (isAI(G.turn)) { setTimeout(aiTurn, 500); return; }
   var last = zoneCubes('resources').length === 1;
   if (G.mode === 'tutorial') { tutPrompt(); renderGame(); return; }
@@ -874,7 +909,7 @@ function aiTurn() {
   var me = G.turn, o = G.players[me].ai;
   G.wait = false; focusAI(me);
   G.busy = true; say('opp', (S.set.trash !== false && o.talk && Math.random() < 0.3) ? talkLine(o, 'trash') : pick(o.think)); creatureMood('think'); renderGame();
-  var pause = 900 + Math.random() * 700;
+  var pause = nP() > 2 ? 2300 + Math.random() * 1300 : 900 + Math.random() * 700; // RACE: a moment for the others to call first
   if (G.mode === 'tutorial') { setTimeout(function () { if (!G || G.phase !== 'move') return; tutAiMove(); }, pause); return; }
   var sit = aiSituation();
   var tArgs = [AI.skill(o), snapshot(), aiFree(), G.goal, G.fractions, G.lastMover !== null && G.lastMover !== me, !nowCheck()];

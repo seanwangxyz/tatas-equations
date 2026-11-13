@@ -722,3 +722,20 @@ html.a11y-calm .modal-back.leaving{display:none}
   #game #gAct .emote-bar::-webkit-scrollbar{display:none}
   #game #gAct .emote-bar > *{flex:0 0 auto}
 }
+
+/* Three at the table: pick any two (all creatures, league by league; locked ones visible) */
+.trio-league{margin:6px 0 10px}
+.trio-lh{font-family:var(--display);font-size:15px;color:var(--ink2,#556);margin:0 0 6px 2px}
+.trio-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.trio-chip{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:14px;border:2px solid #dde3ef;background:#fff;font:800 13px/1.15 var(--font);color:var(--ink);cursor:pointer;min-height:44px}
+.trio-chip .avatar{width:44px;height:44px;font-size:26px}
+.trio-chip.on{border-color:var(--good,#2fb36d);background:#e9fbf2}
+.trio-chip .trio-tick{position:absolute;top:4px;right:6px;color:var(--good,#2fb36d);font-size:14px}
+.trio-chip.lock{opacity:.55;filter:grayscale(.8);cursor:default}
+.trio-chip.lock small{font:700 11px/1.1 var(--font);color:#667}
+.trio-chip:focus-visible{outline:3px solid var(--sky,#4dabf7);outline-offset:2px}
+.trio-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.trio-chip{padding:6px 2px;font-size:12px}
+.trio-chip .avatar{width:40px;height:40px;font-size:24px}
+.trio-chip.lock small{font-size:10px}
+@media (max-width:420px){.trio-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
