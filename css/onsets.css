@@ -314,6 +314,14 @@
 .rc .xplist .ico{width:15px;height:15px;color:#e09a00;vertical-align:-2px}
 .rc-sols .os-resuni .os-card{--w:clamp(30px,3.4vw,40px)}
 @media (max-width:560px){.rc-board[style*="--n:3"] .rc-gain{flex-direction:column;align-items:center;gap:0;white-space:normal;text-align:center;font-size:13px}.rc-board[style*="--n:3"] .rc-gain b{font-size:24px}}
+/* ---------- Flat mat: cards and cubes a little crisper (same shapes, so colour-blind shapes and letters still work) ---------- */
+.os-card{background:linear-gradient(#fffefa,#f2efe4);box-shadow:0 3px 0 #c8c1ac,0 6px 10px rgba(0,0,0,.28),inset 0 0 0 3px rgba(255,255,255,.75)}
+.os-card::after{content:"";position:absolute;inset:4px;border-radius:calc(var(--w)*.1);border:1.5px solid rgba(60,50,20,.07);pointer-events:none}
+.os-card.lit{box-shadow:0 0 0 4px #ffd43b,0 8px 16px rgba(0,0,0,.35),inset 0 0 0 3px rgba(255,255,255,.75)}
+.os-card.pick.lit{box-shadow:0 0 0 4px #4dabf7,0 8px 16px rgba(0,0,0,.35),inset 0 0 0 3px rgba(255,255,255,.75)}
+.os-card i{box-shadow:inset 0 -2px 0 rgba(0,0,0,.18),0 1px 0 rgba(255,255,255,.6)}
+.os-cube{box-shadow:inset 0 -5px 0 rgba(0,0,0,.25),inset 0 4px 0 rgba(255,255,255,.45),inset 0 0 0 2px rgba(255,255,255,.12),0 4px 7px rgba(0,0,0,.35)}
+.os-zone{transition:background var(--t) var(--ease),box-shadow var(--t) var(--ease)}
 /* ---------- Pop-ups: V / Λ choice, deal, Third Party, pass-the-device, rules ---------- */
 .modal .os-note{margin:4px 0}
 .modal .row .btn.quiet,.modal .btn.quiet{background:var(--soft);--edge:#cdd4e4;color:var(--ink2)}
