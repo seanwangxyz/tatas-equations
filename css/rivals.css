@@ -1,0 +1,31 @@
+/* ======================= RIVALS (js/rivals.js) ======================= */
+/* Rival status on the opponent card and the "history with you" rows in the Career screen. Calm: no animation. */
+.rv-card { margin-top: 6px; font-size: 13px; font-weight: 800; line-height: 1.25; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px; }
+.rv-card small { flex-basis: 100%; font-size: 12px; font-weight: 700; color: var(--ink2, #5c6378); }
+.rv-lvl { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 900; background: #eef1f7; color: #495066; white-space: nowrap; }
+.rv-rec { font-weight: 900; color: #364fc7; }
+.rv-l1 .rv-lvl { background: #e7f5ff; color: #1864ab; }
+.rv-l2 .rv-lvl { background: #fff4e6; color: #c2410c; }
+.rv-l3 .rv-lvl { background: #f3f0ff; color: #5f3dc4; }
+.rv-l4 .rv-lvl { background: #ebfbee; color: #2b8a3e; }
+
+/* Career screen section */
+.rv-sec { margin: 4px 0 10px; text-align: left; }
+.rv-h { font-size: 17px; margin: 6px 2px 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rv-h small { font-size: 13px; font-weight: 700; opacity: .7; }
+.rv-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.rv-hist { display: flex; gap: 10px; align-items: flex-start; background: #f4f6fb; border-radius: 16px; padding: 8px 10px; border: 2px solid transparent; min-width: 0; }
+.rv-hist.rv-l3, .rv-hist.rv-l4 { border-color: #d0bfff; }
+.rv-hist .avatar { flex: 0 0 auto; }
+.rv-hbody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rv-hbody > b { font-size: 16px; line-height: 1.15; }
+.rv-hbody > b + .rv-lvl { align-self: flex-start; margin-top: 2px; }
+.rv-line { display: block; font-size: 13px; font-weight: 700; line-height: 1.3; color: var(--ink2, #5c6378); overflow-wrap: anywhere; }
+.rv-mo { color: #5f3dc4; }
+.rv-next { display: block; font-size: 12px; font-weight: 700; opacity: .65; }
+.rv-dots { display: flex; gap: 4px; margin: 3px 0 1px; }
+.rv-dot { width: 11px; height: 11px; border-radius: 50%; background: #ced4da; display: inline-block; }
+.rv-dot.w { background: #37b24d; }
+.rv-dot.l { background: #91a7ff; } /* a creature's win: calm blue, never red */
+.rv-dot.t { background: #fab005; }
+@media (max-width: 420px) { .rv-list { grid-template-columns: 1fr; } }
