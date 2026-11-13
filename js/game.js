@@ -227,7 +227,7 @@ function startGoalPhase() {
   if (window.Career && Career.beforeGoal(startGoalPhase)) return; // CAREER: the creature's signature card is dealt
   if (window.Vari && Vari.beforeGoal(startGoalPhase)) return; // VARIATIONS: the Goal-setter may pick a card first, then this runs again
   var P = G.players[G.setter];
-  if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); setTimeout(aiSetGoal, 1100); }
+  if (P.ai) { G.busy = true; say('opp', pick(P.ai.think)); renderGame(); creatureAt(G.setter, function () { if (T3.creatureMood) T3.creatureMood('think'); }); /* ACTING */ setTimeout(aiSetGoal, 1100); }
   else {
     if (G.mode !== 'tutorial') say('pip', (multiHuman() ? '<b>' + esc(P.name) + '</b>, you' : 'You') + ' rolled the cubes, so you set the <b>Goal</b>! Use 1 to 6 cubes. Two digit cubes side by side make a two-digit number, like 2 and 4 → 24.');
     renderGame();
@@ -911,7 +911,7 @@ function solCtx(mode, goal, cubes, fractions) {
 }
 function aiWrite(pi, mode, cb) {
   var o = G.players[pi].ai; focusAI(pi);
-  say('opp', esc(o.name) + ' is writing a Solution…'); renderGame();
+  say('opp', esc(o.name) + ' is writing a Solution…'); renderGame(); if (T3.creatureMood) T3.creatureMood('think'); // ACTING
   var sit = aiSituation(), plan = null;
   if (mode === 'now' && G.aiPlan) { plan = G.aiPlan; G.aiPlan = null; }
   var job = plan ? new Promise(function (ok) { setTimeout(function () { ok(plan); }, 1500); }) : aiThink('write', [AI.skill(o), snapshot(), G.goal, G.fractions, mode], 1500);
