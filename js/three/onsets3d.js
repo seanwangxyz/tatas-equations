@@ -37,11 +37,13 @@ function install(T3, ctx) {
     { name: 'osR', faces: ['V', 'N', '=', 'S', 'V', 'N'], look: 'restr' }
   ];
   function a11y(fn) { try { return typeof A11y !== 'undefined' && A11y && typeof A11y[fn] === 'function' ? A11y[fn] : null; } catch (e) { return null; } }
-  function a11ySig() { var f = a11y('dotShape'), m = a11y('cubeMark'); try { return ORDER.map(function (c) { return (f ? f(NAME[c]) : '') + '/' + (m ? m(NAME[c]) : ''); }).join(',') + (a11y('drawFacePattern') ? '+p' : ''); } catch (e) { return ''; } }
+  function a11ySig() { var k = a11y('key'); try { return k ? String(k()) : ''; } catch (e) { return ''; } }
+  // the colour-blind cue for an On-Sets colour ('B' | 'R' | 'G' | 'Y'): its shape when "Patterns" is on, its letter when "Patterns + letters" is on
+  function a11yDot(c) { try { var on = a11y('patterns'), f = a11y('dotShape'), lt = a11y('letters'); if (!on || !f || !on()) return null; var d = f(c); return d ? { shape: d.shape, letter: lt && lt() ? d.letter : null } : null; } catch (e) { return null; } }
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   // one coloured dot (a circle, or the colour-blind shape when that setting gives one)
   function dot(g, cx, cy, r, c) {
-    var shape = null, f = a11y('dotShape'); try { shape = f ? f(NAME[c]) : null; } catch (e) {}
+    var cue = a11yDot(c), shape = cue ? cue.shape : null;
     g.save(); g.beginPath();
     if (shape === 'square') rr(g, cx - r * 0.86, cy - r * 0.86, r * 1.72, r * 1.72, r * 0.25);
     else if (shape === 'triangle') { g.moveTo(cx, cy - r * 1.05); g.lineTo(cx + r * 1.0, cy + r * 0.8); g.lineTo(cx - r * 1.0, cy + r * 0.8); g.closePath(); }
@@ -52,10 +54,8 @@ function install(T3, ctx) {
     g.fillStyle = gr; g.fill();
     g.lineWidth = Math.max(1.5, r * 0.08); g.strokeStyle = 'rgba(0,0,0,.22)'; g.stroke();
     g.clip();
-    var pat = a11y('drawFacePattern');
-    if (pat) { try { g.translate(cx - r, cy - r); pat(g, NAME[c], 2 * r); } catch (e) {} }
     g.restore();
-    var mk = a11y('cubeMark'), letter = null; try { letter = mk ? mk(NAME[c]) : null; } catch (e) {}
+    var letter = cue ? cue.letter : null;
     if (letter) { g.font = '900 ' + Math.round(r * 0.95) + 'px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = r * 0.16; g.strokeStyle = 'rgba(0,0,0,.55)'; g.strokeText(String(letter), cx, cy + r * 0.05); g.fillStyle = '#fff'; g.fillText(String(letter), cx, cy + r * 0.05); }
   }
 
