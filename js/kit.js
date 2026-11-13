@@ -44,7 +44,11 @@ var Kit = (function () {
     { id: 'jump', name: 'Rocket Jump', icon: '🚀', how: 'A big jump with a fist to the sky' },
     { id: 'spin', name: 'Spin & Point', icon: '🌀', how: 'One full spin, then point at the sky' },
     { id: 'robot', name: 'Robot Dance', icon: '🤖', how: 'Four stiff robot moves', crown: 1 },
-    { id: 'slide', name: 'Knee Slide', icon: '⚡', how: 'Slide on your knees, arms up', beat: 3 }
+    { id: 'slide', name: 'Knee Slide', icon: '⚡', how: 'Slide on your knees, arms up', beat: 3 },
+    { id: 'plane', name: 'Aeroplane', icon: '✈️', how: 'Run out with your arms out like wings' },
+    { id: 'heel', name: 'Heel Click', icon: '👟', how: 'Jump and click your heels together' },
+    { id: 'brain', name: 'Big Brain', icon: '🧠', how: 'Fingers to your temple, then point at the table', lvl: 3 },
+    { id: 'number', name: "That's Me", icon: '🔟', how: 'Show off the name and number on your back', beat: 2 }
   ];
   // the reference look: deep red waves, teal V-neck band, icy-blue tall thin number, our cube crest and speed-cube mark
   function defaults() {

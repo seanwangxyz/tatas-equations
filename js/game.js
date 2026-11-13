@@ -429,6 +429,7 @@ function setGoal(tokens, val) {
   Snd.thunk(); Snd.chime(); board('GOAL' + String.fromCharCode(10) + Eq.fmt(val)); shot('goal'); crowdSay(tokens.filter(function (t) { return typeof t === 'object'; }).length >= 4 ? 'ooh' : 'cheer');
   if (window.Commentary) Commentary.say('goal', { goal: Eq.fmt(val), by: G.players[G.setter].name, cubes: tokens.filter(function (t) { return typeof t === 'object'; }).length });
   if (!isAI(G.setter) && G.setter === 0 && G.mode !== 'tutorial') { S.stats.goalsSet++; if (window.Parent) Parent.note('goal', { tokens: tokens, value: val }); checkBadges({ type: 'goal' }); }
+  if (G.setter === 0 && !isAI(0)) setTimeout(function () { if (G && G.phase === 'move') playerMood('proud'); }, 900); // AVATARS: pleased with his Goal
   if (G.setter === 0 && !isAI(0) && G.mode !== 'tutorial' && window.Rivals && firstAI() && window.Social && Social.bubble) { var rvg = Rivals.midLine(OPPONENTS.indexOf(firstAI()), { g: G, goal: 1 }); if (rvg) setTimeout(function () { if (G && G.phase === 'move') Social.bubble('opp', rvg); }, 900); } // RIVALS
   if (G.mode === 'tutorial') { tutAfterGoal(); return; }
   renderGame(); nextTurn();
@@ -554,7 +555,7 @@ function resolveChallenge(ok, tokens, chk, tpRes) {
     if (ch.challenger === 0) {
       S.stats.challenges++;
       var won = pts[0] === 6;
-      if (won) { S.stats.challengeWins++; if (ch.kind === 'now') { S.stats.nowWins++; addXP(25, 'Correct Now! challenge'); } else { S.stats.impWins++; addXP(30, 'Correct Impossible! call'); addStar(); } }
+      if (won) { playerMood('yes'); S.stats.challengeWins++; if (ch.kind === 'now') { S.stats.nowWins++; addXP(25, 'Correct Now! challenge'); } else { S.stats.impWins++; addXP(30, 'Correct Impossible! call'); addStar(); } }
       checkBadges({ type: 'challenge', kind: ch.kind, won: won });
     } else if (ch.mover === 0 && pts[0] === 6 && ch.kind === 'now') addXP(15, 'Clever move: their Now! failed');
     else if (ch.tp === 0 && pts[0] >= 4) addXP(15, 'Smart Third Party play');
@@ -771,7 +772,7 @@ function endMatch() {
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
-      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
+      victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over') playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
     if (!won && !tie) { creatureMood('dance'); if (!shot('lose')) cue('lose'); playerMood('aw'); }
     if (tie) playerMood('clap');
