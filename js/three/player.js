@@ -1653,10 +1653,14 @@ if (T3 && T3.ctx) (function () {
   function pvStage() {
     if (pv.scene) return;
     pv.scene = new THREE.Scene();
-    pv.scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7f99, 0.8));
-    var k1 = new THREE.DirectionalLight(0xffffff, 1.7); k1.position.set(-3, 6, 9); pv.scene.add(k1);
-    var k2 = new THREE.DirectionalLight(0xffffff, 0.9); k2.position.set(3, 4, -9); pv.scene.add(k2);
-    var rim = new THREE.DirectionalLight(0xfff1d6, 0.6); rim.position.set(6, 3, 2); pv.scene.add(rim);
+    // PEOPLE: the picture's light is set so colours come out close to what was chosen (skin tones above all): a picture
+    // is drawn without the screen's tone mapping, so the old, brighter lights washed medium skin and pastel clothes out to near white
+    var PVL = 0.5; pv.lights = [];   // (measured: 0.5 with the surroundings at 0.3 gives back skin tones and clothes within a few percent)
+    var hl = new THREE.HemisphereLight(0xffffff, 0x6f7f99, 0.8 * PVL); pv.scene.add(hl); pv.lights.push([hl, 0.8]);
+    var k1 = new THREE.DirectionalLight(0xffffff, 1.7 * PVL); k1.position.set(-3, 6, 9); pv.scene.add(k1); pv.lights.push([k1, 1.7]);
+    var k2 = new THREE.DirectionalLight(0xffffff, 0.9 * PVL); k2.position.set(3, 4, -9); pv.scene.add(k2); pv.lights.push([k2, 0.9]);
+    var rim = new THREE.DirectionalLight(0xfff1d6, 0.6 * PVL); rim.position.set(6, 3, 2); pv.scene.add(rim); pv.lights.push([rim, 0.6]);
+    T3._pvLight = function (k, e) { pv.lights.forEach(function (l) { l[0].intensity = l[1] * k; }); if (e != null) pv.envK = e; };   // tuning hook (lights, surroundings)
     pv.cam = new THREE.PerspectiveCamera(26, 0.8, 0.1, 100);
   }
   function pvPose(sp) {
@@ -1698,7 +1702,7 @@ if (T3 && T3.ctx) (function () {
     }
     var h = top - bot, cy = (top + bot) / 2, tf = Math.tan(pv.cam.fov * Math.PI / 360), dist = Math.max((h / 2) / tf, hw / (tf * pv.cam.aspect)) * 1.06;
     pv.cam.position.set(0, cy + dist * (close ? 0.05 : 0.12), dist); pv.cam.lookAt(0, cy, 0); pv.cam.updateMatrixWorld();
-    pv.scene.environment = ctx.scene.environment || null;
+    pv.scene.environment = ctx.scene.environment || null; pv.scene.environmentIntensity = pv.envK == null ? 0.3 : pv.envK;   // (PEOPLE: the stadium's reflected light, turned down for a picture)
     var r = ctx.renderer, rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.UnsignedByteType });
     rt.texture.colorSpace = THREE.SRGBColorSpace;
     var prev = r.getRenderTarget(), cc = new THREE.Color(), ca = r.getClearAlpha(), sh = r.shadowMap.enabled, px = new Uint8Array(W * H * 4), read;

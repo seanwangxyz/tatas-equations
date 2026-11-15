@@ -189,15 +189,15 @@ var People = (function () {
     { id: 'kit-pink', name: 'Pink and white', jersey: '7', avatar: { body: 'kid', hairStyle: 'braids', hair: '#15110e', skin: '#8a5533', lashes: true, outfit: 'kit' },
       kit: { shirt: '#e64980', pattern: 'stripes', trim: '#ffffff', shorts: '#ffffff', crest: 'ribbon', mark: 'swift', numStyle: 'thin', collar: 'v', boots: '#f8f9fa' } },
     { id: 'school', name: 'School look', jersey: '5', avatar: { body: 'teen', hairStyle: 'halfup', hair: '#5a3a22', skin: '#f6d3b8', lashes: true, acc: 'bow', accCol: '#1f3a68',
-      outfit: 'school', bottom: 'skirt', shoes: 'loafers', fit1: '#1f3a68', fit2: '#c9342c', fit3: '#868e96', shoeCol: '#25262b' }, kit: {} },
+      outfit: 'school', bottom: 'skirt', shoes: 'loafers', fit1: '#1f3a68', fit2: '#c9342c', fit3: '#868e96', shoeCol: '#25262b' }, kit: { shirt: '#f1f3f5', pattern: 'plain', trim: '#1f3a68', shorts: '#1f3a68', crest: 'roundel', mark: 'swift', numStyle: 'thin', collar: 'v', boots: '#1f2430' } },
     { id: 'cardigan', name: 'Soft cardigan', jersey: '3', avatar: { body: 'kid', hairStyle: 'spacebuns', hair: '#7b5536', skin: '#efc19d', lashes: true, gems: true, acc: 'clips', accCol: '#b197fc',
-      outfit: 'cardigan', bottom: 'skirt', shoes: 'sneakers', fit1: '#ffdeeb', fit2: '#f1f3f5', fit3: '#b197fc', shoeCol: '#f1f3f5' }, kit: {} },
+      outfit: 'cardigan', bottom: 'skirt', shoes: 'sneakers', fit1: '#ffdeeb', fit2: '#f1f3f5', fit3: '#b197fc', shoeCol: '#f1f3f5' }, kit: { shirt: '#e64980', pattern: 'hoops', trim: '#ffffff', shorts: '#7048e8', crest: 'star', mark: 'pip', numStyle: 'round', collar: 'round', boots: '#f8f9fa' } },
     { id: 'hoodie', name: 'Big hoodie', jersey: '21', avatar: { body: 'teen', hairStyle: 'curtain', hair: '#15110e', skin: '#c68a5c', lashes: true, streaks: '#b197fc',
-      outfit: 'hoodie', bottom: 'cargos', shoes: 'hightops', fit1: '#b197fc', fit2: '#f1f3f5', fit3: '#d9c2a0', shoeCol: '#f1f3f5' }, kit: {} },
+      outfit: 'hoodie', bottom: 'cargos', shoes: 'hightops', fit1: '#b197fc', fit2: '#f1f3f5', fit3: '#d9c2a0', shoeCol: '#f1f3f5' }, kit: { shirt: '#7048e8', pattern: 'waves', trim: '#ffffff', shorts: '#25262b', crest: 'diamond', mark: 'bolt', numStyle: 'outline', collar: 'round', boots: '#f8f9fa' } },
     { id: 'varsity', name: 'Varsity jacket', jersey: '23', avatar: { body: 'teen', hairStyle: 'side', hair: '#3b2314', skin: '#e4b48e',
-      outfit: 'varsity', bottom: 'jeans', shoes: 'sneakers', fit1: '#2f9e44', fit2: '#f1f3f5', fit3: '#1c7ed6', shoeCol: '#f1f3f5' }, kit: {} },
+      outfit: 'varsity', bottom: 'jeans', shoes: 'sneakers', fit1: '#2f9e44', fit2: '#f1f3f5', fit3: '#1c7ed6', shoeCol: '#f1f3f5' }, kit: { shirt: '#2f9e44', pattern: 'sash', trim: '#ffffff', shorts: '#1f3a68', crest: 'dice', mark: 'fox', numStyle: 'college', collar: 'v', boots: '#1f2430' } },
     { id: 'tee', name: 'Big T-shirt', jersey: '14', avatar: { body: 'kid', hairStyle: 'coils', hair: '#15110e', skin: '#6b3f25',
-      outfit: 'tee', bottom: 'joggers', shoes: 'hightops', fit1: '#f5c518', fit2: '#25262b', fit3: '#25262b', shoeCol: '#c9342c' }, kit: {} },
+      outfit: 'tee', bottom: 'joggers', shoes: 'hightops', fit1: '#f5c518', fit2: '#25262b', fit3: '#25262b', shoeCol: '#c9342c' }, kit: { shirt: '#f5c518', pattern: 'stripes', trim: '#25262b', shorts: '#25262b', crest: 'ribbon', mark: 'rocket', numStyle: 'block', collar: 'round', boots: '#c9342c' } },
     { id: 'classic', name: 'Red classic', jersey: '7', avatar: { body: 'kid', hairStyle: 'swept', outfit: 'kit' }, kit: {} }
   ];
   function starter(id) { for (var i = 0; i < STARTERS.length; i++) if (STARTERS[i].id === id) return STARTERS[i]; return null; }
