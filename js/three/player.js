@@ -1623,7 +1623,7 @@ if (T3 && T3.ctx) (function () {
   // ---------- end MATCHDAY ----------
 
   // ---------- portraits for the kit designer ----------
-  var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {} };
+  var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {}, boxes: {} };
   function pvStage() {
     if (pv.scene) return;
     pv.scene = new THREE.Scene();
@@ -1656,9 +1656,21 @@ if (T3 && T3.ctx) (function () {
     m.root.updateMatrixWorld(true);
     pv.cam.aspect = W / H; pv.cam.updateProjectionMatrix();
     var top, bot;
-    if (close) { var hc = D.NECK_Y + D.HEAD_UP; top = D.TOP + 0.35; bot = hc - D.HEAD_R * 1.9; }
+    var hc = D.NECK_Y + D.HEAD_UP, hw = 0;
+    if (close) { top = D.TOP + 0.35; bot = hc - D.HEAD_R * 1.9; }
     else { top = D.TOP + 0.15; bot = D.FOOT - 0.1; }
-    var h = top - bot, cy = (top + bot) / 2, dist = (h / 2) / Math.tan(pv.cam.fov * Math.PI / 360) * 1.06;
+    if (sp.avatar) {
+      // an avatar: framed by what was really built (a bun, an afro, a cap or a tall build may reach past the dims), so
+      // every body fills the picture the same way, whatever its size. The measured box is kept per body and angle.
+      var bk = sp.body + '|' + m.root.rotation.y.toFixed(3), bb = pv.boxes[bk];
+      if (!bb) { bb = new THREE.Box3().setFromObject(m.root, true); pv.boxes = {}; pv.boxes[bk] = bb; }
+      if (!bb.isEmpty()) {
+        top = Math.max(top, bb.max.y + (close ? 0.2 : 0.1));
+        if (!close) { bot = Math.min(bot, bb.min.y - 0.06); hw = Math.max(-bb.min.x, bb.max.x) + 0.08; }
+        else hw = D.HEAD_R * 1.25 * (D.head ? D.head.sx : 1) + 0.3;
+      }
+    }
+    var h = top - bot, cy = (top + bot) / 2, tf = Math.tan(pv.cam.fov * Math.PI / 360), dist = Math.max((h / 2) / tf, hw / (tf * pv.cam.aspect)) * 1.06;
     pv.cam.position.set(0, cy + dist * (close ? 0.05 : 0.12), dist); pv.cam.lookAt(0, cy, 0); pv.cam.updateMatrixWorld();
     pv.scene.environment = ctx.scene.environment || null;
     var r = ctx.renderer, rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.UnsignedByteType });
