@@ -1,5 +1,5 @@
 // Made by tools/build-precache.js. Do not edit by hand: run  node tools/build-precache.js  before publishing.
-self.PRECACHE = {"version":"0a4c8a170f8c","built":"2026-11-15T16:53:53.805Z","bytes":7292522,"files":[["assets/audio/manifest.json","3e0764579b268b42",19],
+self.PRECACHE = {"version":"f916c886a425","built":"2026-11-15T17:17:13.827Z","bytes":7299096,"files":[["assets/audio/manifest.json","3e0764579b268b42",19],
 ["assets/creatures/monsters/imp.glb","f757472c429d62a6",564444],
 ["assets/creatures/monsters/manifest.json","af440c365ac36bbd",3211],
 ["assets/creatures/monsters/puglin.glb","5bfe89dcd218eedd",329956],
@@ -56,8 +56,8 @@ self.PRECACHE = {"version":"0a4c8a170f8c","built":"2026-11-15T16:53:53.805Z","by
 ["css/why.css","005cfdd25b012c47",2229],
 ["index.html","a31837998d31278d",14508],
 ["js/a11y.js","eddc10510a24902a",21512],
-["js/account-config.js","0891bc6aacee49d3",766],
-["js/account.js","0193fa2c02733950",72745],
+["js/account-config.js","443985defa5a4887",1497],
+["js/account.js","114aeca5c93dbb65",78588],
 ["js/ai-worker.js","5c7033f4dbfa5c97",748],
 ["js/ai.js","2b6d915539a520ff",33311],
 ["js/audio-check.js","cf8e51fc1a7c04ee",9886],
