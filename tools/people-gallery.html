@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People gallery (dev)</title>
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #e9ecef; color: #212529; }
+  header { padding: 10px 16px; background: #fff; border-bottom: 1px solid #ced4da; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  header button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid #adb5bd; background: #f8f9fa; cursor: pointer; }
+  header button.on { background: #1c7ed6; color: #fff; border-color: #1c7ed6; }
+  #out img { display: block; max-width: 100%; margin: 12px auto; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  #info { margin-left: auto; color: #495057; }
+</style>
+</head>
+<body>
+<!-- Dev page: draws avatars from js/people-data.js with the 3D rig (js/three/creatures/people.js), each from the front,
+     3/4 and the back. Renders on demand only (no animation loop). Open over http (python -m http.server) from the repo root:
+     /tools/people-gallery.html -->
+<header><strong>People gallery</strong><span id="btns"></span><label><input type="checkbox" id="head"> heads close up</label><span id="info"></span></header>
+<div id="out"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "../vendor/three/build/three.module.js",
+  "three/addons/": "../vendor/three/examples/jsm/"
+} }
+</script>
+<script src="../js/people-data.js"></script>
+<script type="module" src="people-gallery.js"></script>
+</body>
+</html>
