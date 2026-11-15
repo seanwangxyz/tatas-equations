@@ -61,9 +61,9 @@ var CELEBS = ['jump', 'spin', 'robot', 'slide', 'plane', 'heel', 'brain', 'numbe
 if (T3 && !T3.ctx) {
   // no 3D: keep the API callable
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
-  T3.playerSet = function () {}; T3.mate = function () { return false; }; T3.mateMood = function () {}; T3.playerCelebrate = function () { return false; };
+  T3.playerSet = function () {}; T3.mate = T3.mate2 = function () { return false; }; T3.mateMood = T3.mate2Mood = function () {}; T3.playerCelebrate = function () { return false; };
   T3.playerCelebrations = function () { return CELEBS.slice(); }; T3.playerPortrait = function () { return Promise.resolve(null); };
-  T3.playerMove = T3.mateMove = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
+  T3.playerMove = T3.mateMove = T3.mate2Move = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
   T3.playerMoveFinish = function () { return false; }; T3.playerMoving = function () { return false; }; T3.playerWalkSide = function () { return 'auto'; };
 }
 if (T3 && T3.ctx) (function () {
@@ -83,7 +83,7 @@ if (T3 && T3.ctx) (function () {
       g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, trip: null,
       wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
-  var me = makeAvatar('main'), mate = makeAvatar('mate');
+  var me = makeAvatar('main'), mate = makeAvatar('mate'), mate2 = makeAvatar('mate2');
   var needPlace = true, lastLayout = null;
 
   // ---------- who and which kit ----------
@@ -179,7 +179,7 @@ if (T3 && T3.ctx) (function () {
     var hc = D.NECK_Y + D.HEAD_UP, hw = D.HEAD_R * 1.1 * (D.head ? D.head.sx : 1);
     A.head = [[0, D.TOP, 0], [-hw, hc, 0], [hw, hc, 0], [0, hc - D.HEAD_R * 1.02 * (D.head ? D.head.sy : 1), 0]];
   }
-  makeSamples(me); makeSamples(mate);
+  makeSamples(me); makeSamples(mate); makeSamples(mate2);
   var quad = [[0, 0], [0, 0], [0, 0], [0, 0]], aspect = 1;
   var pcam = new THREE.PerspectiveCamera();
   function proj(x, y, z, out) { v3.set(x, y, z).project(pcam); out[0] = v3.x; out[1] = v3.y; out[2] = v3.z; return out; }
@@ -273,8 +273,27 @@ if (T3 && T3.ctx) (function () {
     var iz = L.D / 2 - SEAT.into, ry = 0.5, lz = camPos.z - iz, ly = camPos.y - ry, len = Math.sqrt(lz * lz + ly * ly) || 1;
     return { iz: iz, ry: ry, nz: ly / len, ny: -lz / len };
   }
-  function seatFor(A, camPos, L) {
-    var D = A.dims, ln = sightLine(camPos, L), key = D === KID ? 'kid' : 'tata', lo = SEAT.minS[key], hi = SEAT.maxS[key];
+  // SIZE RULE (see the header). Every person's dims are in one unit system (the kid's), so people of different builds
+  // drawn at the same scale s have believable relative heights. One scale per side of the table:
+  //   near side (the device's player and the 'left' seat): U = min(ref, fit(me)). ref = the scale today's kid gets at
+  //     the near seat (his head just touches the line of sight over the rim); fit(me) = the same for the device's player.
+  //     A smaller person (a little kid) gets ref, so she stands lower and smaller than the kid would; a grown-up gets
+  //     less than ref (his head must stay off the felt), and then everyone on the near side shrinks with him.
+  //   far side ('far', 'farL', 'farR'): FAR.s scaled like the near side (FAR.s x U / ref), raised if needed until the
+  //     smallest person there shows down to the middle of the chest over the far rim (farFit), at most FAR.max.
+  // With no avatar anywhere this gives exactly today's sizes (the kid: ref; Tata: his fit; the far mate: FAR.s).
+  var REF = { dims: KID, avatar: null, adult: false };
+  var KID_H = KID.TOP - KID.FOOT, TATA_H = TATA.TOP - TATA.FOOT;
+  function sRange(A) {
+    if (!A.avatar) return A.dims === KID ? [SEAT.minS.kid, SEAT.maxS.kid] : [SEAT.minS.tata, SEAT.maxS.tata];   // today's two, exactly
+    // an avatar: the same range of world heights the kid and Tata have between them
+    var h = Math.max(1, A.dims.TOP - A.dims.FOOT);
+    return [Math.min(SEAT.minS.kid * KID_H, SEAT.minS.tata * TATA_H) / h, Math.max(SEAT.maxS.kid * KID_H, SEAT.maxS.tata * TATA_H) / h];
+  }
+  function refScale(camPos, L) { var b = seatFor(REF, camPos, L); return b ? b.s : 0; }
+  function seatFor(A, camPos, L, cap) {
+    var D = A.dims, ln = sightLine(camPos, L), rg = sRange(A), lo = rg[0], hi = rg[1];
+    if (cap > 0 && cap < hi) { hi = cap; lo = Math.min(lo, hi); }
     function clear(s) { var z = seatZ(D, s, L), h = headInfo(D, s, z); return (h.z - ln.iz) * ln.nz + (h.y - ln.ry) * ln.ny - h.r; }
     if (clear(lo) < 0) return null;                    // even a small kid would cover the felt (camera too low): no seat
     if (clear(hi) >= 0) lo = hi;
@@ -292,7 +311,7 @@ if (T3 && T3.ctx) (function () {
     var A = me, L = ctx.layout;
     why.head = why.table = why.sunk = why.near = 0;
     // with the view the camera really ended up with (the fit's last pass used almost the same one)
-    var b = seatFor(A, pcam.position, L);
+    var b = seatFor(A, pcam.position, L, refScale(pcam.position, L));
     A.fits = false; A.placedOnce = true;
     if (!b) { why.table++; return; }
     // his head must really be on screen (the fit may have hit its limit on a very narrow screen)
@@ -306,16 +325,19 @@ if (T3 && T3.ctx) (function () {
   }
   // Team-up: the grown-up stands beside the left end of the table, on the kid's side of the creature (which is
   // always behind the far edge), at the same world scale as the kid (so a grown-up is taller), never on top of him.
-  function placeLeft() {
-    var A = mate, ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
-    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = me.fits ? me.place.s : 1.4, kr = me.fits ? me.place.s : 0;
+  // A second person at the left seat (two mates both 'left') keeps clear of the first one the same way.
+  function placeLeft(A, others) {
+    var ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
+    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = me.fits ? me.place.s : 1.4;
     drop = 0;
     [1, 0.9, 0.8].forEach(function (f) {
       var s = s0 * f;
       for (var x = -ow - 0.8; x >= -ow - 7; x -= 0.5) {
         for (var z = od - 0.5; z >= -od + 1.2; z -= 0.5) {
-          // keep clear of the kid (both bodies plus a gap)
-          if (me.fits) { var ddx = x - me.place.x, ddz = z - me.place.z; if (Math.sqrt(ddx * ddx + ddz * ddz) < 1.25 * (s + kr)) { why.near++; continue; } }
+          // keep clear of the kid and anyone already placed (both bodies plus a gap)
+          var near = false;
+          for (var q = 0; q < others.length && !near; q++) { var B = others[q]; if (!B.fits) continue; var ddx = x - B.place.x, ddz = z - B.place.z; if (Math.sqrt(ddx * ddx + ddz * ddz) < 1.25 * (s + B.place.s)) near = true; }
+          if (near) { why.near++; continue; }
           var rot = Math.atan2(-ow * 0.4 - x, -z * 0.3 - z);                      // turned toward the middle of the table
           var hd = fitsAt(A, x, z, s, rot); if (hd < MIN) continue;
           var dx = x - (-ow - 1.6), dz = z;
@@ -328,23 +350,50 @@ if (T3 && T3.ctx) (function () {
     if (best) setPlace(A, best);
   }
   // 2 Players / Online: across the table where a creature would stand, facing the camera, standing on the pitch
-  var FAR = { s: 1.35, front: 1.95, look: -0.5 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
-  function creatureHere() { try { return !!(T3.creatureVisible && T3.creatureVisible()); } catch (e) { return false; } }
-  function placeFar() {
-    var A = mate, L = ctx.layout; if (!L) { A.fits = false; return; }
-    setPlace(A, { x: 0, z: -L.D / 2 - FAR.front, s: FAR.s, rot: 0, hd: 0, drop: 0 });
+  // farL / farR (three humans, no creature): the two spots across the table, a little either side of the middle (where
+  // the two creatures of a three-player game stand), each turned a touch toward the middle. x = FAR.x[layout] (world).
+  var FAR = { s: 1.35, front: 1.95, look: -0.5, max: 1.85, chest: 0.4, x: { wide: 4.6, tall: 2.9 }, turn: 0.18 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
+  var MATES = [mate, mate2], PEOPLE = [me, mate, mate2];
+  function isFar(A) { return A.seat === 'far' || A.seat === 'farL' || A.seat === 'farR'; }
+  function creatureHere() { try { return !!(T3.creatureVisible && (T3.creatureVisible(0) || T3.creatureVisible(1))); } catch (e) { return false; } }
+  function farSpot(A, L) {
+    if (A.seat === 'far') return { x: 0, rot: 0 };
+    var sg = A.seat === 'farL' ? -1 : 1, x = sg * (FAR.x[ctx.layoutName] || FAR.x.wide);
+    return { x: x, rot: -sg * FAR.turn };
+  }
+  // the smallest scale at which A, standing at the far seat, shows down to the middle of the chest over the far rim
+  function farFit(A, camPos, L) {
+    var D = A.dims, zr = -L.D / 2 - 0.55, zp = -L.D / 2 - FAR.front, ry = 0.62;
+    if (camPos.z - zr < 0.1) return FAR.s;
+    var yl = ry + (ry - camPos.y) / (zr - camPos.z) * (zp - zr) + 0.15, yc = FAR.chest * D.SH_Y - D.FOOT;
+    return (yl - FLOOR_Y) / yc;
+  }
+  // the one scale for everyone on the far side (see the size rule above)
+  function farScale(camPos, L, nearS, refS) {
+    var fars = MATES.filter(function (B) { return B.shown && B.model && isFar(B); });
+    if (!fars.some(function (B) { return !!B.avatar; })) return FAR.s;                 // today's kid / Tata only: exactly as before
+    var s = FAR.s * (nearS > 0 && refS > 0 ? Math.min(1, nearS / refS) : 1);
+    fars.forEach(function (B) { s = Math.max(s, farFit(B, camPos, L)); });
+    return Math.min(s, FAR.max);
+  }
+  function placeFar(A, s) {
+    var L = ctx.layout; if (!L) { A.fits = false; return; }
+    var sp = farSpot(A, L);
+    setPlace(A, { x: sp.x, z: -L.D / 2 - FAR.front, s: s, rot: sp.rot, hd: 0, drop: 0 });
     A.fits = !creatureHere(); A.placedOnce = true;
   }
   function computePlace() {
     needPlace = false;
-    if (!setupProj()) { me.fits = false; mate.fits = false; return; }
+    if (!setupProj()) { me.fits = false; mate.fits = false; mate2.fits = false; return; }
     placeMain();
-    if (mate.seat === 'far') placeFar(); else if (mate.seat === 'left') placeLeft();
+    var refS = refScale(pcam.position, ctx.layout), fs = farScale(pcam.position, ctx.layout, me.fits ? me.place.s : refS, refS), placed = [me];
+    MATES.forEach(function (B) { if (isFar(B)) { placeFar(B, fs); placed.push(B); } });
+    MATES.forEach(function (B) { if (B.seat === 'left') { placeLeft(B, placed); placed.push(B); } });
     applyVis();
   }
   function applyVis() {
     if (me.model) me.model.root.visible = (me.shown && me.fits) || !!me.forced;          // (MATCHDAY: forced = a scripted walk shows him anyway)
-    if (mate.model) mate.model.root.visible = (mate.shown && mate.fits) || !!mate.forced;
+    MATES.forEach(function (B) { if (B.model) B.model.root.visible = (B.shown && B.fits) || !!B.forced; });
     ctx.dirty(); ctx.startLoop();
   }
 
@@ -606,7 +655,7 @@ if (T3 && T3.ctx) (function () {
   function homeOf(A) { return { x: A.place.x, z: A.place.z, yaw: A.place.rot }; }
   // running speed (world units / s). The person across the table (smaller, and every Resource is on the near half)
   // runs a little faster so his moves don't drag.
-  function runSpeed(A, quick) { return WALK.v * A.place.s * (quick ? WALK.quickV : 1) * (A === mate && mate.seat === 'far' ? 1.3 : 1); }
+  function runSpeed(A, quick) { return WALK.v * A.place.s * (quick ? WALK.quickV : 1) * (isFar(A) ? 1.3 : 1); }
   function radiusOf(A) { return 1.0 * A.dims.torsoX * A.place.s; }
   function flopLift(A) {
     // root (waist) height when he lies on his tummy: the belly clears the cubes on the felt (cube tops at y = 1)
@@ -616,14 +665,18 @@ if (T3 && T3.ctx) (function () {
   // what is in his way: a creature across the table and the person standing there are hard (never walk there), the
   // other person at the table is soft (he goes round the outside, behind him); T3.playerWalkSide rules out one side
   function obstaclesFor(A) {
-    var L = ctx.layout, out = [], other = A === me ? mate : me, rA = radiusOf(A);
-    var farBusy = (!(A === mate && mate.seat === 'far') && creatureHere()) || (A === me && mate.seat === 'far' && mate.shown && mate.fits);
+    var L = ctx.layout, out = [], rA = radiusOf(A), far = isFar(A), others = PEOPLE.filter(function (B) { return B !== A; });
+    // someone across the table (a creature, or a person at a far seat) owns the far side, unless he stands there himself;
+    // two people across the table go round each other (soft), like the people on the near side
+    var farBusy = !far && (creatureHere() || others.some(function (B) { return isFar(B) && B.shown && B.fits; }));
     if (farBusy) {
       // the creature (or the person) across the table: the whole far side is theirs, he only goes as far as its corners
       out.push({ x: 0, z: -L.D / 2 - 1.95, r: 5.2 + rA, hard: true });
       out.push({ box: [-L.W / 2 + 0.3, L.W / 2 - 0.3, -1e9, -L.D / 2 - 0.4], hard: true });
     }
-    if (other.shown && other.model && other.model.root.visible && !(other === mate && mate.seat === 'far')) out.push({ x: other.wk.x, z: other.wk.z, r: 0.88 * (radiusOf(other) + rA) + 0.2, hard: false });
+    others.forEach(function (other) {
+      if (other.shown && other.model && other.model.root.visible && !(isFar(other) && !far)) out.push({ x: other.wk.x, z: other.wk.z, r: 0.88 * (radiusOf(other) + rA) + 0.2, hard: false });
+    });
     return out;
   }
   function inObs(o, x, z) { if (o.box) return x > o.box[0] && x < o.box[1] && z > o.box[2] && z < o.box[3]; var ox = x - o.x, oz = z - o.z; return ox * ox + oz * oz < o.r * o.r; }
@@ -866,7 +919,7 @@ if (T3 && T3.ctx) (function () {
     clearTimeout(T.timer); A.trip = null; syncHome(A);
   }
   function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); else if (g.k === 'walk' && (T.script || T.cup)) T.fin(); }   // (CUPTOSS cup: arrived at the spot on the rim)   // (MATCHDAY: a scripted walk has arrived)
-  document.addEventListener('visibilitychange', function () { if (document.hidden) { finishNow(me, true); finishNow(mate, true); } });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) PEOPLE.forEach(function (B) { finishNow(B, true); }); });
 
   // the trip's pose for this frame (before smoothing): where he is, which way he faces, lean / tummy, arm targets
   var PA = { x: 0, z: 0, tx: 0, tz: 0 };
@@ -1006,8 +1059,11 @@ if (T3 && T3.ctx) (function () {
   // which player index this avatar plays for (-1: none)
   function playerOf(A, g) {
     if (A === me) return 0;
+    if (typeof A.pidx === 'number') return A.pidx;                       // given with T3.mate / T3.mate2 ({ player })
     if (g.team) return 0;
-    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) return i;
+    // the mate plays for the first other person in the players list, the second mate for the next one
+    var skip = A === mate2 ? 1 : 0;
+    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) { if (skip-- <= 0) return i; }
     return -1;
   }
   function isMine(A, g, idx) { if (idx !== playerOf(A, g)) return false; if (g.team && idx === 0) return (g.team.cur === 0) === (A === me); return true; }
@@ -1055,8 +1111,10 @@ if (T3 && T3.ctx) (function () {
     var mine = A.trip && A.trip.m, held = ctx.held != null && ctx.meshes[ctx.held];
     if (held && held !== mine && held.visible) return { p: AT.copy(held.position), live: true };
     if (stance === 'wait') {
-      var other = A === me ? mate : me;
-      if (other.shown && other.model && other.model.root.visible && other !== A && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
+      // the person whose go it is (with one other person: him, whenever it is a person's go)
+      var seen = PEOPLE.filter(function (B) { return B !== A && B.shown && B.model && B.model.root.visible; });
+      var other = seen.filter(function (B) { return isMine(B, g, g.turn); })[0] || (seen.length === 1 ? seen[0] : null);
+      if (other && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
       try { var f = T3.creatureFocus && T3.creatureFocus(); if (f && f.head) return { p: AT.copy(f.head) }; } catch (e) {}
       return null;
     }
@@ -1106,13 +1164,17 @@ if (T3 && T3.ctx) (function () {
   // ---------- per frame ----------
   function update(now) {
     if (needPlace && ctx.layout) computePlace();   // right after a camera fit, even while hidden (the view has no offsets yet)
-    if (mate.seat === 'far' && mate.shown && mate.model) {
+    var ch = null;
+    MATES.forEach(function (B) {
+      if (!(isFar(B) && B.shown && B.model)) return;
       // a creature arriving or leaving across the table hides / shows him
-      var f = !creatureHere(); if (f !== mate.fits) { mate.fits = f; applyVis(); }
-    }
-    step(me, now); step(mate, now);
+      if (ch === null) ch = creatureHere();
+      if (!ch !== B.fits) { B.fits = !ch; applyVis(); }
+    });
+    step(me, now); step(mate, now); step(mate2, now);
     // the high five waits until the kid's celebration has finished (and gives up after 12 s)
-    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && !mate.g) highFive(); }
+    var hm = hf.pend ? hf.who : null;
+    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && hm && !hm.g) highFive(); }
   }
   function step(A, now) {
     if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; A.hold = null; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
@@ -1143,7 +1205,7 @@ if (T3 && T3.ctx) (function () {
     var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; if (!A.hold) syncHome(A); }   // (CUPTOSS: held at a spot on the rim: he stays there)
-    if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
+    if (A !== me && isFar(A) && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
     // how fast he really moves (legs, arm swing) and which way he faces
     var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
     W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
@@ -1216,11 +1278,19 @@ if (T3 && T3.ctx) (function () {
     // his seat below the near rim needs a band of room at the bottom of the picture: table.js calls this with the
     // camera already standing at its first guess, so the seat is worked out from that view
     if (me.shown && me.model && ctx.layout) {
-      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout); if (b) seatPoints(me, b, corners); } catch (e) {}
+      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout, refScale(ctx.camera.position, ctx.layout)); if (b) seatPoints(me, b, corners); } catch (e) {}
     }
-    if (mate.seat === 'far' && mate.shown && mate.model && !creatureHere()) {
-      var top = FLOOR_Y + (mate.dims.TOP - mate.dims.FOOT) * FAR.s + 0.2, z = -D / 2 - FAR.front;
-      corners.push([-3.4, top, z], [3.4, top, z]);
+    // the people across the table (no creature): the tops of their heads, at the far side's scale for this view
+    var fars = MATES.filter(function (B) { return isFar(B) && B.shown && B.model; });
+    if (fars.length && ctx.layout && !creatureHere()) {
+      try {
+        ctx.camera.updateMatrixWorld();
+        var cp = ctx.camera.position, L = ctx.layout, rs = refScale(cp, L), mb = me.shown && me.model ? seatFor(me, cp, L, rs) : null, fs = farScale(cp, L, mb ? mb.s : rs, rs), z = -D / 2 - FAR.front;
+        fars.forEach(function (B) {
+          var top = FLOOR_Y + (B.dims.TOP - B.dims.FOOT) * fs + 0.2 + (B.avatar ? 0.25 * fs : 0), x = farSpot(B, L).x, hw = B.seat === 'far' ? 3.4 : 1.8;
+          corners.push([x - hw, top, z], [x + hw, top, z]);
+        });
+      } catch (e) {}
     }
   });
 
@@ -1235,9 +1305,9 @@ if (T3 && T3.ctx) (function () {
   function celebTrip(A, name) {
     celebWhy = 'not allowed';
     if ((name !== 'slide' && name !== 'plane') || calmMotion() || A.trip || !A.model || !A.shown || !A.fits || !ctx.layout || document.hidden) return false;
-    if (A === mate && mate.seat === 'far') return false;
-    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && mate.shown && mate.seat === 'left')) ? 1 : -1;
-    if (A === mate) sd = -1;                                                       // the mate at the left seat uses the left side
+    if (A !== me && isFar(A)) return false;
+    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && leftMate(true))) ? 1 : -1;
+    if (A !== me) sd = -1;                                                         // the mate at the left seat uses the left side
     var zs = R.od * 0.3, out = 0.45 * s, x0 = sd * (R.ow + R.c + out), pz = zs, len = (name === 'slide' ? 4.2 : 6.5) * s;
     // the spots must be on screen (at head height) and clear of anyone else
     setupProj();
@@ -1272,11 +1342,13 @@ if (T3 && T3.ctx) (function () {
 
   // ---------- high five: after the kid's win celebration, Tata (at the left seat, Team-up / 3 players) walks over, they
   // high-five once, and he walks back. Started from update() once the celebration has finished.
-  var hf = { pend: 0 };
-  function highFiveLater() { hf.pend = mate.shown && mate.seat === 'left' && mate.fits ? performance.now() : 0; }
+  var hf = { pend: 0, who: null };
+  // the person at the left seat (the one who comes over for the high five); loose: shown there, fitting or not
+  function leftMate(loose) { for (var i = 0; i < MATES.length; i++) { var B = MATES[i]; if (B.shown && B.seat === 'left' && (loose || B.fits)) return B; } return null; }
+  function highFiveLater() { hf.who = leftMate(false); hf.pend = hf.who ? performance.now() : 0; }
   function highFive() {
     hf.pend = 0;
-    var A = mate; if (!A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
+    var A = hf.who; if (!A || !A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
     var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 1.1;
     var sx = me.wk.x + side * gap, szz = me.wk.z, N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
     for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
@@ -1317,41 +1389,49 @@ if (T3 && T3.ctx) (function () {
     if (me.model && me.shown && celebTrip(me, name)) { highFiveLater(); return true; }
     var ok = startMood(me, name); if (ok) highFiveLater(); return ok;
   };
-  T3.mate = function (o) {
-    var wasFar = mate.seat === 'far' && mate.shown;
-    finishNow(mate, true);
+  var SEATS = ['left', 'far', 'farL', 'farR'];
+  function setMate(A, o) {
+    var wasFar = isFar(A) && A.shown;
+    finishNow(A, true);
     if (!o) {
-      mate.shown = false; mate.g = null; mate.seat = null; applyVis();
+      A.shown = false; A.g = null; A.seat = null; A.pidx = null; applyVis();
       if (wasFar) ctx.refit();
       return false;
     }
-    mate.over = Object.assign({ who: 'tata' }, o); mate.seat = o.seat === 'far' ? 'far' : 'left'; mate.shown = true;
-    refreshAvatar(mate);
-    if (mate.seat === 'far' || wasFar) ctx.refit();                // the camera keeps his head in view (calls the extents hook)
+    A.over = Object.assign({ who: 'tata' }, o); A.seat = SEATS.indexOf(o.seat) >= 0 ? o.seat : 'left'; A.shown = true;
+    A.pidx = typeof o.player === 'number' && o.player >= 0 ? o.player : null;
+    refreshAvatar(A);
+    // the camera keeps a far person's head in view (calls the extents hook); a new body across the table changes the far scale
+    if (isFar(A) || wasFar) ctx.refit();
     computePlace();
-    return mate.fits;
-  };
-  T3.mateMood = function (m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(mate, m, opts); };
+    return A.fits;
+  }
+  T3.mate = function (o) { return setMate(mate, o); };
+  T3.mate2 = function (o) { return setMate(mate2, o); };
+  function mateMood(A, m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(A, m, opts); }
+  T3.mateMood = function (m, opts) { mateMood(mate, m, opts); };
+  T3.mate2Mood = function (m, opts) { mateMood(mate2, m, opts); };
   // Moving a cube (same contract as T3.creatureMove): done() fires exactly once, at the release (~0.6 s), or at once
   // when he can't do it (3D off, hidden, not on screen, tab hidden, another cube in a hand); 2.5 s safety timeout.
   // opts.quick: about 20% faster (e.g. several Goal cubes in a row).
   T3.playerMove = function (id, zone, done, opts) { startTask(me, id, zone, done, opts); };
   T3.mateMove = function (id, zone, done, opts) { startTask(mate, id, zone, done, opts); };
+  T3.mate2Move = function (id, zone, done, opts) { startTask(mate2, id, zone, done, opts); };
   // finish any move right now (the cube lobs to its slot, done() fires); e.g. when the player taps during the reach
-  T3.playerMoveFinish = function () { var a = finishNow(me), b = finishNow(mate); return a || b; };
+  T3.playerMoveFinish = function () { var a = finishNow(me), b = finishNow(mate), c = finishNow(mate2); return a || b || c; };
   // which sides of the table they may walk round: 'auto' (both), 'right' (never the left side, e.g. a second creature
   // sits there), 'left'. Applies to both people. No argument: the current value.
   T3.playerWalkSide = function (side) { if (side === 'left' || side === 'right' || side === 'auto') WALK.side = side; return WALK.side; };
   // tuning / tests: T3.playerMoveTuning({ stretch, lean, fwd, safety }) ; no argument: the values
   T3.playerMoveTuning = function (o) { if (o) Object.keys(WALK).forEach(function (k) { if (typeof o[k] === typeof WALK[k]) WALK[k] = o[k]; }); return JSON.parse(JSON.stringify(WALK)); };
-  T3.playerMoving = function () { return !!((me.trip && !me.trip.released) || (mate.trip && !mate.trip.released)); };
+  T3.playerMoving = function () { return PEOPLE.some(function (B) { return !!(B.trip && !B.trip.released); }); };
   T3.playerState = function () {
     function st(A) {
       var T = A.trip, g = T && T.segs[T.i];
-      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
+      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, adult: !!A.adult, avatar: A.avatar ? personKey(A.avatar) : null, player: A.pidx == null ? null : A.pidx, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
         pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null, hold: A.hold ? { mode: A.hold.plan.mode, lean: +A.hold.plan.lean.toFixed(2), sl: +(A.hold.plan.sl || 0).toFixed(2) } : null };   // (CUPTOSS: hold)
     }
-    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); o.mate2 = Object.assign(st(mate2), { seat: mate2.seat }); return o;
   };
   // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
   T3.playerSeat = function (o) {
@@ -1362,7 +1442,7 @@ if (T3 && T3.ctx) (function () {
   // the title screen (js/three/title.js) builds its own copy of him from the same spec: { who, dims, kit, num, name, look, front }
   T3.playerSpec = function (o) { return specOf(o, 'main'); };
   // debugging / previews: the model objects (read-only use please)
-  T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
+  T3.playerModels = function () { return { me: me.model, mate: mate.model, mate2: mate2.model }; };
 
   // ---------- CUPTOSS: both hands held by table.js (he dumps the cup, tosses cubes to roll them again) ----------
   // ctx.grips.human('me' | 'mate') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
@@ -1444,7 +1524,8 @@ if (T3 && T3.ctx) (function () {
     A.trip = T; toReturn(A, T); A.settled = false; ctx.dirty(); ctx.startLoop();
   }
   ctx.grips = ctx.grips || {};
-  ctx.grips.human = function (who) { return humanGrip(who === 'mate' ? mate : me); };
+  function personBy(who) { return who === 'mate2' ? mate2 : who === 'mate' ? mate : me; }
+  ctx.grips.human = function (who) { return humanGrip(personBy(who)); };
   // the body for this frame: the reach plan (lean / tummy on the rim / kneeling in), blended by the hands' weight
   function holdPose(A, now) {
     var Hd = A.hold; HOP.a = HOP.b = HOP.look = null; HOP.w = 0; HOP.open = 0.5; HOP.armA = null;
@@ -1521,8 +1602,8 @@ if (T3 && T3.ctx) (function () {
       return true;
     } catch (e) { console.warn('playerScript', e); try { endScript(A); } catch (e2) {} fin(); return false; }
   }
-  T3.playerScript = function (who, o, done) { return scriptTrip(who === 'mate' ? mate : me, o, done); };
-  T3.playerScripted = function (who) { var A = who === 'mate' ? mate : me; return !!(A.trip && A.trip.script); };
+  T3.playerScript = function (who, o, done) { return scriptTrip(personBy(who), o, done); };
+  T3.playerScripted = function (who) { var A = personBy(who); return !!(A.trip && A.trip.script); };
   // ---------- end MATCHDAY ----------
 
   // ---------- portraits for the kit designer ----------
