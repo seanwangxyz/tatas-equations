@@ -51,6 +51,7 @@ import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
 import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT, savedKit } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
+import { buildPerson, personDims, personLook, personKey, personAdult } from './creatures/people.js';
 import { FLOOR_Y } from './environment.js';
 import { installPoses, TRAVEL } from './poses.js';
 
@@ -91,20 +92,47 @@ if (T3 && T3.ctx) (function () {
     if (k && k.jersey) return k;                                   // already a full kit object
     return kitFromSave(Object.assign({}, base, k || {}));
   }
+  function PPL() { return (typeof window !== 'undefined' && window.People && window.People.clean) ? window.People : null; }
+  // The spec for one person. Three ways (see the header, "WHO STANDS THERE"):
+  //   o.avatar given            -> that avatar (People.clean), built with buildPerson; kit / name / number from o or plain defaults
+  //   no o.avatar, no o.who, main role -> this save's own avatar (People.own()), with the save's kit, name and number
+  //   o.who without o.avatar    -> today's kid / Tata exactly
   function specOf(over, role) {
     over = over || {};
+    var Pp = PPL(), main = role === 'main';
+    if (Pp && (over.avatar || (main && over.who == null))) return avatarSpec(over, role, over.avatar ? Pp.clean(over.avatar) : Pp.own(save()), !over.avatar);
+    return legacySpec(over, role);
+  }
+  function avatarSpec(over, role, av, own) {
+    var s = save(), adult = !!personAdult(av), main = role === 'main', kit, sk = null;
+    if (over.kit && over.kit.jersey) kit = over.kit;                                   // a full kit object
+    else if (own) { sk = Object.assign({}, savedKit(s), over.kit || {}); kit = normKit(sk, KIT_DEFAULT); }   // the save's own player: his kit + override
+    else if (over.kit) kit = normKit(Object.assign({}, KIT_DEFAULT, over.kit), KIT_DEFAULT);   // another player's kit (maybe partial): plain defaults fill it
+    else if (main) kit = normKit(savedKit(s), KIT_DEFAULT);                            // the device's player, no kit given: the save's kit
+    else kit = normKit(adult ? TATA_KIT : KIT_DEFAULT, KIT_DEFAULT);                   // someone else, no kit given
+    var num = String(over.number || (main ? s.jersey || '7' : adult ? '17' : '7'));
+    var name = over.name != null ? String(over.name) : main ? String(s.backName != null ? s.backName : (own ? 'TYSON W.' : (s.name || ''))) : (adult ? 'Tata' : '');
+    var look = personLook(av);
+    return { who: adult ? 'tata' : 'kid', adult: adult, avatar: av, body: 'av:' + personKey(av), dims: personDims(av), kit: kit, num: num, name: name, look: look, front: role !== 'main' };
+  }
+  function legacySpec(over, role) {
     var s = save(), who = over.who === 'tata' ? 'tata' : 'kid';
     if (who === 'tata') {
       var tk = Object.assign({}, TATA_KIT, over.kit && !over.kit.jersey ? over.kit : {});
-      return { who: 'tata', dims: TATA, kit: over.kit && over.kit.jersey ? over.kit : normKit(tk, TATA_KIT), num: String(over.number || '17'), name: over.name != null ? String(over.name) : 'Tata',
-        look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role === 'mate' };
+      return { who: 'tata', adult: true, body: 'who:tata', dims: TATA, kit: over.kit && over.kit.jersey ? over.kit : normKit(tk, TATA_KIT), num: String(over.number || '17'), name: over.name != null ? String(over.name) : 'Tata',
+        look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role !== 'main' };
     }
     // the kid: his saved kit, with any override on top
     var sk = Object.assign({}, savedKit(s), over.kit && !over.kit.jersey ? over.kit : {});   // the kit he wears (home / away / third)
-    return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.backName != null ? s.backName : 'TYSON W.'),
-      look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role === 'mate' };
+    return { who: 'kid', adult: false, body: 'who:kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.backName != null ? s.backName : 'TYSON W.'),
+      look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role !== 'main' };
   }
-  function specKey(sp) { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
+  function specKey(sp) { return JSON.stringify([sp.body, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
+  // the model for a spec: an avatar through people.js, today's kid / Tata through buildHuman
+  function buildFor(sp) {
+    if (sp.avatar) return buildPerson({ avatar: sp.avatar, kit: sp.kit, num: sp.num, name: sp.name, front: sp.front });
+    return buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front });
+  }
   function disposeModel(m) {
     if (!m) return; if (m.root.parent) m.root.parent.remove(m.root);
     m.root.traverse(function (o) { if (o.skeleton) o.skeleton.dispose(); if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (x) { if (x.map) x.map.dispose(); x.dispose(); }); });
@@ -114,15 +142,15 @@ if (T3 && T3.ctx) (function () {
     var sp = specOf(A.over, A.role), key = specKey(sp);
     if (A.model && key === A.key) return false;
     var rebuilt = false;
-    if (!A.model || sp.who !== A.who) {
+    if (!A.model || sp.body !== A.body) {
       disposeModel(A.model);
-      A.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front });
+      A.model = buildFor(sp);
       A.model.root.visible = false; (parent || ctx.scene).add(A.model.root);
-      A.who = sp.who; A.dims = sp.dims; makeSamples(A); rebuilt = true;
+      A.who = sp.who; A.adult = !!sp.adult; A.body = sp.body; A.avatar = sp.avatar || null; A.dims = sp.dims; makeSamples(A); rebuilt = true;
       for (var i = 0; i < 2; i++) { A.arm[i].rest.set(REST0[i][0], REST0[i][1], REST0[i][2]); mapArm(A, A.arm[i].rest); A.arm[i].des.copy(A.arm[i].rest); A.arm[i].goal.copy(A.arm[i].rest); }
     } else {
       A.model.setKit(sp.kit, sp.num, sp.name, sp.front);
-      A.model.setHair(sp.look.hair, sp.look.hairStyle);
+      if (!sp.avatar) A.model.setHair(sp.look.hair, sp.look.hairStyle);   // (an avatar's hair is part of its body key)
     }
     A.key = key; A.settled = false; ctx.dirty();
     return rebuilt;
@@ -486,7 +514,7 @@ if (T3 && T3.ctx) (function () {
     var now = performance.now();
     if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
     // Tata reacts as a proud dad: applause with a thumbs up, a calm "chin up" after a loss
-    if (A.who === 'tata') { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
+    if (A.adult) { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
     A.proud = null; A.proudNext = m === 'cheer';             // a great shake: he ends with his hands on his hips
     var d = GEST[m]; if (!d) return false;
     if (document.hidden) return false;
@@ -891,7 +919,7 @@ if (T3 && T3.ctx) (function () {
     for (var i = 0; i < 2; i++) {
       var ph = W.ph + i * Math.PI, AR = A.arm[i];
       if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
-      else if (!A.g) { var sa = A.who === 'tata' ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
+      else if (!A.g) { var sa = A.adult ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
     }
     if (g.k === 'walk' && g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);   // banking into the curve
     if (g.fn && TRAVEL[g.fn]) TRAVEL[g.fn](A, u, k, PH);   // a celebration beat poses him on top
@@ -1121,7 +1149,7 @@ if (T3 && T3.ctx) (function () {
     W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
     // gait: the stride grows with the speed (a walk takes short steps, a run long ones with a little flight), so the
     // feet keep pace with the ground instead of skating. Tata: longer, calmer steps, more upright, less bounce.
-    var grown = A.who === 'tata', vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
+    var grown = !!A.adult, vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
     var stride = grown ? 3.0 + 0.09 * vU : 2.3 + 0.11 * vU;
     if (!noGait) W.ph += mv / (stride * A.place.s) * Math.PI;
     var wy = wrap(W.yawT - W.yaw); W.yaw += wy * (1 - Math.exp(-(T ? 16 : 10) * dt)); if (Math.abs(wy) < 1e-4) W.yaw = W.yawT;
@@ -1509,10 +1537,11 @@ if (T3 && T3.ctx) (function () {
     pv.cam = new THREE.PerspectiveCamera(26, 0.8, 0.1, 100);
   }
   function pvPose(sp) {
-    if (!pv.model || pv.who !== sp.who) {
+    if (!pv.model || pv.who !== sp.body) {
+      // a new body (another avatar key, or kid <-> Tata): rebuild; only the kit / name / number changed: reuse the model
       if (pv.model) { pv.scene.remove(pv.model.root); disposeModel(pv.model); }
-      pv.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front }); pv.scene.add(pv.model.root); pv.who = sp.who;
-    } else { pv.model.setKit(sp.kit, sp.num, sp.name, sp.front); pv.model.setHair(sp.look.hair, sp.look.hairStyle); }
+      pv.model = buildFor(sp); pv.scene.add(pv.model.root); pv.who = sp.body;
+    } else { pv.model.setKit(sp.kit, sp.num, sp.name, sp.front); if (!sp.avatar) pv.model.setHair(sp.look.hair, sp.look.hairStyle); }
     var m = pv.model, tmp = new THREE.Vector3(), A = { dims: sp.dims };
     m.setKnees(0, 0, 0, 0); m.body.rotation.set(0, 0, 0); m.neck.rotation.set(0.04, 0, 0); m.head.rotation.set(0.05, 0, 0);
     m.root.position.set(0, 0, 0); m.root.scale.setScalar(1); m.root.updateMatrixWorld(true);
