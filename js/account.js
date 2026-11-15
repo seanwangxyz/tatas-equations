@@ -192,6 +192,21 @@ var AccountMerge = (function () {
     tour: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; return { v: max(a.v, b.v) || 0, seen: unionTrue(a.seen, b.seen), opened: unionTrue(a.opened, b.opened) }; },
     parent: function (a, b, c) { return deepMax(a, b, c); },
     pin: function (a, b, c) { return pickNewer(a, b, c); }, // GROWN-UPS: the PIN hash (salted); the newer device's
+    // PEOPLE (js/people-data.js): the save's own look = the one changed last (its own `at` stamp; else the newer device);
+    // the other players on the device = everyone from both, the copy changed last where both have someone, minus the
+    // ones removed (crewGone: when) after their last change; at most 8
+    avatar: function (a, b, c) { if (isObj(a) && isObj(b) && num(a.at) !== num(b.at)) return clone(num(a.at) > num(b.at) ? a : b); return pickNewer(a, b, c); },
+    avatarAsked: function (a, b) { return !!a || !!b; },
+    crewGone: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; var out = {}; Object.keys(a).concat(Object.keys(b)).forEach(function (k) { out[k] = Math.max(num(a[k]), num(b[k])); }); return out; },
+    crew: function (a, b, c) {
+      var by = {}, order = [], gone = {}, ga = c && isObj(c.a) && isObj(c.a.crewGone) ? c.a.crewGone : {}, gb = c && isObj(c.b) && isObj(c.b.crewGone) ? c.b.crewGone : {};
+      Object.keys(ga).concat(Object.keys(gb)).forEach(function (k) { gone[k] = Math.max(num(ga[k]), num(gb[k])); });
+      (Array.isArray(a) ? a : []).concat(Array.isArray(b) ? b : []).forEach(function (m) {
+        if (!isObj(m) || typeof m.id !== 'string') return;
+        if (!by[m.id]) { by[m.id] = m; order.push(m.id); } else if (num(m.at) > num(by[m.id].at)) by[m.id] = m;
+      });
+      return order.filter(function (id) { return !(gone[id] && gone[id] >= num(by[id].at)); }).slice(0, 8).map(function (id) { return clone(by[id]); });
+    },
     pace: function (a, b) { // PACE: per level, the device with more measured calls (same: the quicker average)
       a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
       var la = isObj(a.lv) ? a.lv : {}, lb = isObj(b.lv) ? b.lv : {}, out = { v: 1, lv: {} };
@@ -284,6 +299,7 @@ var AccountMerge = (function () {
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
     pin: 'grown-up PIN (only its salted hash): the newer device',
+    avatar: 'the look of your player: the one changed last', avatarAsked: 'either', crew: 'other players on the device: everyone from both, the copy changed last, minus removed ones', crewGone: 'removed players: latest',
     pace: 'creature reaction speed: per level, the device with more measured calls',
     matchday: 'the coin-toss seed: the newer device',
     tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',
@@ -295,7 +311,7 @@ var AccountMerge = (function () {
   // Combine two saves (a = this device, b = the cloud). Never loses progress.
   function combine(a, b, o) {
     a = isObj(a) ? a : {}; b = isObj(b) ? b : {};
-    var ctx = { newer: newerSide(o) }, out = {};
+    var ctx = { newer: newerSide(o), a: a, b: b }, out = {};   // (a, b: the whole saves, for rules that need a neighbour key)
     Object.keys(a).concat(Object.keys(b)).forEach(function (k) {
       if (k in out) return;
       var f = RULES[k] || generic, v = f(a[k], b[k], ctx);

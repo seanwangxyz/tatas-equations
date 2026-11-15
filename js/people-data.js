@@ -25,6 +25,7 @@
 //                          kit: {...}, kits: { away: {...}, third: {...} }, kitUse: 'home' | 'away' | 'third', at }
 //                      the kit fields have exactly the shape of S.kit / S.kits / S.kitUse (see js/kit.js), so the kit
 //                      designer can edit a crew member the same way it edits the save's own kit.
+//   S.crewGone         { id: when removed }   (so a removed player stays removed after a cloud merge)
 //
 // ONLINE: People.pack(avatar) is a short string of letters, digits and dots (at most 120 characters) that
 // People.unpack() turns back into a clean avatar; it travels inside the existing kit text, so no server rule changes.
@@ -99,7 +100,8 @@ var People = (function () {
     return out;
   }
   function member(id, s) { var list = crew(s); for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
-  function newId(s) { var n = 0; crew(s).forEach(function (m) { n = Math.max(n, +m.id.slice(1) || 0); }); return 'c' + (n + 1); }
+  // a new id: random, so two devices that each add a player while apart do not pick the same one
+  function newId(s) { var have = {}, id; crew(s).forEach(function (m) { have[m.id] = 1; }); do { id = 'c' + (10000 + Math.floor(Math.random() * 90000)); } while (have[id]); return id; }
   // add or replace one member in S.crew (the caller persists). Returns the cleaned member, or null if the list is full.
   function saveMember(m, s) {
     s = theSave(s);
@@ -111,7 +113,12 @@ var People = (function () {
     s.crew = list;
     return c;
   }
-  function removeMember(id, s) { s = theSave(s); s.crew = crew(s).filter(function (m) { return m.id !== id; }); }
+  // remove one member; S.crewGone remembers when, so the cloud copy of that player does not bring them back
+  function removeMember(id, s) {
+    s = theSave(s); s.crew = crew(s).filter(function (m) { return m.id !== id; });
+    if (!s.crewGone || typeof s.crewGone !== 'object') s.crewGone = {};
+    s.crewGone[id] = Date.now();
+  }
   // the name printed on the back of a member's shirt
   function backOf(m) { return String(m.back != null && m.back !== '' ? m.back : m.name).toUpperCase().slice(0, 12); }
   // the kit a member wears now, in the saved shape (like savedKit() in js/three/creatures/kid.js, without its defaults)
