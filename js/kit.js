@@ -102,6 +102,9 @@ var Kit = (function () {
   var editing = null;                          // the slot shown in the panel
   function slotNow() { return editing || (prep(hold()), hold().kitUse) || 'home'; }
   function store() { if (!who) persist(); else if (who.save) who.save(); }
+  // what the person wears now: 'kit' (the football kit) or one of People.OUTFITS
+  function avatarNow() { return window.People ? (who ? People.clean(who.h.avatar) : People.own()) : null; }
+  function outfitNow() { var a = avatarNow(); return a && a.outfit ? a.outfit : 'kit'; }
   function skinNow() { var a = who ? who.h.avatar : (window.People ? People.own() : null); return (a && a.skin) || '#efc19d'; }
   function backNow() {
     if (who) return String(who.h.back != null && who.h.back !== '' ? who.h.back : (who.h.name || '')).toUpperCase().slice(0, 12);
@@ -174,7 +177,7 @@ var Kit = (function () {
     if (!has3D()) return;
     var my = ++serial, o = { kit: Object.assign({ trim2: null }, view(slotNow())) };   // trim2: null = the slot's own (or the shirt colour)
     if (window.People) {                                  // the right person: their avatar (and, for someone else, their name and number)
-      var av = who ? People.clean(who.h.avatar) : People.own(); o.avatar = av;
+      var av = who ? People.clean(who.h.avatar) : People.own(); o.avatar = Object.assign({}, av, { outfit: 'kit' });   // the kit is what is being designed
       if (who) { o.name = backNow(); o.number = String(who.h.jersey || '7'); o.kit.hair = av.hair; if (['swept', 'short', 'spiky', 'curly', 'long'].indexOf(av.hairStyle) >= 0) o.kit.hairStyle = av.hairStyle; }
     }
     ['front', 'back'].forEach(function (v) {
@@ -205,6 +208,13 @@ var Kit = (function () {
     var hd = hold(), home = prep(hd), slot = slotNow(), k = view(slot), num = String(hd.jersey || '7'), pv = has3D(), use = hd.kitUse;
     var title = who && who.title ? esc(who.title) : 'My kit';
     var h = '<h2 class="hero">' + (typeof ico === 'function' ? ico('star') : '') + ' ' + title + '</h2>';
+    var fit = outfitNow();
+    if (fit !== 'kit') {                          // wearing everyday clothes: this designs the kit they own, one tap puts it on
+      var nm = '';
+      if (window.People) People.OUTFITS.forEach(function (o) { if (o[0] === fit) nm = o[1]; });
+      h += '<div class="kit-wearing" role="status"><p>' + (who ? esc(String(who.h.name || 'This player')) + ' is' : 'You are') + ' wearing ' + (nm ? 'the ' + esc(nm.toLowerCase()) : 'other clothes') + ' right now, not the football kit.</p>' +
+        '<button class="btn small green" data-act="kitPutOn">Wear the football kit</button></div>';
+    }
     h += '<div class="kit-slots" role="tablist">' + SLOTS.map(function (s) {
       return '<button role="tab" aria-selected="' + (s[0] === slot) + '" class="kit-slot' + (s[0] === slot ? ' on' : '') + '" data-act="kitSlot" data-arg="' + s[0] + '">' +
         '<span class="kit-sd" style="background:' + view(s[0]).shirt + '"></span>' + s[1] + (s[0] === use ? '<small>wearing</small>' : '') + '</button>';
@@ -296,6 +306,16 @@ var Kit = (function () {
     if (slot === 'home') { var d = defaults(); KIT_KEYS.forEach(function (k) { if (d[k] != null) home[k] = d[k]; else delete home[k]; }); }
     else hold().kits[slot] = {};
     store(); changed();
+  };
+  // put the football kit back on (the outfit's clothes and colours stay saved in the avatar for later)
+  ACT.kitPutOn = function () {
+    if (!window.People) return;
+    var a = avatarNow(); if (!a) return;
+    a.outfit = 'kit'; a.at = Date.now();
+    if (who) { who.h.avatar = a; store(); }
+    else { S.avatar = a; persist(); }
+    if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime();
+    changed();
   };
   ACT.kitDone = function () { if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); closeModal(); };
 

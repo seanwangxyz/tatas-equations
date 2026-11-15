@@ -449,7 +449,7 @@ var Avatar = (function () {
     var vb, z;
     if (crop === 'legs') { z = FLOOR + 8 - (hip - 14); vb = [100 - z / 2, hip - 14, z, z]; }
     else if (crop === 'feet') { z = Math.max(G.lw * 3, 36); vb = [(side ? 100.5 + G.lw * 0.36 : 100) - z / 2, FLOOR + 6 - z, z, z]; }
-    else { var top = hy - R * 1.85, H = FLOOR + 10 - top; vb = [100 - H * 0.375, top, H * 0.75, H]; }
+    else { var top = hy - R * 1.8, H = FLOOR + 8 - top, W = Math.max(H * 0.6, 2 * (sw + aw) + 24); vb = [100 - W / 2, top, W, H]; }
     function head(inner) { return inner ? '<g transform="translate(100 ' + f(hy) + ') scale(' + R + ')">' + inner + '</g>' : ''; }
     var h = '<svg class="av-flat" viewBox="' + vb.map(f).join(' ') + '" aria-hidden="true" focusable="false">';
     if (side && !SIDE_TOP[st]) h += head(hairPath(SIDEX[st] || '', a.hair));
@@ -701,7 +701,7 @@ var Avatar = (function () {
     }
     return h;
   }
-  var SECOND = { school: 'Shirt and tie', cardigan: 'Top underneath', hoodie: 'Strings and cuffs', varsity: 'Sleeves', tee: 'Star on the front' };
+  var SECOND = { school: 'Tie',cardigan: 'Top underneath', hoodie: 'Strings and cuffs', varsity: 'Sleeves', tee: 'Star on the front' };
   // Start from a look keeps body, height and skin when they were already chosen: in this visit, or saved before
   function keepsBody() { return !!(M && (M.touched || (M.t.kind === 'own' && S.avatar) || M.t.kind === 'crew')); }
   // ---------- the panel ----------
