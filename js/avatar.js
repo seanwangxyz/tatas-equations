@@ -227,9 +227,251 @@ var Avatar = (function () {
     }
     return h + accOf(a, view);
   }
+  // ----- clothes (People.OUTFITS): everyday tops, drawn instead of the football shirt -----
+  function cols(a) {
+    var c1 = a.fit1, c2 = a.fit2, dark1 = lum(c1) < 0.22;
+    return { c1: c1, c2: c2, d1: shade(c1, dark1 ? 0.2 : -0.16), e1: shade(c1, dark1 ? 0.38 : -0.34), d2: shade(c2, lum(c2) < 0.22 ? 0.25 : -0.2), e2: shade(c2, lum(c2) < 0.22 ? 0.4 : -0.38) };
+  }
+  function ln(d, col, w, op) { return '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="' + (w || 1.5) + '" stroke-linecap="round" stroke-linejoin="round"' + (op ? ' opacity="' + op + '"' : '') + '/>'; }
+  function sh(d, fill, stroke, w) { return '<path d="' + d + '" fill="' + fill + '"' + (stroke ? ' stroke="' + stroke + '" stroke-width="' + (w || 1.4) + '" stroke-linejoin="round"' : '') + '/>'; }
+  function mir(inner) { return '<g transform="translate(200 0) scale(-1 1)">' + inner + '</g>'; }   // the same shape on the other side
+  function both(inner) { return inner + mir(inner); }
+  function star(cx, cy, r, fill, stroke) {
+    var d = ''; for (var i = 0; i < 10; i++) { var rr = i % 2 ? r * 0.45 : r, an = -Math.PI / 2 + i * Math.PI / 5; d += (i ? 'L' : 'M') + f(cx + rr * Math.cos(an)) + ' ' + f(cy + rr * Math.sin(an)); }
+    return sh(d + 'Z', fill, stroke, r * 0.12);
+  }
+  // a top on the bust (head-and-shoulders drawing). g = { path (the body outline), L, Rr, top, nk, side, back, id,
+  // bot (the hem; default 222 = the bottom edge of the bust), full (the whole figure: its arms are drawn apart) }.
+  // Returns { under: drawn where the shirt is, over: drawn after the neck (collars, strings, knots) }.
+  function bustTop(a, g) {
+    var o = a.outfit, c = cols(a), L = g.L, Rr = g.Rr, t = g.top, nk = g.nk, u = '', ov = '', inner = '', B = g.bot || 222, full = !!g.full;
+    var sleeveCol = o === 'varsity' ? c.c2 : c.c1;
+    if (full) {                                    // ribbed hems at the bottom of the whole figure's top
+      if (o === 'varsity') inner += ln('M0 ' + f(B - 5) + 'H200', c.c2, 10) + ln('M0 ' + f(B - 5) + 'H200', c.c1, 2);
+      else if (o === 'hoodie' || o === 'cardigan') inner += ln('M0 ' + f(B - 4) + 'H200', c.d1, 8);
+    }
+    if (!g.side && o === 'cardigan') for (var x = L + 26; x < Rr - 24; x += 7) inner += ln('M' + f(x) + ' ' + f(t) + 'V' + B, c.d1, 1.2, 0.45);
+    if (!g.side && !full) {
+      // the sleeves: the part outside the seams (another colour on the varsity jacket; lower seams on the big T-shirt)
+      var sl = o === 'tee' ? 'M' + f(L) + ' ' + B + 'L' + f(L) + ' ' + f(t + 30) + 'Q' + f(L) + ' ' + f(t + 6) + ' ' + f(L + 14) + ' ' + f(t + 3) + 'Q' + f(L + 8) + ' ' + f(t + 36) + ' ' + f(L + 12) + ' ' + B + 'Z'
+        : 'M' + f(L) + ' ' + B + 'L' + f(L) + ' ' + f(t + 30) + 'Q' + f(L) + ' ' + f(t + 4) + ' ' + f(L + 24) + ' ' + f(t + 1) + 'Q' + f(L + 16) + ' ' + f(t + 34) + ' ' + f(L + 20) + ' ' + B + 'Z';
+      inner += both(sh(sl, sleeveCol, c.d1, 1.3));
+    }
+    if (g.back) {
+      if (o === 'hoodie') inner += sh('M' + f(100 - nk - 20) + ' ' + f(t - 4) + 'C' + f(100 - nk - 30) + ' ' + f(t + 30) + ' 86 ' + f(t + 52) + ' 100 ' + f(t + 54) + 'C114 ' + f(t + 52) + ' ' + f(100 + nk + 30) + ' ' + f(t + 30) + ' ' + f(100 + nk + 20) + ' ' + f(t - 4) + 'C' + f(100 + nk + 8) + ' ' + f(t + 4) + ' ' + f(100 - nk - 8) + ' ' + f(t + 4) + ' ' + f(100 - nk - 20) + ' ' + f(t - 4) + 'Z', c.d1, c.e1) + ln('M100 ' + f(t + 5) + 'V' + f(t + 53), c.e1, 1.2);
+      if (o === 'school') inner += ln('M100 ' + f(t + 44) + 'V' + B, c.e1, 1.4);
+      if (o === 'varsity') inner += star(100, t + 34, 13, c.c2, '#ffffff');
+      if (o !== 'hoodie') ov += collarBand(o, c, nk, t, 6, true);
+    } else if (g.side) {
+      // the arm in the middle; a hood or a front opening at the edges
+      var aL = 100 - (Rr - 100) * 0.42, aR = 100 + (Rr - 100) * 0.42, arm = 'M' + f(aL) + ' ' + B + 'L' + f(aL + 1) + ' ' + f(t + 22) + 'Q' + f(aL + 4) + ' ' + f(t + 1) + ' ' + f((aL + aR) / 2) + ' ' + f(t + 1) + 'Q' + f(aR) + ' ' + f(t + 4) + ' ' + f(aR) + ' ' + f(t + 26) + 'L' + f(aR - 1) + ' ' + B + 'Z';
+      if (o === 'cardigan' || o === 'school') {
+        inner += sh('M' + f(100 + nk - 2) + ' ' + f(t - 5) + 'L' + f(Rr + 8) + ' ' + f(t + 42) + 'L' + f(Rr + 8) + ' ' + f(t - 8) + 'Z', o === 'school' ? '#ffffff' : c.c2);
+        if (o === 'school') inner += sh('M' + f(Rr - 1) + ' ' + f(t + 8) + 'L' + f(Rr + 5) + ' ' + f(t + 9) + 'L' + f(Rr + 6) + ' ' + f(t + 46) + 'L' + f(Rr) + ' ' + f(t + 46) + 'Z', c.c2, c.e2, 1);
+        inner += ln('M' + f(100 + nk - 2) + ' ' + f(t - 5) + 'L' + f(Rr + 3) + ' ' + f(t + 42), o === 'school' ? c.d1 : c.d1, o === 'school' ? 7 : 4);
+        inner += '<circle cx="' + f(Rr + 1) + '" cy="' + f(t + 54) + '" r="2.6" fill="' + c.e1 + '"/>';
+      }
+      if (o === 'varsity') inner += ln('M' + f(Rr + 3) + ' ' + f(t + 10) + 'L' + f(Rr + 1) + ' ' + B, c.e1, 1.4);
+      if (!full) inner += sh(arm, sleeveCol, c.d1, 1.3);
+      if (o === 'tee' && !full) inner += sh('M' + f(aL + 2) + ' ' + B + 'L' + f(aL + 2) + ' ' + f(t + 44) + 'L' + f(aR - 2) + ' ' + f(t + 44) + 'L' + f(aR - 2) + ' ' + B + 'Z', a.skin) + ln('M' + f(aL + 1) + ' ' + f(t + 43) + 'L' + f(aR - 1) + ' ' + f(t + 43), c.d1, 3);
+      if (o === 'hoodie') {
+        u += sh('M' + f(100 - nk + 4) + ' ' + f(t - 5) + 'C' + f(L - 10) + ' ' + f(t - 16) + ' ' + f(L - 12) + ' ' + f(t + 18) + ' ' + f(L + 2) + ' ' + f(t + 32) + 'L' + f(100 - nk) + ' ' + f(t + 16) + 'Z', c.d1, c.e1);
+        ov += ln('M' + f(100 + nk + 1) + ' ' + f(t + 4) + 'L' + f(100 + nk + 3) + ' ' + f(t + 38), c.c2, 3);
+      } else ov += collarBand(o, c, nk, t, 4, false, true);
+    } else {
+      ov += frontTop(o, a, c, nk, t, Rr);
+      if (o === 'hoodie') u += sh('M' + f(100 - nk - 20) + ' ' + f(t + 6) + 'C' + f(100 - nk - 24) + ' ' + f(t - 12) + ' ' + f(100 - nk - 6) + ' ' + f(t - 16) + ' 100 ' + f(t - 16) + 'C' + f(100 + nk + 6) + ' ' + f(t - 16) + ' ' + f(100 + nk + 24) + ' ' + f(t - 12) + ' ' + f(100 + nk + 20) + ' ' + f(t + 6) + 'C' + f(100 + nk + 10) + ' ' + f(t + 14) + ' ' + f(100 - nk - 10) + ' ' + f(t + 14) + ' ' + f(100 - nk - 20) + ' ' + f(t + 6) + 'Z', c.d1, c.e1);
+      inner += frontBody(o, a, c, nk, t, L, Rr, B);
+    }
+    var body = '<clipPath id="' + g.id + 't"><path d="' + g.path + '"/></clipPath><g clip-path="url(#' + g.id + 't)"><rect width="200" height="' + (B + 4) + '" fill="' + c.c1 + '"/>' + inner + '</g>' +
+      '<path d="' + g.path + '" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="2.5" stroke-linejoin="round"/>';
+    return { under: body + u, over: ov };
+  }
+  // the front of a top, inside its outline: pockets, the opening with what is underneath, lapels, tie, buttons, patches
+  function frontBody(o, a, c, nk, t, L, Rr, B) {
+    var h = '', V = 'M' + f(100 - nk - 6) + ' ' + f(t - 6) + 'L100 ' + f(t + (o === 'school' ? 52 : 46)) + 'L' + f(100 + nk + 6) + ' ' + f(t - 6) + 'Z', y;
+    if (o === 'tee') h += star(100, t + 40, 14, c.c2, c.e2);
+    else if (o === 'hoodie') { y = Math.max(t + 41, B - 56); h += sh('M58 ' + (B + 4) + 'L67 ' + f(y + 5) + 'Q100 ' + f(y) + ' 133 ' + f(y + 5) + 'L142 ' + (B + 4) + 'Z', c.c1, c.e1) + both(ln('M67 ' + f(y + 6) + 'Q72 ' + f(y + 21) + ' 64 ' + f(y + 39), c.e1, 1.3)); }
+    else if (o === 'cardigan') {
+      h += sh(V, c.c2) + both(ln('M' + f(100 - nk - 6) + ' ' + f(t - 5) + 'L99 ' + f(t + 47) + 'V' + (B + 4), c.d1, 5));
+      for (y = t + 56; y < B - 8; y += 15) h += '<circle cx="100" cy="' + f(y) + '" r="2.8" fill="' + c.d2 + '" stroke="' + c.e1 + '" stroke-width=".8"/>';
+    } else if (o === 'school') {
+      h += sh(V, '#ffffff') + sh('M97 ' + f(t + 10) + 'L103 ' + f(t + 10) + 'L106.5 ' + f(t + 44) + 'L100 ' + f(t + 53) + 'L93.5 ' + f(t + 44) + 'Z', c.c2, c.e2, 1);
+      h += both(sh('M' + f(100 - nk - 6) + ' ' + f(t - 5) + 'L' + f(100 - nk - 19) + ' ' + f(t + 10) + 'L' + f(100 - nk - 12) + ' ' + f(t + 15) + 'L' + f(100 - nk - 17) + ' ' + f(t + 24) + 'L99.6 ' + f(t + 54) + 'Z', c.d1, c.e1, 1.2));
+      h += ln('M100 ' + f(t + 54) + 'V' + (B + 4), c.e1, 1.4) + '<circle cx="102" cy="' + f(t + 63) + '" r="3" fill="' + c.e1 + '"/>' + ln('M' + f(Rr - 46) + ' ' + f(t + 31) + 'L' + f(Rr - 30) + ' ' + f(t + 30), c.e1, 2);
+    } else if (o === 'varsity') {
+      h += ln('M100 ' + f(t + 8) + 'V' + (B + 4), c.e1, 1.5);
+      for (y = t + 22; y < B - 10; y += 16) h += '<circle cx="100" cy="' + f(y) + '" r="2.6" fill="#e9ecef" stroke="#868e96" stroke-width=".8"/>';
+      h += star(Rr - 40, t + 32, 11, c.c2, lum(c.c2) > 0.8 ? c.e2 : '#ffffff');
+    }
+    return h;
+  }
+  // over the neck: the T-shirt's ribbed neck, the hoodie's strings, the shirt collar and tie knot, the knitted collar
+  function frontTop(o, a, c, nk, t) {
+    if (o === 'tee') return ln('M' + f(100 - nk - 5) + ' ' + f(t - 3) + 'Q100 ' + f(t + 12) + ' ' + f(100 + nk + 5) + ' ' + f(t - 3), c.d1, 6);
+    if (o === 'hoodie') return sh('M' + f(100 - nk - 3) + ' ' + f(t + 1) + 'L100 ' + f(t + 14) + 'L' + f(100 + nk + 3) + ' ' + f(t + 1) + 'Z', c.e1) +
+      both(ln('M93 ' + f(t + 9) + 'L91 ' + f(t + 42), c.c2, 3) + sh('M89.4 ' + f(t + 41) + 'h3.4v6h-3.4Z', c.e2));
+    if (o === 'cardigan') return ln('M' + f(100 - nk - 4) + ' ' + f(t - 3) + 'Q100 ' + f(t + 9) + ' ' + f(100 + nk + 4) + ' ' + f(t - 3), shade(c.c2, -0.15), 3);
+    if (o === 'school') return both(sh('M' + f(100 - nk - 5) + ' ' + f(t - 5) + 'L98.6 ' + f(t + 9) + 'L' + f(100 - nk + 1) + ' ' + f(t + 13) + 'Z', '#ffffff', '#ced4da', 1)) +
+      sh('M95.5 ' + f(t + 3) + 'L104.5 ' + f(t + 3) + 'L102.5 ' + f(t + 11) + 'L97.5 ' + f(t + 11) + 'Z', c.c2, c.e2, 1);
+    if (o === 'varsity') return ln('M' + f(100 - nk - 6) + ' ' + f(t - 3) + 'Q100 ' + f(t + 12) + ' ' + f(100 + nk + 6) + ' ' + f(t - 3), c.c2, 7) + ln('M' + f(100 - nk - 5) + ' ' + f(t - 0.5) + 'Q100 ' + f(t + 14) + ' ' + f(100 + nk + 5) + ' ' + f(t - 0.5), c.c1, 1.6);
+    return '';
+  }
+  // the collar seen from behind (back) or from the side
+  function collarBand(o, c, nk, t, w, back, side) {
+    var col = o === 'varsity' ? c.c2 : o === 'school' ? (side ? '#ffffff' : c.d1) : o === 'cardigan' ? (side ? shade(c.c2, -0.15) : c.d1) : c.d1;
+    function d(dy) { var e = side ? 2 : 4, q = side ? 4 : 6; return 'M' + f(100 - nk - e) + ' ' + f(t - 3 + dy) + 'Q100 ' + f(t + q + dy) + ' ' + f(100 + nk + e) + ' ' + f(t - 3 + dy); }
+    var h = ln(d(0), col, o === 'varsity' || o === 'school' ? w + 2 : w);
+    if (o === 'varsity') h += ln(d(1.8), c.c1, 1.5);
+    return h;
+  }
+  // ----- the whole figure (crop 'full', and its parts 'legs' / 'feet'): head to shoes, in a 200 x 400 space -----
+  // per body: head radius, shoulder half-width, hip half-width, shoulders-to-hips, hips-to-floor, neck length, neck half-width
+  var FULL = { 'kid-s': [37, 30, 23, 58, 88, 5, 8], kid: [35, 33, 25, 68, 110, 6, 8.5], teen: [32, 37, 28, 82, 138, 8, 9.5], 'adult-a': [30, 40, 30, 90, 154, 9, 10], 'adult-b': [31, 48, 37, 92, 148, 9, 12.5] };
+  var FLOOR = 388;
+  function quad(x, w0, w1, y0, y1) { return 'M' + f(x - w0 / 2) + ' ' + f(y0) + 'L' + f(x + w0 / 2) + ' ' + f(y0) + 'L' + f(x + w1 / 2) + ' ' + f(y1) + 'L' + f(x - w1 / 2) + ' ' + f(y1) + 'Z'; }
+  function limb(x0, y0, x1, y1, w, col) { var d = 'M' + f(x0) + ' ' + f(y0) + 'L' + f(x1) + ' ' + f(y1); return ln(d, shade(col, lum(col) < 0.2 ? 0.3 : -0.3), w + 2.4) + ln(d, col, w); }
+  // legs, the bottoms (or the football shorts and socks) and the shoes. G = the figure's measures (see fullFlat)
+  function lower(a, k, G) {
+    var h = '', side = G.side, back = G.back, hip = G.hip, hw = G.hw, lw = G.lw, ll = G.ll, ank = FLOOR - 7, kit = a.outfit === 'kit';
+    var c3 = kit ? k.shorts : a.fit3, d3 = shade(c3, lum(c3) < 0.22 ? 0.25 : -0.22), e3 = shade(c3, lum(c3) < 0.22 ? 0.4 : -0.38);
+    var bm = kit ? 'shorts' : a.bottom, xs = side ? [G.cx - 2, G.cx + 3] : [G.cx - hw * 0.48, G.cx + hw * 0.48];
+    var shoe = kit ? 'boots' : a.shoes, bare = bm === 'shorts' || bm === 'skirt';
+    // bare legs (always under the bottoms, so nothing shows through gaps)
+    xs.forEach(function (x, i) { h += limb(x, hip, x, ank - lw * 0.3, lw * (side ? 0.92 : 0.86), side && i === 0 ? shade(a.skin, -0.1) : a.skin); });
+    if (kit) xs.forEach(function (x, i) {        // football socks to the knee, a band in the trim colour
+      var sc = k.socks || k.shirt, y0 = hip + ll * 0.52;
+      h += sh(quad(x, lw * 0.98, lw * 0.82, y0, ank + 2), side && i === 0 ? shade(sc, -0.12) : sc, shade(sc, -0.3), 1.2) + ln('M' + f(x - lw * 0.46) + ' ' + f(y0 + 5) + 'L' + f(x + lw * 0.46) + ' ' + f(y0 + 5), k.trim, 3.2);
+    });
+    else if (bare && shoe !== 'hightops') xs.forEach(function (x) { h += sh(quad(x, lw * 0.9, lw * 0.9, ank - 7, ank + 2), '#f8f9fa', '#ced4da', 1); });
+    // shoes (high-tops go on after the bottoms, over the trouser hems, so they show)
+    var shoes = ''; xs.forEach(function (x, i) { shoes += shoeOf(shoe, kit ? k.boots : a.shoeCol, side ? x : x + (x < G.cx ? -1 : 1) * lw * 0.08, side, back, lw, i === 0 && side); });
+    if (shoe !== 'hightops') h += shoes;
+    // the bottoms
+    var top = hip - 8, wb = hw * 2 + 4;
+    if (bm === 'shorts') {
+      var sy = hip + ll * 0.3, sw2 = side ? lw * 1.5 : wb + 6;
+      h += sh(side ? quad(G.cx, lw * 1.5, lw * 1.7, top, sy) : 'M' + f(G.cx - hw - 2) + ' ' + f(top) + 'L' + f(G.cx + hw + 2) + ' ' + f(top) + 'L' + f(G.cx + sw2 / 2) + ' ' + f(sy) + 'L' + f(G.cx + 1.5) + ' ' + f(sy) + 'L' + f(G.cx) + ' ' + f(hip + ll * 0.12) + 'L' + f(G.cx - 1.5) + ' ' + f(sy) + 'L' + f(G.cx - sw2 / 2) + ' ' + f(sy) + 'Z', c3, e3);
+      if (kit && !side) h += both(ln('M' + f(G.cx - hw - 1.5) + ' ' + f(top + 2) + 'L' + f(G.cx - sw2 / 2 + 1.5) + ' ' + f(sy - 1), k.trim, 3));
+      if (kit && side) h += ln('M' + f(G.cx) + ' ' + f(top + 2) + 'L' + f(G.cx) + ' ' + f(sy - 1), k.trim, 3);
+    } else if (bm === 'skirt') {
+      var hy2 = hip + ll * 0.36, flare = side ? 8 : 13, w0 = side ? lw * 1.6 : wb, w1 = w0 + flare * 2;
+      h += sh(quad(G.cx, w0, w1, top, hy2), c3, e3);
+      for (var i = -3; i <= 3; i++) if (i) h += ln('M' + f(G.cx + i * w0 / 7.4) + ' ' + f(top + 6) + 'L' + f(G.cx + i * w1 / 7.4) + ' ' + f(hy2 - 1), d3, 1.3);
+      h += ln('M' + f(G.cx - w0 / 2) + ' ' + f(top + 3) + 'L' + f(G.cx + w0 / 2) + ' ' + f(top + 3), d3, 3);
+    } else {
+      var wide = bm === 'jeans', jog = bm === 'joggers', end = jog ? ank - 5 : ank + 1;
+      xs.forEach(function (x, i) {
+        var w0 = lw + (bm === 'cargos' ? 6 : 4), w1 = wide ? lw * 1.55 : jog ? lw * 0.86 : lw + 6, col = side && i === 0 ? shade(c3, -0.1) : c3;
+        h += sh(quad(x, w0, w1, top + 6, end), col, e3);
+        if (wide) h += sh(quad(x, w1, w1 + 1, end - 6, end), shade(c3, 0.12), e3, 1) + ln('M' + f(x + (side ? 2 : 0)) + ' ' + f(top + 14) + 'L' + f(x + (side ? 2 : 0)) + ' ' + f(end - 7), shade(c3, 0.18), 1.2);
+        if (jog) h += sh(quad(x, w1 - 1, w1 - 2, end - 1, ank + 1), d3, e3, 1);
+        if (bm === 'cargos') { var px = side ? x : x + (x < G.cx ? -1 : 1) * w0 * 0.22, py = hip + ll * 0.36; h += sh(quad(px, w0 * 0.5, w0 * 0.5, py, py + ll * 0.18), d3, e3, 1) + ln('M' + f(px - w0 * 0.25) + ' ' + f(py + 4) + 'L' + f(px + w0 * 0.25) + ' ' + f(py + 4), e3, 1); }
+      });
+      h += sh(side ? quad(G.cx, lw * 1.5, lw * 1.5, top, top + 14) : quad(G.cx, wb, wb, top, top + 14), c3, e3);
+      if (jog && !back) h += ln('M' + f(G.cx - 2) + ' ' + f(top + 4) + 'l-2 9M' + f(G.cx + 2) + ' ' + f(top + 4) + 'l2 9', '#f1f3f5', 1.6);
+      if (wide && back && !side) h += both(sh(quad(G.cx - hw * 0.5, hw * 0.62, hw * 0.56, top + 16, top + 30), d3, e3, 1));
+    }
+    if (shoe === 'hightops') h += shoes;
+    return h;
+  }
+  // one shoe standing on the floor at x: trainers, high-tops, school shoes, football boots (no makers' marks: our own plain designs)
+  function shoeOf(type, col, x, side, back, lw, behind) {
+    if (behind) col = shade(col, -0.12);
+    var e = shade(col, lum(col) < 0.2 ? 0.35 : -0.35), sole = lum(col) > 0.8 ? '#adb5bd' : '#f8f9fa', F = FLOOR, h = '';
+    var H = type === 'hightops' ? 22 : type === 'loafers' ? 9 : type === 'boots' ? 10 : 12;
+    if (type === 'loafers' || type === 'boots') sole = type === 'loafers' ? '#2b2b2b' : shade(col, -0.45);
+    if (side) {
+      var hx = x - lw * 0.58, tx = x + lw * 1.3, th = Math.min(H, 12) * 0.78;
+      h += sh('M' + f(hx) + ' ' + F + 'L' + f(hx) + ' ' + f(F - H + 2) + 'Q' + f(hx) + ' ' + f(F - H) + ' ' + f(hx + 3) + ' ' + f(F - H) + 'L' + f(x + lw * 0.3) + ' ' + f(F - H) + 'Q' + f(x + lw * 0.45) + ' ' + f(F - th) + ' ' + f(x + lw * 0.8) + ' ' + f(F - th) +
+        'C' + f(tx - 1) + ' ' + f(F - th) + ' ' + f(tx + 1) + ' ' + f(F - th * 0.5) + ' ' + f(tx) + ' ' + f(F - 1) + 'L' + f(tx) + ' ' + F + 'Z', col, e, 1.3);
+      h += sh('M' + f(hx - 1) + ' ' + f(F - 3.5) + 'H' + f(tx + 1) + 'V' + F + 'H' + f(hx - 1) + 'Z', sole, e, 0.8);
+      if (type === 'hightops') h += ln('M' + f(x - 1) + ' ' + f(F - 19) + 'L' + f(x + lw * 0.3) + ' ' + f(F - 8), e, 1.2) + sh('M' + f(tx - lw * 0.5) + ' ' + f(F - 3.5) + 'Q' + f(tx - 1) + ' ' + f(F - 8) + ' ' + f(tx) + ' ' + f(F - 3.5) + 'Z', sole);
+      if (type === 'sneakers') h += ln('M' + f(x + lw * 0.1) + ' ' + f(F - 9.5) + 'l3 2.4M' + f(x + lw * 0.4) + ' ' + f(F - 8) + 'l3 2.2', e, 1.1);
+      if (type === 'loafers') h += ln('M' + f(x + lw * 0.1) + ' ' + f(F - 7.5) + 'L' + f(x + lw * 0.7) + ' ' + f(F - 6.5), e, 1.6) + sh('M' + f(hx - 1) + ' ' + f(F - 4) + 'h' + f(lw * 0.5) + 'v4h-' + f(lw * 0.5) + 'Z', sole);
+      if (type === 'boots') for (var i = 0; i < 3; i++) h += sh('M' + f(hx + 2 + i * lw * 0.75) + ' ' + F + 'h2.4v3h-2.4Z', '#3a3f47');
+      return h;
+    }
+    var w = lw * 1.2, l = x - w / 2, r = x + w / 2;
+    h += sh('M' + f(l) + ' ' + F + 'L' + f(l) + ' ' + f(F - H + 5) + 'Q' + f(l) + ' ' + f(F - H) + ' ' + f(x) + ' ' + f(F - H) + 'Q' + f(r) + ' ' + f(F - H) + ' ' + f(r) + ' ' + f(F - H + 5) + 'L' + f(r) + ' ' + F + 'Z', col, e, 1.3);
+    h += sh('M' + f(l - 1) + ' ' + f(F - 4) + 'H' + f(r + 1) + 'V' + F + 'H' + f(l - 1) + 'Z', sole, e, 0.8);
+    if (!back && (type === 'sneakers' || type === 'hightops')) for (var j = 0; j < (type === 'hightops' ? 4 : 2); j++) h += ln('M' + f(x - w * 0.18) + ' ' + f(F - 8 - j * 4) + 'H' + f(x + w * 0.18), lum(col) > 0.6 ? e : '#ffffff', 1.1);
+    if (!back && type === 'hightops') h += sh('M' + f(l + 1) + ' ' + f(F - 4) + 'Q' + f(x) + ' ' + f(F - 11) + ' ' + f(r - 1) + ' ' + f(F - 4) + 'Z', sole);
+    if (back) h += ln('M' + f(x) + ' ' + f(F - H + 1) + 'V' + f(F - 5), e, 1.4);
+    if (type === 'loafers') h += (back ? '' : ln('M' + f(l + 2) + ' ' + f(F - 6) + 'H' + f(r - 2), e, 1.6)) + '<ellipse cx="' + f(x - w * 0.18) + '" cy="' + f(F - 6.5) + '" rx="' + f(w * 0.14) + '" ry="1.4" fill="#fff" opacity=".35"/>';
+    if (type === 'boots') h += sh('M' + f(l + 2) + ' ' + F + 'h2.4v3h-2.4ZM' + f(x - 1.2) + ' ' + F + 'h2.4v3h-2.4ZM' + f(r - 4.4) + ' ' + F + 'h2.4v3h-2.4Z', '#3a3f47');
+    return h;
+  }
+  // the outline of a top (shoulders to hem); the same shape at any scale (sw = shoulder half-width, hw = half-width at the hem)
+  function torsoPath(side, t, sw, hw, bot, nk) {
+    var q = sw * 0.03, r = sw * 0.27, n = sw * 0.05;
+    if (side) { var dw = sw * 0.55; return 'M' + f(100 - dw) + ' ' + f(bot) + 'L' + f(100 - dw) + ' ' + f(t + r + 4 * q) + 'Q' + f(100 - dw) + ' ' + f(t + q) + ' ' + f(100 - nk) + ' ' + f(t - n) + 'L' + f(100 + nk) + ' ' + f(t - n) + 'Q' + f(100 + dw + q) + ' ' + f(t + q) + ' ' + f(100 + dw + 2 * q) + ' ' + f(t + r + 6 * q) + 'L' + f(100 + dw) + ' ' + f(bot) + 'Z'; }
+    return 'M' + f(100 - nk - n) + ' ' + f(t - n) + 'L' + f(100 - sw * 0.76) + ' ' + f(t) + 'Q' + f(100 - sw) + ' ' + f(t + q) + ' ' + f(100 - sw) + ' ' + f(t + r) + 'L' + f(100 - hw) + ' ' + f(bot) + 'L' + f(100 + hw) + ' ' + f(bot) +
+      'L' + f(100 + sw) + ' ' + f(t + r) + 'Q' + f(100 + sw) + ' ' + f(t + q) + ' ' + f(100 + sw * 0.76) + ' ' + f(t) + 'L' + f(100 + nk + n) + ' ' + f(t - n) + 'Q100 ' + f(t + sw * 0.2) + ' ' + f(100 - nk - n) + ' ' + f(t - n) + 'Z';
+  }
+  // the football shirt on the whole figure (pattern, collar, number on the front, name and number on the back)
+  function kitTorso(k, a, p, G) {
+    var side = G.side, back = G.back, t = G.sY, sw = G.sw, nk = G.nk, bot = G.hem, tl = G.tl, id = G.id;
+    var path = torsoPath(side, t, sw, side ? sw : G.hw + 3, bot, nk), dk = shade(k.shirt, -0.2), pat = '', acc = lum(k.shirt) > 0.55 ? (lum(k.trim) < 0.5 ? k.trim : '#1d2b3a') : '#ffffff';
+    if (k.pattern === 'stripes') for (var x = 100 - sw + sw * 0.15; x < 100 + sw; x += sw * 0.3) pat += '<rect x="' + f(x) + '" y="' + f(t - 4) + '" width="' + f(sw * 0.13) + '" height="' + f(tl + 20) + '" fill="' + dk + '"/>';
+    else if (k.pattern === 'hoops') for (var y = t + tl * 0.12; y < bot; y += tl * 0.2) pat += '<rect x="0" y="' + f(y) + '" width="200" height="' + f(tl * 0.09) + '" fill="' + dk + '"/>';
+    else if (k.pattern === 'sash') pat = '<path d="M' + f(100 - sw * 0.8) + ' ' + f(t - 4) + 'l' + f(sw * 0.4) + ' 0L' + f(100 + sw + 4) + ' ' + f(bot - tl * 0.1) + 'l0 ' + f(tl * 0.3) + 'Z" fill="' + dk + '"/>';
+    else if (k.pattern === 'waves') for (var w = t + 6; w < bot; w += 6) pat += '<path d="M0 ' + f(w) + 'q5 -2 10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0" fill="none" stroke="' + shade(k.shirt, 0.25) + '" stroke-width="1" opacity=".5"/>';
+    var h = '<clipPath id="' + id + 'k"><path d="' + path + '"/></clipPath><g clip-path="url(#' + id + 'k)"><rect width="200" height="400" fill="' + k.shirt + '"/>' + pat + '</g>' + '<path d="' + path + '" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.8" stroke-linejoin="round"/>';
+    var font = ' text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" fill="' + acc + '"';
+    if (back) h += '<text x="100" y="' + f(t + tl * 0.24) + '" font-size="' + f(tl * 0.11) + '"' + font + '>' + esc(String(p.name || '').toUpperCase().slice(0, 12)) + '</text><text x="100" y="' + f(t + tl * 0.66) + '" font-size="' + f(tl * 0.4) + '"' + font + '>' + esc(String(p.number || '')) + '</text>';
+    else if (!side && k.frontNum !== false) h += '<text x="100" y="' + f(t + tl * 0.56) + '" font-size="' + f(tl * 0.24) + '"' + font + '>' + esc(String(p.number || '')) + '</text>';
+    var over = side ? ln('M' + f(100 - nk - 1) + ' ' + f(t - 2) + 'Q100 ' + f(t + 3) + ' ' + f(100 + nk + 1) + ' ' + f(t - 2), k.trim, 3.2)
+      : back || k.collar === 'round' ? ln('M' + f(100 - nk - 2) + ' ' + f(t - 2) + 'Q100 ' + f(t + (back ? 4 : 7)) + ' ' + f(100 + nk + 2) + ' ' + f(t - 2), k.trim, 3.2)
+      : sh('M' + f(100 - nk - 1.5) + ' ' + f(t - 2.5) + 'L100 ' + f(t + 10) + 'L' + f(100 + nk + 1.5) + ' ' + f(t - 2.5) + 'Z', a.skin) + ln('M' + f(100 - nk - 2) + ' ' + f(t - 2.5) + 'L100 ' + f(t + 11) + 'L' + f(100 + nk + 2) + ' ' + f(t - 2.5), k.trim, 3.2);
+    return { under: h, over: over };
+  }
+  // the arms: sleeves in the outfit's colours, hands at the end
+  function arms(a, k, G) {
+    var o = a.outfit, kit = o === 'kit', c = cols(a), aw = G.aw, h = '', sY = G.sY, tl = G.tl, sw = G.sw;
+    var col = kit ? k.shirt : o === 'varsity' ? c.c2 : c.c1, cuff = kit ? k.trim : o === 'varsity' ? c.c1 : c.d1;
+    var long = kit ? k.sleeves === 'long' : o !== 'tee', q = long ? 0.9 : o === 'tee' ? 0.46 : 0.4, wide = aw + (o === 'tee' || o === 'hoodie' ? 3.5 : 1.5);
+    var list = G.side ? [[99, sY + aw * 0.55, 104, sY + tl * 0.98]] : [-1, 1].map(function (s) { return [100 + s * (sw - aw * 0.42), sY + aw * 0.55, 100 + s * (sw + aw * 0.14), sY + tl * 0.98]; });
+    list.forEach(function (L) {
+      var xq = L[0] + (L[2] - L[0]) * q, yq = L[1] + (L[3] - L[1]) * q, xc = L[0] + (L[2] - L[0]) * (q - 0.07), yc = L[1] + (L[3] - L[1]) * (q - 0.07);
+      h += limb(L[0], L[1], L[2], L[3], aw * 0.8, a.skin) + limb(L[0], L[1], xq, yq, wide, col);
+      h += '<path d="M' + f(xc) + ' ' + f(yc) + 'L' + f(xq) + ' ' + f(yq) + '" stroke="' + cuff + '" stroke-width="' + f(wide) + '" stroke-linecap="butt"/>';
+      h += '<circle cx="' + f(L[2]) + '" cy="' + f(L[3] + aw * 0.12) + '" r="' + f(aw * 0.46) + '" fill="' + a.skin + '" stroke="' + shade(a.skin, -0.3) + '" stroke-width="1"/>';
+    });
+    return h;
+  }
+  function fullFlat(p, view, crop) {
+    var a = People.clean(p.avatar), k = kitFull(p.kit), b = FULL[a.body] || FULL.kid, s = 1 + 0.05 * (a.height || 0), o = a.outfit, kit = o === 'kit';
+    var R = b[0], sw = b[1], hw = b[2], tl = b[3] * s, ll = b[4] * s, nk = b[6], side = view === 'side', back = view === 'back', st = a.hairStyle;
+    var hip = FLOOR - ll, sY = hip - tl, hy = sY - b[5] - R * 0.92, aw = Math.max(8, sw * 0.3), id = 'av' + (++uid), skD = shade(a.skin, -0.28), e = EYE[a.body] || 1;
+    var loose = o === 'tee' || o === 'hoodie', hem = kit ? hip + 6 : o === 'varsity' ? hip + 2 : loose ? hip + tl * 0.16 : o === 'school' ? hip + tl * 0.12 : hip + tl * 0.08;
+    var G = { side: side, back: back, hip: hip, hw: hw, lw: hw * 0.84, ll: ll, cx: 100, sY: sY, sw: sw, nk: nk, hem: hem, tl: tl, aw: aw, id: id };
+    var vb, z;
+    if (crop === 'legs') { z = FLOOR + 8 - (hip - 14); vb = [100 - z / 2, hip - 14, z, z]; }
+    else if (crop === 'feet') { z = Math.max(G.lw * 3, 36); vb = [(side ? 100.5 + G.lw * 0.36 : 100) - z / 2, FLOOR + 6 - z, z, z]; }
+    else { var top = hy - R * 1.8, H = FLOOR + 8 - top, W = Math.max(H * 0.6, 2 * (sw + aw) + 24); vb = [100 - W / 2, top, W, H]; }
+    function head(inner) { return inner ? '<g transform="translate(100 ' + f(hy) + ') scale(' + R + ')">' + inner + '</g>' : ''; }
+    var h = '<svg class="av-flat" viewBox="' + vb.map(f).join(' ') + '" aria-hidden="true" focusable="false">';
+    if (side && !SIDE_TOP[st]) h += head(hairPath(SIDEX[st] || '', a.hair));
+    h += lower(a, k, G);
+    var tor;
+    if (kit) tor = kitTorso(k, a, p, G);
+    else {
+      var u = sw / 60, T0 = 100, B = T0 + (hem - sY) / u, nkf = nk / u, hwf = loose ? 59 : 54;
+      var bt = bustTop(a, { path: torsoPath(side, T0, 60, side ? 60 : hwf, B, nkf), L: side ? 67 : 40, Rr: side ? 133 : 160, top: T0, nk: nkf, side: side, back: back, id: id, bot: B, full: true });
+      var tr = '<g transform="translate(100 ' + f(sY) + ') scale(' + f(u) + ') translate(-100 -' + T0 + ')">';
+      tor = { under: tr + bt.under + '</g>', over: bt.over ? tr + bt.over + '</g>' : '' };
+    }
+    h += tor.under + arms(a, k, G);
+    if (!side && !back) h += head(hairPath(HANG[st] || '', a.hair) + streakIn(HANG[st] || '', a, id + 'h'));
+    h += '<rect x="' + f(100 - nk) + '" y="' + f(hy + R * 0.55) + '" width="' + f(2 * nk) + '" height="' + f(sY - hy - R * 0.55 + 4) + '" fill="' + a.skin + '"/>';
+    h += tor.over + head(headAndHair(a, view, e, id, skD));
+    return h + '</svg>';
+  }
   // ----- the whole drawing -----
   function flat(p, view, crop) {
     p = p || {};
+    if (crop === 'full' || crop === 'legs' || crop === 'feet') return fullFlat(p, view, crop);
     var a = People.clean(p.avatar), k = kitFull(p.kit), b = BODY[a.body] || BODY.kid, R = b[0], sw = b[1], nk = b[2], st = a.hairStyle;
     var hy = 98 - (a.height || 0) * 7, sT = f(hy + R * 0.92 + b[3]), id = 'av' + (++uid), e = EYE[a.body] || 1, back = view === 'back', side = view === 'side';
     var skD = shade(a.skin, -0.28), hc = a.hair, dk = shade(k.shirt, -0.2), acc = lum(k.shirt) > 0.55 ? (lum(k.trim) < 0.5 ? k.trim : '#1d2b3a') : '#ffffff';
@@ -240,7 +482,9 @@ var Avatar = (function () {
     var ws = side ? sw * 0.58 : sw, L = 100 - ws, Rr = 100 + ws, top = sT;
     var shirt = side ? 'M' + f(L) + ' 222L' + f(L) + ' ' + f(top + 26) + 'Q' + f(L) + ' ' + f(top + 2) + ' ' + f(100 - nk) + ' ' + f(top - 3) + 'L' + f(100 + nk) + ' ' + f(top - 3) + 'Q' + f(Rr + 2) + ' ' + f(top + 2) + ' ' + f(Rr + 4) + ' ' + f(top + 28) + 'L' + f(Rr) + ' 222Z'
       : 'M' + f(L) + ' 222L' + f(L) + ' ' + f(top + 30) + 'Q' + f(L) + ' ' + f(top + 4) + ' ' + f(L + 28) + ' ' + f(top) + 'L' + f(100 - nk - 4) + ' ' + f(top - 3) + 'Q100 ' + f(top + 12) + ' ' + f(100 + nk + 4) + ' ' + f(top - 3) + 'L' + f(Rr - 28) + ' ' + f(top) + 'Q' + f(Rr) + ' ' + f(top + 4) + ' ' + f(Rr) + ' ' + f(top + 30) + 'L' + f(Rr) + ' 222Z';
-    var pat = '';
+    var pat = '', bt = a.outfit !== 'kit' ? bustTop(a, { path: shirt, L: L, Rr: Rr, top: top, nk: nk, side: side, back: back, id: id }) : null;
+    if (bt) h += bt.under;
+    else {
     if (k.pattern === 'stripes') for (var x = L + 6; x < Rr; x += 18) pat += '<rect x="' + f(x) + '" y="' + top + '" width="8" height="70" fill="' + dk + '"/>';
     else if (k.pattern === 'hoops') for (var y = top + 10; y < 222; y += 16) pat += '<rect x="0" y="' + f(y) + '" width="200" height="7" fill="' + dk + '"/>';
     else if (k.pattern === 'sash') pat = '<path d="M' + f(L + 10) + ' ' + top + 'L' + f(L + 36) + ' ' + top + 'L' + f(Rr) + ' 210L' + f(Rr) + ' 230L' + f(Rr - 20) + ' 230Z" fill="' + dk + '"/>';
@@ -251,13 +495,15 @@ var Avatar = (function () {
     if (back) h += '<text x="100" y="' + f(top + 18) + '" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="10" fill="' + acc + '">' + esc(String(p.name || '').toUpperCase().slice(0, 12)) + '</text>' +
       '<text x="100" y="' + f(top + 52) + '" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="32" fill="' + acc + '">' + esc(String(p.number || '')) + '</text>';
     else if (!side && k.frontNum !== false) h += '<text x="100" y="' + f(top + 42) + '" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="18" fill="' + acc + '">' + esc(String(p.number || '')) + '</text>';
+    }
     var hang = HANG[st] || '';
     if (!back && !side) h += G(hairPath(hang, hc) + streakIn(hang, a, id + 'h'));
     if (side) h += G(SIDE_TOP[st] ? '' : hairPath(SIDEX[st] || '', hc));
     // neck, collar
     h += '<rect x="' + f(100 - nk) + '" y="' + f(hy + R * 0.55) + '" width="' + f(2 * nk) + '" height="' + f(top - hy - R * 0.55 + 6) + '" fill="' + a.skin + '"/>' +
       '<ellipse cx="100" cy="' + f(hy + R * 0.92) + '" rx="' + f(nk) + '" ry="' + f(nk * 0.45) + '" fill="' + skD + '" opacity=".35"/>';
-    if (side) h += '<path d="M' + f(100 - nk - 2) + ' ' + f(top - 3) + 'Q100 ' + f(top + 4) + ' ' + f(100 + nk + 2) + ' ' + f(top - 3) + '" fill="none" stroke="' + k.trim + '" stroke-width="5" stroke-linecap="round"/>';
+    if (bt) h += bt.over;
+    else if (side) h += '<path d="M' + f(100 - nk - 2) + ' ' + f(top - 3) + 'Q100 ' + f(top + 4) + ' ' + f(100 + nk + 2) + ' ' + f(top - 3) + '" fill="none" stroke="' + k.trim + '" stroke-width="5" stroke-linecap="round"/>';
     else if (back || k.collar === 'round') h += '<path d="M' + f(100 - nk - 4) + ' ' + f(top - 3) + 'Q100 ' + f(top + (back ? 6 : 12)) + ' ' + f(100 + nk + 4) + ' ' + f(top - 3) + '" fill="none" stroke="' + k.trim + '" stroke-width="5" stroke-linecap="round"/>';
     else h += '<path d="M' + f(100 - nk - 3) + ' ' + f(top - 4) + 'L100 ' + f(top + 18) + 'L' + f(100 + nk + 3) + ' ' + f(top - 4) + 'Z" fill="' + a.skin + '"/><path d="M' + f(100 - nk - 4) + ' ' + f(top - 4) + 'L100 ' + f(top + 19) + 'L' + f(100 + nk + 4) + ' ' + f(top - 4) + '" fill="none" stroke="' + k.trim + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>';
     h += G(headAndHair(a, view, e, id, skD));
@@ -265,22 +511,34 @@ var Avatar = (function () {
   }
   // ======================= THE MAKER =======================
   var M = null;                                  // { t, opts, p (the person being made), start, view, tab, beard, shots }
-  var TABS = [['who', 'Who'], ['body', 'Body'], ['skin', 'Skin'], ['face', 'Face'], ['hair', 'Hair'], ['kit', 'Kit']];
+  var TABS = [['who', 'Who'], ['body', 'Body'], ['skin', 'Skin'], ['face', 'Face'], ['hair', 'Hair'], ['clothes', 'Clothes']];   // + 'looks' (Start from a look)
   var VIEWS3D = { front: { yaw: -0.2 }, side: { yaw: -Math.PI / 2 }, back: { yaw: Math.PI } };
   var OLD_STYLES = ['swept', 'short', 'spiky', 'curly', 'long'];   // the styles the old kit (and older 3D code) knew
-  var PLACEHOLDER_NAME = 'Champ', PLACEHOLDER_BACK = 'TYSON W.';
+  var PLACEHOLDER_NAME = 'Champ', PLACEHOLDER_BACK = 'TYSON W.', NEW_BACK = 'PLAYER';
   function clone(o) { return JSON.parse(JSON.stringify(o == null ? {} : o)); }
   function beardOK(body) { return body === 'teen' || body === 'adult-a' || body === 'adult-b'; }
   function sv(s) { return typeof s === 'string' ? s : ''; }
+  // "no back name chosen": empty, 'PLAYER' (a brand-new save, People.freshStart) or 'TYSON W.' (older builds' default)
+  // for anyone whose name does not start with "Tyson". Then the back of the shirt follows the typed name.
+  function noBack(bk, nm) {
+    var b = sv(bk).trim().toUpperCase();
+    return !b || b === NEW_BACK || (b === PLACEHOLDER_BACK && !/^tyson\b/i.test(sv(nm).trim()));
+  }
+  // the name printed on the back for a name and a saved back name: a placeholder follows a typed name; while no name was
+  // typed (empty or 'Champ') the saved back name is shown as it is ('PLAYER' if there is none)
+  function printedBack(name, back) {
+    var n = sv(name).trim(); if (n === PLACEHOLDER_NAME) n = '';
+    return (!n ? (sv(back).trim() || NEW_BACK) : noBack(back, n) ? n : sv(back).trim()).toUpperCase().slice(0, 12);
+  }
   // the person being made: name, number, back name, avatar, and the kit fields in the shape of S.kit / S.kits / S.kitUse
   function personOf(t) {
     if (t.kind === 'own') {
       if (window.Kit) Kit.get();
-      // a brand-new save has placeholders (config.js): name 'Champ', back 'TYSON W.' (the owner's son's shirt). Those count as
-      // not chosen: the name box starts empty and the back name follows the typed name until someone types their own.
-      var nm = sv(S.name), bk = S.backName == null ? 'TYSON W.' : sv(S.backName);
+      // a brand-new save has placeholders: name 'Champ', back 'PLAYER' (People.freshStart; older builds: 'TYSON W.', the
+      // owner's son's shirt). Those count as not chosen: the name box starts empty and the back name follows the typed name.
+      var nm = sv(S.name), bk = S.backName == null ? PLACEHOLDER_BACK : sv(S.backName);
       if (nm === PLACEHOLDER_NAME) nm = '';
-      if (bk === PLACEHOLDER_BACK && !/^tyson\b/i.test(nm)) bk = '';
+      if (noBack(bk, nm)) bk = '';
       return { id: 'own', name: nm, back: bk, jersey: String(S.jersey || '7'), avatar: People.own(),
         kit: clone(S.kit), kits: clone(S.kits), kitUse: S.kitUse || 'home' };
     }
@@ -298,10 +556,54 @@ var Avatar = (function () {
     var k = Object.assign({}, d.kit); k.hair = d.avatar.hair; if (OLD_STYLES.indexOf(d.avatar.hairStyle) >= 0) k.hairStyle = d.avatar.hairStyle;
     return { avatar: d.avatar, kit: k, name: d.name, number: d.number };
   }
+  // ---------- ready-made looks (People.STARTERS) ----------
+  // Apply a starter to a person (in place): the starter's avatar (keepBody: keep body, height and skin), the plain kit
+  // defaults plus the starter's kit keys (nothing left from any other kit; only the chosen win celebration stays),
+  // and the starter's shirt number unless keepNum.
+  function applyStarter(p, st, keepBody, keepNum) {
+    var cur = People.clean(p.avatar), a = People.clean(st.avatar);
+    if (keepBody) { a.body = cur.body; a.height = cur.height; a.skin = cur.skin; }
+    if (!beardOK(a.body)) a.beard = 'none';
+    p.avatar = People.clean(a);
+    var cel = p.kit && p.kit.celebrate, kit = Object.assign(window.Kit && Kit.defaults ? Kit.defaults() : {}, clone(st.kit));
+    if (cel) kit.celebrate = cel;
+    kit.hair = p.avatar.hair; kit.hairStyle = OLD_STYLES.indexOf(p.avatar.hairStyle) >= 0 ? p.avatar.hairStyle : (kit.hairStyle || 'swept');
+    p.kit = kit; p.kits = { away: {}, third: {} }; p.kitUse = 'home';
+    if (!keepNum) p.jersey = String(st.jersey || p.jersey || '7');
+    return p;
+  }
+  // what a starter looks like on this person (for its picture)
+  function starterShown(p, st, keepBody) { var q = applyStarter(clone(p), st, keepBody, true); q.jersey = String(st.jersey || q.jersey); return shown(q); }
+  // pictures of whole people (starters): the flat drawing at once, a 3D portrait when 3D is on, one request at a time
+  var LOOKS = { cache: {}, queue: [], busy: false };
+  function lookHTML(d) {
+    var key = 'l' + hash(JSON.stringify(d)), url = LOOKS.cache[key];
+    if (!url && has3D() && !LOOKS.queue.some(function (j) { return j.k === key; })) { LOOKS.queue.push({ k: key, d: d }); setTimeout(lookPump, 0); }
+    return '<span class="av-look' + (url ? ' ready' : '') + '" data-look="' + key + '">' + flat(d, 'front', 'full') + '<img alt="" src="' + (url || '') + '"></span>';
+  }
+  function lookPump() {
+    if (LOOKS.busy || !LOOKS.queue.length || !has3D()) return;
+    var job = LOOKS.queue.shift(); LOOKS.busy = true;
+    function next() { LOOKS.busy = false; setTimeout(lookPump, 30); }
+    try {
+      T3.playerPortrait(portraitInput(job.d), 300, VIEWS3D.front).then(function (url) {
+        if (url) { LOOKS.cache[job.k] = url; document.querySelectorAll('[data-look="' + job.k + '"]').forEach(function (el) { var img = el.querySelector('img'); if (img) img.src = url; el.classList.add('ready'); }); }
+        next();
+      }, next);
+    } catch (e) { next(); }
+  }
+  // the grid of starters as buttons (act: the tap handler, cur: the id shown as chosen)
+  function looksGrid(p, act, cur, keepBody) {
+    return '<div class="av-looks">' + People.STARTERS.map(function (st) {
+      var on = cur === st.id;
+      return '<button type="button" class="av-lk' + (on ? ' on' : '') + '" data-act="' + act + '" data-arg="' + esc(st.id) + '" aria-pressed="' + on + '">' + lookHTML(starterShown(p, st, keepBody)) + '<b>' + esc(st.name) + '</b></button>';
+    }).join('') + '</div>';
+  }
   // ---------- the big picture ----------
   function picHTML() {
     var d = shown(M.p), key = JSON.stringify([d, M.view]), url = M.shots[key];
-    return '<div class="av-pic' + (url ? ' ready' : '') + '" data-key="' + esc(String(hash(key))) + '">' + flat(d, M.view, 'bust') + '<img alt="" src="' + (url || '') + '"></div>';
+    var crop = M.tab === 'clothes' && d.avatar.outfit !== 'kit' ? 'full' : 'bust';   // everyday clothes: the whole person, shoes and all
+    return '<div class="av-pic' + (url ? ' ready' : '') + '" data-key="' + esc(String(hash(key))) + '">' + flat(d, M.view, crop) + '<img alt="" src="' + (url || '') + '"></div>';
   }
   function hash(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
   function ask3D() {
@@ -375,13 +677,33 @@ var Avatar = (function () {
         People.HAIR_COLORS.filter(function (c) { return c[0] !== a.hair; }).map(function (c) { return chip('streaks', c[0], a.streaks === c[0], c[1] + ' streaks', '<span class="av-dot streak" style="--h:' + a.hair + ';--s:' + c[0] + '"></span>', 'dot'); }).join('') + '</div>';
       h += h3('Extras') + tiles('acc', People.ACCS, a.acc);
       if (a.acc !== 'none') h += dots('accCol', People.ACC_COLORS, a.accCol);
-    } else if (M.tab === 'kit') {
-      var use = p.kitUse === 'away' ? 'away' : p.kitUse === 'third' ? 'third' : 'home';
-      h += h3('Kit') + '<div class="av-kit">' + flat(d, 'front', 'bust') + flat(d, 'back', 'bust') + '</div>' +
-        '<p class="av-tip">Wearing the ' + use + ' kit.</p><div class="row"><button type="button" class="btn blue" data-act="avKit">' + (typeof ico === 'function' ? ico('shirt') : '') + ' Design the kit</button></div>';
+    } else if (M.tab === 'clothes') {
+      h += h3('Clothes') + '<div class="av-row tiles">' + People.OUTFITS.map(function (o) {
+        return chip('outfit', o[0], a.outfit === o[0], o[1], flat({ avatar: with_({ outfit: o[0] }), kit: d.kit, number: d.number, name: d.name }, 'front', 'bust') + '<small>' + esc(o[1]) + '</small>', 'tile outfit');
+      }).join('') + '</div>';
+      if (a.outfit === 'kit') {
+        var use = p.kitUse === 'away' ? 'away' : p.kitUse === 'third' ? 'third' : 'home';
+        h += h3('Kit') + '<div class="av-kit">' + flat(d, 'front', 'bust') + flat(d, 'back', 'bust') + '</div>' +
+          '<p class="av-tip">Wearing the ' + use + ' kit.</p><div class="row"><button type="button" class="btn blue" data-act="avKit">' + (typeof ico === 'function' ? ico('shirt') : '') + ' Design the kit</button></div>';
+      } else {
+        h += h3('Colour') + dots('fit1', People.FIT_COLORS, a.fit1);
+        h += h3(SECOND[a.outfit] || 'Second colour') + dots('fit2', People.FIT_COLORS, a.fit2);
+        h += h3('Bottoms') + '<div class="av-row tiles">' + People.BOTTOMS.map(function (b) {
+          return chip('bottom', b[0], a.bottom === b[0], b[1], flat({ avatar: with_({ bottom: b[0] }), kit: d.kit }, 'front', 'legs') + '<small>' + esc(b[1]) + '</small>', 'tile legs');
+        }).join('') + '</div>' + dots('fit3', People.FIT_COLORS, a.fit3, function (c) { return c[1] + ' bottoms'; });
+        h += h3('Shoes') + '<div class="av-row tiles">' + People.SHOES.map(function (s) {
+          return chip('shoes', s[0], a.shoes === s[0], s[1], flat({ avatar: with_({ shoes: s[0] }), kit: d.kit }, 'side', 'feet') + '<small>' + esc(s[1]) + '</small>', 'tile feet');
+        }).join('') + '</div>' + dots('shoeCol', People.FIT_COLORS, a.shoeCol, function (c) { return c[1] + ' shoes'; });
+      }
+    } else if (M.tab === 'looks') {
+      h += h3('Start from a look') + '<p class="av-tip">Pick a picture. ' + (keepsBody() ? 'It changes the clothes, hair and face. The body, skin, name and number stay.' : 'It changes the clothes and the look. The name and number stay.') + ' You can change anything after.</p>' +
+        looksGrid(p, 'avStarter', M.picked, keepsBody());
     }
     return h;
   }
+  var SECOND = { school: 'Tie',cardigan: 'Top underneath', hoodie: 'Strings and cuffs', varsity: 'Sleeves', tee: 'Star on the front' };
+  // Start from a look keeps body, height and skin when they were already chosen: in this visit, or saved before
+  function keepsBody() { return !!(M && (M.touched || (M.t.kind === 'own' && S.avatar) || M.t.kind === 'crew')); }
   // ---------- the panel ----------
   function title() { return M.t.kind === 'new' ? 'New player' : M.t.kind === 'own' ? 'Make your player' : 'Change ' + esc(sv(M.p.name) || 'player') + '’s look'; }
   function html() {
@@ -390,8 +712,9 @@ var Avatar = (function () {
     return '<div class="av"><h2 class="av-h" tabindex="-1">' + title() + '</h2><div class="av-body">' +
       '<div class="av-side"><div class="av-picbox" aria-live="polite">' + picHTML() + '</div>' +
       '<div class="av-turns" role="group" aria-label="Turn the picture">' + turn + '</div>' +
-      '<div class="av-fun"><button type="button" class="btn small yellow" data-act="avSurprise">' + (typeof ico === 'function' ? ico('dice') : '') + ' Surprise me</button><button type="button" class="btn small" data-act="avReset">Start again</button></div></div>' +
-      '<div class="av-main"><div class="av-tabs" role="tablist" aria-label="Parts">' + tabs + '</div><div class="av-opts" id="avOpts" role="tabpanel" aria-labelledby="avTab-' + M.tab + '">' + section() + '</div></div></div>' +
+      '<div class="av-fun"><button type="button" class="btn small blue av-lookbtn" data-act="avLooks" aria-pressed="' + (M.tab === 'looks') + '">Start from a look</button>' +
+      '<button type="button" class="btn small yellow" data-act="avSurprise">' + (typeof ico === 'function' ? ico('dice') : '') + ' Surprise me</button><button type="button" class="btn small" data-act="avReset">Start again</button></div></div>' +
+      '<div class="av-main"><div class="av-tabs" role="tablist" aria-label="Parts">' + tabs + '</div><div class="av-opts" id="avOpts" role="tabpanel" ' + (M.tab === 'looks' ? 'aria-label="Start from a look"' : 'aria-labelledby="avTab-' + M.tab + '"') + '>' + section() + '</div></div></div>' +
       '<div class="av-foot"><button type="button" class="btn" data-act="avCancel">Cancel</button><button type="button" class="btn green" data-act="avDone">Done</button></div></div>';
   }
   function wire() {
@@ -425,8 +748,20 @@ var Avatar = (function () {
     var t = target && typeof target === 'object' ? target : { kind: 'own' };
     if (t.kind === 'crew' && !People.member(t.id)) t = { kind: 'new' };
     if (t.kind === 'new' && People.crew().length >= People.MAX_CREW) { full(opts); return; }
-    var p = personOf(t);
-    M = { t: t, opts: opts || {}, p: p, start: clone(p), view: 'front', tab: (opts && opts.tab) || 'who', beard: null, shots: {}, serial: 0, result: null };
+    opts = opts || {};
+    // a new player: the name, then a picture to start from, then the maker (opts.starter set = that step is done)
+    if (t.kind === 'new' && !opts.starter) {
+      var base = personOf(t);
+      steps({ title: 'New player', label: 'Name', name: sv(opts.name), person: base, quit: 'Cancel', noPic: true,
+        onPick: function (id, nm) { open(t, Object.assign({}, opts, { starter: id, name: nm, tab: 'body' })); },
+        onQuit: function () { if (typeof opts.onDone === 'function') opts.onDone(null); } });
+      return;
+    }
+    var p = personOf(t), st = opts.starter ? People.starter(opts.starter) : null;
+    if (t.kind === 'new' && sv(opts.name).trim()) p.name = People.cleanName(opts.name);
+    if (st) applyStarter(p, st, false, false);
+    var tab = opts.tab === 'kit' ? 'clothes' : opts.tab;
+    M = { t: t, opts: opts, p: p, start: clone(p), view: 'front', tab: tab || 'who', beard: null, shots: {}, serial: 0, result: null, touched: false, picked: st ? st.id : null };
     render(true);
   }
   function full(opts) {
@@ -457,6 +792,14 @@ var Avatar = (function () {
     n.acc = chance(0.4) ? any(People.ACCS.filter(function (g) { return g[0] !== 'none'; })) : 'none'; n.accCol = any(People.ACC_COLORS);
     n.freckles = chance(0.3); n.lashes = chance(0.45); n.cheeks = chance(0.75); n.gems = chance(0.25);
     n.beard = beardOK(n.body) && chance(0.4) ? any(People.BEARDS.filter(function (g) { return g[0] !== 'none'; })) : 'none';
+    // clothes: the football kit about half the time, else any everyday outfit in two different colours
+    if (chance(0.5)) n.outfit = 'kit';
+    else {
+      n.outfit = any(People.OUTFITS.filter(function (o) { return o[0] !== 'kit'; }));
+      n.bottom = any(People.BOTTOMS); n.shoes = any(People.SHOES.filter(function (s) { return s[0] !== 'boots'; }));
+      n.fit1 = any(People.FIT_COLORS); n.fit2 = any(People.FIT_COLORS.filter(function (c) { return c[0] !== n.fit1; }));
+      n.fit3 = any(People.FIT_COLORS.filter(function (c) { return c[0] !== n.fit1; })); n.shoeCol = any(People.FIT_COLORS);
+    }
     return People.clean(n);
   }
   // ---------- saving ----------
@@ -497,11 +840,18 @@ var Avatar = (function () {
       else if (beardOK(v) && a.beard === 'none' && M.beard) { a.beard = M.beard; M.beard = null; }
     }
     if (k === 'hair' && a.streaks === v) a.streaks = 'none';
+    if (k === 'body' || k === 'height' || k === 'skin') M.touched = true;
     a[k] = v; M.p.avatar = People.clean(a); pop(); render();
+  };
+  ACT.avLooks = function () { if (!M) return; M.tab = M.tab === 'looks' ? 'clothes' : 'looks'; pop(); render(); var o = document.querySelector('#modalBox .av-opts'); if (o) o.scrollTop = 0; };
+  // a starter inside the maker: the look and the kit change; name, number and back name stay
+  ACT.avStarter = function (el) {
+    if (!M) return; var st = People.starter(el.dataset.arg); if (!st) return;
+    applyStarter(M.p, st, keepsBody(), true); M.picked = st.id; M.beard = null; pop(); render();
   };
   ACT.avNum = function (el) { if (!M) return; var n = (parseInt(M.p.jersey, 10) || 7) + (+el.dataset.arg || 0); if (n < 1) n = 99; if (n > 99) n = 1; M.p.jersey = String(n); var j = document.getElementById('avNum'); if (j) j.value = M.p.jersey; pop(); drawPic(); };
   ACT.avSurprise = function () { if (!M) return; M.p.avatar = surprise(M.p.avatar); if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); render(); };
-  ACT.avReset = function () { if (!M) return; M.p = clone(M.start); M.beard = null; pop(); render(); };
+  ACT.avReset = function () { if (!M) return; M.p = clone(M.start); M.beard = null; M.touched = false; M.picked = M.opts.starter || null; pop(); render(); };
   ACT.avCancel = function () { if (!M) return; M.result = null; closeModal(); };
   ACT.avDone = function () {
     if (!M) return;
@@ -516,37 +866,63 @@ var Avatar = (function () {
     pop();
     Kit.open({ kind: 'draft', person: m.p, title: m.t.kind === 'own' ? 'My kit' : (sv(m.p.name) || 'Player') + "'s kit", onDone: function () { M = m; m.shots = {}; render(true); } });
   };
+  // ---------- the start steps: a name, then a picture to start from ----------
+  // o = { title, label, name, person (for the pictures), quit (the second button's words), intro,
+  //       onPick(starterId, typedName), onQuit(typedName) }. Exactly one of onPick / onQuit runs.
+  var ST = null;                                 // { o, step: 'name' | 'look', name }
+  function steps(o) { ST = { o: o, step: 'name', name: sv(o.name) }; stepRender(); }
+  function stepPerson() { var p = clone(ST.o.person); p.name = ST.name; return p; }
+  function stepHTML() {
+    var o = ST.o, p = stepPerson();
+    if (ST.step === 'name') {
+      return '<div class="av-first"><h2>' + esc(o.title) + '</h2>' + (o.noPic ? '' : '<div class="av-first-pic">' + flat(shown(p), 'front', 'bust') + '</div>') +
+        '<label class="av-lab" for="avFirstName">' + esc(o.label) + '</label><input class="av-in" id="avFirstName" type="text" maxlength="12" autocomplete="off" spellcheck="false" value="' + esc(ST.name) + '" placeholder="Type a name">' +
+        '<p>' + esc(o.intro || 'Next, pick a look to start from. You can change anything after.') + '</p>' +
+        '<div class="row"><button type="button" class="btn big green" data-act="avStepNext">Next</button><button type="button" class="btn" data-act="avStepQuit">' + esc(o.quit) + '</button></div></div>';
+    }
+    return '<div class="av-first av-start"><h2 tabindex="-1">Pick a look to start from</h2><p class="av-tip">Tap a picture. You can change anything after: hair, face, clothes, colours.</p>' +
+      looksGrid(p, 'avStepPick', null, false) +
+      '<div class="row"><button type="button" class="btn" data-act="avStepBack">Back</button><button type="button" class="btn" data-act="avStepQuit">' + esc(o.quit) + '</button></div></div>';
+  }
+  function stepRender() {
+    var me = ST, box = document.getElementById('modalBox'), md = document.getElementById('modal');
+    if (box && md && md.classList.contains('on') && box.classList.contains('av-stepbox') && box.querySelector('.av-first')) box.innerHTML = stepHTML();
+    else modal(stepHTML(), function () { stepEnd(); if (ST === me) { ST = null; if (me.o.onQuit) me.o.onQuit(sv(me.name).trim()); } });   // closed any other way = quit
+    box = document.getElementById('modalBox'); box.classList.add('av-stepbox'); box.classList.toggle('av-startbox', ST.step === 'look'); box.scrollTop = 0;
+    var inp = document.getElementById('avFirstName');
+    if (inp) { inp.addEventListener('input', function () { if (ST) ST.name = inp.value; }); try { inp.focus({ preventScroll: true }); } catch (e) {} }
+    else { var hd = box.querySelector('.av-start h2'); if (hd) try { hd.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  function stepEnd() { var box = document.getElementById('modalBox'); if (box) { box.classList.remove('av-stepbox'); box.classList.remove('av-startbox'); } }
+  function stepName() { var n = document.getElementById('avFirstName'); if (n && ST) ST.name = n.value; }
+  ACT.avStepNext = function () { if (!ST) return; stepName(); ST.step = 'look'; pop(); stepRender(); };
+  ACT.avStepBack = function () { if (!ST) return; ST.step = 'name'; pop(); stepRender(); };
+  ACT.avStepQuit = function () { if (!ST) return; stepName(); pop(); closeModal(); };
+  // a picture was tapped: the steps end (their pop-up is replaced by the maker, so "quit" never runs)
+  ACT.avStepPick = function (el) { var s = ST; if (!s) return; ST = null; stepEnd(); pop(); s.o.onPick(el.dataset.arg, sv(s.name).trim()); };
   // ---------- first time: a warm invitation, once ----------
-  // Leads with the name (the first thing a new player does), then "Make it!" opens the maker. Shown at most once by itself:
+  // The name first, then a picture to start from, then the maker on the Body tab. Shown at most once by itself:
   // S.avatarAsked = true the moment it appears (and it never appears for a save that already has S.avatar).
-  var FR = null;
-  function keepName() {
-    var n = document.getElementById('avFirstName'), v = n ? n.value.trim() : '';
-    if (!v) return;
+  // "Skip for now" (on either step) keeps a typed name and whatever look and kit the save has.
+  function keepName(v) {
+    v = sv(v).trim(); if (!v) return;
     S.name = People.cleanName(v, S.name || PLACEHOLDER_NAME);
-    if (S.backName == null || S.backName === PLACEHOLDER_BACK) { if (!/^tyson\b/i.test(S.name)) S.backName = S.name.toUpperCase().slice(0, 12); }
+    if (noBack(S.backName == null ? PLACEHOLDER_BACK : S.backName, S.name)) S.backName = S.name.toUpperCase().slice(0, 12);
     if (typeof persist === 'function') persist();
   }
   function firstRun(done) {
     function finish() { var d = done; done = null; if (typeof d === 'function') d(); }
     if (S.avatar || S.avatarAsked) { finish(); return; }
     S.avatarAsked = true; if (typeof persist === 'function') persist();
-    var nm = sv(S.name) === PLACEHOLDER_NAME ? '' : sv(S.name);
-    FR = finish;
-    modal('<div class="av-first"><h2>Make your player!</h2><div class="av-first-pic">' + flat({ avatar: People.own(), kit: window.Kit ? Kit.current() : {}, number: S.jersey || '7' }, 'front', 'bust') + '</div>' +
-      '<label class="av-lab" for="avFirstName">Your name</label><input class="av-in" id="avFirstName" type="text" maxlength="12" autocomplete="off" spellcheck="false" value="' + esc(nm) + '" placeholder="Type your name">' +
-      '<p>Pick your hair, your face and your football kit. You can change it any time.</p>' +
-      '<div class="row"><button class="btn big green" data-act="avFirstGo">Make it!</button><button class="btn" data-act="avFirstSkip">Skip for now</button></div></div>',
-      function () { var f = FR; FR = null; if (f) f(); });
-    var inp = document.getElementById('avFirstName'); if (inp) try { inp.focus({ preventScroll: true }); } catch (e) {}
+    var me = personOf({ kind: 'own' });
+    steps({ title: 'Make your player!', label: 'Your name', name: me.name, person: me, quit: 'Skip for now',
+      intro: 'Next, pick a look to start from. Then change your hair, your face and your clothes. You can change it any time.',
+      onPick: function (id, nm) { keepName(nm); open({ kind: 'own' }, { starter: id, tab: 'body', onDone: function () { finish(); } }); },
+      onQuit: function (nm) { keepName(nm); finish(); } });
   }
-  ACT.avFirstGo = function () {
-    keepName(); var f = FR; FR = null;              // the pop-up closes without "skipping": the maker calls done when it closes
-    open({ kind: 'own' }, { tab: sv(S.name) && S.name !== PLACEHOLDER_NAME ? 'body' : 'who', onDone: function () { if (f) f(); } });
-  };
-  ACT.avFirstSkip = function () { keepName(); closeModal(); };
   ACT.openAvatar = function () { pop(); open({ kind: 'own' }); };          // for a button anywhere: data-act="openAvatar"
 
-  return { open: open, firstRun: firstRun, flat: flat, surprise: surprise, active: function () { return !!M; } };
+  return { open: open, firstRun: firstRun, flat: flat, surprise: surprise, active: function () { return !!M; },
+    printedBack: printedBack, applyStarter: applyStarter };
 })();
 

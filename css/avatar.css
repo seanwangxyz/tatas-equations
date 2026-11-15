@@ -15,6 +15,7 @@ html.ts-l .modal.av-modal,html.ts-xl .modal.av-modal{width:min(1080px,calc(98vw 
 .av-turn,.av-tab{min-height:46px;font:800 16px var(--font);color:var(--ink);background:#fff;border:3px solid var(--line);border-radius:14px;cursor:pointer;padding:4px 6px}
 .av-turn[aria-pressed=true],.av-tab.on{border-color:var(--sky);background:#e7f1ff}
 .av-fun{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.av-fun .av-lookbtn{flex:1 1 100%}
 .av-main{display:flex;flex-direction:column;min-height:0;min-width:0}
 .av-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-bottom:8px}
 .av-opts{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 6px 12px 4px;overscroll-behavior:contain}
@@ -63,8 +64,9 @@ html.ts-l .modal.av-modal,html.ts-xl .modal.av-modal{width:min(1080px,calc(98vw 
   .av-picbox{grid-row:1 / span 2;height:150px;min-height:0}
   .av-turns{gap:4px}
   .av-turn,.av-tab{font-size:14px;padding:4px 2px}
-  .av-fun{flex-wrap:nowrap}
-  .av-fun .btn{flex:1 1 0;min-width:0;padding:6px 4px;font-size:14px}
+  .av-fun{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .av-fun .btn{min-width:0;padding:6px 4px;font-size:14px}
+  .av-fun .av-lookbtn{grid-column:1 / -1}
   .av-tabs{gap:4px}
   .av-c.tile{width:76px}.av-c.tile .av-flat{width:64px;height:64px}
   .av-c.tile.body{width:98px}.av-c.tile.body .av-flat{width:84px;height:92px}
@@ -83,6 +85,32 @@ html.ts-l .modal.av-modal,html.ts-xl .modal.av-modal{width:min(1080px,calc(98vw 
   html.ts-xl .av-picbox{grid-row:1 / span 2;height:150px;min-height:0}
 }
 @media (prefers-reduced-motion:reduce){.av-pic img{transition:none}}
+/* ----- looks to start from (People.STARTERS) and the Clothes tab ----- */
+.modal.av-startbox{width:min(1000px,98vw)}
+html.ts-l .modal.av-startbox,html.ts-xl .modal.av-startbox{width:min(1000px,calc(98vw / var(--ts)))}
+.av-start h2{outline:none;margin-bottom:0}
+.av-start .av-tip{text-align:center;margin:4px 0 10px}
+.av-start > .row{position:sticky;bottom:-20px;margin:10px -20px -20px;padding:10px 12px 14px;background:var(--paper);border-top:2px solid var(--line);z-index:1}
+.av-looks{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
+.av-lk{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 6px 8px;min-height:44px;background:#fff;border:3px solid var(--line);border-radius:18px;cursor:pointer;font:800 15px var(--font);color:var(--ink);line-height:1.15}
+.av-lk b{font-size:15px;text-align:center}
+.av-lk.on{border-color:var(--sky);background:#e7f1ff;box-shadow:0 0 0 3px var(--sky)}
+.av-lk:hover{border-color:var(--sky)}
+.av-lk:focus-visible{outline:4px solid var(--sky);outline-offset:2px}
+.av-look{position:relative;display:block;width:100%;aspect-ratio:3/5;border-radius:14px;overflow:hidden;background:linear-gradient(#cfe8ff,#eaf6ff)}
+.av-look .av-flat,.av-look img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.av-look img{opacity:0;object-fit:cover}
+.av-look.ready img{opacity:1}
+.av-look.ready .av-flat{opacity:0}
+.av-opts .av-looks{grid-template-columns:repeat(auto-fill,minmax(118px,1fr))}
+.av-fun .av-lookbtn[aria-pressed=true]{box-shadow:0 0 0 3px #fff,0 0 0 6px var(--sky)}
+.av-c.tile.outfit{width:96px}
+.av-c.tile.outfit .av-flat{width:84px;height:92px}
+.av-c.tile.legs .av-flat,.av-c.tile.feet .av-flat{width:74px;height:74px}
+/* the kit designer while an everyday outfit is worn (js/kit.js) */
+.kit-wearing{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 10px;padding:8px 12px;background:#fff6d6;border:3px solid #ffe08a;border-radius:16px}
+.modal .kit-wearing p{margin:0;font-size:16px;text-align:center}
+@media (max-width:420px){.av-looks{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.av-opts .av-looks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ----- players on this device (js/crew.js) ----- */
 .modal:has(> .cr){width:min(760px,96vw)}
 html.ts-l .modal:has(> .cr),html.ts-xl .modal:has(> .cr){width:min(760px,calc(96vw / var(--ts)))}
