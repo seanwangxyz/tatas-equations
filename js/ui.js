@@ -134,6 +134,15 @@ function go(id) {
   if (window.Title3D) Title3D.screen(id); // TITLE: the 3D title scene stops (and later frees itself) on any other screen
   if (window.Tour && Tour.onScreen) Tour.onScreen(id); // TOUR: leaving the title closes the What's new tour
 }
+// PEOPLE / JOIN LINK: once per page load, when the title has first shown. A brand-new player (still called Champ,
+// nothing played, never asked) is invited to make their own player (js/avatar.js Avatar.firstRun); then a join link
+// (?join=CODE, js/online.js) opens the Join screen with the code typed in. Neither happens over a match or a pop-up.
+function newcomer() {
+  if (current !== 'title' || (typeof G !== 'undefined' && G) || $('#modal').classList.contains('on')) return;
+  var join = function () { if (current === 'title' && window.Online && Online.linkJoin) Online.linkJoin(); };
+  var fresh = !S.avatarAsked && !S.avatar && (S.name === 'Champ' || !S.name) && !(S.xp > 0) && window.Avatar && Avatar.firstRun;
+  if (fresh) Avatar.firstRun(join); else join();
+}
 var lastTheme = '';
 function applyCosmetics() {
   document.body.className = 'mat-' + S.cos.mat + ' skin-' + S.cos.skin;
@@ -307,6 +316,7 @@ function gotoTitle() {
     '</div>';
   go('title');
   var full = !titleSeen; titleSeen = true;
+  if (full) setTimeout(newcomer, 2600);   // PEOPLE / JOIN LINK: once per page load, after the opening
   if (t3 && Title3D.show('title', { intro: full ? 'full' : 'short' })) {
     // the game's menu music (if it is on) waits for the end of the first opening, so it never plays over the fanfare
     if (full) Snd.setMood('off'); else Snd.setMood('menu');

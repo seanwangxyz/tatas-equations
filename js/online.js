@@ -284,7 +284,7 @@ var Online = (function () {
     modal('<h2 class="hero">' + ico('people') + ' ' + (again ? 'Play again?' : 'Your game code') + '</h2>' +
       (again ? '<p class="ol-codeline">Game code <b>' + esc(prettyCode(O.code)) + '</b></p>' : '<div class="ol-code" aria-label="Game code">' + esc(prettyCode(O.code)) + '</div>' +
         '<div class="row ol-share"><button class="btn small" data-act="olShare">' + ico('people') + ' Share the code</button></div>' +
-        '<p style="text-align:center">Read this code to the other players (one or two). They tap <b>Online</b>, then <b>Join a game</b>, and type it in.</p>') +
+        '<p style="text-align:center">Send this code to the other players (one or two): <b>Share the code</b> makes a message with a link that takes them straight in. Or read it to them: they tap <b>Online</b>, then <b>Join a game</b>, and type it.</p>') +
       '<div class="ol-seats">' + rows + '</div>' + picks + bonusRow +
       '<p style="text-align:center;font-size:16px">' + (S.set.shakes || 3) + ' shakes.' + (window.VoiceChat ? '' : ' Talk on FaceTime while you play!') + '</p>' + voiceLobby() + // VOICE: the talking block
 
@@ -295,7 +295,9 @@ var Online = (function () {
   ACT.olBonus = function () { if (!O) return; O.bonus = !O.bonus; Snd.click(); save(); lobbyHost(); };
   ACT.olShare = function () {
     if (!O) return;
-    var text = 'Come and play Tata\'s Equations with me! Tap Online, then Join a game, and type the code ' + prettyCode(O.code);
+    // JOIN LINK: the message carries a link that opens the game on the Join screen with the code already typed in
+    var link = ''; try { if (/^https?:$/.test(location.protocol)) link = location.origin + location.pathname + '?join=' + O.code; } catch (e) {}
+    var text = 'Come and play Tata\'s Equations with me! ' + (link ? 'Open ' + link + ' and press Join. Or tap' : 'Tap') + ' Online, then Join a game, and type the code ' + prettyCode(O.code);
     var done = function () { toast('Copied! Paste it in a message.'); };
     try {
       if (navigator.share && window.matchMedia && matchMedia('(pointer: coarse)').matches) { navigator.share({ text: text }).catch(function () {}); return; }
@@ -1119,7 +1121,7 @@ var Online = (function () {
     }
     if (O) { if (O.role === 'host') lobbyHost(); else guestLobby(); return; }
     modal('<h2 class="hero">' + ico('people') + ' Play online</h2>' +
-      '<p style="text-align:center">Two or three players, each on their own device, far apart. Talk on FaceTime while you play!</p>' +
+      '<p style="text-align:center">Two or three players, each on their own device, far apart. You can talk and see each other while you play!</p>' +
       '<div class="setrow"><label>Your first name</label><input type="text" id="olName" maxlength="14" autocomplete="off" value="' + esc(S.name || '') + '"></div>' +
       '<div class="setrow"><label>Your jersey number</label><input type="text" id="olJersey" maxlength="2" inputmode="numeric" style="width:70px" value="' + esc(S.jersey || '7') + '"></div>' +
       '<div class="row" style="margin-top:12px"><button class="btn big green" data-act="olHost">' + ico('play') + ' Host a game</button><button class="btn big" data-act="olJoinOpen">Join a game</button></div>' +
@@ -1132,8 +1134,25 @@ var Online = (function () {
       '<div class="row"><input type="text" id="olCode" class="ol-codein" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="FROG 47"></div>' +
       '<p id="olJoinMsg" style="text-align:center;min-height:26px"></p>' +
       '<div class="row"><button class="btn green big" data-act="olJoin">Join!</button><button class="btn" data-act="closeModal">Back</button></div>');
-    setTimeout(function () { var i = $('#olCode'); if (i) { i.focus(); i.addEventListener('keydown', function (e) { if (e.key === 'Enter') joinGame(); }); } }, 50);
+    var pre = linkCode; linkCode = null;   // JOIN LINK: the code from the link is typed in already (used once)
+    if (pre) { var ci = $('#olCode'); if (ci) ci.value = prettyCode(pre); var jm = $('#olJoinMsg'); if (jm) jm.innerHTML = 'Press <b>Join!</b> to go in.'; }
+    setTimeout(function () { var i = $('#olCode'); if (i) { if (!pre) i.focus(); i.addEventListener('keydown', function (e) { if (e.key === 'Enter') joinGame(); }); } }, 50);
   };
+  // JOIN LINK: ...?join=FROG47 in the address. linkJoin() (called once the title screen is up, after a new player has
+  // made their player) opens the Join screen with the code typed in; nothing joins until Join! is pressed.
+  // The code is taken out of the address at once, so a reload does not ask again.
+  var linkCode = (function () {
+    try {
+      var m = /[?&]join=([A-Za-z]{3,6}[0-9]{2})(?:&|$)/.exec(location.search); if (!m) return null;
+      if (window.history && history.replaceState) history.replaceState(null, '', location.pathname + location.hash);
+      return m[1].toUpperCase();
+    } catch (e) { return null; }
+  })();
+  function linkJoin() {
+    if (!linkCode || O || (typeof G !== 'undefined' && G)) return false;
+    if (!Net.available()) { linkCode = null; return false; }
+    ACT.olJoinOpen(); return true;
+  }
   ACT.olJoin = function () { joinGame(); };
 
   // ================================================================ RESUME after a reload / closed tab
@@ -1538,5 +1557,5 @@ var Online = (function () {
   window.TataOnline = { O: function () { return O; }, drop: function (v) { return Net.drop(v); }, saved: saved, state: function () { return O && O.state; },
     sub: function (pi) { substitute(pi); }, publish: function () { schedulePublish(true); } };
 
-  return { setup: setup, setupCardHTML: setupCardHTML, on: on, isHost: isHost, isGuest: isGuest, leave: leave, moveFn: moveFn };
+  return { setup: setup, setupCardHTML: setupCardHTML, on: on, isHost: isHost, isGuest: isGuest, leave: leave, moveFn: moveFn, linkJoin: linkJoin, linkPending: function () { return !!linkCode; } };
 })();
