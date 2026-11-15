@@ -104,8 +104,9 @@ const TORSO_CTRL = [[0.001, 0], [0.62, 0.04], [0.82, 0.3], [0.86, 0.75], [0.84, 
 const SEAM = -Math.PI / 2, TAU = Math.PI * 2;
 export function torsoProfile(D) {
   D = D || KID;
-  const pts = new THREE.SplineCurve((D.torsoCtrl || TORSO_CTRL).map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(56);
-  pts[0].x = 0.001; pts[pts.length - 1].x = 0.001;
+  // (D.openHem / D.profN: an outfit's top, people.js: an open hem at the bottom, more points down the profile)
+  const pts = new THREE.SplineCurve((D.torsoCtrl || TORSO_CTRL).map((q) => new THREE.Vector2(q[0] * D.torsoX, q[1] * D.torsoY))).getPoints(D.profN || 56);
+  if (!D.openHem) pts[0].x = 0.001; pts[pts.length - 1].x = 0.001;
   const n = pts.length, S = new Float32Array(n);           // S[j]: arc length from the top (S[n-1] = 0) down to point j
   for (let j = n - 2; j >= 0; j--) S[j] = S[j + 1] + pts[j].distanceTo(pts[j + 1]);
   const sTot = S[0];
@@ -1069,6 +1070,11 @@ export function buildKid(kit, num, name, look) { return buildHuman({ dims: KID, 
 
 export function buildHuman(spec) {
   const D = spec.dims || KID, kit = spec.kit || KITS.red, look = Object.assign({}, KID_LOOK, spec.look || {});
+  // spec.dress (people.js, everyday outfits): called once the figure is built, with the rig's parts; it hides the kit and
+  // dresses him, and returns { setKit(k, n, nm, front), onHair(styleId) }. spec.cloth: { r(y), back(y) } the outfit's
+  // outer radius / extra depth behind at a body height, so long hair and ponytails hang outside it. Both absent = the kit.
+  const dress = spec.dress || null, cloth = spec.cloth || null;
+  let wear = null;
   const root = new THREE.Group(), body = new THREE.Group(), chest = new THREE.Group();
   root.add(body); body.add(chest);
   const skin = std(new THREE.Color(look.skin).getHex(), { roughness: 0.68 }), hairM = std(new THREE.Color(look.hair).getHex(), { roughness: 0.8 }), dark = std(0x231a16, { roughness: 0.35 });
@@ -1078,7 +1084,7 @@ export function buildHuman(spec) {
   const withSkin = (k) => Object.assign({}, k, { skin: look.skin, collar: k.collar || (look.vneck ? 'v' : 'round') });
   let K = withSkin(kit);
   const P = profileOf(D);
-  const shirtM = std(0xffffff, { map: kidJerseyTexture(K, spec.num, spec.name, spec.front, D), roughness: 0.85 });
+  const shirtM = std(0xffffff, { map: dress ? null : kidJerseyTexture(K, spec.num, spec.name, spec.front, D), roughness: 0.85 });
   const sleeveM = std(0xffffff, { map: sleeveTexture(K), roughness: 0.85 });
   const bandM = std(0xffffff, { map: bandTexture(K, 1), roughness: 0.8, side: THREE.DoubleSide }), cuffM = std(0xffffff, { map: bandTexture(K, 14), roughness: 0.8 });
   const add = (geo, mat, parent, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); parent.add(m); return m; };
@@ -1303,13 +1309,13 @@ export function buildHuman(spec) {
   const laceG = new THREE.BoxGeometry(0.11 * lr, 0.016, 0.024), studG = new THREE.CylinderGeometry(0.02 * lr, 0.026 * lr, 0.03, 8);
   const legs = [-1, 1].map((s) => {
     const leg = new THREE.Group(); leg.position.set(s * hipX, D.hipY, 0); root.add(leg);
-    const sl = shortLegs[s < 0 ? 0 : 1]; add(sl.geo, sl.mat, leg);
-    add(thighGs[s < 0 ? 0 : 1], skin, leg);
+    const sl = shortLegs[s < 0 ? 0 : 1]; leg.userData.shorts = add(sl.geo, sl.mat, leg);
+    leg.userData.thigh = add(thighGs[s < 0 ? 0 : 1], skin, leg);
     const knee = new THREE.Group(); knee.position.set(0, -D.thigh, 0); leg.add(knee);
     add(kneeG, skin, knee, 0, 0.005, 0).scale.set(1, 1.1, 1.02);
     add(capG, skin, knee, 0, 0.005, 0.105 * lr).scale.set(1.1, 1.2, 0.6);
-    add(sockG, sockM, knee);
-    const bt = new THREE.Group(); bt.position.set(0, -D.shin, 0.1); knee.add(bt);
+    leg.userData.sock = add(sockG, sockM, knee);
+    const bt = new THREE.Group(); bt.position.set(0, -D.shin, 0.1); knee.add(bt); leg.userData.boot = bt;
     const b = add(bootG, bootM, bt); b.scale.set(0.2 * lr, 0.13, 0.32 * lr);
     const so = add(bootG, soleM, bt, 0, -0.088, 0.008); so.scale.set(0.213 * lr, 0.045, 0.334 * lr);
     [[0.07, 0.124], [0.13, 0.112], [0.19, 0.094]].forEach((q) => { const l = add(laceG, soleM, bt, 0, q[1], q[0] * lr); l.rotation.x = q[0] * 1.6; });
@@ -1338,8 +1344,8 @@ export function buildHuman(spec) {
   const HH = { R, surf, D, HS, headY, kid: !look.adult,
     add: (geo) => add(geo, hairShellM, hairExtras),
     tie: (p, dir, r, low) => hairTies.push({ p, dir, r, low: !!low }),
-    torsoR: (yc) => Math.max(shirtR(yc), 0.27 * (D.neckR || 1)),
-    backZ: (yc) => -(Math.max(shirtR(yc), 0.27 * (D.neckR || 1)) * zs + 0.03 * (D.muscle || 0)) - 0.04 };
+    torsoR: (yc) => Math.max(shirtR(yc), 0.27 * (D.neckR || 1), cloth ? cloth.r(yc) : 0),
+    backZ: (yc) => -(Math.max(shirtR(yc), 0.27 * (D.neckR || 1), cloth ? cloth.r(yc) : 0) * zs + 0.03 * (D.muscle || 0)) - 0.04 - (cloth && cloth.back ? cloth.back(yc) : 0) };
   function clearHair() {
     if (hairMesh) { head.remove(hairMesh); hairMesh.geometry.dispose(); hairMesh = null; }
     hairExtras.traverse((c) => { if (c.geometry && !c.geometry.userData.shared) c.geometry.dispose(); if (c.material && c.material !== hairM && c.material !== hairShellM && !c.material.userData.keep) { if (c.material.map) c.material.map.dispose(); c.material.dispose(); } });
@@ -1374,6 +1380,7 @@ export function buildHuman(spec) {
       });
     }
     if (look.acc && look.acc !== 'none') buildAcc(st);
+    if (wear && wear.onHair) wear.onHair(styleId);
   }
   // ----- hair accessories (look.acc: bow, band, clips, scrunchie, cap in look.accCol). Rigid on the head like the hair;
   // placed on the outside of whatever hair there is (a ray in from outside), or on the scalp if there is none -----
@@ -1734,6 +1741,11 @@ export function buildHuman(spec) {
   // hand's own parts (so the gloves never repaint it)
   wristHost = arms[1].hand;
   if (look.acc === 'scrunchie' && !hairTies.length) buildAcc(HAIR_STYLES[look.hairStyle] || HAIR_STYLES.swept);
+  if (dress) {
+    wear = dress({ D, P, look, root, body, chest, neck, head, shirtG, torso, get band() { return band; }, crestMesh, markMesh, shoulderMarks, shortsMesh, seatGeo, seatM, seatL, seatPts,
+      bow, cordM, shortLegs, legs, arms, wrists, armband, gloves, skin, sleeveM, cuffM, cuffGeo, wristGeo, sockG, sockM, bootM, soleM, hipBone, waistBone,
+      lathe, smoothProfile, gridGeo, add, onSegment, sizes: { lr, mus, hipX, Rb, sc, zs, yTop, bandH, hemL, yH, wR, hipR, sleeveK } });
+  }
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
 
   // ----- expression -----
@@ -1765,6 +1777,7 @@ export function buildHuman(spec) {
   let kitArgs = [kit, spec.num, spec.name, spec.front];
   function setKit(k, n, nm, front) {
     kitArgs = [k, n, nm, front];
+    if (wear) { wear.setKit(k, n, nm, front == null ? spec.front : front); return; }
     K = withSkin(k);
     const swap = (m, t) => { const o = m.map; m.map = t; m.needsUpdate = true; if (o && o !== t) o.dispose(); };
     swap(shirtM, kidJerseyTexture(K, n, nm, front == null ? spec.front : front, D));
@@ -1801,6 +1814,9 @@ export function buildHuman(spec) {
     if (skinChanged) setKit(kitArgs[0], kitArgs[1], kitArgs[2], kitArgs[3]);
   }
   const dims = Object.assign({}, D);
-  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, recolor, look,
+  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, recolor, look, get wear() { return wear; },
     shirt: { get band() { return band; }, crest: crestMesh, mark: markMesh, shoulderMarks, shorts: shortsMesh, get kit() { return K; } } };
 }
+
+// drawing helpers for people.js (the everyday outfits paint their own cloth with the same tools as the kit)
+export const KIT_ART = { TORSO_CTRL, styledNumber, artCanvas, artTexture, mixHex, lumOf, star, sstep01, gauss, fixSeam, profileOf, SEAM, TAU };

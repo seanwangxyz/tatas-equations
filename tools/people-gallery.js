@@ -3,7 +3,7 @@
 // a JPEG data URL (it also shows it on the page).
 import * as THREE from 'three';
 import { buildPerson, personDims } from '../js/three/creatures/people.js';
-import { buildKid, KID, KITS, kitFromSave } from '../js/three/creatures/kid.js';
+import { buildKid, KID, KITS, KIT_DEFAULT, kitFromSave } from '../js/three/creatures/kid.js';
 import { buildTata, TATA } from '../js/three/creatures/grownup.js';
 
 const P = window.People;
@@ -45,6 +45,22 @@ const SECTIONS = {
     person('girl of 9 (cute)', A({ body: 'kid', hairStyle: 'highpony', hair: '#3b2314', skin: '#d9a273', eyes: '#3f2412', acc: 'scrunchie', accCol: '#7048e8', gems: true, lashes: true }), KIT_B, '9', 'MAYA'),
     person('girl of 6 (cute)', A({ body: 'kid-s', hairStyle: 'spacebuns', hair: '#5a3a22', skin: '#f6d3b8', eyes: '#4f7a4a', acc: 'clips', accCol: '#e64980', streaks: '#e64980', lashes: true }), KIT_C, '6', 'ZOE')
   ],
+  // everyday outfits (people.js): each top on a kid and on a grown-up, with a bottom that suits it
+  outfits: () => {
+    const L = [['school', 'skirt', 'loafers', '#1f3a68', '#c9342c', '#868e96', '#25262b'], ['cardigan', 'jeans', 'sneakers', '#ffdeeb', '#f1f3f5', '#1c7ed6', '#f1f3f5'],
+      ['hoodie', 'cargos', 'hightops', '#b197fc', '#f1f3f5', '#d9c2a0', '#f1f3f5'], ['varsity', 'jeans', 'sneakers', '#2f9e44', '#f1f3f5', '#1f3a68', '#f1f3f5'], ['tee', 'joggers', 'hightops', '#f5c518', '#25262b', '#25262b', '#c9342c']];
+    const out = [];
+    L.forEach((q, i) => {
+      const f = { outfit: q[0], bottom: q[1], shoes: q[2], fit1: q[3], fit2: q[4], fit3: q[5], shoeCol: q[6] };
+      out.push(person(q[0] + ' kid', A(Object.assign({ hairStyle: ['halfup', 'spacebuns', 'curtain', 'side', 'coils'][i], lashes: i < 3 }, f)), null, '7', 'SAM'));
+      out.push(person(q[0] + ' grown-up', G(Object.assign({ body: i % 2 ? 'adult-a' : 'adult-b', beard: 'none', hairStyle: ['short', 'bob', 'tousled', 'wavy', 'buzz'][i] }, f, i === 0 ? { bottom: 'cargos' } : {})), null, '23', 'ROBERTS'));
+    });
+    return out;
+  },
+  bottoms: () => P.BOTTOMS.map((b, i) => person(b[0], A({ body: ['kid', 'teen', 'kid-s', 'adult-a', 'kid'][i], outfit: ['tee', 'school', 'hoodie', 'varsity', 'cardigan'][i], bottom: b[0], shoes: ['sneakers', 'loafers', 'hightops', 'sneakers', 'sneakers'][i],
+    fit1: ['#a5d8ff', '#1f3a68', '#2f9e44', '#c9342c', '#b2f2bb'][i], fit2: ['#1f3a68', '#c9342c', '#f1f3f5', '#f1f3f5', '#f1f3f5'][i], fit3: ['#d9c2a0', '#868e96', '#25262b', '#1c7ed6', '#868e96'][i], beard: 'none' }), null, '9', 'ALEX')),
+  shoes: () => P.SHOES.map((s, i) => person(s[0], A({ body: i % 2 ? 'teen' : 'kid', outfit: 'tee', bottom: i === 2 ? 'skirt' : 'shorts', shoes: s[0], fit1: '#f1f3f5', fit2: '#1c7ed6', fit3: '#1f3a68', shoeCol: ['#f1f3f5', '#c9342c', '#25262b', '#f5c518'][i] }), null, '4', 'JO')),
+  starters: () => P.STARTERS.map((st) => person(st.name, st.avatar, kitFromSave(Object.assign({}, KIT_DEFAULT, st.kit)), st.jersey, 'SAM')),
   // the newer kid looks: every new style and accessory on the two kid bodies
   cute: () => [
     person('highpony scrunchie', A({ hairStyle: 'highpony', acc: 'scrunchie', accCol: '#e64980', lashes: true, hair: '#15110e' })),
