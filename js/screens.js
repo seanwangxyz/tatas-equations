@@ -322,7 +322,7 @@ ACT.toggle3d = function () { S.set.three = S.set.three === false; persist(); ren
 ACT.toggleMute = function () { S.set.mute = !S.set.mute; persist(); Snd.apply(); if (!S.set.mute) Snd.musicOn(); renderSettings(); };
 ACT.saveJersey = function () { var v = ($('#jerseyInput').value || '').replace(/[^0-9]/g, '').slice(0, 2); if (v) { S.jersey = v; persist(); Snd.chime(); } renderSettings(); };
 ACT.saveOppNames = function () { S.oppNames = OPPONENTS.map(function (o, i) { var el = document.querySelector('.oppName[data-i="' + i + '"]'); return el ? el.value.trim().slice(0, 14) : ''; }); persist(); applyOppNames(); Snd.chime(); renderSettings(); };
-ACT.saveName = function () { var v = ($('#nameInput').value || '').trim().slice(0, 14); if (v) { S.name = v; persist(); Snd.chime(); } renderSettings(); };
+ACT.saveName = function () { var v = ($('#nameInput').value || '').trim().slice(0, 14); if (v) { var b = String(S.backName == null ? 'TYSON W.' : S.backName).trim().toUpperCase(); if (!b || b === 'PLAYER' || (b === 'TYSON W.' && !/^tyson\b/i.test(v))) S.backName = v.toUpperCase().slice(0, 12); S.name = v; persist(); Snd.chime(); } renderSettings(); };   // (PEOPLE: a typed name replaces a placeholder back name)
 ACT.setShakes2 = function (el) { S.set.shakes = +el.dataset.arg; persist(); renderSettings(); };
 ACT.replayIntro = function () { S.lastDedication = ''; runIntro(); };
 ACT.copyCode = function () { var t = $('#exportBox'); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { try { document.execCommand('copy'); } catch (x) {} } Snd.pop(); };

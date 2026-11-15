@@ -468,4 +468,13 @@ function importCode(code) {
 var T3 = { supported: false, handlers: {}, active: function () { return T3.supported && S.set.three !== false; } };
 
 // The name printed on the back of the kid's shirt (Settings can change it; separate from the name Pip greets).
-function backName() { return (typeof S !== 'undefined' && S && S.backName != null) ? String(S.backName) : 'TYSON W.'; }
+// The name printed on the back of the device's own player. PEOPLE: 'PLAYER' (a brand-new save) and 'TYSON W.' (the old
+// default, the owner's son's shirt) are placeholders for everyone else: once a player has typed their own name and it
+// is not Tyson's, the back of the shirt follows that name until they choose a back name themselves.
+function backName() {
+  var has = typeof S !== 'undefined' && S, b = has && S.backName != null ? String(S.backName) : 'TYSON W.';
+  var n = has ? String(S.name || '').trim() : '', up = b.trim().toUpperCase();
+  if (n === 'Champ') n = '';
+  if (n && (!up || up === 'PLAYER' || (up === 'TYSON W.' && !/^tyson\b/i.test(n)))) return n.toUpperCase().slice(0, 12);
+  return b;
+}
