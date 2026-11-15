@@ -2,8 +2,9 @@
 // ======================= MY KIT =======================
 // The kid designs his kits: a home, an away and a third kit (shirt colour, pattern, trim, shorts, collar, sleeves,
 // number style, front number, crest, maker's mark), picks which one he wears, and sets his own things that go with any
-// kit (number, boots, captain's armband, goalkeeper gloves, hair, win celebration). Opened from the Trophy Room button
-// (data-act="openKit").
+// kit (number, boots, captain's armband, goalkeeper gloves, win celebration). Opened from the Trophy Room button
+// (data-act="openKit"). Hair now lives in the avatar maker (js/avatar.js); old saves keep S.kit.hair / hairStyle and
+// People.own() still reads them.
 //
 //   S.kit   = the home kit + his own things: { shirt, pattern, trim, shorts, hair, hairStyle, celebrate,
 //             collar, frontNum, crest, mark, sleeves, numStyle, boots, gloves, armband, armbandCol }
@@ -13,7 +14,13 @@
 //
 //   Kit.get()              the home kit (S.kit) with defaults filled in
 //   Kit.current()          the kit he wears now (merged, same shape as S.kit)
-//   Kit.open()             show the panel
+//   Kit.open()             show the panel for the save's own kits (exactly as before)
+//   Kit.open({ kind: 'crew', id })    the kits of another player on this device (S.crew; saved through People.saveMember)
+//   Kit.open({ kind: 'draft', person, onDone })   edit person.kit / kits / kitUse / jersey in place, save nothing
+//                          (the avatar maker uses this; person also has name, back, avatar). onDone() when it closes.
+//                          Any target may carry onDone.
+//   Kit.fill(k)            a saved-shape kit (or People.kitOf()) with every default filled in (full kit)
+//   Kit.viewOf(person)     the kit a person object (kit / kits / kitUse) wears now, full
 //   Kit.celebOpen(id)      is that celebration unlocked?   Kit.celebrations()  the list with lock state
 //
 // Live preview: 3D pictures (T3.playerPortrait) when 3D is on, else a flat drawing of the kit.
@@ -33,8 +40,6 @@ var Kit = (function () {
   var MARKS = [['cube', 'Speed cube'], ['swift', 'Swift'], ['fox', 'Fox'], ['rocket', 'Rocket'], ['bolt', 'Bolt'], ['pip', 'Pip']];
   var BOOTS = [['#1f2430', 'Black'], ['#f8f9fa', 'White'], ['#c9342c', 'Red'], ['#f5c518', 'Gold'], ['#4dabf7', 'Sky blue'], ['#f76707', 'Orange'], ['#e64980', 'Pink'], ['#2f9e44', 'Green']];
   var ARMBANDS = [['#ffd43b', 'Yellow'], ['#ffffff', 'White'], ['#25262b', 'Black'], ['#4dabf7', 'Sky blue'], ['#f76707', 'Orange'], ['#e64980', 'Pink']];
-  var HAIR = [['#3b2314', 'Dark brown'], ['#15110e', 'Black'], ['#7b5536', 'Light brown'], ['#d9a441', 'Golden'], ['#b5562a', 'Ginger']];
-  var STYLES = [['swept', 'Swept fringe'], ['short', 'Short'], ['spiky', 'Spiky'], ['curly', 'Curly'], ['long', 'Long']];
   var SLOTS = [['home', 'Home'], ['away', 'Away'], ['third', 'Third']];
   // keys that belong to a kit (differ between home / away / third) and keys that are his own (the same in every kit)
   var KIT_KEYS = ['shirt', 'pattern', 'trim', 'trim2', 'shorts', 'collar', 'frontNum', 'crest', 'mark', 'sleeves', 'numStyle'];
@@ -59,27 +64,46 @@ var Kit = (function () {
     away: { shirt: '#f1f3f5', pattern: 'waves', trim: '#2f8f7c', trim2: '#c9342c', shorts: '#1d2b3a', collar: 'v', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'short', numStyle: 'thin' },
     third: { shirt: '#16403d', pattern: 'waves', trim: '#cfe3e6', trim2: '#2f8f7c', shorts: '#25262b', collar: 'round', frontNum: true, crest: 'cube', mark: 'cube', sleeves: 'long', numStyle: 'block' }
   };
-  function get() {
+  // whose kits the panel edits: null = the save's own (S.kit / S.kits / S.kitUse / S.jersey), else
+  // { h: an object with kit / kits / kitUse / jersey (and name, back, avatar), save: function or null, onDone }
+  var who = null;
+  function hold() { return who ? who.h : S; }
+  // fill the defaults into a holder (S, a crew member or a draft) and return its home kit
+  function prep(h) {
     var d = defaults();
-    if (!S.kit || typeof S.kit !== 'object') S.kit = {};
-    Object.keys(d).forEach(function (k) { if (S.kit[k] == null) S.kit[k] = d[k]; });
-    if (!S.kits || typeof S.kits !== 'object') S.kits = {};
-    if (!S.kits.away || typeof S.kits.away !== 'object') S.kits.away = {};
-    if (!S.kits.third || typeof S.kits.third !== 'object') S.kits.third = {};
-    if (S.kitUse !== 'away' && S.kitUse !== 'third') S.kitUse = 'home';
-    return S.kit;
+    if (!h.kit || typeof h.kit !== 'object') h.kit = {};
+    Object.keys(d).forEach(function (k) { if (h.kit[k] == null) h.kit[k] = d[k]; });
+    if (!h.kits || typeof h.kits !== 'object') h.kits = {};
+    if (!h.kits.away || typeof h.kits.away !== 'object') h.kits.away = {};
+    if (!h.kits.third || typeof h.kits.third !== 'object') h.kits.third = {};
+    if (h.kitUse !== 'away' && h.kitUse !== 'third') h.kitUse = 'home';
+    return h.kit;
   }
+  function get() { return prep(S); }
   // a slot as a full kit (same shape as S.kit): home = S.kit; away / third = defaults + his changes + his own things
-  function view(slot) {
-    var home = get(); if (slot !== 'away' && slot !== 'third') return home;
-    var v = {}, st = S.kits[slot] || {};
+  function view(slot, h) {
+    h = h || hold();
+    var home = prep(h); if (slot !== 'away' && slot !== 'third') return home;
+    var v = {}, st = h.kits[slot] || {};
     Object.keys(SLOT_DEF[slot]).forEach(function (k) { v[k] = st[k] != null ? st[k] : SLOT_DEF[slot][k]; });
     OWN_KEYS.forEach(function (k) { v[k] = home[k]; });
     return v;
   }
-  function current() { get(); return view(S.kitUse); }
+  function current() { get(); return view(S.kitUse, S); }
+  function viewOf(p) { p = p || {}; var h = { kit: Object.assign({}, p.kit), kits: { away: Object.assign({}, p.kits && p.kits.away), third: Object.assign({}, p.kits && p.kits.third) }, kitUse: p.kitUse }; prep(h); return Object.assign({}, view(h.kitUse, h)); }
+  // a saved-shape kit (S.kit, a slot from People.kitOf with _slot, or {}) as a full kit
+  function fill(k) {
+    k = k && typeof k === 'object' ? k : {};
+    var out = defaults(), slot = k._slot;
+    if (slot === 'away' || slot === 'third') Object.assign(out, SLOT_DEF[slot]);
+    Object.keys(k).forEach(function (key) { if (key !== '_slot' && k[key] != null) out[key] = k[key]; });
+    return out;
+  }
   var editing = null;                          // the slot shown in the panel
-  function slotNow() { return editing || (get(), S.kitUse) || 'home'; }
+  function slotNow() { return editing || (prep(hold()), hold().kitUse) || 'home'; }
+  function store() { if (!who) persist(); else if (who.save) who.save(); }
+  function skinNow() { var a = who ? who.h.avatar : (window.People ? People.own() : null); return (a && a.skin) || '#efc19d'; }
+  function backNow() { return who ? String(who.h.back != null && who.h.back !== '' ? who.h.back : (who.h.name || '')).toUpperCase().slice(0, 12) : String(typeof backName === 'function' ? backName() : (S.name || '')).toUpperCase().slice(0, 12); }
 
   function beatCount() { return (S.beaten || []).filter(Boolean).length; }
   function lvl() { return typeof level === 'function' ? level() : 1; }
@@ -121,7 +145,7 @@ var Kit = (function () {
       '<path d="' + shirt + '" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="3" stroke-linejoin="round"/>';
     // collar
     if (back || k.collar === 'round') h += '<path d="M82 10 Q100 24 118 10" fill="none" stroke="' + k.trim + '" stroke-width="7" stroke-linecap="round"/>';
-    else h += '<path d="M84 10 L100 40 L116 10 Z" fill="#efc19d"/><path d="M82 9 L100 44 L118 9" fill="none" stroke="' + k.trim + '" stroke-width="7" stroke-linejoin="miter"/><path d="M83 9 L100 41 L117 9" fill="none" stroke="' + t2 + '" stroke-width="1.4"/>';
+    else h += '<path d="M84 10 L100 40 L116 10 Z" fill="' + skinNow() + '"/><path d="M82 9 L100 44 L118 9" fill="none" stroke="' + k.trim + '" stroke-width="7" stroke-linejoin="miter"/><path d="M83 9 L100 41 L117 9" fill="none" stroke="' + t2 + '" stroke-width="1.4"/>';
     // cuffs
     h += long ? '<path d="M22 150 L40 152 M160 152 L178 150" stroke="' + k.trim + '" stroke-width="6" stroke-linecap="round"/>'
       : '<path d="M18 46 L36 78 M182 46 L164 78" stroke="' + k.trim + '" stroke-width="6" stroke-linecap="round"/>';
@@ -129,7 +153,7 @@ var Kit = (function () {
     var art = window.KitArt;
     if (back) {
       h += '<text x="100" y="128" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="62" fill="' + acc + '" stroke="' + (lum(k.shirt) > 0.55 ? '#ffffff' : k.trim) + '" stroke-width="3" paint-order="stroke">' + esc(num) + '</text>' +
-        '<text x="100" y="62" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="15" fill="' + acc + '">' + esc(String(typeof backName === 'function' ? backName() : (S.name || '')).toUpperCase().slice(0, 12)) + '</text>';
+        '<text x="100" y="62" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="15" fill="' + acc + '">' + esc(backNow()) + '</text>';
     } else {
       if (k.frontNum !== false) h += '<text x="100" y="132" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="56" fill="' + acc + '" transform="translate(100 0) scale(.62 1) translate(-100 0)">' + esc(num) + '</text>';
       if (art && k.crest !== 'none') h += '<image href="' + art.crestURL(k.crest, 64) + '" x="118" y="44" width="20" height="23"/>';
@@ -145,6 +169,10 @@ var Kit = (function () {
   function preview() {
     if (!has3D()) return;
     var my = ++serial, o = { kit: Object.assign({ trim2: null }, view(slotNow())) };   // trim2: null = the slot's own (or the shirt colour)
+    if (window.People) {                                  // the right person: their avatar (and, for someone else, their name and number)
+      var av = who ? People.clean(who.h.avatar) : People.own(); o.avatar = av;
+      if (who) { o.name = backNow(); o.number = String(who.h.jersey || '7'); o.kit.hair = av.hair; if (['swept', 'short', 'spiky', 'curly', 'long'].indexOf(av.hairStyle) >= 0) o.kit.hairStyle = av.hairStyle; }
+    }
     ['front', 'back'].forEach(function (v) {
       T3.playerPortrait(o, v === 'front' ? 512 : 320, VIEWS[v]).then(function (url) {
         if (!url || my !== serial) return; shots[v] = url;
@@ -170,8 +198,9 @@ var Kit = (function () {
     }).join('') + '</div>';
   }
   function html() {
-    var home = get(), slot = slotNow(), k = view(slot), num = String(S.jersey || '7'), pv = has3D(), use = S.kitUse;
-    var h = '<h2 class="hero">' + (typeof ico === 'function' ? ico('star') : '') + ' My kit</h2>';
+    var hd = hold(), home = prep(hd), slot = slotNow(), k = view(slot), num = String(hd.jersey || '7'), pv = has3D(), use = hd.kitUse;
+    var title = who && who.title ? esc(who.title) : 'My kit';
+    var h = '<h2 class="hero">' + (typeof ico === 'function' ? ico('star') : '') + ' ' + title + '</h2>';
     h += '<div class="kit-slots" role="tablist">' + SLOTS.map(function (s) {
       return '<button role="tab" aria-selected="' + (s[0] === slot) + '" class="kit-slot' + (s[0] === slot ? ' on' : '') + '" data-act="kitSlot" data-arg="' + s[0] + '">' +
         '<span class="kit-sd" style="background:' + view(s[0]).shirt + '"></span>' + s[1] + (s[0] === use ? '<small>wearing</small>' : '') + '</button>';
@@ -198,8 +227,6 @@ var Kit = (function () {
     h += '<h3>Captain\'s armband</h3><div class="kit-sw"><button class="kit-chip' + (home.armband ? '' : ' on') + '" data-act="kitPick" data-k="armband" data-arg="off">Off</button></div>' +
       sw('armbandCol', ARMBANDS, home.armband ? home.armbandCol : '');
     h += '<h3>Goalkeeper gloves</h3>' + sw('gloves', ONOFF, home.gloves ? 'on' : 'off', false);
-    h += '<h3>Hair colour</h3>' + sw('hair', HAIR, home.hair);
-    h += '<h3>Hair style</h3>' + sw('hairStyle', STYLES, home.hairStyle, false);
     h += '<h3>Win celebration</h3><div class="kit-cel">' + CELEB.map(function (c) {
       var open = celebOpen(c), on = home.celebrate === c.id;
       return '<button class="kit-ce' + (on ? ' on' : '') + (open ? '' : ' lock') + '" data-act="' + (open ? 'kitPick' : 'kitLocked') + '" data-k="celebrate" data-arg="' + c.id + '">' +
@@ -213,7 +240,7 @@ var Kit = (function () {
     var box = document.getElementById('modalBox');
     if (box && document.getElementById('modal').classList.contains('on') && box.querySelector('.kit')) {
       var sc = box.scrollTop; box.innerHTML = html(); box.scrollTop = sc;
-    } else modal(html(), function () { if (box) box.classList.remove('kit-modal'); editing = null; });
+    } else modal(html(), function () { if (box) box.classList.remove('kit-modal'); editing = null; who = null; var d = doneCb; doneCb = null; if (d) d(); });
     box = document.getElementById('modalBox'); if (box) box.classList.add('kit-modal');
     var inp = document.getElementById('kitNumber');
     if (inp) inp.addEventListener('change', function () { setNum(inp.value); });
@@ -221,38 +248,53 @@ var Kit = (function () {
   }
   function setNum(v) {
     var n = parseInt(String(v).replace(/[^0-9]/g, ''), 10); if (!(n >= 1)) n = 1; if (n > 99) n = 99;
-    S.jersey = String(n); persist(); changed();
+    hold().jersey = String(n); store(); changed();
   }
-  function changed() { if (typeof T3 !== 'undefined' && T3.playerRefresh) T3.playerRefresh(); render(); }
-  function open() { get(); editing = S.kitUse; render(); }
+  function changed() { if (!who && typeof T3 !== 'undefined' && T3.playerRefresh) T3.playerRefresh(); render(); }
+  // target: nothing / { kind: 'own' } = the save's own kits; { kind: 'crew', id }; { kind: 'draft', person } (see the top)
+  var doneCb = null, lastWho = 'own';
+  function open(target) {
+    var t = target && typeof target === 'object' ? target : null;
+    who = null; doneCb = t && typeof t.onDone === 'function' ? t.onDone : null;
+    if (t && t.kind === 'crew' && window.People) {
+      var m = People.member(t.id); if (!m) { if (doneCb) { var d = doneCb; doneCb = null; d(); } return; }
+      who = { h: m, title: m.name + "'s kit", save: function () { People.saveMember(who.h); persist(); } };
+    } else if (t && t.kind === 'draft' && t.person) {
+      who = { h: t.person, title: t.title || (t.person.name ? String(t.person.name) + "'s kit" : 'My kit'), save: null };
+    }
+    var key = who ? (t.kind + (t.id || '')) : 'own';
+    if (key !== lastWho || who) shots = { front: null, back: null };   // never show someone else's picture
+    lastWho = key;
+    prep(hold()); editing = hold().kitUse; render();
+  }
   function pop() { if (typeof Snd !== 'undefined' && Snd.pop) Snd.pop(); }
 
   ACT.openKit = function () { pop(); open(); };
   ACT.kitSlot = function (el) { var s = el.dataset.arg; if (s !== 'home' && s !== 'away' && s !== 'third') return; editing = s; shots = { front: null, back: null }; pop(); render(); };
-  ACT.kitWear = function () { get(); S.kitUse = slotNow(); persist(); if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); changed(); };
+  ACT.kitWear = function () { prep(hold()); hold().kitUse = slotNow(); store(); if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); changed(); };
   ACT.kitPick = function (el) {
-    var home = get(), key = el.dataset.k, v = el.dataset.arg, slot = slotNow();
+    var home = prep(hold()), key = el.dataset.k, v = el.dataset.arg, slot = slotNow();
     if (KIT_KEYS.indexOf(key) < 0 && OWN_KEYS.indexOf(key) < 0) return;
     if (key === 'frontNum' || key === 'gloves' || key === 'armband') v = v === 'on';
     if (key === 'armbandCol') home.armband = true;
     if (OWN_KEYS.indexOf(key) >= 0 || slot === 'home') home[key] = v;
-    else S.kits[slot][key] = v;
-    persist(); pop(); changed();
+    else hold().kits[slot][key] = v;
+    store(); pop(); changed();
   };
-  ACT.kitNum = function (el) { var n = (parseInt(S.jersey, 10) || 7) + (+el.dataset.arg || 0); if (n < 1) n = 99; if (n > 99) n = 1; setNum(n); };
+  ACT.kitNum = function (el) { var n = (parseInt(hold().jersey, 10) || 7) + (+el.dataset.arg || 0); if (n < 1) n = 99; if (n > 99) n = 1; setNum(n); };
   ACT.kitLocked = function (el) {
     var c = find(el.dataset.arg); if (typeof Snd !== 'undefined' && Snd.boop) Snd.boop();
     var note = document.querySelector('.kit-note'); if (note && c) note.textContent = c.name + ': ' + lockText(c) + ' to unlock it.';
   };
   // reset the kit being edited to its defaults (his own things - hair, boots, armband, gloves, celebration - stay)
   ACT.kitReset = function () {
-    var home = get(), slot = slotNow();
+    var home = prep(hold()), slot = slotNow();
     if (slot === 'home') { var d = defaults(); KIT_KEYS.forEach(function (k) { if (d[k] != null) home[k] = d[k]; else delete home[k]; }); }
-    else S.kits[slot] = {};
-    persist(); changed();
+    else hold().kits[slot] = {};
+    store(); changed();
   };
   ACT.kitDone = function () { if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); closeModal(); };
 
-  return { get: get, current: current, open: open, defaults: defaults, celebOpen: celebOpen, celebration: celebration,
+  return { get: get, current: current, open: function (t) { open(t); }, fill: fill, viewOf: viewOf, defaults: defaults, celebOpen: celebOpen, celebration: celebration,
     celebrations: function () { return CELEB.map(function (c) { return { id: c.id, name: c.name, open: celebOpen(c), lock: celebOpen(c) ? '' : lockText(c) }; }); } };
 })();
