@@ -671,7 +671,7 @@ var Online = (function () {
     if (!G || !G.players[who]) return null;
     if (who === 0) return T3.playerMove || null;
     if (isAI(who)) { if (!T3.creatureMove) return null; return function (id, zone, done) { if (T3.creatureUse) T3.creatureUse(aiSeat(who)); T3.creatureMove(id, zone, done); }; }
-    return (mateSeat() === who && T3.mateMove) ? T3.mateMove : null;
+    return otherMove(who);
   }
   function startMirror() {
     closeModal(); $('#builder').classList.remove('on'); B = null; O.open = null; O.resultOpen = 0; O.inLobby = false; O.rmWait = false;
@@ -1061,39 +1061,49 @@ var Online = (function () {
     var hs = idxs().filter(function (i) { return i !== 0 && !isAI(i); });
     return hs.length ? hs[0] : null;
   }
+  // who carries a cube for another person: the first other human is the mate, the second (three devices, no creature) mate2
+  function otherMove(who) {
+    if (mateSeat() === who && T3.mateMove) return T3.mateMove;
+    var hs = idxs().filter(function (i) { return i !== 0 && !isAI(i); });
+    return hs.length > 1 && hs[1] === who && !idxs().some(isAI) && T3.mate2Move ? T3.mate2Move : null;
+  }
   function avatars(creaturesDone) {
     if (!G || G.mode !== 'online' || !O) return;
     var others = idxs().filter(function (i) { return i !== 0; }), ais = others.filter(isAI), hs = others.filter(function (i) { return !isAI(i); });
     var creSig = ais.map(function (i) { return i + ':' + G.players[i].aiIdx; }).join(',');
-    var sig = creSig + '|' + hs.map(function (i) { var p = G.players[i]; return i + JSON.stringify(p.look) + p.jersey + p.name; }).join(',') + '|' + (S.set.me || '');
+    var sig = creSig + '|' + hs.map(function (i) { var p = G.players[i]; return i + JSON.stringify(p.look) + p.jersey + p.name; }).join(',') + '|' + (S.set.me || '') + '|' + (S.avatar ? JSON.stringify(S.avatar) + (S.kitUse || '') + JSON.stringify(S.kit || {}) : '');
     if (O.avSig === sig) return;
     var oldCre = O.avCre;
     O.avSig = sig; O.avCre = creSig;
     var grown = grownUp();
-    if (T3.playerSet) T3.playerSet({ who: grown ? 'tata' : 'kid', name: grown ? S.name : (typeof backName === 'function' ? backName() : S.name), number: S.jersey || '7' });
+    if (T3.playerSet) T3.playerSet(typeof mySpec === 'function' ? mySpec() : { who: grown ? 'tata' : 'kid', name: grown ? S.name : (typeof backName === 'function' ? backName() : S.name), number: S.jersey || '7' });   // (PEOPLE: his own avatar and kit)
     if (!creaturesDone && creSig !== oldCre) {
       var list = ais.map(function (i) { return G.players[i].ai; });
       if (list.length > 1 && T3.setCreatures) T3.setCreatures(list.map(function (o) { return { kind: o.kind, pack: o.pack || 'classic' }; }));
       else setCreature(list[0] ? list[0].kind : null, list[0] && list[0].pack);
       if (list.length && typeof creaturesEnter === 'function') creaturesEnter();
     }
-    if (hs.length) {
-      var p = G.players[hs[0]], L = p.look || {};
-      var spec = { who: L.who === 'tata' ? 'tata' : 'kid', seat: ais.length ? 'left' : 'far', name: L.back || p.name, number: p.jersey || '7' };
-      if (L.kit) spec.kit = L.kit;
-      mateShow(spec);
-    } else mateShow(null);
+    // PEOPLE: every other person at the table as themselves: their avatar travels inside their kit text (kit.av).
+    // Two other people (three devices): they stand across the table, the next to play on his left.
+    var two = hs.length > 1 && !ais.length && !!T3.mate2;
+    function specFor(i, seat) {
+      var p = G.players[i], L = p.look || {}, spec = { who: L.who === 'tata' ? 'tata' : 'kid', seat: seat, name: L.back || p.name, number: p.jersey || '7' };
+      if (L.kit) { spec.kit = Object.assign({}, L.kit); if (L.kit.av && window.People) { var av = People.unpack(L.kit.av); if (av) spec.avatar = av; } delete spec.kit.av; }
+      return spec;
+    }
+    if (hs.length) mateShow(specFor(hs[0], two ? 'farL' : ais.length ? 'left' : 'far')); else mateShow(null);
+    if (T3.mate2) T3.mate2(two ? specFor(hs[1], 'farR') : null);
   }
   // For js/game.js avatarMoveFn (optional hook, see docs/handoff/online.md): on the host, who carries a human's cube.
   function moveFn(who) {
     if (!on() || !isHost() || !T3.active()) return null;
     if (who === 0) return T3.playerMove || null;
-    return (mateSeat() === who && T3.mateMove) ? T3.mateMove : null;
+    return otherMove(who);
   }
 
   // ================================================================ MENU
   function setupCardHTML() {
-    return '<div class="opp mode" data-act="online"><span class="avatar lg" style="background:#d0ebff;color:#1864ab;font-size:46px">' + ico('people') + '</span><h3>Online</h3><div class="otitle">Play on two or three devices, far apart (talk on FaceTime)</div></div>';
+    return '<div class="opp mode" data-act="online"><span class="avatar lg" style="background:#d0ebff;color:#1864ab;font-size:46px">' + ico('people') + '</span><h3>Online</h3><div class="otitle">Play on two or three devices, far apart. You can talk and see each other</div></div>';
   }
   function saveIdentity() {
     var n = $('#olName'), j = $('#olJersey');

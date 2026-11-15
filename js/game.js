@@ -97,7 +97,7 @@ function avatarMoveFn(who) {
   return null;
 }
 // CUPTOSS: who handles the cup and the reroll toss in 3D: 'me' (the kid), 'mate' (Tata), a creature seat 0/1, or null (today's pour)
-function rollerOf(i) { var f = avatarMoveFn(i); return isAI(i) ? aiSeat(i) : f === T3.mateMove ? 'mate' : f === T3.playerMove ? 'me' : null; }
+function rollerOf(i) { var f = avatarMoveFn(i); return isAI(i) ? aiSeat(i) : f && f === T3.mate2Move ? 'mate2' : f === T3.mateMove ? 'mate' : f === T3.playerMove ? 'me' : null; }
 // A human's move: the kid (or the mate) picks the cube up and lobs it into the zone, like aiPlace for creatures.
 function humanPlace(id, zone, who) {
   var fn = avatarMoveFn(who);
@@ -397,7 +397,7 @@ ACT.tutorial = function () { startTutorial(); };
 ACT.quitGame = function () {
   modal('<h2>Leave the game?</h2><p style="text-align:center">The points in this match won\'t count, but all your XP and badges are saved.</p><div class="row"><button class="btn" data-act="closeModal">Keep playing</button><button class="btn pink" data-act="reallyQuit">Leave</button></div>');
 };
-ACT.reallyQuit = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); if (window.Missions && Missions.close) Missions.close(); $('#builder').classList.remove('on'); B = null; G = null; TUT = null; gotoTitle(); };
+ACT.reallyQuit = function () { closeModal(); mateShow(null); mate2Show(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopBabble) Snd.stopBabble(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); if (window.Missions && Missions.close) Missions.close(); $('#builder').classList.remove('on'); B = null; G = null; TUT = null; gotoTitle(); };
 
 ACT.cubeTap = function (el) {
   if (G && G.carrying && T3.playerMoveFinish) { G.skipCarry = G.phase === 'goal'; T3.playerMoveFinish(); }   // a tap lands the lob at once
@@ -919,7 +919,7 @@ function endMatch() {
   if (fw === '3d') setTimeout(function () { if (G) showEnd(); }, 2600); else showEnd();
 }
 ACT.rematch = function () { var m = G.mode, o = G.oppIdx, cfg = G.cfg; closeModal(); drainQueue(function () { startMatch(m, o, cfg); }); };
-ACT.toMenu = function () { closeModal(); mateShow(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
+ACT.toMenu = function () { closeModal(); mateShow(null); mate2Show(null); if (window.Commentary) Commentary.hide(); if (window.WeatherSfx) WeatherSfx.set('off'); if (Snd.ambience) Snd.ambience('off'); if (Snd.stopDance) Snd.stopDance(); if (window.Social && Social.clearBubbles) Social.clearBubbles(); drainQueue(function () { G = null; gotoTitle(); }); };
 
 // ======================= COMPUTER PLAYER =======================
 // The decisions themselves live in js/ai.js (shared with the background worker and tests/playtest.js).
