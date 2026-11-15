@@ -1224,7 +1224,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     cup.visible = true; cup.position.copy(pour.from); cup.rotation.set(0, 0, 0); cup.scale.setScalar(1);
     // CUPTOSS: the roller picks the cup up and dumps it (a figure at the table, motion not reduced); else the cup tips as before
     var byv = opts && opts.by != null ? opts.by : (nextBy && performance.now() - nextBy.t < 3000 ? nextBy.by : null); nextBy = null;
-    var dmp = (byv != null && !document.hidden) ? planDump(byv) : null;
+    var dmp = (byv != null && !document.hidden) ? planDump(byv, null, true) : null;   // (true: may walk up to the rim first)
     if (dmp) { gEnd = orderGather(gather, dmp.R, 0.022); pour.dump = dmp; cup.scale.setScalar(dmp.cs); pour.gLate = 0.22; dmp.start = Math.max(0.75, 0.3 + pour.gLate + gEnd + 0.15); hoverPlan(dmp, gather, pour.gLate); pour.lag = dmp.start; pour.cupPos = cup.position; } // (the cubes wait until the cup is there)
     Snd.cupRattle();
     camSnap(); if (orbit) orbit.reset(); pour.cupPos = cup.position; // a new shake: back to the seat (a half-second ease)
@@ -1388,7 +1388,9 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     });
     return t1 >= t0 ? t0 : null;
   }
-  function planDump(by, keep) {   // keep: { id: true } cubes that stay on the table (the cup must not stand on them)
+  // walkOk (the pour only): a person who cannot reach from the seat (a small child standing back across the table)
+  // walks to the rim first: D.pending until he is there (tickPour waits), then his hands take the cup as usual.
+  function planDump(by, keep, walkOk) {   // keep: { id: true } cubes that stay on the table (the cup must not stand on them)
     if (by == null || gameCalm() || document.hidden || !layout || !host || current !== 'game') return null;
     var g = gripOf(by); if (!g) return null;
     var cs = DUMP.cs, rIn = 1.75 * cs + 0.35, rB = 1.4 * cs + 0.12, te = feltEntry(g.x, g.z, g.fx, g.fz); if (te == null) return null;
@@ -1412,7 +1414,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var far = (Math.hypot(fa.x - g.x, fa.z - g.z) > Math.hypot(fb.x - g.x, fb.z - g.z) ? fa : fb).clone();
     if (g.kind !== 'creature') far.x += dx * 0.6, far.z += dz * 0.6;   // a person plans a little further: the hand reaching across his body gets there too
     var ok = false;
-    try { ok = g.set({ far: far, fn: function (now, out) { if (D.w <= 0) { out.w = 0; return; } out.a = D.ha; out.b = D.hb; out.w = D.w; out.open = D.open; out.look = D.look; } }); } catch (e) { ok = false; }
+    D.hold = { far: far, fn: function (now, out) { if (D.w <= 0) { out.w = 0; return; } out.a = D.ha; out.b = D.hb; out.w = D.w; out.open = D.open; out.look = D.look; } };
+    try { ok = g.set(D.hold); } catch (e) { ok = false; }
+    if (!ok && walkOk && g.walk) {   // PEOPLE: up to the rim first (the spot from which both hands reach the cup where it stands and where it is tipped)
+      var went = false, ra = R.clone().addScaledVector(ax, hr), rb = R.clone().addScaledVector(ax, -hr);
+      try { went = g.walk([fa, fb, ra, rb], function () { D.arrived = true; }); } catch (e) { went = false; }
+      if (went) { D.pending = true; D.walked = true; return D; }
+    }
     return ok ? D : null;
   }
   // the cup comes in to a spot just above its own place and only sets down once the cubes lying there have gone in
@@ -1544,7 +1552,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   }
   function releaseDump(D) {
     if (!D || D.freed) return; D.freed = true; D.w = 0;
-    try { D.g.set(null); } catch (e) {}
+    try { D.g.set(null); if (D.walked && D.g.home) D.g.home(); } catch (e) {}   // (PEOPLE: back to the seat after a walk to the rim)
   }
   function endDump(D) { if (!D) return; releaseDump(D); if (D.col && world) { world.removeBody(D.col); } D.col = null; }
   function finishPourFast() {
@@ -1565,7 +1573,13 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
     var D = pour.dump;
     if (D) {
       // CUPTOSS: the cup comes in and settles on the felt in front of the roller (0.6 s), the cubes go in, then the dump
-      if (tc < D.start) arriveTick(D, pour.from, tc);
+      if (D.pending) {   // PEOPLE: he is still walking up to the rim: the cup waits where it stands (at most 4 s more)
+        if (D.arrived || tc > D.start + 4) {
+          var took = false; if (D.arrived) { try { took = D.g.set(D.hold); } catch (e) { took = false; } }
+          D.pending = false; D.start = Math.max(D.start, tc + (took ? 0.2 : 0));   // (not there in time: the cup tips by itself, as when nobody can hold it)
+        }
+      }
+      if (tc < D.start || D.pending) arriveTick(D, pour.from, tc);
       else {
         var dtc = Math.min(Math.max(dt, 0), 0.05);
         if (tc - D.start >= DUMP.back && tc - D.start < DUMP.back + 0.04 && holdUp(D, dtc)) D.start += dtc;   // CUPFIX: held up, just over its spot
@@ -1908,7 +1922,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   // cup's path is fixed, so each cube leaves the mouth exactly where the cup is drawn), then played back relabelled.
   function startRedump(by, list, onToss, fin) {
     var keep = {}; meshes.forEach(function (m, i) { keep[i] = true; }); list.forEach(function (e) { keep[e.id] = false; });
-    var D = planDump(by, keep); if (!D) return false;
+    var D = planDump(by, keep); if (!D) return false;   // (no walk here: a reroll by someone who cannot reach falls back to the other ways)
     var J = { D: D, ids: {}, clock: 0, fin: fin, onToss: onToss, gather: [], nLoad: 0, from: new THREE.Vector3(layout.W / 2 + 5, 8, layoutName === 'tall' ? -3 : -1.5) };
     list.forEach(function (e) {
       var m = meshes[e.id]; anims = anims.filter(function (a) { return a.m !== m; }); m.userData.tpos = null; m.userData.lock.visible = false; J.ids[e.id] = e.s;
