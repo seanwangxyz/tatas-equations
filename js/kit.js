@@ -103,7 +103,11 @@ var Kit = (function () {
   function slotNow() { return editing || (prep(hold()), hold().kitUse) || 'home'; }
   function store() { if (!who) persist(); else if (who.save) who.save(); }
   function skinNow() { var a = who ? who.h.avatar : (window.People ? People.own() : null); return (a && a.skin) || '#efc19d'; }
-  function backNow() { return who ? String(who.h.back != null && who.h.back !== '' ? who.h.back : (who.h.name || '')).toUpperCase().slice(0, 12) : String(typeof backName === 'function' ? backName() : (S.name || '')).toUpperCase().slice(0, 12); }
+  function backNow() {
+    if (who) return String(who.h.back != null && who.h.back !== '' ? who.h.back : (who.h.name || '')).toUpperCase().slice(0, 12);
+    if (window.Avatar && Avatar.printedBack) return Avatar.printedBack(S.name, S.backName == null ? 'TYSON W.' : S.backName);   // placeholders follow the name
+    return String(typeof backName === 'function' ? backName() : (S.name || '')).toUpperCase().slice(0, 12);
+  }
 
   function beatCount() { return (S.beaten || []).filter(Boolean).length; }
   function lvl() { return typeof level === 'function' ? level() : 1; }

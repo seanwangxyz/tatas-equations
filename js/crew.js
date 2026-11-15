@@ -11,7 +11,11 @@
 //   Crew.person(id)           { id: 'own' | 'c..', name, jersey, back (the printed back name), avatar, kit (saved shape) } or null
 //   Crew.faceHTML(p, size)    a small round picture of someone (3D portrait once ready, the flat drawing meanwhile)
 var Crew = (function () {
-  function bn() { return typeof backName === 'function' ? backName() : String(S.backName || S.name || ''); }
+  // the save's own printed back name: a placeholder ('PLAYER', or 'TYSON W.' for anyone not called Tyson) follows the name
+  function bn() {
+    if (window.Avatar && Avatar.printedBack) return Avatar.printedBack(S.name, S.backName == null ? 'TYSON W.' : S.backName);
+    return typeof backName === 'function' ? backName() : String(S.backName || S.name || '');
+  }
   function person(id) {
     if (id === 'own') return { id: 'own', name: String(S.name || ''), jersey: String(S.jersey || '7'), back: bn(), avatar: People.own(), kit: window.Kit ? Kit.current() : (S.kit || {}) };
     var m = People.member(id);

@@ -265,22 +265,34 @@ var Avatar = (function () {
   }
   // ======================= THE MAKER =======================
   var M = null;                                  // { t, opts, p (the person being made), start, view, tab, beard, shots }
-  var TABS = [['who', 'Who'], ['body', 'Body'], ['skin', 'Skin'], ['face', 'Face'], ['hair', 'Hair'], ['kit', 'Kit']];
+  var TABS = [['who', 'Who'], ['body', 'Body'], ['skin', 'Skin'], ['face', 'Face'], ['hair', 'Hair'], ['clothes', 'Clothes']];   // + 'looks' (Start from a look)
   var VIEWS3D = { front: { yaw: -0.2 }, side: { yaw: -Math.PI / 2 }, back: { yaw: Math.PI } };
   var OLD_STYLES = ['swept', 'short', 'spiky', 'curly', 'long'];   // the styles the old kit (and older 3D code) knew
-  var PLACEHOLDER_NAME = 'Champ', PLACEHOLDER_BACK = 'TYSON W.';
+  var PLACEHOLDER_NAME = 'Champ', PLACEHOLDER_BACK = 'TYSON W.', NEW_BACK = 'PLAYER';
   function clone(o) { return JSON.parse(JSON.stringify(o == null ? {} : o)); }
   function beardOK(body) { return body === 'teen' || body === 'adult-a' || body === 'adult-b'; }
   function sv(s) { return typeof s === 'string' ? s : ''; }
+  // "no back name chosen": empty, 'PLAYER' (a brand-new save, People.freshStart) or 'TYSON W.' (older builds' default)
+  // for anyone whose name does not start with "Tyson". Then the back of the shirt follows the typed name.
+  function noBack(bk, nm) {
+    var b = sv(bk).trim().toUpperCase();
+    return !b || b === NEW_BACK || (b === PLACEHOLDER_BACK && !/^tyson\b/i.test(sv(nm).trim()));
+  }
+  // the name printed on the back for a name and a saved back name: a placeholder follows a typed name; while no name was
+  // typed (empty or 'Champ') the saved back name is shown as it is ('PLAYER' if there is none)
+  function printedBack(name, back) {
+    var n = sv(name).trim(); if (n === PLACEHOLDER_NAME) n = '';
+    return (!n ? (sv(back).trim() || NEW_BACK) : noBack(back, n) ? n : sv(back).trim()).toUpperCase().slice(0, 12);
+  }
   // the person being made: name, number, back name, avatar, and the kit fields in the shape of S.kit / S.kits / S.kitUse
   function personOf(t) {
     if (t.kind === 'own') {
       if (window.Kit) Kit.get();
-      // a brand-new save has placeholders (config.js): name 'Champ', back 'TYSON W.' (the owner's son's shirt). Those count as
-      // not chosen: the name box starts empty and the back name follows the typed name until someone types their own.
-      var nm = sv(S.name), bk = S.backName == null ? 'TYSON W.' : sv(S.backName);
+      // a brand-new save has placeholders: name 'Champ', back 'PLAYER' (People.freshStart; older builds: 'TYSON W.', the
+      // owner's son's shirt). Those count as not chosen: the name box starts empty and the back name follows the typed name.
+      var nm = sv(S.name), bk = S.backName == null ? PLACEHOLDER_BACK : sv(S.backName);
       if (nm === PLACEHOLDER_NAME) nm = '';
-      if (bk === PLACEHOLDER_BACK && !/^tyson\b/i.test(nm)) bk = '';
+      if (noBack(bk, nm)) bk = '';
       return { id: 'own', name: nm, back: bk, jersey: String(S.jersey || '7'), avatar: People.own(),
         kit: clone(S.kit), kits: clone(S.kits), kitUse: S.kitUse || 'home' };
     }
@@ -297,6 +309,49 @@ var Avatar = (function () {
   function portraitInput(d) {
     var k = Object.assign({}, d.kit); k.hair = d.avatar.hair; if (OLD_STYLES.indexOf(d.avatar.hairStyle) >= 0) k.hairStyle = d.avatar.hairStyle;
     return { avatar: d.avatar, kit: k, name: d.name, number: d.number };
+  }
+  // ---------- ready-made looks (People.STARTERS) ----------
+  // Apply a starter to a person (in place): the starter's avatar (keepBody: keep body, height and skin), the plain kit
+  // defaults plus the starter's kit keys (nothing left from any other kit; only the chosen win celebration stays),
+  // and the starter's shirt number unless keepNum.
+  function applyStarter(p, st, keepBody, keepNum) {
+    var cur = People.clean(p.avatar), a = People.clean(st.avatar);
+    if (keepBody) { a.body = cur.body; a.height = cur.height; a.skin = cur.skin; }
+    if (!beardOK(a.body)) a.beard = 'none';
+    p.avatar = People.clean(a);
+    var cel = p.kit && p.kit.celebrate, kit = Object.assign(window.Kit && Kit.defaults ? Kit.defaults() : {}, clone(st.kit));
+    if (cel) kit.celebrate = cel;
+    kit.hair = p.avatar.hair; kit.hairStyle = OLD_STYLES.indexOf(p.avatar.hairStyle) >= 0 ? p.avatar.hairStyle : (kit.hairStyle || 'swept');
+    p.kit = kit; p.kits = { away: {}, third: {} }; p.kitUse = 'home';
+    if (!keepNum) p.jersey = String(st.jersey || p.jersey || '7');
+    return p;
+  }
+  // what a starter looks like on this person (for its picture)
+  function starterShown(p, st, keepBody) { var q = applyStarter(clone(p), st, keepBody, true); q.jersey = String(st.jersey || q.jersey); return shown(q); }
+  // pictures of whole people (starters): the flat drawing at once, a 3D portrait when 3D is on, one request at a time
+  var LOOKS = { cache: {}, queue: [], busy: false };
+  function lookHTML(d) {
+    var key = 'l' + hash(JSON.stringify(d)), url = LOOKS.cache[key];
+    if (!url && has3D() && !LOOKS.queue.some(function (j) { return j.k === key; })) { LOOKS.queue.push({ k: key, d: d }); setTimeout(lookPump, 0); }
+    return '<span class="av-look' + (url ? ' ready' : '') + '" data-look="' + key + '">' + flat(d, 'front', 'full') + '<img alt="" src="' + (url || '') + '"></span>';
+  }
+  function lookPump() {
+    if (LOOKS.busy || !LOOKS.queue.length || !has3D()) return;
+    var job = LOOKS.queue.shift(); LOOKS.busy = true;
+    function next() { LOOKS.busy = false; setTimeout(lookPump, 30); }
+    try {
+      T3.playerPortrait(portraitInput(job.d), 300, VIEWS3D.front).then(function (url) {
+        if (url) { LOOKS.cache[job.k] = url; document.querySelectorAll('[data-look="' + job.k + '"]').forEach(function (el) { var img = el.querySelector('img'); if (img) img.src = url; el.classList.add('ready'); }); }
+        next();
+      }, next);
+    } catch (e) { next(); }
+  }
+  // the grid of starters as buttons (act: the tap handler, cur: the id shown as chosen)
+  function looksGrid(p, act, cur, keepBody) {
+    return '<div class="av-looks">' + People.STARTERS.map(function (st) {
+      var on = cur === st.id;
+      return '<button type="button" class="av-lk' + (on ? ' on' : '') + '" data-act="' + act + '" data-arg="' + esc(st.id) + '" aria-pressed="' + on + '">' + lookHTML(starterShown(p, st, keepBody)) + '<b>' + esc(st.name) + '</b></button>';
+    }).join('') + '</div>';
   }
   // ---------- the big picture ----------
   function picHTML() {
@@ -375,13 +430,33 @@ var Avatar = (function () {
         People.HAIR_COLORS.filter(function (c) { return c[0] !== a.hair; }).map(function (c) { return chip('streaks', c[0], a.streaks === c[0], c[1] + ' streaks', '<span class="av-dot streak" style="--h:' + a.hair + ';--s:' + c[0] + '"></span>', 'dot'); }).join('') + '</div>';
       h += h3('Extras') + tiles('acc', People.ACCS, a.acc);
       if (a.acc !== 'none') h += dots('accCol', People.ACC_COLORS, a.accCol);
-    } else if (M.tab === 'kit') {
-      var use = p.kitUse === 'away' ? 'away' : p.kitUse === 'third' ? 'third' : 'home';
-      h += h3('Kit') + '<div class="av-kit">' + flat(d, 'front', 'bust') + flat(d, 'back', 'bust') + '</div>' +
-        '<p class="av-tip">Wearing the ' + use + ' kit.</p><div class="row"><button type="button" class="btn blue" data-act="avKit">' + (typeof ico === 'function' ? ico('shirt') : '') + ' Design the kit</button></div>';
+    } else if (M.tab === 'clothes') {
+      h += h3('Clothes') + '<div class="av-row tiles">' + People.OUTFITS.map(function (o) {
+        return chip('outfit', o[0], a.outfit === o[0], o[1], flat({ avatar: with_({ outfit: o[0] }), kit: d.kit, number: d.number, name: d.name }, 'front', 'bust') + '<small>' + esc(o[1]) + '</small>', 'tile outfit');
+      }).join('') + '</div>';
+      if (a.outfit === 'kit') {
+        var use = p.kitUse === 'away' ? 'away' : p.kitUse === 'third' ? 'third' : 'home';
+        h += h3('Kit') + '<div class="av-kit">' + flat(d, 'front', 'bust') + flat(d, 'back', 'bust') + '</div>' +
+          '<p class="av-tip">Wearing the ' + use + ' kit.</p><div class="row"><button type="button" class="btn blue" data-act="avKit">' + (typeof ico === 'function' ? ico('shirt') : '') + ' Design the kit</button></div>';
+      } else {
+        h += h3('Colour') + dots('fit1', People.FIT_COLORS, a.fit1);
+        h += h3(SECOND[a.outfit] || 'Second colour') + dots('fit2', People.FIT_COLORS, a.fit2);
+        h += h3('Bottoms') + '<div class="av-row tiles">' + People.BOTTOMS.map(function (b) {
+          return chip('bottom', b[0], a.bottom === b[0], b[1], flat({ avatar: with_({ bottom: b[0] }), kit: d.kit }, 'front', 'legs') + '<small>' + esc(b[1]) + '</small>', 'tile legs');
+        }).join('') + '</div>' + dots('fit3', People.FIT_COLORS, a.fit3, function (c) { return c[1] + ' bottoms'; });
+        h += h3('Shoes') + '<div class="av-row tiles">' + People.SHOES.map(function (s) {
+          return chip('shoes', s[0], a.shoes === s[0], s[1], flat({ avatar: with_({ shoes: s[0] }), kit: d.kit }, 'side', 'feet') + '<small>' + esc(s[1]) + '</small>', 'tile feet');
+        }).join('') + '</div>' + dots('shoeCol', People.FIT_COLORS, a.shoeCol, function (c) { return c[1] + ' shoes'; });
+      }
+    } else if (M.tab === 'looks') {
+      h += h3('Start from a look') + '<p class="av-tip">Pick a picture. ' + (keepsBody() ? 'It changes the clothes, hair and face. The body, skin, name and number stay.' : 'It changes the clothes and the look. The name and number stay.') + ' You can change anything after.</p>' +
+        looksGrid(p, 'avStarter', M.picked, keepsBody());
     }
     return h;
   }
+  var SECOND = { school: 'Shirt and tie', cardigan: 'Top underneath', hoodie: 'Strings and cuffs', varsity: 'Sleeves', tee: 'Star on the front' };
+  // Start from a look keeps body, height and skin when they were already chosen: in this visit, or saved before
+  function keepsBody() { return !!(M && (M.touched || (M.t.kind === 'own' && S.avatar) || M.t.kind === 'crew')); }
   // ---------- the panel ----------
   function title() { return M.t.kind === 'new' ? 'New player' : M.t.kind === 'own' ? 'Make your player' : 'Change ' + esc(sv(M.p.name) || 'player') + '’s look'; }
   function html() {
@@ -390,8 +465,9 @@ var Avatar = (function () {
     return '<div class="av"><h2 class="av-h" tabindex="-1">' + title() + '</h2><div class="av-body">' +
       '<div class="av-side"><div class="av-picbox" aria-live="polite">' + picHTML() + '</div>' +
       '<div class="av-turns" role="group" aria-label="Turn the picture">' + turn + '</div>' +
-      '<div class="av-fun"><button type="button" class="btn small yellow" data-act="avSurprise">' + (typeof ico === 'function' ? ico('dice') : '') + ' Surprise me</button><button type="button" class="btn small" data-act="avReset">Start again</button></div></div>' +
-      '<div class="av-main"><div class="av-tabs" role="tablist" aria-label="Parts">' + tabs + '</div><div class="av-opts" id="avOpts" role="tabpanel" aria-labelledby="avTab-' + M.tab + '">' + section() + '</div></div></div>' +
+      '<div class="av-fun"><button type="button" class="btn small blue av-lookbtn" data-act="avLooks" aria-pressed="' + (M.tab === 'looks') + '">Start from a look</button>' +
+      '<button type="button" class="btn small yellow" data-act="avSurprise">' + (typeof ico === 'function' ? ico('dice') : '') + ' Surprise me</button><button type="button" class="btn small" data-act="avReset">Start again</button></div></div>' +
+      '<div class="av-main"><div class="av-tabs" role="tablist" aria-label="Parts">' + tabs + '</div><div class="av-opts" id="avOpts" role="tabpanel" ' + (M.tab === 'looks' ? 'aria-label="Start from a look"' : 'aria-labelledby="avTab-' + M.tab + '"') + '>' + section() + '</div></div></div>' +
       '<div class="av-foot"><button type="button" class="btn" data-act="avCancel">Cancel</button><button type="button" class="btn green" data-act="avDone">Done</button></div></div>';
   }
   function wire() {
@@ -425,8 +501,20 @@ var Avatar = (function () {
     var t = target && typeof target === 'object' ? target : { kind: 'own' };
     if (t.kind === 'crew' && !People.member(t.id)) t = { kind: 'new' };
     if (t.kind === 'new' && People.crew().length >= People.MAX_CREW) { full(opts); return; }
-    var p = personOf(t);
-    M = { t: t, opts: opts || {}, p: p, start: clone(p), view: 'front', tab: (opts && opts.tab) || 'who', beard: null, shots: {}, serial: 0, result: null };
+    opts = opts || {};
+    // a new player: the name, then a picture to start from, then the maker (opts.starter set = that step is done)
+    if (t.kind === 'new' && !opts.starter) {
+      var base = personOf(t);
+      steps({ title: 'New player', label: 'Name', name: sv(opts.name), person: base, quit: 'Cancel', noPic: true,
+        onPick: function (id, nm) { open(t, Object.assign({}, opts, { starter: id, name: nm, tab: 'body' })); },
+        onQuit: function () { if (typeof opts.onDone === 'function') opts.onDone(null); } });
+      return;
+    }
+    var p = personOf(t), st = opts.starter ? People.starter(opts.starter) : null;
+    if (t.kind === 'new' && sv(opts.name).trim()) p.name = People.cleanName(opts.name);
+    if (st) applyStarter(p, st, false, false);
+    var tab = opts.tab === 'kit' ? 'clothes' : opts.tab;
+    M = { t: t, opts: opts, p: p, start: clone(p), view: 'front', tab: tab || 'who', beard: null, shots: {}, serial: 0, result: null, touched: false, picked: st ? st.id : null };
     render(true);
   }
   function full(opts) {
@@ -497,11 +585,18 @@ var Avatar = (function () {
       else if (beardOK(v) && a.beard === 'none' && M.beard) { a.beard = M.beard; M.beard = null; }
     }
     if (k === 'hair' && a.streaks === v) a.streaks = 'none';
+    if (k === 'body' || k === 'height' || k === 'skin') M.touched = true;
     a[k] = v; M.p.avatar = People.clean(a); pop(); render();
+  };
+  ACT.avLooks = function () { if (!M) return; M.tab = M.tab === 'looks' ? 'clothes' : 'looks'; pop(); render(); var o = document.querySelector('#modalBox .av-opts'); if (o) o.scrollTop = 0; };
+  // a starter inside the maker: the look and the kit change; name, number and back name stay
+  ACT.avStarter = function (el) {
+    if (!M) return; var st = People.starter(el.dataset.arg); if (!st) return;
+    applyStarter(M.p, st, keepsBody(), true); M.picked = st.id; M.beard = null; pop(); render();
   };
   ACT.avNum = function (el) { if (!M) return; var n = (parseInt(M.p.jersey, 10) || 7) + (+el.dataset.arg || 0); if (n < 1) n = 99; if (n > 99) n = 1; M.p.jersey = String(n); var j = document.getElementById('avNum'); if (j) j.value = M.p.jersey; pop(); drawPic(); };
   ACT.avSurprise = function () { if (!M) return; M.p.avatar = surprise(M.p.avatar); if (typeof Snd !== 'undefined' && Snd.chime) Snd.chime(); render(); };
-  ACT.avReset = function () { if (!M) return; M.p = clone(M.start); M.beard = null; pop(); render(); };
+  ACT.avReset = function () { if (!M) return; M.p = clone(M.start); M.beard = null; M.touched = false; M.picked = M.opts.starter || null; pop(); render(); };
   ACT.avCancel = function () { if (!M) return; M.result = null; closeModal(); };
   ACT.avDone = function () {
     if (!M) return;
@@ -516,37 +611,63 @@ var Avatar = (function () {
     pop();
     Kit.open({ kind: 'draft', person: m.p, title: m.t.kind === 'own' ? 'My kit' : (sv(m.p.name) || 'Player') + "'s kit", onDone: function () { M = m; m.shots = {}; render(true); } });
   };
+  // ---------- the start steps: a name, then a picture to start from ----------
+  // o = { title, label, name, person (for the pictures), quit (the second button's words), intro,
+  //       onPick(starterId, typedName), onQuit(typedName) }. Exactly one of onPick / onQuit runs.
+  var ST = null;                                 // { o, step: 'name' | 'look', name }
+  function steps(o) { ST = { o: o, step: 'name', name: sv(o.name) }; stepRender(); }
+  function stepPerson() { var p = clone(ST.o.person); p.name = ST.name; return p; }
+  function stepHTML() {
+    var o = ST.o, p = stepPerson();
+    if (ST.step === 'name') {
+      return '<div class="av-first"><h2>' + esc(o.title) + '</h2>' + (o.noPic ? '' : '<div class="av-first-pic">' + flat(shown(p), 'front', 'bust') + '</div>') +
+        '<label class="av-lab" for="avFirstName">' + esc(o.label) + '</label><input class="av-in" id="avFirstName" type="text" maxlength="12" autocomplete="off" spellcheck="false" value="' + esc(ST.name) + '" placeholder="Type a name">' +
+        '<p>' + esc(o.intro || 'Next, pick a look to start from. You can change anything after.') + '</p>' +
+        '<div class="row"><button type="button" class="btn big green" data-act="avStepNext">Next</button><button type="button" class="btn" data-act="avStepQuit">' + esc(o.quit) + '</button></div></div>';
+    }
+    return '<div class="av-first av-start"><h2 tabindex="-1">Pick a look to start from</h2><p class="av-tip">Tap a picture. You can change anything after: hair, face, clothes, colours.</p>' +
+      looksGrid(p, 'avStepPick', null, false) +
+      '<div class="row"><button type="button" class="btn" data-act="avStepBack">Back</button><button type="button" class="btn" data-act="avStepQuit">' + esc(o.quit) + '</button></div></div>';
+  }
+  function stepRender() {
+    var me = ST, box = document.getElementById('modalBox'), md = document.getElementById('modal');
+    if (box && md && md.classList.contains('on') && box.classList.contains('av-stepbox') && box.querySelector('.av-first')) box.innerHTML = stepHTML();
+    else modal(stepHTML(), function () { stepEnd(); if (ST === me) { ST = null; if (me.o.onQuit) me.o.onQuit(sv(me.name).trim()); } });   // closed any other way = quit
+    box = document.getElementById('modalBox'); box.classList.add('av-stepbox'); box.classList.toggle('av-startbox', ST.step === 'look'); box.scrollTop = 0;
+    var inp = document.getElementById('avFirstName');
+    if (inp) { inp.addEventListener('input', function () { if (ST) ST.name = inp.value; }); try { inp.focus({ preventScroll: true }); } catch (e) {} }
+    else { var hd = box.querySelector('.av-start h2'); if (hd) try { hd.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  function stepEnd() { var box = document.getElementById('modalBox'); if (box) { box.classList.remove('av-stepbox'); box.classList.remove('av-startbox'); } }
+  function stepName() { var n = document.getElementById('avFirstName'); if (n && ST) ST.name = n.value; }
+  ACT.avStepNext = function () { if (!ST) return; stepName(); ST.step = 'look'; pop(); stepRender(); };
+  ACT.avStepBack = function () { if (!ST) return; ST.step = 'name'; pop(); stepRender(); };
+  ACT.avStepQuit = function () { if (!ST) return; stepName(); pop(); closeModal(); };
+  // a picture was tapped: the steps end (their pop-up is replaced by the maker, so "quit" never runs)
+  ACT.avStepPick = function (el) { var s = ST; if (!s) return; ST = null; stepEnd(); pop(); s.o.onPick(el.dataset.arg, sv(s.name).trim()); };
   // ---------- first time: a warm invitation, once ----------
-  // Leads with the name (the first thing a new player does), then "Make it!" opens the maker. Shown at most once by itself:
+  // The name first, then a picture to start from, then the maker on the Body tab. Shown at most once by itself:
   // S.avatarAsked = true the moment it appears (and it never appears for a save that already has S.avatar).
-  var FR = null;
-  function keepName() {
-    var n = document.getElementById('avFirstName'), v = n ? n.value.trim() : '';
-    if (!v) return;
+  // "Skip for now" (on either step) keeps a typed name and whatever look and kit the save has.
+  function keepName(v) {
+    v = sv(v).trim(); if (!v) return;
     S.name = People.cleanName(v, S.name || PLACEHOLDER_NAME);
-    if (S.backName == null || S.backName === PLACEHOLDER_BACK) { if (!/^tyson\b/i.test(S.name)) S.backName = S.name.toUpperCase().slice(0, 12); }
+    if (noBack(S.backName == null ? PLACEHOLDER_BACK : S.backName, S.name)) S.backName = S.name.toUpperCase().slice(0, 12);
     if (typeof persist === 'function') persist();
   }
   function firstRun(done) {
     function finish() { var d = done; done = null; if (typeof d === 'function') d(); }
     if (S.avatar || S.avatarAsked) { finish(); return; }
     S.avatarAsked = true; if (typeof persist === 'function') persist();
-    var nm = sv(S.name) === PLACEHOLDER_NAME ? '' : sv(S.name);
-    FR = finish;
-    modal('<div class="av-first"><h2>Make your player!</h2><div class="av-first-pic">' + flat({ avatar: People.own(), kit: window.Kit ? Kit.current() : {}, number: S.jersey || '7' }, 'front', 'bust') + '</div>' +
-      '<label class="av-lab" for="avFirstName">Your name</label><input class="av-in" id="avFirstName" type="text" maxlength="12" autocomplete="off" spellcheck="false" value="' + esc(nm) + '" placeholder="Type your name">' +
-      '<p>Pick your hair, your face and your football kit. You can change it any time.</p>' +
-      '<div class="row"><button class="btn big green" data-act="avFirstGo">Make it!</button><button class="btn" data-act="avFirstSkip">Skip for now</button></div></div>',
-      function () { var f = FR; FR = null; if (f) f(); });
-    var inp = document.getElementById('avFirstName'); if (inp) try { inp.focus({ preventScroll: true }); } catch (e) {}
+    var me = personOf({ kind: 'own' });
+    steps({ title: 'Make your player!', label: 'Your name', name: me.name, person: me, quit: 'Skip for now',
+      intro: 'Next, pick a look to start from. Then change your hair, your face and your clothes. You can change it any time.',
+      onPick: function (id, nm) { keepName(nm); open({ kind: 'own' }, { starter: id, tab: 'body', onDone: function () { finish(); } }); },
+      onQuit: function (nm) { keepName(nm); finish(); } });
   }
-  ACT.avFirstGo = function () {
-    keepName(); var f = FR; FR = null;              // the pop-up closes without "skipping": the maker calls done when it closes
-    open({ kind: 'own' }, { tab: sv(S.name) && S.name !== PLACEHOLDER_NAME ? 'body' : 'who', onDone: function () { if (f) f(); } });
-  };
-  ACT.avFirstSkip = function () { keepName(); closeModal(); };
   ACT.openAvatar = function () { pop(); open({ kind: 'own' }); };          // for a button anywhere: data-act="openAvatar"
 
-  return { open: open, firstRun: firstRun, flat: flat, surprise: surprise, active: function () { return !!M; } };
+  return { open: open, firstRun: firstRun, flat: flat, surprise: surprise, active: function () { return !!M; },
+    printedBack: printedBack, applyStarter: applyStarter };
 })();
 
