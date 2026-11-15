@@ -84,7 +84,7 @@ if (T3 && T3.ctx) (function () {
       wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
   var me = makeAvatar('main'), mate = makeAvatar('mate'), mate2 = makeAvatar('mate2');
-  var needPlace = true, lastLayout = null;
+  var needPlace = true, lastLayout = null, nearU = 1.4;
 
   // ---------- who and which kit ----------
   function save() { return (typeof S !== 'undefined' && S) ? S : {}; }
@@ -274,13 +274,19 @@ if (T3 && T3.ctx) (function () {
     return { iz: iz, ry: ry, nz: ly / len, ny: -lz / len };
   }
   // SIZE RULE (see the header). Every person's dims are in one unit system (the kid's), so people of different builds
-  // drawn at the same scale s have believable relative heights. One scale per side of the table:
-  //   near side (the device's player and the 'left' seat): U = min(ref, fit(me)). ref = the scale today's kid gets at
-  //     the near seat (his head just touches the line of sight over the rim); fit(me) = the same for the device's player.
-  //     A smaller person (a little kid) gets ref, so she stands lower and smaller than the kid would; a grown-up gets
-  //     less than ref (his head must stay off the felt), and then everyone on the near side shrinks with him.
-  //   far side ('far', 'farL', 'farR'): FAR.s scaled like the near side (FAR.s x U / ref), raised if needed until the
-  //     smallest person there shows down to the middle of the chest over the far rim (farFit), at most FAR.max.
+  // drawn at the same scale s have believable relative heights.
+  //   ref = the scale today's kid gets at the near seat (his head just touches the line of sight over the near rim, at
+  //     most SEAT.maxS.kid); fit(A) = the same search for A's body.
+  //   near seat (the device's player): s = min(fit(me), ref x sqrt(kidHeight / herHeight)). A grown-up is limited by
+  //     fit (his head must stay off the felt), as Tata is today. Someone shorter than the kid stands at a little more
+  //     than ref: half way (in proportion) between "same scale as the kid" (she would sink below the bottom of the
+  //     picture: the camera may only back off so far) and "head at the rim like the kid" (she would look as tall).
+  //   'left' seat: the near side's scale U = min(ref, fit(me)), like today (the same world scale as the device's
+  //     player): a grown-up there is taller than a kid, a little kid smaller.
+  //   far seats ('far', 'farL', 'farR'): FAR.s, today's size for the person across the table. Someone too small to show
+  //     the top of the shirt over the far rim at FAR.s (farFit: FAR.chest x shoulder height clears the line of sight
+  //     over the far rim) first steps back (up to FAR.back: the line drops behind the rim), and only then is drawn
+  //     bigger (at most FAR.max). She still comes out clearly smaller than a grown-up beside her.
   // With no avatar anywhere this gives exactly today's sizes (the kid: ref; Tata: his fit; the far mate: FAR.s).
   var REF = { dims: KID, avatar: null, adult: false };
   var KID_H = KID.TOP - KID.FOOT, TATA_H = TATA.TOP - TATA.FOOT;
@@ -291,6 +297,11 @@ if (T3 && T3.ctx) (function () {
     return [Math.min(SEAT.minS.kid * KID_H, SEAT.minS.tata * TATA_H) / h, Math.max(SEAT.maxS.kid * KID_H, SEAT.maxS.tata * TATA_H) / h];
   }
   function refScale(camPos, L) { var b = seatFor(REF, camPos, L); return b ? b.s : 0; }
+  // the most the near seat may scale A (see the size rule): ref, a little more for someone shorter than the kid
+  function nearCap(A, ref) {
+    if (!(ref > 0) || !A.avatar) return ref;
+    return ref * Math.sqrt(Math.max(1, KID_H / Math.max(1, A.dims.TOP - A.dims.FOOT)));
+  }
   function seatFor(A, camPos, L, cap) {
     var D = A.dims, ln = sightLine(camPos, L), rg = sRange(A), lo = rg[0], hi = rg[1];
     if (cap > 0 && cap < hi) { hi = cap; lo = Math.min(lo, hi); }
@@ -311,7 +322,7 @@ if (T3 && T3.ctx) (function () {
     var A = me, L = ctx.layout;
     why.head = why.table = why.sunk = why.near = 0;
     // with the view the camera really ended up with (the fit's last pass used almost the same one)
-    var b = seatFor(A, pcam.position, L, refScale(pcam.position, L));
+    var b = seatFor(A, pcam.position, L, nearCap(A, refScale(pcam.position, L)));
     A.fits = false; A.placedOnce = true;
     if (!b) { why.table++; return; }
     // his head must really be on screen (the fit may have hit its limit on a very narrow screen)
@@ -328,7 +339,7 @@ if (T3 && T3.ctx) (function () {
   // A second person at the left seat (two mates both 'left') keeps clear of the first one the same way.
   function placeLeft(A, others) {
     var ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
-    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = me.fits ? me.place.s : 1.4;
+    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = nearU;
     drop = 0;
     [1, 0.9, 0.8].forEach(function (f) {
       var s = s0 * f;
@@ -352,7 +363,7 @@ if (T3 && T3.ctx) (function () {
   // 2 Players / Online: across the table where a creature would stand, facing the camera, standing on the pitch
   // farL / farR (three humans, no creature): the two spots across the table, a little either side of the middle (where
   // the two creatures of a three-player game stand), each turned a touch toward the middle. x = FAR.x[layout] (world).
-  var FAR = { s: 1.35, front: 1.95, look: -0.5, max: 1.85, chest: 0.4, x: { wide: 4.6, tall: 2.9 }, turn: 0.18 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
+  var FAR = { s: 1.35, front: 1.95, look: -0.5, max: 1.6, chest: 0.55, back: 1.6, x: { wide: 4.6, tall: 2.9 }, turn: 0.18 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
   var MATES = [mate, mate2], PEOPLE = [me, mate, mate2];
   function isFar(A) { return A.seat === 'far' || A.seat === 'farL' || A.seat === 'farR'; }
   function creatureHere() { try { return !!(T3.creatureVisible && (T3.creatureVisible(0) || T3.creatureVisible(1))); } catch (e) { return false; } }
@@ -361,33 +372,38 @@ if (T3 && T3.ctx) (function () {
     var sg = A.seat === 'farL' ? -1 : 1, x = sg * (FAR.x[ctx.layoutName] || FAR.x.wide);
     return { x: x, rot: -sg * FAR.turn };
   }
-  // the smallest scale at which A, standing at the far seat, shows down to the middle of the chest over the far rim
-  function farFit(A, camPos, L) {
-    var D = A.dims, zr = -L.D / 2 - 0.55, zp = -L.D / 2 - FAR.front, ry = 0.62;
+  // the smallest scale at which A, standing at the far seat, shows the upper chest (FAR.chest x shoulder height) over the far rim
+  function farFit(A, camPos, L, front) {
+    var D = A.dims, zr = -L.D / 2 - 0.55, zp = -L.D / 2 - front, ry = 0.62;
     if (camPos.z - zr < 0.1) return FAR.s;
     var yl = ry + (ry - camPos.y) / (zr - camPos.z) * (zp - zr) + 0.15, yc = FAR.chest * D.SH_Y - D.FOOT;
     return (yl - FLOOR_Y) / yc;
   }
-  // the one scale for everyone on the far side (see the size rule above)
-  function farScale(camPos, L, nearS, refS) {
-    var fars = MATES.filter(function (B) { return B.shown && B.model && isFar(B); });
-    if (!fars.some(function (B) { return !!B.avatar; })) return FAR.s;                 // today's kid / Tata only: exactly as before
-    var s = FAR.s * (nearS > 0 && refS > 0 ? Math.min(1, nearS / refS) : 1);
-    fars.forEach(function (B) { s = Math.max(s, farFit(B, camPos, L)); });
-    return Math.min(s, FAR.max);
+  // A's scale and distance behind the far rim at a far seat (see the size rule above): { s, front }. Someone small
+  // first steps back a little (up to FAR.back further: the line of sight over the rim drops behind it, so more of her
+  // shows), and only then is drawn bigger.
+  function farPlan(A, camPos, L) {
+    if (!A.avatar) return { s: FAR.s, front: FAR.front };                            // today's kid / Tata: exactly as before
+    var base = FAR.s, f;
+    for (f = FAR.front; f < FAR.front + FAR.back; f += 0.15) if (farFit(A, camPos, L, f) <= base) return { s: base, front: f };
+    f = FAR.front + FAR.back;
+    return { s: Math.min(FAR.max, Math.max(base, farFit(A, camPos, L, f))), front: f };
   }
-  function placeFar(A, s) {
+  function placeFar(A, fp) {
     var L = ctx.layout; if (!L) { A.fits = false; return; }
     var sp = farSpot(A, L);
-    setPlace(A, { x: sp.x, z: -L.D / 2 - FAR.front, s: s, rot: sp.rot, hd: 0, drop: 0 });
+    setPlace(A, { x: sp.x, z: -L.D / 2 - fp.front, s: fp.s, rot: sp.rot, hd: 0, drop: 0 });
     A.fits = !creatureHere(); A.placedOnce = true;
   }
   function computePlace() {
     needPlace = false;
     if (!setupProj()) { me.fits = false; mate.fits = false; mate2.fits = false; return; }
     placeMain();
-    var refS = refScale(pcam.position, ctx.layout), fs = farScale(pcam.position, ctx.layout, me.fits ? me.place.s : refS, refS), placed = [me];
-    MATES.forEach(function (B) { if (isFar(B)) { placeFar(B, fs); placed.push(B); } });
+    var cp = pcam.position, L = ctx.layout, refS = refScale(cp, L), placed = [me];
+    // the near side's scale for the 'left' seat: the device's player's, but never more than ref (a little kid at the
+    // near seat is drawn a bit bigger than ref so she shows; the person beside her keeps the real proportions)
+    nearU = me.fits ? (refS > 0 ? Math.min(me.place.s, refS) : me.place.s) : 1.4;
+    MATES.forEach(function (B) { if (isFar(B)) { placeFar(B, farPlan(B, cp, L)); placed.push(B); } });
     MATES.forEach(function (B) { if (B.seat === 'left') { placeLeft(B, placed); placed.push(B); } });
     applyVis();
   }
@@ -1278,16 +1294,16 @@ if (T3 && T3.ctx) (function () {
     // his seat below the near rim needs a band of room at the bottom of the picture: table.js calls this with the
     // camera already standing at its first guess, so the seat is worked out from that view
     if (me.shown && me.model && ctx.layout) {
-      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout, refScale(ctx.camera.position, ctx.layout)); if (b) seatPoints(me, b, corners); } catch (e) {}
+      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout, nearCap(me, refScale(ctx.camera.position, ctx.layout))); if (b) seatPoints(me, b, corners); } catch (e) {}
     }
     // the people across the table (no creature): the tops of their heads, at the far side's scale for this view
     var fars = MATES.filter(function (B) { return isFar(B) && B.shown && B.model; });
     if (fars.length && ctx.layout && !creatureHere()) {
       try {
         ctx.camera.updateMatrixWorld();
-        var cp = ctx.camera.position, L = ctx.layout, rs = refScale(cp, L), mb = me.shown && me.model ? seatFor(me, cp, L, rs) : null, fs = farScale(cp, L, mb ? mb.s : rs, rs), z = -D / 2 - FAR.front;
+        var cp = ctx.camera.position, L = ctx.layout;
         fars.forEach(function (B) {
-          var top = FLOOR_Y + (B.dims.TOP - B.dims.FOOT) * fs + 0.2 + (B.avatar ? 0.25 * fs : 0), x = farSpot(B, L).x, hw = B.seat === 'far' ? 3.4 : 1.8;
+          var fp = farPlan(B, cp, L), fs = fp.s, z = -D / 2 - fp.front, top = FLOOR_Y + (B.dims.TOP - B.dims.FOOT) * fs + 0.2 + (B.avatar ? 0.25 * fs : 0), x = farSpot(B, L).x, hw = B.seat === 'far' ? 3.4 : 1.8;
           corners.push([x - hw, top, z], [x + hw, top, z]);
         });
       } catch (e) {}
