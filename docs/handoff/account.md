@@ -286,3 +286,30 @@ Not verified (cannot be until the providers are on):
   step D (expected to come back empty in Safari, with the kind message), home-screen mode.
 - Real email sending for "Forgot password?".
 - Two different real devices with a real network drop.
+
+## Direct Google sign-in for iPad / iPhone / Safari (added 2026-11-15)
+
+What happened: on the family iPad (Safari, not a home-screen app) the Google sign-in came back empty every time
+("Sign-in did not come back"), with the pop-up blocker on and off. Both Firebase routes (pop-up and full-page redirect)
+depend on a hidden helper frame from `tatas-equations.firebaseapp.com`, and Safari cuts that frame off from its storage.
+
+The fix (js/account.js, "DIRECT GOOGLE SIGN-IN"): on Apple devices and Safari, in a home-screen app, and whenever a
+pop-up is blocked, the whole page goes to Google's own sign-in address and Google sends it straight back to the game's
+address with a signed token in the address fragment; the game checks the state and nonce it kept for the trip, takes the
+token out of the address, and hands it to Firebase (`signInWithCredential`; a guest's progress is linked). Other
+browsers keep the pop-up.
+
+Settings (js/account-config.js): `googleClientId` (the project's Web client id, public), `googleReturn`
+(`https://profsean.wang/tatas-equations/`), `googleDirect` ('safari' | 'always' | 'off').
+
+**One console step, once** (Google Cloud console, project tatas-equations): APIs & Services -> Credentials -> OAuth 2.0
+Client IDs -> "Web client (auto created by Google Service)" -> Authorized redirect URIs -> Add URI ->
+`https://profsean.wang/tatas-equations/` -> Save. Until that is saved, Google answers with a "redirect_uri_mismatch"
+error page, so do not publish this change before it.
+
+A check that needs no sign-in (expect a redirect to a sign-in page, not to `/signin/oauth/error`):
+
+    curl -s -o /dev/null -D - "https://accounts.google.com/o/oauth2/v2/auth?client_id=<client id>&redirect_uri=https%3A%2F%2Fprofsean.wang%2Ftatas-equations%2F&response_type=id_token&scope=openid%20email%20profile&nonce=a&state=b"
+
+Checked on this computer: the way back (address cleaned at once; a wrong state, a refusal at Google, and a token Firebase
+will not take each give a kind message). Not checked: a real sign-in (nobody may sign in as the family from here).

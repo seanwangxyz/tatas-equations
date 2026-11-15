@@ -6,4 +6,11 @@
 // Both false: no Account card anywhere, and the game works exactly as before.
 // Testing on one computer without Firebase: open the game with ?accounttest=1&dev=a and ?accounttest=1&dev=b
 // (two pretend devices; both methods show in that mode).
-window.ACCOUNT_CONFIG = { google: true, email: false };
+// DIRECT GOOGLE SIGN-IN (iPad / iPhone / Safari, a home-screen app, or a blocked pop-up): the whole page goes to Google
+// and comes straight back to googleReturn with a signed token (js/account.js). googleClientId is the Firebase
+// project's Web client id (a public value, the same one Firebase's own sign-in uses). googleReturn must be listed
+// under that client's "Authorized redirect URIs" in the Google Cloud console (APIs & Services -> Credentials ->
+// "Web client (auto created by Google Service)"). googleDirect: 'safari' | 'always' | 'off'.
+window.ACCOUNT_CONFIG = { google: true, email: false,
+  googleClientId: '1034612744136-rbvi208ojevgsmcuq1thjbfearikl7ld.apps.googleusercontent.com',
+  googleReturn: 'https://profsean.wang/tatas-equations/', googleDirect: 'safari' };

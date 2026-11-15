@@ -347,6 +347,59 @@ var Account = (function () {
   var CFG = window.ACCOUNT_CONFIG || { google: true, email: false };
   var PROV = TEST ? { google: true, email: true } : { google: !!CFG.google, email: !!CFG.email };
   var FIRE = !TEST && !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.databaseURL);
+  // ---- DIRECT GOOGLE SIGN-IN (iPad / iPhone / Safari, and wherever the pop-up is blocked) ----
+  // The Firebase pop-up and its full-page fallback both need a hidden helper frame from another site
+  // (tatas-equations.firebaseapp.com), which Safari cuts off from its storage: on an iPad the answer never comes back.
+  // The direct route needs nothing hidden: the whole page goes to Google and Google sends it straight back to the
+  // game's own address with a signed token in the address fragment (#id_token=...); the game hands that token to
+  // Firebase (signInWithCredential). It works with pop-ups blocked and from a home-screen app.
+  // Needs in ACCOUNT_CONFIG: googleClientId (the project's Web client id, a public value) and googleReturn (the game's
+  // address, which must be listed under that client's Authorized redirect URIs in the Google Cloud console), and
+  // googleDirect: 'safari' (default: Apple devices, Safari, and after a blocked pop-up) | 'always' | 'off'.
+  // A random state and nonce are kept for the trip and checked on the way back; the token leaves the address at once.
+  var OAUTH_KEY = 'tataAcct:oauth';
+  function hereURL() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+  function directOK() { return FIRE && !!CFG.googleClientId && !!CFG.googleReturn && CFG.googleDirect !== 'off' && hereURL() === CFG.googleReturn; }
+  function appleOrSafari() {
+    var ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return true;   // every browser on an iPad / iPhone is Safari inside
+    return /Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\/|OPR\/|Android/.test(ua);
+  }
+  function directFirst() { return directOK() && (CFG.googleDirect === 'always' || appleOrSafari()); }
+  function rnd32() { var a = new Uint8Array(16), s = ''; (window.crypto || window.msCrypto).getRandomValues(a); for (var i = 0; i < a.length; i++) s += ('0' + a[i].toString(16)).slice(-2); return s; }
+  function directStart() {
+    var st = rnd32(), no = rnd32(), rec = JSON.stringify({ s: st, n: no, t: Date.now() });
+    try { sessionStorage.setItem(OAUTH_KEY, rec); } catch (e) {}
+    try { localStorage.setItem(OAUTH_KEY, rec); } catch (e) {}   // (a home-screen app may come back in a fresh session)
+    location.assign('https://accounts.google.com/o/oauth2/v2/auth?client_id=' + encodeURIComponent(CFG.googleClientId) + '&redirect_uri=' + encodeURIComponent(CFG.googleReturn) +
+      '&response_type=id_token&scope=' + encodeURIComponent('openid email profile') + '&nonce=' + no + '&state=' + st + '&prompt=select_account');
+    return new Promise(function () {});   // the page is leaving
+  }
+  // back from Google? Take the answer out of the address straight away (before anything can copy or bookmark it).
+  var oauthBack = (function () {
+    try {
+      var h = String(location.hash || '').replace(/^#/, '');
+      if (!/(^|&)state=/.test(h) || !/(^|&)(id_token|error)=/.test(h)) return null;
+      var o = {}; h.split('&').forEach(function (part) { var i = part.indexOf('='); if (i > 0) o[part.slice(0, i)] = decodeURIComponent(part.slice(i + 1).replace(/\+/g, ' ')); });
+      if (window.history && history.replaceState) history.replaceState(history.state, '', location.pathname + location.search); else location.hash = '';
+      var rec = null; try { rec = JSON.parse(sessionStorage.getItem(OAUTH_KEY) || localStorage.getItem(OAUTH_KEY) || 'null'); } catch (e) { rec = null; }
+      try { sessionStorage.removeItem(OAUTH_KEY); localStorage.removeItem(OAUTH_KEY); } catch (e) {}
+      return { token: o.id_token || '', error: o.error || '', state: o.state || '', rec: rec };
+    } catch (e) { return null; }
+  })();
+  // the middle part of a signed token (what Google says about the sign-in), or null
+  function tokenClaims(t) {
+    try { var p = String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); while (p.length % 4) p += '='; return JSON.parse(decodeURIComponent(escape(atob(p)))); } catch (e) { return null; }
+  }
+  function finishDirect() {
+    var b = oauthBack; oauthBack = null; if (!b) return;
+    var fail = function (code) { var e = new Error(code); e.code = code; say('Sign-in did not work', kind(e)); };
+    if (b.error) { fail(b.error === 'access_denied' ? 'auth/popup-closed-by-user' : 'acct/direct-failed'); return; }
+    var c = tokenClaims(b.token);
+    if (!b.rec || !b.rec.s || b.rec.s !== b.state || !c || c.nonce !== b.rec.n || !(Date.now() - b.rec.t < 15 * 60 * 1000)) { fail('acct/direct-failed'); return; }   // not the trip this device started
+    B.googleToken(b.token).then(function (u) { if (u) onUser(u); toast(CLOUD + ' Signed in. Hi!'); },
+      function (e) { say('Sign-in did not work', kind(e && /invalid-credential|invalid-idp-response|invalid-id-token|missing-or-invalid-nonce/.test(String(e.code)) ? { code: 'acct/direct-failed' } : e)); });   // (a token Firebase would not take is not a wrong password)
+  }
   if (!(TEST || FIRE) || !(PROV.google || PROV.email)) return OFF;
 
   // Test mode: each pretend device has its own save on this computer.
@@ -511,11 +564,16 @@ var Account = (function () {
         var p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
         var u = auth.currentUser, anon = u && u.isAnonymous;
         function redirect() { try { sessionStorage.setItem('tataAcct:redirect', '1'); } catch (e) {} return (anon ? u.linkWithRedirect(p) : auth.signInWithRedirect(p)).then(function () { return new Promise(function () {}); }); }
-        if (standalone()) return redirect(); // a home-screen app on iPad/iPhone cannot get a pop-up back
+        if (standalone()) return directOK() ? directStart() : redirect(); // a home-screen app on iPad/iPhone cannot get a pop-up back
         return (anon ? u.linkWithPopup(p) : auth.signInWithPopup(p)).catch(adopt).then(fresh, function (e) {
-          if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) return redirect();
+          if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) return directOK() ? directStart() : redirect();
           throw e;
         });
+      },
+      // DIRECT GOOGLE: the signed token Google sent back in the address -> a Firebase sign-in (kept progress of a guest is linked)
+      googleToken: function (idToken) {
+        var cred = firebase.auth.GoogleAuthProvider.credential(idToken), u = auth.currentUser, anon = u && u.isAnonymous;
+        return (anon ? u.linkWithCredential(cred).catch(adopt) : auth.signInWithCredential(cred)).then(fresh);
       },
       emailCreate: function (email, pw) {
         var u = auth.currentUser;
@@ -565,6 +623,7 @@ var Account = (function () {
       var flagged = false; try { flagged = sessionStorage.getItem('tataAcct:redirect') === '1'; sessionStorage.removeItem('tataAcct:redirect'); } catch (e) {}
       B.redirectResult().then(function (u) { if (u) { onUser(u); toast(CLOUD + ' Signed in. Hi!'); } else if (flagged) say('Sign-in did not come back', 'The Google page did not return to the game. Tap <b>Continue with Google</b> again. On an iPad, allowing pop-ups for this site helps (Settings, Safari, Block Pop-ups off).'); },
         function (e) { say('Sign-in did not work', kind(e)); });
+      if (oauthBack) authFirst.then(finishDirect);   // DIRECT GOOGLE: back from Google with a token
       return authFirst;
     });
     started.catch(function () { started = null; });
@@ -772,6 +831,7 @@ var Account = (function () {
       'auth/missing-email': 'Please type an email address.',
       'auth/network-request-failed': 'Can\'t reach the internet right now. Check the Wi-Fi and try again.',
       'auth/popup-blocked': 'The sign-in window was blocked. Allow pop-ups for this site, then try again.',
+      'acct/direct-failed': 'The Google page came back without a sign-in. Tap <b>Continue with Google</b> to try once more.',
       'auth/popup-closed-by-user': 'The sign-in window was closed before it finished. Tap the button to try again.',
       'auth/cancelled-popup-request': 'The sign-in window was closed before it finished. Tap the button to try again.',
       'auth/user-cancelled': 'Sign-in was cancelled. Tap the button to try again.',
@@ -891,6 +951,7 @@ var Account = (function () {
   };
   ACT.acctGoogle = function () {
     function go2() { busyButtons(true); B.google().then(function (u) { if (u) onUser(u); closeModal(); toast(CLOUD + ' Signed in. Hi!'); }, function (e) { signInModal(null, kind(e)); }); }
+    if (directFirst()) { busyButtons(true); directStart(); return; }   // DIRECT GOOGLE: iPad / iPhone / Safari go to Google with the whole page
     if (B.ready) go2(); // the SDK is loaded already: the pop-up opens straight from this tap
     else { busyButtons(true); start().then(go2, function (e) { signInModal(null, kind(e)); }); }
   };
@@ -974,7 +1035,7 @@ var Account = (function () {
 
   // ---- start: right away in test mode, after a redirect, or when this device was signed in before ----
   var redirectFlag = false; try { redirectFlag = sessionStorage.getItem('tataAcct:redirect') === '1' || sessionStorage.getItem('tataAcct:redirect.' + DEV) === '1'; } catch (e) {}
-  if (TEST || meta.uid || redirectFlag) start().catch(function () { connected = false; paint(); });
+  if (TEST || meta.uid || redirectFlag || oauthBack) start().catch(function () { connected = false; paint(); });
 
   return {
     chipHTML: chipHTML, panelHTML: panelHTML, authReady: authReady, idle: idle, status: status,
