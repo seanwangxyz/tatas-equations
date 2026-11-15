@@ -1,5 +1,5 @@
-// The kid's own player at the near side of the table (name + number on his back), plus an optional second human
-// (Tata) at another seat. Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until
+// The device's own player at the near side of the table (name + number on his back), plus up to two other humans
+// (T3.mate, T3.mate2) at other seats. Any People avatar, or today's kid / Tata. Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until
 // T3.playerShow(true) / T3.mate({...}).
 //
 //   T3.playerShow(on)            show / hide him (hidden by default). Returns whether he is actually on screen.
@@ -15,26 +15,51 @@
 //                                'brain', 'number'), 3-6 s, once; 'slide' / 'plane' run out beside the table and back.
 //                                No name: the one saved in S.kit.celebrate. Returns true if it plays.
 //   T3.playerMoods()             list of mood names
-//   T3.playerSet(o | null)       who stands at his spot and how he looks: { who: 'kid' | 'tata', kit, name, number }.
-//                                Missing fields come from the save (S.kit, S.name, S.jersey) for the kid, or Tata's
-//                                defaults (yellow, 17). kit: the saved shape { shirt, pattern, trim, shorts, hair,
-//                                hairStyle } or a full kit object. null: back to the save.
-//   T3.playerRefresh()           re-read S.kit, S.jersey and S.name (call after the kit panel or a name change)
-//   T3.mate(o | null)            a second human: { who: 'tata' | 'kid', seat: 'left' | 'far', kit, name, number }.
-//                                'left' = beside the left end of the table, on the kid's side (Team-up).
-//                                'far'  = across the table where a creature would stand (2 Players / Online, no
-//                                creature; hidden while a creature is at the table). null removes him.
+//   T3.playerSet(o | null)       who stands at his spot and how he looks: { avatar, who: 'kid' | 'tata', kit, name, number }.
+//                                WHO STANDS THERE (every spec: playerSet, mate, mate2, playerPortrait):
+//                                - o.avatar (a People avatar, js/people-data.js; cleaned with People.clean): built with
+//                                  buildPerson (creatures/people.js), sized with personDims, grown-up reactions / stride
+//                                  when personAdult. Rebuilt when personKey changes; kit / name / number use setKit.
+//                                - no o.avatar and no o.who, for the device's player (playerSet / playerPortrait):
+//                                  this save's own avatar, People.own() (old saves: today's kid, or the grown-up when
+//                                  Settings says so), with the save's kit, back name and number.
+//                                - o.who without o.avatar: today's kid / Tata exactly as before.
+//                                KIT (o.kit: the saved shape { shirt, pattern, trim, shorts, ... } or a full kit object):
+//                                a full kit object is used as it is. With o.avatar, a saved-shape kit is filled from the
+//                                plain defaults (KIT_DEFAULT), never from this save's kit; with no o.kit the device's
+//                                player wears the save's kit (savedKit(S)), anyone else KIT_DEFAULT (TATA_KIT for a
+//                                grown-up). The save's own avatar (no avatar, no who) merges o.kit over the save's kit.
+//                                NAME / NUMBER: o.name / o.number; else the device's player: S.backName (own avatar:
+//                                'TYSON W.' when unset; another avatar: S.name), S.jersey or '7'; anyone else: '' (a
+//                                grown-up: 'Tata') and '7' (a grown-up: '17'). Today's kid / Tata: as before.
+//                                null: back to the save (= the save's own avatar).
+//   T3.playerRefresh()           re-read the save (S.avatar, S.kit, S.jersey, S.name, S.backName) for the device's player
+//   T3.mate(o | null)            a second human: { avatar | who, seat, kit, name, number, player }.
+//                                seat 'left' = beside the left end of the table, on the kid's side (Team-up).
+//                                     'far'  = across the table, in the middle, where a creature would stand.
+//                                     'farL' / 'farR' = across the table, left / right of the middle (FAR.x), turned a
+//                                     touch toward the middle: where the two creatures of a three-player game stand.
+//                                Far seats are hidden while any creature is at the table. player: the index in
+//                                G.players he plays for (stances, who to look at); default: the first other person in
+//                                the players list (mate2: the second). null removes him.
+//   T3.mate2(o | null)           a third human, same options and abilities as T3.mate (any seat; two at 'left' keep clear
+//                                of each other). T3.mate2Mood / T3.mate2Move: as T3.mateMood / T3.mateMove.
 //   T3.mateMood(name, opts)      the same moods (and celebrations) for the second human
-//   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' | 'back' |
-//                                'face' | { yaw, close } (any angle; close = head and shoulders).
-//                                For the kit designer's live preview. Drawn offscreen with the main renderer.
+//   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' (3/4 front,
+//                                whole body) | 'back' | 'face' (head and shoulders) | { yaw, close } (any angle).
+//                                An avatar is framed by the figure really built, so every body size fills the picture.
+//                                The offscreen model is kept while only the kit / name / number change.
+//                                For the kit designer and the avatar maker. Drawn offscreen with the main renderer.
 //   T3.playerMove(id, zone, done, {quick}?)  he picks the cube up by hand, runs round the nearest end of the table with
 //                                it and sets it down in its slot (no throwing), then walks back to his seat. Same
 //                                contract as T3.creatureMove: done() exactly once, the moment the cube is down (~1.2-1.6 s;
 //                                at once if he can't); safety timeout. The walk back is free: a new move starts from
 //                                wherever he is. quick (Goal cubes one after another): faster, and he waits a moment
-//                                where he put the cube down instead of walking straight back. T3.mateMove: the same for
-//                                the mate.
+//                                where he put the cube down instead of walking straight back. T3.mateMove / T3.mate2Move:
+//                                the same for the mates. Nobody walks through a creature or a person across the table
+//                                (hard), and goes round the other people on the outside (soft).
+//   ctx.grips.human('me' | 'mate' | 'mate2')  the cup dump / reroll toss hands (see CUPTOSS below)
+//   T3.playerScript('me' | 'mate' | 'mate2', o, done)  scripted walks (MATCHDAY)
 //   T3.playerMoveFinish()        finish any move now (the cube goes into its slot at once, done() fires; he walks back).
 //                                T3.playerMoving(): true until the cube is down.
 //   T3.playerWalkSide(side)      'auto' | 'right' (never round the left side, e.g. a creature sits there) | 'left'
@@ -44,7 +69,8 @@
 // Placement: his home seat is the middle of the near side, his back to the seat camera, feet on the pitch just
 // outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
 // for his head (the extents hook marks those points 'soft', see table.js). If his head can't be on screen he stays
-// hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table.
+// hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table. Sizes of different
+// bodies: see SIZE RULE (one unit system; little kids a bit bigger at the near seat and stepping back at the far ones).
 // Style rule (Tata's): at rest a person is perfectly still in a good pose (no idle sway, breathing or blink timer).
 // Everything else is one calm move in response to an event, ending in a held pose (see poses.js for the vocabulary).
 import * as THREE from 'three';
@@ -1461,7 +1487,7 @@ if (T3 && T3.ctx) (function () {
   T3.playerModels = function () { return { me: me.model, mate: mate.model, mate2: mate2.model }; };
 
   // ---------- CUPTOSS: both hands held by table.js (he dumps the cup, tosses cubes to roll them again) ----------
-  // ctx.grips.human('me' | 'mate') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
+  // ctx.grips.human('me' | 'mate' | 'mate2') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
   // faces), reach, hand (palm -> held object), set(h), hands(), holding() }. set({ far, fn }): far = the farthest world
   // point his hands will need (his body leans, lies on the rim or kneels in for it ONCE, chosen like a move's grab);
   // fn(now, out) fills out.a / out.b (world hand spots or null), out.w (0..1 free pose -> spots), out.open, out.look.
@@ -1581,7 +1607,7 @@ if (T3 && T3.ctx) (function () {
 
   // ---------- MATCHDAY (js/three/matchday.js): a scripted walk along a path (the walk-out, the trophy podium) ----------
   // T3.playerScript(who, o, done) / T3.playerScript(who, null)
-  //   who: 'me' (this device's player) | 'mate'. o: { path: [[x, z], ...] (world, on the pitch), v: world units / s,
+  //   who: 'me' (this device's player) | 'mate' | 'mate2'. o: { path: [[x, z], ...] (world, on the pitch), v: world units / s,
   //   yaw: the way he faces at the end (default: his seat's), startYaw, stay: true = he stays at the end of the path
   //   (until T3.playerScript(who, null)); otherwise the path ends at his seat and the walk is over there.
   //   force: show him even if his seat does not fit / the avatar is switched off (he is hidden again afterwards),
