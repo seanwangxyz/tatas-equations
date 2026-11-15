@@ -188,7 +188,8 @@ export class ArmRig {
     // upper-arm direction
     _f.subVectors(_E, S).normalize();
     if (this.sleeve) {
-      const sl = Math.min(l1 * 0.62, 0.78); _b.copy(S).addScaledVector(_f, sl);
+      // (sleeveFrac / sleeveMax: longer sleeves, for the people.js outfits)
+      const sl = Math.min(l1 * (this.sleeveFrac || 0.62), this.sleeveMax || 0.78); _b.copy(S).addScaledVector(_f, sl);
       placeSeg(this.sleeve, S, _b, this.sleeveR * Math.pow(tk, 0.5));
       this.ring.position.copy(_b); this.ring.quaternion.setFromUnitVectors(_Z, _f); this.ring.scale.setScalar(this.sleeveR * Math.pow(tk, 0.5) * 0.99);
     }
