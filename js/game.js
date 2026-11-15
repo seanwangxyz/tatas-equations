@@ -48,14 +48,33 @@ function playerCelebrate() { if (T3.playerCelebrate) T3.playerCelebrate(typeof K
 function mateShow(o) { if (T3.mate) T3.mate(o || null); }
 function mateMood(m) { if (T3.mateMood) T3.mateMood(m); }
 // Who the people at the table look like. This device's player is a kid unless Settings says grown-up.
+// PEOPLE (js/people-data.js, js/avatar.js): the device's own player wears his own avatar and kit once he has made one
+// (S.avatar); until then he is the kid (or the grown-up) the game has always had, exactly as before.
+function mySpec() {
+  var grown = S.set.me === 'tata', o = { who: grown ? 'tata' : 'kid', name: grown ? S.name : backName(), number: S.jersey || '7' };
+  if (S.avatar && window.People) { o.avatar = People.own(); o.name = backName(); if (window.Kit && Kit.current) o.kit = Kit.current(); }
+  return o;
+}
+// another human at this device's table: the player picked for that seat (G.players[i].person: from the players list),
+// else the old stand-in figure (who) with the seat's name
+function seatSpec(i, who, num) {
+  var p = G.players[i] || {}, o = { who: who, name: p.name, number: p.jersey || num };
+  if (p.person && window.People) { o.avatar = People.clean(p.person.avatar); o.kit = p.person.kit || {}; o.name = p.person.back || String(p.name || '').toUpperCase(); o.number = p.person.jersey || num; }
+  return o;
+}
+function mate2Show(o) { if (T3.mate2) T3.mate2(o || null); }
 function seatPeople(mode, cfg) {
   var grown = S.set.me === 'tata';
-  if (T3.playerSet) T3.playerSet({ who: grown ? 'tata' : 'kid', name: grown ? S.name : backName(), number: S.jersey || '7' });
-  var other = grown ? 'kid' : 'tata', p1 = G.players[1];
-  if (mode === 'pvp') mateShow({ who: other, seat: 'far', name: p1.name, number: grown ? '7' : '17' });
+  if (T3.playerSet) T3.playerSet(mySpec());
+  var other = grown ? 'kid' : 'tata', p1 = G.players[1], num = grown ? '7' : '17';
+  mate2Show(null);
+  if (mode === 'pvp') mateShow(Object.assign(seatSpec(1, other, num), { seat: 'far' }));
   else if (mode === 'online') mateShow({ who: other, seat: 'far', name: p1.name, number: p1.jersey || (grown ? '7' : '17') });
   else if (mode === 'team' && G.team) mateShow({ who: other, seat: 'left', name: G.team.names[1], number: G.team.jerseys[1] });
-  else if (mode === 'p3') mateShow({ who: other, seat: 'left', name: p1.name, number: grown ? '7' : '17' });
+  else if (mode === 'p3' && !isAI(2) && T3.mate2) {   // three people: the next to play stands on his left (clockwise), the third on his right
+    mateShow(Object.assign(seatSpec(1, other, num), { seat: 'farL' })); mate2Show(Object.assign(seatSpec(2, other, num), { seat: 'farR' }));
+  }
+  else if (mode === 'p3') mateShow(Object.assign(seatSpec(1, other, num), { seat: 'left' }));
   else if (mode === 'tourney' && humans().length > 1) mateShow({ who: other, seat: nP() > 2 ? 'left' : 'far', name: G.players[humans()[1]].name, number: grown ? '7' : '17' }); // TOURNEY
   else mateShow(null);
 }
@@ -74,6 +93,7 @@ function avatarMoveFn(who) {
   if (G.team && who === 0) return G.team.cur === 0 ? T3.playerMove : T3.mateMove;   // Team-up: whoever's go it is
   if (who === 0) return T3.playerMove;
   if (who === 1 && !isAI(1) && (G.mode === 'pvp' || G.mode === 'p3' || G.mode === 'tourney')) return T3.mateMove; // (TOURNEY: + tourney)
+  if (who === 2 && !isAI(2) && G.mode === 'p3' && T3.mate2Move) return T3.mate2Move; // PEOPLE: the third human at the table
   return null;
 }
 // CUPTOSS: who handles the cup and the reroll toss in 3D: 'me' (the kid), 'mate' (Tata), a creature seat 0/1, or null (today's pour)
@@ -97,6 +117,13 @@ function humanGoal(tokens, val) {
     fn(tk.id, 'goal', function () { if (!G || G.cubes !== sit) return; G.cubes[tk.id].zone = 'goal'; G.goalTokens = tokens.slice(0, k + 1); k++; renderGame(); setTimeout(next, 60); }, { quick: true });
   })();
 }
+// PEOPLE: one human seat of a game on this device: a player from the players list (person: { id, name, jersey, back,
+// avatar, kit }, see Crew.person in js/avatar.js) or a guest with just a name
+function humanSeat(person, name) {
+  var p = { name: person && person.name ? person.name : name, ai: null, score: 0, list: [] };
+  if (person && person.avatar) { p.person = person; p.jersey = person.jersey; }
+  return p;
+}
 function startMatch(mode, oppIdx, cfg) {
   if (mode === 'ai' && window.Career && !(cfg && cfg.sigSeen) && Career.announce(oppIdx, function () { startMatch(mode, oppIdx, Object.assign({}, cfg || {}, { sigSeen: true })); })) return; // CAREER: a signature rule is announced first
   var shakes = S.set.shakes || 3;
@@ -106,14 +133,14 @@ function startMatch(mode, oppIdx, cfg) {
   if (mode === 'ai') G.players.push({ name: OPPONENTS[oppIdx].name, ai: OPPONENTS[oppIdx], score: 0, list: [] });
   else if (mode === 'ai3') [cfg.a, cfg.b].forEach(function (k) { G.players.push({ name: OPPONENTS[k].name, ai: OPPONENTS[k], score: 0, list: [] }); });
   else if (mode === 'p3') {
-    G.players.push({ name: cfg.n2 || 'Tata', ai: null, score: 0, list: [] });
+    G.players.push(humanSeat(cfg.p2, cfg.n2 || 'Tata'));
     if (cfg.creature >= 0) G.players.push({ name: OPPONENTS[cfg.creature].name, ai: OPPONENTS[cfg.creature], score: 0, list: [] });
-    else G.players.push({ name: cfg.n3 || 'Mama', ai: null, score: 0, list: [] });
+    else G.players.push(humanSeat(cfg.p3, cfg.n3 || 'Mama'));
   }
   else if (mode === 'team') Team.setup(G, oppIdx, cfg); // the kid + a grown-up as one side vs a creature (js/team.js)
   else if (mode === 'online') Online.setup(G, cfg); // the other player is on another device (js/online.js)
   else if (mode === 'tourney' && window.Tourney) Tourney.setup(G, cfg); // TOURNEY: tournament practice (js/tourney.js): players, division, options
-  else G.players.push({ name: 'Player 2', ai: null, score: 0, list: [] });
+  else G.players.push(humanSeat(cfg && cfg.p2, 'Player 2'));
   if (window.Recorder) Recorder.start(G); // REVIEW: notes for "One thing Pip spotted" (js/review.js)
   if (window.Parent) Parent.note('matchStart'); // PARENT page
   if (window.Career) Career.matchStart(G); // CAREER: remember this match's signature rule

@@ -23,14 +23,14 @@ People.BODIES.forEach(b => People.HAIR_STYLES.forEach(h => { const a = People.cl
 // ----- pack / unpack -----
 let rt = true, longest = 0;
 People.BODIES.forEach(b => [-1, 0, 1].forEach(h => People.HAIR_STYLES.forEach(hs => People.GLASSES.forEach(g => People.BEARDS.forEach(be => People.ACCS.forEach(ac => {
-  const a = People.clean({ body: b[0], height: h, hairStyle: hs[0], glasses: g[0], beard: be[0], acc: ac[0], freckles: h > 0, lashes: h < 0, cheeks: h === 0, skin: People.SKINS[(hs[0].length + h + 1) % 10][0] });
+  const a = People.clean({ body: b[0], height: h, hairStyle: hs[0], glasses: g[0], beard: be[0], acc: ac[0], gems: g[0] === 'round', streaks: be[0] === 'beard' ? '#e64980' : 'none', freckles: h > 0, lashes: h < 0, cheeks: h === 0, skin: People.SKINS[(hs[0].length + h + 1) % 10][0] });
   const s = People.pack(a); longest = Math.max(longest, s.length);
   if (!same(People.unpack(s), a) || !/^[a-zA-Z0-9.]+$/.test(s)) rt = false;
 }))))));
 t('pack / unpack round trip for every combination', rt);
 t('packed text is short (' + longest + ')', longest <= 120);
 t('unpack refuses junk', People.unpack('<script>') === null && People.unpack('a.b') === null && People.unpack(42) === null && People.unpack('x'.repeat(200)) === null);
-t('unpack never returns something unclean', (() => { const u = People.unpack('zzz.9.zzzzzz.zzzzzz.zzz.zzzzzz.zzz.zzzzzz.zzz.7.7.7.zzz.zzzzzz'); return u === null || same(u, People.clean(u)); })());
+t('unpack never returns something unclean', (() => { const u = People.unpack('zzz.9.zzzzzz.zzzzzz.zzz.zzzzzz.zzz.zzzzzz.zzz.7.7.7.zzz.zzzzzz.7.zzzzzz'); return u === null || same(u, People.clean(u)); })());
 
 // ----- own -----
 t('old kid save: hair from the kit', (() => { const a = People.own({ set: { me: 'kid' }, kit: { hair: '#d9a441', hairStyle: 'curly' } }); return a.body === 'kid' && a.hair === '#d9a441' && a.hairStyle === 'curly'; })());

@@ -15,7 +15,10 @@
 //     glasses:   'none' | 'round' | 'square'      glassCol: '#rrggbb' (GLASS_COLORS)
 //     beard:     'none' | 'stubble' | 'moustache' | 'goatee' | 'beard'     (drawn in the hair colour)
 //     freckles:  bool     lashes: bool (longer eyelashes)     cheeks: bool (rosy cheeks; default true)
-//     acc:       'none' | 'bow' | 'band' | 'cap'  accCol: '#rrggbb' (ACC_COLORS)      a hair bow, a headband, a cap
+//     gems:      bool                    a few tiny sparkly face gems under the eyes
+//     streaks:   'none' | '#rrggbb'      coloured streaks / highlights in the hair (HAIR_COLORS)
+//     acc:       one of ACCS ids         accCol: '#rrggbb' (ACC_COLORS)      a hair bow, a headband, butterfly clips,
+//                                        a scrunchie (on a ponytail, bun or pigtails; a wrist scrunchie otherwise), a cap
 //     at:        ms timestamp of the last change (cloud merge: the newest wins) }
 //
 // IN THE SAVE:
@@ -40,20 +43,21 @@ var People = (function () {
     ['#3b82f6', 'Blue'], ['#e64980', 'Pink'], ['#7048e8', 'Purple'], ['#2f9e44', 'Green']];
   var HAIR_STYLES = [['swept', 'Swept fringe'], ['short', 'Short'], ['spiky', 'Spiky'], ['curly', 'Curly'], ['long', 'Long'], ['tousled', 'Tousled'],
     ['buzz', 'Buzz cut'], ['side', 'Side part'], ['thin', 'Thin on top'], ['bald', 'No hair'], ['coils', 'Short coils'], ['afro', 'Afro'],
-    ['bob', 'Bob'], ['wavy', 'Long wavy'], ['ponytail', 'Ponytail'], ['pigtails', 'Pigtails'], ['braids', 'Two braids'], ['bun', 'Bun']];
+    ['bob', 'Bob'], ['wavy', 'Long wavy'], ['ponytail', 'Ponytail'], ['pigtails', 'Pigtails'], ['braids', 'Two braids'], ['bun', 'Bun'],
+    ['highpony', 'High ponytail'], ['spacebuns', 'Space buns'], ['halfup', 'Half up'], ['curtain', 'Long with curtain bangs']];
   var EYES = [['#2e1c10', 'Dark brown'], ['#3f2412', 'Brown'], ['#6b4423', 'Light brown'], ['#7a6a3a', 'Hazel'], ['#4f7a4a', 'Green'], ['#3d6fa8', 'Blue'], ['#6f8796', 'Grey']];
   var GLASSES = [['none', 'None'], ['round', 'Round'], ['square', 'Square']];
   var GLASS_COLORS = [['#25262b', 'Black'], ['#6b4423', 'Brown'], ['#c9342c', 'Red'], ['#1c7ed6', 'Blue'], ['#d4a72c', 'Gold']];
   var BEARDS = [['none', 'None'], ['stubble', 'Stubble'], ['moustache', 'Moustache'], ['goatee', 'Goatee'], ['beard', 'Full beard']];
-  var ACCS = [['none', 'None'], ['bow', 'Hair bow'], ['band', 'Headband'], ['cap', 'Cap']];
+  var ACCS = [['none', 'None'], ['bow', 'Hair bow'], ['band', 'Headband'], ['clips', 'Butterfly clips'], ['scrunchie', 'Scrunchie'], ['cap', 'Cap']];
   var ACC_COLORS = [['#e64980', 'Pink'], ['#c9342c', 'Red'], ['#f5c518', 'Yellow'], ['#2f9e44', 'Green'], ['#1c7ed6', 'Blue'], ['#7048e8', 'Purple'], ['#f1f3f5', 'White'], ['#25262b', 'Black']];
   var MAX_CREW = 8;
 
   // the two looks the game has always had: the kid (Tyson's footballer) and the grown-up ("Tata")
   var DEFAULT = { v: 1, body: 'kid', height: 0, skin: '#efc19d', hair: '#3b2314', hairStyle: 'swept', eyes: '#3f2412', glasses: 'none', glassCol: '#25262b',
-    beard: 'none', freckles: false, lashes: false, cheeks: true, acc: 'none', accCol: '#e64980' };
+    beard: 'none', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980' };
   var GROWN = { v: 1, body: 'adult-b', height: 0, skin: '#e4b48e', hair: '#17130f', hairStyle: 'tousled', eyes: '#2e1c10', glasses: 'none', glassCol: '#25262b',
-    beard: 'stubble', freckles: false, lashes: false, cheeks: true, acc: 'none', accCol: '#e64980' };
+    beard: 'stubble', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980' };
 
   var HEX = /^#[0-9a-fA-F]{6}$/;
   function ids(list) { return list.map(function (x) { return x[0]; }); }
@@ -68,6 +72,7 @@ var People = (function () {
     var out = { v: 1, body: oneOf(a.body, BODIES, d.body), height: h === -1 || h === 1 ? h : 0, skin: hex(a.skin, d.skin), hair: hex(a.hair, d.hair),
       hairStyle: oneOf(a.hairStyle, HAIR_STYLES, d.hairStyle), eyes: hex(a.eyes, d.eyes), glasses: oneOf(a.glasses, GLASSES, d.glasses), glassCol: hex(a.glassCol, d.glassCol),
       beard: oneOf(a.beard, BEARDS, a.beard == null ? d.beard : 'none'), freckles: flag(a.freckles, d.freckles), lashes: flag(a.lashes, d.lashes), cheeks: flag(a.cheeks, d.cheeks),
+      gems: flag(a.gems, d.gems), streaks: a.streaks === 'none' ? 'none' : hex(a.streaks, d.streaks),
       acc: oneOf(a.acc, ACCS, d.acc), accCol: hex(a.accCol, d.accCol) };
     if (typeof a.at === 'number' && isFinite(a.at)) out.at = a.at;
     return out;
@@ -131,7 +136,7 @@ var People = (function () {
     return slot;
   }
   // ----- online: a short text form -----
-  var ORDER = ['body', 'height', 'skin', 'hair', 'hairStyle', 'eyes', 'glasses', 'glassCol', 'beard', 'freckles', 'lashes', 'cheeks', 'acc', 'accCol'];
+  var ORDER = ['body', 'height', 'skin', 'hair', 'hairStyle', 'eyes', 'glasses', 'glassCol', 'beard', 'freckles', 'lashes', 'cheeks', 'acc', 'accCol', 'gems', 'streaks'];
   function pack(a) {
     a = clean(a);
     return ORDER.map(function (k) { var v = a[k]; return typeof v === 'boolean' ? (v ? '1' : '0') : typeof v === 'number' ? String(v + 1) : String(v).replace('#', '').replace('-', ''); }).join('.');
@@ -144,7 +149,8 @@ var People = (function () {
       var v = p[i];
       if (k === 'body') a.body = v.replace(/^(kid|adult)(.)$/, '$1-$2');
       else if (k === 'height') a.height = v === '0' ? -1 : v === '2' ? 1 : 0;
-      else if (k === 'freckles' || k === 'lashes' || k === 'cheeks') a[k] = v === '1';
+      else if (k === 'freckles' || k === 'lashes' || k === 'cheeks' || k === 'gems') a[k] = v === '1';
+      else if (k === 'streaks') a.streaks = v === 'none' ? 'none' : '#' + v;
       else if (k === 'skin' || k === 'hair' || k === 'eyes' || k === 'glassCol' || k === 'accCol') a[k] = '#' + v;
       else a[k] = v;
     });

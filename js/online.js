@@ -162,6 +162,7 @@ var Online = (function () {
     KIT_COLOR.forEach(function (key) { if (typeof k[key] === 'string' && /^#[0-9a-fA-F]{6}$/.test(k[key])) { out[key] = k[key]; n++; } });
     KIT_WORD.forEach(function (key) { if (typeof k[key] === 'string' && /^[a-zA-Z]{1,12}$/.test(k[key])) { out[key] = k[key]; n++; } });
     KIT_FLAG.forEach(function (key) { var v = k[key]; if (typeof v === 'boolean' || v === 'on' || v === 'off') { out[key] = v; n++; } });
+    if (typeof k.av === 'string' && window.People && People.unpack(k.av)) { out.av = k.av; n++; }   // PEOPLE: the player's avatar, as People.pack() text
     return n ? out : null;
   }
   function cleanLook(v) { v = v && typeof v === 'object' ? v : {}; return { who: v.who === 'tata' ? 'tata' : 'kid', back: cleanBack(v.back), kit: cleanKit(v.kit) }; }
@@ -170,13 +171,21 @@ var Online = (function () {
     var seen = {};
     return s.split(',').slice(0, 30).filter(function (id) { if (seen[id] || !Vari.card(id)) return false; seen[id] = 1; return true; });
   }
-  function myKit() { try { var c = cleanKit(window.Kit && Kit.current ? Kit.current() : S.kit); return c ? JSON.stringify(c) : ''; } catch (e) { return ''; } }
+  // (PEOPLE: once this save has its own avatar, it rides along inside the kit text: the server rules allow no new field)
+  function myKit() {
+    try {
+      var k = Object.assign({}, window.Kit && Kit.current ? Kit.current() : S.kit);
+      if (S.avatar && window.People) { k.av = People.pack(People.own()); delete k.hair; delete k.hairStyle; }
+      var c = cleanKit(k), t = c ? JSON.stringify(c) : '';
+      return t.length <= 600 ? t : '';
+    } catch (e) { return ''; }
+  }
   // The variation cards this device's player has earned and Tata left switched on (offered when THEY set the Goal).
   function myVC() { if (!window.Vari) return ''; try { return Vari.unlocked().filter(function (c) { return Vari.cardOn(c.id); }).map(function (c) { return c.id; }).join(','); } catch (e) { return ''; } }
   function mySeatInfo() {
     var st = ownStageInfo(), g = grownUp();
     return { name: cleanName(S.name), jersey: cleanJersey(S.jersey), who: g ? 'tata' : 'kid', back: cleanBack(g ? S.name : (typeof backName === 'function' ? backName() : S.name)),
-      kit: g ? '' : myKit(), vc: myVC(), stage: JSON.stringify({ ops: st.ops, fractions: !!st.fractions, maxGoal: st.maxGoal || 50 }), rdy: (O && O.rdy) || 0 };
+      kit: g && !S.avatar ? '' : myKit(), vc: myVC(), stage: JSON.stringify({ ops: st.ops, fractions: !!st.fractions, maxGoal: st.maxGoal || 50 }), rdy: (O && O.rdy) || 0 };
   }
   function seatFrom(v) {
     if (!v || typeof v !== 'object') return null;

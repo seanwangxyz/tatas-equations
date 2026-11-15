@@ -136,24 +136,59 @@ function renderSetup() {
     '</div></div><div class="setup-foot"><b>Shakes per match</b><div class="seg">' + [1, 3, 5].map(function (n) { return '<button class="' + (S.set.shakes === n ? 'on' : '') + '" data-act="setShakes" data-arg="' + n + '">' + n + '</button>'; }).join('') + '</div></div></div>';
 }
 ACT.playOpp = function (el) { startMatch('ai', +el.dataset.arg); };
-ACT.playPvp = function () { startMatch('pvp'); };
+// PEOPLE: who sits where in a game on this device. S.seats = { p2: id, p3: id } remembers the players picked last
+// (ids from the players list, js/avatar.js Crew); a seat with nobody picked is a guest with a typed name.
+function seatPerson(k) { var id = S.seats && S.seats[k]; return id && window.Crew && Crew.person ? Crew.person(id) : null; }
+function seatRowHTML(k, label, guestHTML) {
+  var p = seatPerson(k);
+  return '<div class="setrow seat-row"><label>' + label + '</label>' +
+    (p ? '<span class="seat-who">' + (Crew.faceHTML ? Crew.faceHTML(p, 44) : '') + '<b>' + esc(p.name) + '</b> <span class="jersey">' + esc(p.jersey || '') + '</span></span>' : guestHTML) +
+    '<button class="btn" data-act="seatChoose" data-arg="' + k + '">' + (p ? 'Change' : ico('people') + ' Pick a player') + '</button></div>';
+}
+var seatBack = null;   // reopens the set-up pop-up after a player was picked
+ACT.seatChoose = function (el) {
+  if (!window.Crew || !Crew.choose) return;
+  var k = el.dataset.arg, other = k === 'p2' ? 'p3' : 'p2', ex = ['own'], back = seatBack;
+  if (seatBack === ACT.playP3) { var n2 = $('#p3n2'), n3 = $('#p3n3'), kd = $('#p3kind'), cc = $('#p3c'); S.p3 = Object.assign({}, S.p3 || {}, n2 ? { n2: n2.value } : {}, n3 ? { n3: n3.value } : {}, kd ? { creature: kd.value === 'creature' && cc ? +cc.value : -1 } : {}); }
+  if (S.seats && S.seats[other]) ex.push(S.seats[other]);
+  Crew.choose({ exclude: ex, seat: k }, function (p) {
+    if (!S.seats || typeof S.seats !== 'object') S.seats = {};
+    S.seats[k] = p && p.id && p.id !== 'own' ? p.id : null; persist();
+    if (back) back();
+  });
+};
+ACT.playPvp = function () {
+  if (!window.Crew || !Crew.choose) { startMatch('pvp'); return; }
+  seatBack = ACT.playPvp;
+  modal('<h2 class="hero">2 Players</h2>' +
+    '<div class="setrow seat-row"><label>Player 1</label><span class="seat-who">' + (Crew.faceHTML && Crew.person ? Crew.faceHTML(Crew.person('own'), 44) : '') + '<b>' + esc(S.name) + '</b> <span class="jersey">' + esc(S.jersey || '7') + '</span></span></div>' +
+    seatRowHTML('p2', 'Player 2', '<b>Guest</b>') +
+    '<p style="font-size:15px">Take turns on this device. Pick a player to see them at the table in their own kit.</p>' +
+    '<div class="row"><button class="btn green big" data-act="startPvp">' + ico('play') + ' Start</button><button class="btn" data-act="closeModal">Cancel</button></div>');
+};
+ACT.startPvp = function () { var p2 = seatPerson('p2'); closeModal(); startMatch('pvp', null, { p2: p2 }); };
 ACT.playP3 = function () {
   var c = S.p3 || {};
+  seatBack = ACT.playP3;
+  var crew = !!(window.Crew && Crew.choose);
   var opts = OPPONENTS.map(function (o, i) { return oppOpen(i) ? '<option value="' + i + '"' + (c.creature === i ? ' selected' : '') + '>' + o.emoji + ' ' + esc(o.name) + '</option>' : ''; }).join('');
   modal('<h2 class="hero">3 Players</h2>' +
     '<div class="setrow"><label>Player 1</label><b>' + esc(S.name) + '</b> <span class="jersey">' + esc(S.jersey || '7') + '</span></div>' +
-    '<div class="setrow"><label>Player 2</label><input type="text" id="p3n2" maxlength="14" value="' + esc(c.n2 || 'Tata') + '"></div>' +
+    (crew ? seatRowHTML('p2', 'Player 2', '<input type="text" id="p3n2" maxlength="14" value="' + esc(c.n2 || 'Tata') + '">')
+      : '<div class="setrow"><label>Player 2</label><input type="text" id="p3n2" maxlength="14" value="' + esc(c.n2 || 'Tata') + '"></div>') +
     '<div class="setrow"><label>Player 3 is…</label><select id="p3kind"><option value="person">a person</option><option value="creature"' + (c.creature >= 0 ? ' selected' : '') + '>a creature</option></select></div>' +
-    '<div class="setrow"><label>Person\'s name</label><input type="text" id="p3n3" maxlength="14" value="' + esc(c.n3 || 'Mama') + '"></div>' +
+    (crew ? seatRowHTML('p3', 'The person', '<input type="text" id="p3n3" maxlength="14" value="' + esc(c.n3 || 'Mama') + '">')
+      : '<div class="setrow"><label>Person\'s name</label><input type="text" id="p3n3" maxlength="14" value="' + esc(c.n3 || 'Mama') + '"></div>') +
     '<div class="setrow"><label>…or creature</label><select id="p3c">' + opts + '</select></div>' +
     '<p style="font-size:15px">Turns go around in order. After any move, <b>either</b> other player may challenge. After a challenge, the third player may write a Solution too.</p>' +
     '<div class="row"><button class="btn green big" data-act="startP3">' + ico('play') + ' Start</button><button class="btn" data-act="closeModal">Cancel</button></div>');
 };
 ACT.startP3 = function () {
-  var n2 = ($('#p3n2').value || '').trim().slice(0, 14) || 'Tata', n3 = ($('#p3n3').value || '').trim().slice(0, 14) || 'Mama';
+  var old = S.p3 || {}, e2 = $('#p3n2'), e3 = $('#p3n3');   // (a seat with a picked player has no name box: keep the guest name typed before)
+  var n2 = ((e2 ? e2.value : old.n2) || '').trim().slice(0, 14) || 'Tata', n3 = ((e3 ? e3.value : old.n3) || '').trim().slice(0, 14) || 'Mama';
   var kind = $('#p3kind').value, c = +$('#p3c').value;
   S.p3 = { n2: n2, n3: n3, creature: kind === 'creature' ? c : -1 }; persist();
-  closeModal(); startMatch('p3', null, S.p3);
+  closeModal(); startMatch('p3', null, Object.assign({}, S.p3, { p2: seatPerson('p2'), p3: kind === 'creature' ? null : seatPerson('p3') }));
 };
 ACT.lockedOpp = function (el) { var i = +el.dataset.arg; Snd.boop(); modal('<h2 class="hero">Locked</h2><p style="text-align:center">Win a match against <b>' + esc(OPPONENTS[i - 1].name) + '</b> to unlock ' + esc(OPPONENTS[i].name) + '!</p><div class="row"><button class="btn" data-act="closeModal">OK</button></div>'); };
 ACT.setShakes = function (el) { S.set.shakes = +el.dataset.arg; persist(); renderSetup(); };
