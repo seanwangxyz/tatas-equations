@@ -441,17 +441,18 @@ var Avatar = (function () {
     var h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
     return { h: (h * 60 + 360) % 360, s: d / (1 - Math.abs(mx + mn - 1) || 1) };
   }
-  function fun(hex) { var x = hue(hex); return x.s > 0.3 && x.h > 55 && x.h < 330; }   // blue, green, purple, pink hair
-  function any(list) { return list[Math.floor(Math.random() * list.length)][0]; }
+  function fun(hex) { var x = hue(hex); return x.s > 0.3 && x.h > 55 && x.h < 350; }   // blue, green, purple, pink hair
+  function any(list) { var x = list[Math.floor(Math.random() * list.length)]; return x ? x[0] : undefined; }
   function chance(p) { return Math.random() < p; }
   function surprise(a) {
     var cols = People.HAIR_COLORS, natural = cols.filter(function (c) { return !fun(c[0]); }), wild = cols.filter(function (c) { return fun(c[0]); });
     var n = People.clean(a);
+    if (!People.isAdult(n)) natural = natural.filter(function (c) { return !(hue(c[0]).s === 0 && lum(c[0]) > 0.45); });   // grey and white: rarer on the young ones
     n.skin = any(People.SKINS); n.eyes = any(People.EYES); n.hairStyle = any(People.HAIR_STYLES);
     n.hair = any(chance(0.15) && wild.length ? wild : natural);
     var others = cols.filter(function (c) { return c[0] !== n.hair; });
-    n.streaks = chance(0.25) ? any(chance(0.7) && wild.length ? wild.filter(function (c) { return c[0] !== n.hair; }).concat([]) : others) : 'none';
-    if (!n.streaks) n.streaks = 'none';
+    var wildOthers = wild.filter(function (c) { return c[0] !== n.hair; }), pool = chance(0.7) && wildOthers.length ? wildOthers : others;
+    n.streaks = chance(0.25) && pool.length ? any(pool) : 'none';
     n.glasses = chance(0.25) ? any(People.GLASSES.filter(function (g) { return g[0] !== 'none'; })) : 'none'; n.glassCol = any(People.GLASS_COLORS);
     n.acc = chance(0.4) ? any(People.ACCS.filter(function (g) { return g[0] !== 'none'; })) : 'none'; n.accCol = any(People.ACC_COLORS);
     n.freckles = chance(0.3); n.lashes = chance(0.45); n.cheeks = chance(0.75); n.gems = chance(0.25);
