@@ -1144,7 +1144,8 @@ var Online = (function () {
   var linkCode = (function () {
     try {
       var m = /[?&]join=([A-Za-z]{3,6}[0-9]{2})(?:&|$)/.exec(location.search); if (!m) return null;
-      if (window.history && history.replaceState) history.replaceState(null, '', location.pathname + location.hash);
+      var rest = location.search.replace(/([?&])join=[^&]*(&|$)/, function (x, a, b) { return b ? a : ''; });   // (the other parts of the address stay)
+      if (window.history && history.replaceState) history.replaceState(null, '', location.pathname + rest + location.hash);
       return m[1].toUpperCase();
     } catch (e) { return null; }
   })();
