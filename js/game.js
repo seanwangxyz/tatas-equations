@@ -839,7 +839,21 @@ function nextShake() {
   G.shake++; G.setter = nextP(G.setter); newShake();
   if (G.shake === G.shakes && G.shakes > 1 && window.Commentary) Commentary.say('matchpoint');
 }
+// NEXT (house feature): who to try after beating creature idx one-on-one: the next one in its league if he has not
+// beaten it yet (a first win has just unlocked it), else the first open creature he has not beaten; -1: he has beaten
+// every creature that is open. Only ever offered after a WIN (a loss or a tie keeps Play again, with no comment).
+function nextToTry(idx) {
+  var n = OPPONENTS.length, i;
+  if (idx + 1 < n && (idx + 1) % LEAGUE !== 0 && !S.beaten[idx + 1]) return idx + 1;
+  for (i = 0; i < n; i++) if (i !== idx && oppOpen(i) && !S.beaten[i]) return i;
+  return -1;
+}
+ACT.playOnward = function (el) {   // (ACT.playNext is the title's big Play button, js/ui.js)
+  var i = +el.dataset.arg; if (!(i >= 0) || !OPPONENTS[i] || !oppOpen(i)) return;
+  closeModal(); drainQueue(function () { S.mmLast = i; persist(); startMatch('ai', i); });
+};
 function endMatch() {
+  var nudge = null;
   if (window.Commentary) { var cmTop = Math.max.apply(null, G.players.map(function (p) { return p.score; })), cmN = G.players.filter(function (p) { return p.score === cmTop; }).length, cmMe = G.players[0].score === cmTop; Commentary.say('final', { won: cmMe && cmN === 1, tie: cmMe && cmN > 1 }); }
   if (window.Parent && G.mode !== 'tutorial') Parent.note('match'); // PARENT page (reads G; peeks at Pip's review notes)
   if (window.Missions) Missions.note('end', { g: G }); // MISSIONS
@@ -854,6 +868,7 @@ function endMatch() {
     S.stats.bestMatch = Math.max(S.stats.bestMatch, a);
     if (won) {
       var first = !S.beaten[idx]; S.beaten[idx] = true;
+      nudge = { first: first, next: nextToTry(idx), from: o };   // NEXT: after a win, the way on to the next creature
       addXP(first ? 60 : 20, first ? 'First win against ' + o.name + '!' : 'Won against ' + o.name);
       victoryFX(); Snd.fanfare(); setTimeout(Snd.crowd, 500); banner('⚽ GOOOAL!', S.name + ' wins!'); creatureMood(loseMood(o)); setTimeout(function () { if (G && G.phase === 'over' && !(window.Matchday && Matchday.active())) playerMood('gg'); }, 4600); /* AVATARS: a sporting "good game" after a win too */ if (Snd.motif) setTimeout(function () { if (G) Snd.motif(o.kind, 'beaten'); }, 3600); /* MUSIC: the beaten creature's little tune */ Snd.setMood('win'); if (!shot('win')) cue('win'); playerCelebrate(); fx3('confetti'); crowdSay('cheer', { wave: true }); fx3('flash'); board('GOOOAL!');
     }
@@ -864,13 +879,13 @@ function endMatch() {
     var rivalEnd = window.Rivals ? Rivals.endLine(idx, won ? 'w' : tie ? 't' : 'l') : '';
     checkBadges({ type: 'match', won: won, trailed: G.trailed, perfect: perfect, oppIdx: G.oppIdx });
     persist();
-    var nextO = (idx + 1) % LEAGUE ? OPPONENTS[idx + 1] : null;
+    var nextO = nudge && nudge.next >= 0 ? OPPONENTS[nudge.next] : null;   // NEXT: the next creature he has not beaten (was: always the next in the league)
     // RESULTS (round 9): the final score as two tiles (count up once), the creature's line in its bubble, then the rest
     rcTone = won ? ' win' : tie ? ' tie' : ' kind';
     html = '<h2 class="hero">' + (won ? 'YOU WIN!' : tie ? 'It\'s a tie!' : 'Good game!') + '</h2>' +
       '<div class="rc-board final n2">' + rcSide(0, won) + '<div class="rc-vs" aria-hidden="true">VS</div>' + rcSide(1, !won && !tie) + '</div>' +
       '<div class="rc-say">' + avatarHTML(o) + '<div class="bubble">' + (rivalEnd || (won ? (Math.random() < 0.5 ? o.lose : talkLine(o, 'sore') || o.lose) : tie ? 'A tie! Let\'s play again!' : (S.set.gloat !== false ? talkLine(o, 'gloat') || o.win : o.win) + ' Want a rematch?')) + '</div></div>' +
-      (won && nextO ? '<p class="rc-next">' + ico('star') + ' <b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> is ready to play!</p>' : '') +
+      (won && nextO ? '<p class="rc-next">' + ico('star') + ' ' + (nudge.first ? 'New: ' : '') + '<b>' + esc(nextO.name) + ' ' + esc(nextO.title) + '</b> ' + (nudge.first ? 'is ready to play!' : 'is waiting for you!') + '</p>' : '') +
       rcXP() +
       (seasonRes ? Season.lineHTML(seasonRes) : '');
     html += (window.Career && won ? Career.bossLineHTML(idx, first) : ''); // CAREER: "League conquered!"
@@ -901,7 +916,11 @@ function endMatch() {
   if (window.Missions) html += Missions.matchLineHTML(); // MISSIONS: "Missions: 2 of 3 (new stamp: ...)"
   if (window.Review) html += Review.slotHTML(); // REVIEW: empty spot; the button appears only if Pip found something
   var cupRow = (G.mode === 'ai' && window.Cup && Cup.active()) ? Cup.onMatchEnd({ won: won, tie: tie, you: a, them: b, oppIdx: G.oppIdx }) : '';
-  html += cupRow || '<div class="row"><button class="btn green big" data-act="rematch">' + ico('play') + ' Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>';
+  // NEXT: after a one-on-one win with someone new to try, the big button leads on to that creature (Play again stays,
+  // smaller). The card's own line above says who it is ("New: ... is ready to play!" / "... is waiting for you!").
+  var nx = nudge && nudge.next >= 0 && !cupRow ? OPPONENTS[nudge.next] : null;
+  html += cupRow || (nx ? '<div class="row"><button class="btn green big" data-act="playOnward" data-arg="' + nudge.next + '">' + ico('play') + ' Next: ' + esc(nx.name) + '</button><button class="btn" data-act="rematch">Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>'
+    : '<div class="row"><button class="btn green big" data-act="rematch">' + ico('play') + ' Play again</button><button class="btn" data-act="toMenu">' + ico('home') + ' Menu</button></div>');
   html = '<div class="rc rc-match' + rcTone + '">' + html + '</div>'; // RESULTS (round 9): one card around everything (Season, Career, Pip's tip, Cup rows included)
   // FIREWORKS (js/replay.js): a Cup final won, a league boss beaten for the first time, a Three-at-the-table crown
   var bigWin = (G.mode === 'ai' && won && ((first && (idx + 1) % LEAGUE === 0) || /data-act="cupLift"/.test(cupRow))) || (G.mode === 'ai3' && G.trioCrown);

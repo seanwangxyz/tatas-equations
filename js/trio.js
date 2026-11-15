@@ -39,7 +39,7 @@ var Trio = (function () {
         var o = OPPONENTS[i], ok = oppOpen(i), on = sel.indexOf(i) >= 0;
         row += ok
           ? '<button class="trio-chip' + (on ? ' on' : '') + '" data-act="trioToggle" data-arg="' + i + '" aria-pressed="' + on + '">' + avatarHTML(o) + '<b>' + esc(o.name) + '</b>' + (on ? '<span class="trio-tick">✔</span>' : '') + '</button>'
-          : '<button class="trio-chip lock" data-act="trioLockedOne" data-arg="' + i + '" title="Beat ' + esc(OPPONENTS[i - 1].name) + ' to unlock">' + avatarHTML(o) + '<b>' + esc(o.name) + '</b><small>' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + '</small></button>';
+          : '<button class="trio-chip lock" data-act="trioLockedOne" data-arg="' + i + '" title="Beat ' + esc(OPPONENTS[i - 1].name) + ' in a one-on-one game to unlock">' + avatarHTML(o) + '<b>' + esc(o.name) + '</b><small>' + ico('lock') + ' Beat ' + esc(OPPONENTS[i - 1].name) + ' 1-on-1</small></button>';
       }
       groups += '<div class="trio-league"><div class="trio-lh">' + esc(names[L] || ('League ' + (L + 1))) + '</div><div class="trio-row">' + row + '</div></div>';
     }
