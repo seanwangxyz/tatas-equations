@@ -28,9 +28,18 @@ People.BODIES.forEach(b => [-1, 0, 1].forEach(h => People.HAIR_STYLES.forEach(hs
   if (!same(People.unpack(s), a) || !/^[a-zA-Z0-9.]+$/.test(s)) rt = false;
 }))))));
 t('pack / unpack round trip for every combination', rt);
-t('packed text is short (' + longest + ')', longest <= 120);
+t('packed text is short (' + longest + ')', longest <= 170);
 t('unpack refuses junk', People.unpack('<script>') === null && People.unpack('a.b') === null && People.unpack(42) === null && People.unpack('x'.repeat(200)) === null);
 t('unpack never returns something unclean', (() => { const u = People.unpack('zzz.9.zzzzzz.zzzzzz.zzz.zzzzzz.zzz.zzzzzz.zzz.7.7.7.zzz.zzzzzz.7.zzzzzz'); return u === null || same(u, People.clean(u)); })());
+
+// ----- outfits and starters -----
+t('outfit fields are cleaned', (() => { const a = People.clean({ outfit: 'tuxedo', bottom: 'kilt', shoes: 'clogs', fit1: 'red' }); return a.outfit === 'kit' && a.bottom === 'shorts' && a.shoes === 'sneakers' && a.fit1 === People.DEFAULT.fit1; })());
+People.OUTFITS.forEach(o => People.BOTTOMS.forEach(b => People.SHOES.forEach(sh => { const a = People.clean({ outfit: o[0], bottom: b[0], shoes: sh[0], fit1: '#ffdeeb', fit3: '#b197fc' }); t('outfit round trip ' + o[0] + ' / ' + b[0] + ' / ' + sh[0], same(People.unpack(People.pack(a)), a)); })));
+t('text from before the outfits is still read', (() => { const u = People.unpack('kids.1.efc19d.3b2314.spacebuns.3f2412.none.25262b.none.0.1.1.clips.e64980.1.e64980'); return u && u.hairStyle === 'spacebuns' && u.outfit === 'kit'; })());
+t('every starter is clean and has a name', People.STARTERS.every(st => st.id && st.name && same(People.clean(st.avatar), People.clean(People.clean(st.avatar))) && People.starter(st.id) === st));
+t('starters use only listed options', People.STARTERS.every(st => { const a = People.clean(st.avatar); return (st.avatar.outfit || 'kit') === a.outfit && (st.avatar.hairStyle || a.hairStyle) === a.hairStyle && (st.avatar.bottom || a.bottom) === a.bottom && (st.avatar.shoes || a.shoes) === a.shoes; }));
+t('a brand-new save gets its own kit, not the red classic', (() => { const S2 = { name: 'Champ', xp: 0, kit: {} }; const st = People.freshStart(S2, 0.99); return st && st.id.indexOf('kit-') === 0 && S2.kit.shirt === st.kit.shirt && S2.kit.shirt !== '#c9342c' && S2.backName === 'PLAYER' && S2.freshDone === true && People.freshStart(S2) === null; })());
+t('a save that was played or named is left alone', People.freshStart({ name: 'Tyson', xp: 0 }) === null && People.freshStart({ name: 'Champ', xp: 40 }) === null && People.freshStart({ name: 'Champ', avatar: {} }) === null && People.freshStart({ name: 'Champ', stats: { shakes: 3 } }) === null);
 
 // ----- own -----
 t('old kid save: hair from the kit', (() => { const a = People.own({ set: { me: 'kid' }, kit: { hair: '#d9a441', hairStyle: 'curly' } }); return a.body === 'kid' && a.hair === '#d9a441' && a.hairStyle === 'curly'; })());

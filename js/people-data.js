@@ -19,7 +19,17 @@
 //     streaks:   'none' | '#rrggbb'      coloured streaks / highlights in the hair (HAIR_COLORS)
 //     acc:       one of ACCS ids         accCol: '#rrggbb' (ACC_COLORS)      a hair bow, a headband, butterfly clips,
 //                                        a scrunchie (on a ponytail, bun or pigtails; a wrist scrunchie otherwise), a cap
+//     outfit:    one of OUTFITS ids      what they wear: 'kit' = the football kit from the kit designer (S.kit ...);
+//                                        the others are everyday clothes drawn from the fields below (the kit is kept, just not worn)
+//     bottom:    one of BOTTOMS ids      (not used with the football kit)
+//     shoes:     one of SHOES ids        (the football kit always wears its boots)
+//     fit1 / fit2 / fit3 / shoeCol: '#rrggbb'   the top's main colour, its second colour (sleeves, trim, tie), the
+//                                        bottoms, the shoes (FIT_COLORS is the palette the maker offers)
 //     at:        ms timestamp of the last change (cloud merge: the newest wins) }
+//
+// STARTERS: ready-made looks to begin from (a new player picks one picture, then changes anything). Each is
+//   { id, name, avatar: {...}, kit: {...saved-shape kit keys}, jersey }. Nobody is asked whether they are a boy or a girl:
+//   the pictures show football kits and everyday outfits, and anyone can pick any of them.
 //
 // IN THE SAVE:
 //   S.avatar           this save's own player (absent on old saves: People.own() then builds it from S.set.me and S.kit)
@@ -51,13 +61,21 @@ var People = (function () {
   var BEARDS = [['none', 'None'], ['stubble', 'Stubble'], ['moustache', 'Moustache'], ['goatee', 'Goatee'], ['beard', 'Full beard']];
   var ACCS = [['none', 'None'], ['bow', 'Hair bow'], ['band', 'Headband'], ['clips', 'Butterfly clips'], ['scrunchie', 'Scrunchie'], ['cap', 'Cap']];
   var ACC_COLORS = [['#e64980', 'Pink'], ['#c9342c', 'Red'], ['#f5c518', 'Yellow'], ['#2f9e44', 'Green'], ['#1c7ed6', 'Blue'], ['#7048e8', 'Purple'], ['#f1f3f5', 'White'], ['#25262b', 'Black']];
+  // what they wear. 'kit' is the football kit; the rest are everyday clothes (all modest, all for any player)
+  var OUTFITS = [['kit', 'Football kit'], ['school', 'School look'], ['cardigan', 'Cardigan'], ['hoodie', 'Hoodie'], ['varsity', 'Varsity jacket'], ['tee', 'Big T-shirt']];
+  var BOTTOMS = [['shorts', 'Shorts'], ['skirt', 'Pleated skirt'], ['cargos', 'Cargo trousers'], ['jeans', 'Wide jeans'], ['joggers', 'Joggers']];
+  var SHOES = [['sneakers', 'Trainers'], ['hightops', 'High-tops'], ['loafers', 'School shoes'], ['boots', 'Football boots']];
+  var FIT_COLORS = [['#f1f3f5', 'White'], ['#25262b', 'Black'], ['#868e96', 'Grey'], ['#1f3a68', 'Navy'], ['#1c7ed6', 'Blue'], ['#a5d8ff', 'Baby blue'], ['#2f9e44', 'Green'], ['#b2f2bb', 'Mint'],
+    ['#c9342c', 'Red'], ['#f783ac', 'Pink'], ['#ffdeeb', 'Blush'], ['#b197fc', 'Lilac'], ['#7048e8', 'Purple'], ['#f5c518', 'Yellow'], ['#f76707', 'Orange'], ['#d9c2a0', 'Sand'], ['#7b5536', 'Brown']];
   var MAX_CREW = 8;
 
   // the two looks the game has always had: the kid (Tyson's footballer) and the grown-up ("Tata")
   var DEFAULT = { v: 1, body: 'kid', height: 0, skin: '#efc19d', hair: '#3b2314', hairStyle: 'swept', eyes: '#3f2412', glasses: 'none', glassCol: '#25262b',
-    beard: 'none', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980' };
+    beard: 'none', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980',
+    outfit: 'kit', bottom: 'shorts', shoes: 'sneakers', fit1: '#1c7ed6', fit2: '#f1f3f5', fit3: '#1f3a68', shoeCol: '#f1f3f5' };
   var GROWN = { v: 1, body: 'adult-b', height: 0, skin: '#e4b48e', hair: '#17130f', hairStyle: 'tousled', eyes: '#2e1c10', glasses: 'none', glassCol: '#25262b',
-    beard: 'stubble', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980' };
+    beard: 'stubble', freckles: false, lashes: false, cheeks: true, gems: false, streaks: 'none', acc: 'none', accCol: '#e64980',
+    outfit: 'kit', bottom: 'shorts', shoes: 'sneakers', fit1: '#1c7ed6', fit2: '#f1f3f5', fit3: '#1f3a68', shoeCol: '#f1f3f5' };
 
   var HEX = /^#[0-9a-fA-F]{6}$/;
   function ids(list) { return list.map(function (x) { return x[0]; }); }
@@ -73,7 +91,9 @@ var People = (function () {
       hairStyle: oneOf(a.hairStyle, HAIR_STYLES, d.hairStyle), eyes: hex(a.eyes, d.eyes), glasses: oneOf(a.glasses, GLASSES, d.glasses), glassCol: hex(a.glassCol, d.glassCol),
       beard: oneOf(a.beard, BEARDS, 'none'), freckles: flag(a.freckles, d.freckles), lashes: flag(a.lashes, d.lashes), cheeks: flag(a.cheeks, d.cheeks),
       gems: flag(a.gems, d.gems), streaks: a.streaks === 'none' ? 'none' : hex(a.streaks, d.streaks),
-      acc: oneOf(a.acc, ACCS, d.acc), accCol: hex(a.accCol, d.accCol) };
+      acc: oneOf(a.acc, ACCS, d.acc), accCol: hex(a.accCol, d.accCol),
+      outfit: oneOf(a.outfit, OUTFITS, d.outfit), bottom: oneOf(a.bottom, BOTTOMS, d.bottom), shoes: oneOf(a.shoes, SHOES, d.shoes),
+      fit1: hex(a.fit1, d.fit1), fit2: hex(a.fit2, d.fit2), fit3: hex(a.fit3, d.fit3), shoeCol: hex(a.shoeCol, d.shoeCol) };
     if (typeof a.at === 'number' && isFinite(a.at)) out.at = a.at;
     return out;
   }
@@ -136,28 +156,64 @@ var People = (function () {
     return slot;
   }
   // ----- online: a short text form -----
-  var ORDER = ['body', 'height', 'skin', 'hair', 'hairStyle', 'eyes', 'glasses', 'glassCol', 'beard', 'freckles', 'lashes', 'cheeks', 'acc', 'accCol', 'gems', 'streaks'];
+  var ORDER = ['body', 'height', 'skin', 'hair', 'hairStyle', 'eyes', 'glasses', 'glassCol', 'beard', 'freckles', 'lashes', 'cheeks', 'acc', 'accCol', 'gems', 'streaks',
+    'outfit', 'bottom', 'shoes', 'fit1', 'fit2', 'fit3', 'shoeCol'];
+  var OLD_N = 16, COLS = { skin: 1, hair: 1, eyes: 1, glassCol: 1, accCol: 1, fit1: 1, fit2: 1, fit3: 1, shoeCol: 1 };   // (text from before the outfits has 16 parts: still read)
   function pack(a) {
     a = clean(a);
     return ORDER.map(function (k) { var v = a[k]; return typeof v === 'boolean' ? (v ? '1' : '0') : typeof v === 'number' ? String(v + 1) : String(v).replace('#', '').replace('-', ''); }).join('.');
   }
   function unpack(str) {
-    if (typeof str !== 'string' || str.length > 120 || !/^[a-zA-Z0-9.]+$/.test(str)) return null;
-    var p = str.split('.'); if (p.length !== ORDER.length) return null;
+    if (typeof str !== 'string' || str.length > 170 || !/^[a-zA-Z0-9.]+$/.test(str)) return null;
+    var p = str.split('.'); if (p.length !== ORDER.length && p.length !== OLD_N) return null;
     var a = {};
     ORDER.forEach(function (k, i) {
-      var v = p[i];
+      var v = p[i]; if (v === undefined) return;
       if (k === 'body') a.body = v.replace(/^(kid|adult)(.)$/, '$1-$2');
       else if (k === 'height') a.height = v === '0' ? -1 : v === '2' ? 1 : 0;
       else if (k === 'freckles' || k === 'lashes' || k === 'cheeks' || k === 'gems') a[k] = v === '1';
       else if (k === 'streaks') a.streaks = v === 'none' ? 'none' : '#' + v;
-      else if (k === 'skin' || k === 'hair' || k === 'eyes' || k === 'glassCol' || k === 'accCol') a[k] = '#' + v;
+      else if (COLS[k]) a[k] = '#' + v;
       else a[k] = v;
     });
     return clean(a);
   }
+  // ----- ready-made looks to begin from -----
+  var STARTERS = [
+    { id: 'kit-blue', name: 'Blue kit', jersey: '10', avatar: { body: 'kid', hairStyle: 'short', hair: '#15110e', skin: '#d9a273', outfit: 'kit' },
+      kit: { shirt: '#1c7ed6', pattern: 'plain', trim: '#ffffff', shorts: '#ffffff', crest: 'star', mark: 'bolt', numStyle: 'block', collar: 'round', boots: '#f8f9fa' } },
+    { id: 'kit-green', name: 'Green hoops', jersey: '8', avatar: { body: 'kid', hairStyle: 'spiky', hair: '#b5562a', skin: '#fbe3d0', freckles: true, outfit: 'kit' },
+      kit: { shirt: '#2f9e44', pattern: 'hoops', trim: '#ffffff', shorts: '#ffffff', crest: 'dice', mark: 'fox', numStyle: 'round', collar: 'round', boots: '#1f2430' } },
+    { id: 'kit-purple', name: 'Purple and gold', jersey: '11', avatar: { body: 'kid', hairStyle: 'highpony', hair: '#3b2314', skin: '#e4b48e', lashes: true, acc: 'scrunchie', accCol: '#f5c518', outfit: 'kit' },
+      kit: { shirt: '#7048e8', pattern: 'sash', trim: '#ffd43b', shorts: '#25262b', crest: 'diamond', mark: 'rocket', numStyle: 'college', collar: 'v', boots: '#f5c518' } },
+    { id: 'kit-pink', name: 'Pink and white', jersey: '7', avatar: { body: 'kid', hairStyle: 'braids', hair: '#15110e', skin: '#8a5533', lashes: true, outfit: 'kit' },
+      kit: { shirt: '#e64980', pattern: 'stripes', trim: '#ffffff', shorts: '#ffffff', crest: 'ribbon', mark: 'swift', numStyle: 'thin', collar: 'v', boots: '#f8f9fa' } },
+    { id: 'school', name: 'School look', jersey: '5', avatar: { body: 'teen', hairStyle: 'halfup', hair: '#5a3a22', skin: '#f6d3b8', lashes: true, acc: 'bow', accCol: '#1f3a68',
+      outfit: 'school', bottom: 'skirt', shoes: 'loafers', fit1: '#1f3a68', fit2: '#c9342c', fit3: '#868e96', shoeCol: '#25262b' }, kit: {} },
+    { id: 'cardigan', name: 'Soft cardigan', jersey: '3', avatar: { body: 'kid', hairStyle: 'spacebuns', hair: '#7b5536', skin: '#efc19d', lashes: true, gems: true, acc: 'clips', accCol: '#b197fc',
+      outfit: 'cardigan', bottom: 'skirt', shoes: 'sneakers', fit1: '#ffdeeb', fit2: '#f1f3f5', fit3: '#b197fc', shoeCol: '#f1f3f5' }, kit: {} },
+    { id: 'hoodie', name: 'Big hoodie', jersey: '21', avatar: { body: 'teen', hairStyle: 'curtain', hair: '#15110e', skin: '#c68a5c', lashes: true, streaks: '#b197fc',
+      outfit: 'hoodie', bottom: 'cargos', shoes: 'hightops', fit1: '#b197fc', fit2: '#f1f3f5', fit3: '#d9c2a0', shoeCol: '#f1f3f5' }, kit: {} },
+    { id: 'varsity', name: 'Varsity jacket', jersey: '23', avatar: { body: 'teen', hairStyle: 'side', hair: '#3b2314', skin: '#e4b48e',
+      outfit: 'varsity', bottom: 'jeans', shoes: 'sneakers', fit1: '#2f9e44', fit2: '#f1f3f5', fit3: '#1c7ed6', shoeCol: '#f1f3f5' }, kit: {} },
+    { id: 'tee', name: 'Big T-shirt', jersey: '14', avatar: { body: 'kid', hairStyle: 'coils', hair: '#15110e', skin: '#6b3f25',
+      outfit: 'tee', bottom: 'joggers', shoes: 'hightops', fit1: '#f5c518', fit2: '#25262b', fit3: '#25262b', shoeCol: '#c9342c' }, kit: {} },
+    { id: 'classic', name: 'Red classic', jersey: '7', avatar: { body: 'kid', hairStyle: 'swept', outfit: 'kit' }, kit: {} }
+  ];
+  function starter(id) { for (var i = 0; i < STARTERS.length; i++) if (STARTERS[i].id === id) return STARTERS[i]; return null; }
+  // A brand-new save (nobody has played or named it) starts as its own player, not as the owner's son: one of the
+  // football-kit starters at random (never the red classic), 'PLAYER' on the back. The caller persists. Returns
+  // the starter used, or null when the save is not brand new (then nothing is touched).
+  function isBrandNew(s) { s = theSave(s); return !s.avatar && !s.avatarAsked && !s.freshDone && (s.name === 'Champ' || !s.name) && !(s.xp > 0) && !(s.stats && (s.stats.shakes > 0 || s.stats.correct > 0)); }
+  function freshStart(s, rnd) {
+    s = theSave(s); if (!isBrandNew(s)) return null;
+    var list = STARTERS.filter(function (x) { return x.id.indexOf('kit-') === 0; }), st = list[Math.floor((rnd == null ? Math.random() : rnd) * list.length) % list.length];
+    s.kit = Object.assign({}, obj(s.kit), st.kit); s.jersey = st.jersey; s.backName = 'PLAYER'; s.freshDone = true;
+    return st;
+  }
   return { BODIES: BODIES, HEIGHTS: HEIGHTS, SKINS: SKINS, HAIR_COLORS: HAIR_COLORS, HAIR_STYLES: HAIR_STYLES, EYES: EYES, GLASSES: GLASSES, GLASS_COLORS: GLASS_COLORS,
-    BEARDS: BEARDS, ACCS: ACCS, ACC_COLORS: ACC_COLORS, MAX_CREW: MAX_CREW, DEFAULT: DEFAULT, GROWN: GROWN,
+    BEARDS: BEARDS, ACCS: ACCS, ACC_COLORS: ACC_COLORS, OUTFITS: OUTFITS, BOTTOMS: BOTTOMS, SHOES: SHOES, FIT_COLORS: FIT_COLORS, STARTERS: STARTERS, starter: starter,
+    isBrandNew: isBrandNew, freshStart: freshStart, MAX_CREW: MAX_CREW, DEFAULT: DEFAULT, GROWN: GROWN,
     clean: clean, isAdult: isAdult, own: own, crew: crew, member: member, newId: newId, saveMember: saveMember, removeMember: removeMember, cleanMember: cleanMember,
     cleanName: cleanName, cleanJersey: cleanJersey, backOf: backOf, kitOf: kitOf, pack: pack, unpack: unpack };
 })();

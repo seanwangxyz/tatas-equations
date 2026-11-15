@@ -196,7 +196,7 @@ var AccountMerge = (function () {
     // the other players on the device = everyone from both, the copy changed last where both have someone, minus the
     // ones removed (crewGone: when) after their last change; at most 8
     avatar: function (a, b, c) { if (isObj(a) && isObj(b) && num(a.at) !== num(b.at)) return clone(num(a.at) > num(b.at) ? a : b); return pickNewer(a, b, c); },
-    avatarAsked: function (a, b) { return !!a || !!b; },
+    avatarAsked: function (a, b) { return !!a || !!b; }, freshDone: function (a, b) { return !!a || !!b; },
     crewGone: function (a, b) { a = isObj(a) ? a : {}; b = isObj(b) ? b : {}; var out = {}; Object.keys(a).concat(Object.keys(b)).forEach(function (k) { out[k] = Math.max(num(a[k]), num(b[k])); }); return out; },
     crew: function (a, b, c) {
       var by = {}, order = [], gone = {}, ga = c && isObj(c.a) && isObj(c.a.crewGone) ? c.a.crewGone : {}, gb = c && isObj(c.b) && isObj(c.b.crewGone) ? c.b.crewGone : {};
@@ -299,7 +299,7 @@ var AccountMerge = (function () {
     fans: 'union (earliest date, places from both)',
     onsets: 'On-Sets: stars and totals highest; creatures beaten on either',
     pin: 'grown-up PIN (only its salted hash): the newer device',
-    avatar: 'the look of your player: the one changed last', avatarAsked: 'either', crew: 'other players on the device: everyone from both, the copy changed last, minus removed ones', crewGone: 'removed players: latest',
+    avatar: 'the look of your player: the one changed last', avatarAsked: 'either', freshDone: 'either', crew: 'other players on the device: everyone from both, the copy changed last, minus removed ones', crewGone: 'removed players: latest',
     pace: 'creature reaction speed: per level, the device with more measured calls',
     matchday: 'the coin-toss seed: the newer device',
     tourney: 'tournament practice: rounds and wins highest; options newest; rounds log union',

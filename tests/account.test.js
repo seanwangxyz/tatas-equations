@@ -21,7 +21,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const C = (a, b, aAt = 1, bAt = 2) => AM.combine(a, b, { aAt, bAt }); // b is newer by default
 
 // Keys other features add to S outside defaults() (found with: grep -ohE "\bS\.[a-zA-Z_]+" js/*.js js/three/*.js)
-const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday', 'missions', 'pace', 'pin', 'career', 'mmLast', 'avatar', 'avatarAsked', 'crew', 'crewGone'];
+const FEATURE_KEYS = ['camp', 'wx', 'puz', 'cards', 'stadiumTierSeen', 'season', 'fans', 'parent', 'onsets', 'rivals', 'tourney', 'matchday', 'missions', 'pace', 'pin', 'career', 'mmLast', 'avatar', 'avatarAsked', 'freshDone', 'crew', 'crewGone'];
 const ALL_KEYS = Object.keys(defaults()).concat(FEATURE_KEYS);
 
 // ---------------- every top-level key has an explicit rule and a plain-words description ----------------
@@ -156,7 +156,7 @@ function randomSave() {
   s.season = { v: 1, last: 'c', c: lg(1 + ri(3), ri(11), ri(21)), m: lg(1 + ri(3), ri(11), ri(21)), hist: Array.from({ length: ri(4) }, (_, i) => ({ lg: coin() ? 'c' : 'm', n: i + 1, date: date(), place: 1 + ri(6) })), won: { gold: ri(3), silver: ri(3), bronze: ri(3), blue: ri(3) }, cer: null };
   s.fans = { v: 1, k: {} }; ['chef', 'cat', 'wizard'].forEach(k => { if (coin()) s.fans.k[k] = { d: date(), at: ['stadium'] }; });
   s.pin = { s: 'salt' + ri(99), h: 'ab' + ri(9999) };
-  s.avatar = { v: 1, body: coin() ? 'kid' : 'adult-a', skin: '#efc19d', hairStyle: coin() ? 'bun' : 'short', at: 1000 + ri(5000) }; s.avatarAsked = coin();
+  s.avatar = { v: 1, body: coin() ? 'kid' : 'adult-a', skin: '#efc19d', hairStyle: coin() ? 'bun' : 'short', at: 1000 + ri(5000) }; s.avatarAsked = coin(); s.freshDone = coin();
   s.crew = ['c11111', 'c22222', 'c33333'].filter(coin).map(id => ({ id, name: 'P' + ri(9), jersey: String(1 + ri(98)), avatar: { v: 1, body: 'kid-s' }, kit: {}, kits: { away: {}, third: {} }, kitUse: 'home', at: 1000 + ri(5000) }));
   s.crewGone = {}; if (coin()) s.crewGone.c44444 = 1000 + ri(5000);
   s.career = { seen: {} }; ['flip', 'nugget'].forEach(k => { if (coin()) s.career.seen[k] = 1; }); s.mmLast = ri(15);
