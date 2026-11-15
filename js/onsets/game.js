@@ -498,7 +498,7 @@ function osAskThirdParty(tp, kind, cb) {
   }
   ACT.osTpYes = function () { closeModal(); osWrite(tp, kind, function (res) { cb({ presented: true, ok: res.ok, tokens: res.tokens, chk: res.chk }); }); };
   ACT.osTpNo = function () { closeModal(); cb({ presented: false }); };
-  modal('<h2 class="hero">' + osName(tp) + ': Third Party</h2><p class="os-note">You may write a Solution too, but you don\'t have to.</p>' +
+  boardAsk('<h2 class="hero">' + osName(tp) + ': Third Party</h2><p class="os-note">Look at the table, then choose. You may write a Solution too, but you don\'t have to.</p>' +
     '<div class="os-pts"><div><b>4 or 6</b><span>Write a correct one</span></div><div><b>2</b><span>Write one that is not right</span></div><div><b>' + (kind === 'impossible' ? '4' : '6') + ' or 2</b><span>Skip it: ' + (kind === 'impossible' ? '4 if Impossible! was right' : '6 if the Now! Solution is wrong') + '</span></div></div>' +
     '<div class="row"><button class="btn green big" data-act="osTpYes">' + ico('pencil') + ' I\'ll write one</button><button class="btn quiet" data-act="osTpNo">No thanks</button></div>');
 }
@@ -531,7 +531,7 @@ function osLastCubePlayed() {
     osSay('pip', 'The last cube is on the mat!', 'think'); osRender();
     ACT.osLastImp = function (el) { closeModal(); var p = el && el.dataset.arg !== undefined ? +el.dataset.arg : hs[0]; OG.phase = 'move'; osChallenge('impossible', p); };
     ACT.osLastWrite = function () { closeModal(); osLastWrite(); };
-    modal('<h2 class="hero">Last cube played!</h2><p class="os-note">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution: 4 points if it is right, 2 if not.</p>' +
+    boardAsk('<h2 class="hero">Last cube played!</h2><p class="os-note">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution: 4 points if it is right, 2 if not.</p>' +
       '<div class="row">' + hs.map(function (i) { return '<button class="btn imp" data-act="osLastImp" data-arg="' + i + '">' + ico('ban') + ' ' + (osMulti() ? osName(i) + ': ' : '') + 'Impossible!</button>'; }).join('') +
       '<button class="btn green big" data-act="osLastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
   }
@@ -619,7 +619,7 @@ function osAskNoGoal(setter, hs) {
             osEndShake({ pts: osNoGoalPts(other, setter, ok), lines: [osName(other) + (ok ? ' proved a Goal was possible!' : '\'s Solution wasn\'t correct, so the "No Goal" call stands.')], sols: sols }); } });
       } });
   };
-  modal('<h2 class="hero">No Goal?</h2><p class="os-note"><b>' + osName(setter) + '</b> says no Goal can be made with these cubes and cards. ' + (hs.length > 1 ? 'Does everyone agree?' : osName(hs[0]) + ', do you agree?') + '</p>' +
+  boardAsk('<h2 class="hero">No Goal?</h2><p class="os-note"><b>' + osName(setter) + '</b> says no Goal can be made with these cubes and cards. ' + (hs.length > 1 ? 'Does everyone agree?' : osName(hs[0]) + ', do you agree?') + '</p>' +
     '<div class="row"><button class="btn green big" data-act="osNGAgree">' + (hs.length > 1 ? 'We agree' : 'I agree') + ': roll again</button>' +
     hs.map(function (i) { return '<button class="btn now" data-act="osNGChallenge" data-arg="' + i + '">' + (hs.length > 1 ? osName(i) + ': ' : '') + 'Challenge! I can make one</button>'; }).join('') + '</div>');
 }

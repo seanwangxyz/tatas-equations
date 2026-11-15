@@ -103,6 +103,9 @@ function toastBadge(b) {
 // ----- Modal helpers -----
 var modalOnClose = null;
 function modal(html, onClose) { $('#modalBox').innerHTML = html; $('#modal').classList.add('on'); modalOnClose = onClose || null; }
+// SEE THE BOARD: a question he answers by LOOKING AT THE TABLE (Third Party, last cube, No Goal). The same pop-up, but
+// small and docked over the buttons panel, and nothing is dimmed or blurred (css/style.css: #modal:has(.peek-mark)).
+function boardAsk(html, onClose) { modal(html + '<i class="peek-mark" hidden></i>', onClose); }
 function closeModal() { $('#modal').classList.remove('on'); var f = modalOnClose; modalOnClose = null; if (f) f(); }
 function drainQueue(done) {
   var it = celebrateQ.shift();

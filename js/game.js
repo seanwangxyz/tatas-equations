@@ -584,7 +584,7 @@ function askThirdParty(tp, kind, cb) {
   }
   ACT.tpYes = function () { closeModal(); writeSolution(tp, kind, function (ok, tokens, chk) { cb({ presented: true, ok: ok, tokens: tokens, chk: chk }); }); };
   ACT.tpNo = function () { closeModal(); cb({ presented: false }); };
-  modal('<h2 class="hero">' + esc(G.players[tp].name) + ': Third Party</h2><p style="text-align:center">You may write a Solution too, but you don\'t have to.</p>' +
+  boardAsk('<h2 class="hero">' + esc(G.players[tp].name) + ': Third Party</h2><p style="text-align:center">Look at the board, then choose. You may write a Solution too, but you don\'t have to.</p>' +
     '<ul class="reasons" style="background:#e7f5ff"><li>Write a correct one: you score <b>4 or 6</b>.</li><li>Write a wrong one: you score <b>2</b>.</li><li>Skip it: you score by who turns out to be right' + (kind === 'impossible' ? ' (4 if Impossible was right)' : ' (6 if the Now! Solution is wrong)') + '.</li></ul>' +
     '<div class="row"><button class="btn green" data-act="tpYes">' + ico('pencil') + ' I\'ll write one</button><button class="btn" data-act="tpNo">No thanks</button></div>');
 }
@@ -622,7 +622,7 @@ function lastCubePlayed() {
     var hs = others.filter(function (i) { return !isAI(i); });
     if (!hs.length) { startLastWrite(); return; }
     say('pip', 'The last cube is on the mat!', 'think'); renderGame();
-    modal('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
+    boardAsk('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
       '<div class="row">' + hs.map(function (i) { return '<button class="btn imp" data-act="lastImp" data-arg="' + i + '">' + ico('ban') + ' ' + (multiHuman() ? esc(G.players[i].name) + ': ' : '') + 'Impossible!</button>'; }).join('') +
       '<button class="btn green" data-act="lastWrite">' + ico('pencil') + ' Let\'s write!</button></div>');
   }
@@ -663,7 +663,7 @@ function noGoalScore(ci, setter, ok) {
 function askNoGoal(setter) {
   var hs = idxs().filter(function (i) { return i !== setter && !isAI(i); });
   if (!hs.length) { newShake(); return; }
-  modal('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + esc(G.players[setter].name) + '</b> says no Goal can be made with these cubes. Does everyone agree?</p>' +
+  boardAsk('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + esc(G.players[setter].name) + '</b> says no Goal can be made with these cubes. Does everyone agree?</p>' +
     '<div class="row"><button class="btn green" data-act="noGoalAgree">We agree: roll again</button>' +
     hs.map(function (i) { return '<button class="btn now" data-act="noGoalChallenge" data-arg="' + i + '">' + (hs.length > 1 || multiHuman() ? esc(G.players[i].name) + ': ' : '') + 'Challenge! I can make one</button>'; }).join('') + '</div>');
 }

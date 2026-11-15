@@ -743,16 +743,16 @@ var Online = (function () {
     else if (p.k === 'nogoal') {
       pendingP = p;
       var sn = rot(p.setter | 0);
-      modal('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + nm(sn === null ? 1 : sn) + '</b> says no Goal can be made with these cubes. Do you agree?</p>' +
+      boardAsk('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + nm(sn === null ? 1 : sn) + '</b> says no Goal can be made with these cubes. Do you agree?</p>' +
         '<div class="row"><button class="btn green" data-act="olAns" data-arg="agree">I agree</button><button class="btn now" data-act="olAns" data-arg="challenge">Challenge! I can make one</button></div>');
     } else if (p.k === 'last') {
       pendingP = p;
-      modal('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
+      boardAsk('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
         '<div class="row"><button class="btn imp" data-act="olAns" data-arg="imp">' + ico('ban') + ' Impossible!</button><button class="btn green" data-act="olAns" data-arg="write">' + ico('pencil') + ' Let\'s write!</button></div>');
     } else if (p.k === 'tp') {
       pendingP = p;
       var kind = p.kind === 'now' ? 'now' : 'impossible';
-      modal('<h2 class="hero">You are the Third Party</h2><p style="text-align:center">You may write a Solution too, but you don\'t have to.</p>' +
+      boardAsk('<h2 class="hero">You are the Third Party</h2><p style="text-align:center">Look at the board, then choose. You may write a Solution too, but you don\'t have to.</p>' +
         '<ul class="reasons" style="background:#e7f5ff"><li>Write a correct one: you score <b>4 or 6</b>.</li><li>Write a wrong one: you score <b>2</b>.</li><li>Skip it: you score by who turns out to be right' + (kind === 'impossible' ? ' (4 if Impossible was right)' : ' (6 if the Now! Solution is wrong)') + '.</li></ul>' +
         '<div class="row"><button class="btn green" data-act="olAns" data-arg="yes">' + ico('pencil') + ' I\'ll write one</button><button class="btn" data-act="olAns" data-arg="no">No thanks</button></div>');
     } else O.open = null;
@@ -1329,7 +1329,7 @@ var Online = (function () {
       hs.forEach(function (h) {
         if (h === 0) {
           O.localNG = true;
-          modal('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + nm(setter) + '</b> says no Goal can be made with these cubes. Do you agree?</p>' +
+          boardAsk('<h2>🤷 No Goal?</h2><p style="text-align:center"><b>' + nm(setter) + '</b> says no Goal can be made with these cubes. Do you agree?</p>' +
             '<div class="row"><button class="btn green" data-act="olNG" data-arg="agree">I agree</button><button class="btn now" data-act="olNG" data-arg="challenge">Challenge! I can make one</button></div>');
         } else ask(h, { k: 'nogoal', setter: setter }, function (ans) { decide(h, !!(ans && ans.challenge)); }, function () { decide(h, false); });
       });
@@ -1366,7 +1366,7 @@ var Online = (function () {
         hs.forEach(function (h) {
           if (h === 0) {
             O.localLast = true;
-            modal('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
+            boardAsk('<h2 class="hero">Last cube played!</h2><p style="text-align:center">If you think NOBODY can make the Goal now, call Impossible! Otherwise everybody writes a Solution (4 points if correct, 2 if not).</p>' +
               '<div class="row"><button class="btn imp" data-act="olLast" data-arg="imp">' + ico('ban') + ' Impossible!</button><button class="btn green" data-act="olLast" data-arg="write">' + ico('pencil') + ' Let\'s write!</button></div>');
           } else ask(h, { k: 'last' }, function (ans) { decide(h, !!(ans && ans.imp)); }, function () { decide(h, false); });
         });

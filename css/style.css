@@ -771,3 +771,21 @@ html.a11y-calm .modal-back.leaving{display:none}
 /* The display font (Lilita One) has a single weight: never let the browser fake a bold (it smears the letters into a
    pale fuzzy edge). Fonts that really have bold weights (Nunito) are not affected. */
 html{font-synthesis:none}
+
+/* ---------- SEE THE BOARD: questions he answers by looking at the table (Third Party, last cube, No Goal) ----------
+   js/progress.js boardAsk() marks the pop-up. It is then small, sits over the buttons panel (bottom of the side column on
+   wide screens, bottom of the screen elsewhere), and nothing is dimmed or blurred, so the mat, the Resources and the Goal
+   stay in plain view while he decides. Taps outside it still do nothing (the question must be answered). */
+#modal:has(.peek-mark){background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;align-items:flex-end;padding:8px 8px calc(var(--sab, 0px) + 8px)}
+#modal:has(.peek-mark) .modal{width:min(560px,96vw);max-height:46vh;max-height:46dvh;padding:10px 14px 12px;border-radius:22px;border-width:3px;box-shadow:0 5px 0 rgba(0,0,0,.14),0 12px 32px rgba(0,0,0,.5)}
+#modal:has(.peek-mark) .modal h2{font-size:22px}
+#modal:has(.peek-mark) .modal h2.hero{margin:-2px -14px 6px;padding:2px 0}
+#modal:has(.peek-mark) .modal p{font-size:15px;line-height:1.3;margin:4px 0}
+#modal:has(.peek-mark) .reasons{font-size:14px;line-height:1.3;padding:6px 10px 6px 28px;margin:6px 0;border-radius:14px}
+#modal:has(.peek-mark) .reasons li{margin:2px 0}
+#modal:has(.peek-mark) .row{margin-top:6px;gap:8px}
+#modal:has(.peek-mark) .row .btn{min-width:0;flex:1 1 auto;min-height:48px}
+@media (min-width:1000px) and (min-aspect-ratio:5/4){
+  body:has(#game.three.on) #modal:has(.peek-mark){justify-content:flex-end;padding:0 12px 12px 0}
+  body:has(#game.three.on) #modal:has(.peek-mark) .modal{width:calc(clamp(280px,23vw,350px) - 24px);max-height:62vh;max-height:62dvh}
+}
