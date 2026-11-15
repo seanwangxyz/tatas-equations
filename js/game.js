@@ -46,7 +46,7 @@ function playerMood(m, opts) { if (T3.playerMood) T3.playerMood(m, opts); }
 function playerShow() { if (T3.playerShow) T3.playerShow(S.set.avatar !== false); }
 function playerCelebrate() { if (T3.playerCelebrate) T3.playerCelebrate(typeof Kit !== 'undefined' ? Kit.celebration() : undefined); else playerMood('cheer'); }
 function mateShow(o) { if (T3.mate) T3.mate(o || null); }
-function mateMood(m) { if (T3.mateMood) T3.mateMood(m); }
+function mateMood(m) { if (T3.mateMood) T3.mateMood(m); if (T3.mate2Mood) T3.mate2Mood(m); }   // (PEOPLE: both other humans react)
 // Who the people at the table look like. This device's player is a kid unless Settings says grown-up.
 // PEOPLE (js/people-data.js, js/avatar.js): the device's own player wears his own avatar and kit once he has made one
 // (S.avatar); until then he is the kid (or the grown-up) the game has always had, exactly as before.

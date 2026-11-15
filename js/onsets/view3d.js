@@ -112,7 +112,7 @@ var OS3D = (function () {
   function seatPeople() {
     var t = T();
     if (t.playerShow) t.playerShow(S.set.avatar !== false);
-    if (t.playerSet) t.playerSet({ who: grown() ? 'tata' : 'kid', name: grown() ? S.name : (typeof backName === 'function' ? backName() : S.name), number: S.jersey || '7' });
+    if (t.playerSet) t.playerSet(typeof mySpec === 'function' ? mySpec() : { who: grown() ? 'tata' : 'kid', name: grown() ? S.name : (typeof backName === 'function' ? backName() : S.name), number: S.jersey || '7' });   // (PEOPLE: his own avatar and kit)
     var mi = mateIdx();
     if (t.mate) {
       if (mi === 1) t.mate({ who: grown() ? 'kid' : 'tata', seat: OG.mode === 'p3' ? 'left' : 'far', name: OG.players[1].name, number: grown() ? '7' : '17' });

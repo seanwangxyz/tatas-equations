@@ -1374,7 +1374,7 @@ import { THEMES, FLOOR_Y, makeEnvMap, softTexture, blobTexture, vignetteTexture,
   function gripOf(by) {
     var g = ctx.grips || {};
     try {
-      if (by === 'me' || by === 'mate') return g.human ? g.human(by) : null;
+      if (by === 'me' || by === 'mate' || by === 'mate2') return g.human ? g.human(by) : null;   // (PEOPLE: the third human)
       if (typeof by === 'number' && isFinite(by)) return g.creature ? g.creature(by) : null;
     } catch (e) { console.warn('grip', e); }
     return null;
