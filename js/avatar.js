@@ -545,6 +545,7 @@ var Avatar = (function () {
     open({ kind: 'own' }, { tab: sv(S.name) && S.name !== PLACEHOLDER_NAME ? 'body' : 'who', onDone: function () { if (f) f(); } });
   };
   ACT.avFirstSkip = function () { keepName(); closeModal(); };
+  ACT.openAvatar = function () { pop(); open({ kind: 'own' }); };          // for a button anywhere: data-act="openAvatar"
 
   return { open: open, firstRun: firstRun, flat: flat, surprise: surprise, active: function () { return !!M; } };
 })();

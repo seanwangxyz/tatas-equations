@@ -62,6 +62,7 @@ var Crew = (function () {
       '<div class="row"><button type="button" class="btn green" data-act="closeModal">Done</button></div></div>';
   }
   function open() { modal(listHTML()); }
+  ACT.openCrew = function () { pop(); open(); };                          // for a button anywhere: data-act="openCrew"
   ACT.crEdit = function (el) { var id = el.dataset.arg; pop(); Avatar.open(id === 'own' ? { kind: 'own' } : { kind: 'crew', id: id }, { onDone: open }); };
   ACT.crAdd = function () { pop(); Avatar.open({ kind: 'new' }, { onDone: open }); };
   ACT.crRemove = function (el) {
