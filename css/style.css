@@ -789,3 +789,9 @@ html{font-synthesis:none}
   body:has(#game.three.on) #modal:has(.peek-mark){justify-content:flex-end;padding:0 12px 12px 0}
   body:has(#game.three.on) #modal:has(.peek-mark) .modal{width:calc(clamp(280px,23vw,350px) - 24px);max-height:62vh;max-height:62dvh}
 }
+
+/* PEOPLE: a seat row in the 2 Players / 3 Players set-up (picture, name, number, Change) */
+.seat-row .seat-who{display:inline-flex;align-items:center;gap:8px;margin-left:auto;min-width:0}
+.seat-row .seat-who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat-row .btn{margin-left:10px;flex:0 0 auto}
+.seat-row input[type=text]{margin-left:auto;min-width:0;flex:1 1 120px;max-width:200px}

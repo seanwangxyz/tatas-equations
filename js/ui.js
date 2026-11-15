@@ -303,6 +303,7 @@ function gotoTitle() {
     '</div>' +
     '<h2 class="mm-h">My stuff</h2>' +
     '<div class="mm-stuff">' +
+    (typeof Avatar !== 'undefined' ? mini('openAvatar', 'people', 'My player', 'player') : '') +
     (typeof Kit !== 'undefined' ? mini('openKit', 'shirt', 'My kit', 'kit') : '') +
     mini('trophies', 'trophy', 'Trophy Room', 'trophies') +
     (window.Season ? mini('season', 'table', 'Season Table', 'season') : '') +
