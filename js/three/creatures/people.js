@@ -61,7 +61,7 @@ const BODY_LOOK = {
   kid: { eyeW: KID_LOOK.eyeW, eyeH: KID_LOOK.eyeH, tilt: KID_LOOK.tilt, happy: KID_LOOK.happy, iris: KID_LOOK.iris, adult: false, vneck: false },
   teen: { eyeW: 1.14, eyeH: 0.94, tilt: 0.06, happy: 0.26, iris: 0.72, adult: false, vneck: false },
   'adult-a': { eyeW: 1.1, eyeH: 0.98, tilt: 0.04, happy: 0.16, iris: 0.7, adult: true, vneck: true },
-  'adult-b': { eyeW: TATA_LOOK.eyeW, eyeH: TATA_LOOK.eyeH, tilt: TATA_LOOK.tilt, happy: TATA_LOOK.happy, iris: TATA_LOOK.iris, adult: true, vneck: true }
+  'adult-b': { eyeW: TATA_LOOK.eyeW, eyeH: TATA_LOOK.eyeH, tilt: TATA_LOOK.tilt, happy: TATA_LOOK.happy, iris: TATA_LOOK.iris != null ? TATA_LOOK.iris : KID_LOOK.iris, adult: true, vneck: true }
 };
 // heights: the top of the hair (kids' hair sits closer to the head than Tata's tousled mop) and the soles
 function finish(D, adult) {

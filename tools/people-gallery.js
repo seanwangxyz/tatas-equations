@@ -41,7 +41,20 @@ const SECTIONS = {
     person('girl of 9', A({ body: 'kid', hairStyle: 'ponytail', hair: '#5a3a22', skin: '#e4b48e', eyes: '#6b4423', acc: 'none', lashes: true }), KIT_B, '9', 'MAYA'),
     person('girl of 6', A({ body: 'kid-s', hairStyle: 'pigtails', hair: '#d9a441', skin: '#fbe3d0', eyes: '#3d6fa8', acc: 'bow', accCol: '#e64980', freckles: true, lashes: true }), KIT_K, '6', 'LILY'),
     person('man of 52', G({ body: 'adult-b', skin: '#f6d3b8', hairStyle: 'thin', hair: '#9a9a9a', eyes: '#6f8796', glasses: 'square', glassCol: '#25262b', beard: 'stubble' }), KIT_C, '52', 'UNCLE'),
-    person('woman of 40', G({ body: 'adult-a', skin: '#c68a5c', hairStyle: 'wavy', hair: '#2a1a10', eyes: '#3f2412', beard: 'none', lashes: true }), KIT_A, '40', 'AUNTIE')
+    person('woman of 40', G({ body: 'adult-a', skin: '#c68a5c', hairStyle: 'wavy', hair: '#2a1a10', eyes: '#3f2412', beard: 'none', lashes: true }), KIT_A, '40', 'AUNTIE'),
+    person('girl of 9 (cute)', A({ body: 'kid', hairStyle: 'highpony', hair: '#3b2314', skin: '#d9a273', eyes: '#3f2412', acc: 'scrunchie', accCol: '#7048e8', gems: true, lashes: true }), KIT_B, '9', 'MAYA'),
+    person('girl of 6 (cute)', A({ body: 'kid-s', hairStyle: 'spacebuns', hair: '#5a3a22', skin: '#f6d3b8', eyes: '#4f7a4a', acc: 'clips', accCol: '#e64980', streaks: '#e64980', lashes: true }), KIT_C, '6', 'ZOE')
+  ],
+  // the newer kid looks: every new style and accessory on the two kid bodies
+  cute: () => [
+    person('highpony scrunchie', A({ hairStyle: 'highpony', acc: 'scrunchie', accCol: '#e64980', lashes: true, hair: '#15110e' })),
+    person('spacebuns clips', A({ body: 'kid-s', hairStyle: 'spacebuns', acc: 'clips', accCol: '#7048e8', lashes: true, gems: true })),
+    person('halfup bow', A({ hairStyle: 'halfup', acc: 'bow', accCol: '#f5c518', hair: '#a8824a', lashes: true })),
+    person('curtain blue streaks', A({ hairStyle: 'curtain', streaks: '#3b82f6', hair: '#15110e', lashes: true, gems: true })),
+    person('pigtails scrunchie', A({ body: 'kid-s', hairStyle: 'pigtails', acc: 'scrunchie', accCol: '#2f9e44', hair: '#b5562a', freckles: true, lashes: true })),
+    person('bob wrist scrunchie', A({ hairStyle: 'bob', acc: 'scrunchie', accCol: '#f5c518', skin: '#6b3f25', hair: '#15110e', lashes: true })),
+    person('braids purple streaks', A({ hairStyle: 'braids', streaks: '#7048e8', skin: '#a86e45', hair: '#15110e', lashes: true, acc: 'bow', accCol: '#7048e8' })),
+    person('wavy band', A({ body: 'teen', hairStyle: 'wavy', acc: 'band', accCol: '#f1f3f5', hair: '#ecd28a', lashes: true }))
   ]
 };
 
@@ -101,7 +114,7 @@ function render(name, opts) {
   return url;
 }
 async function post(name, url) { await fetch('http://127.0.0.1:3561/' + name, { method: 'POST', body: url }); return name; }
-window.gallery = { render, post, SECTIONS, tris: (av) => { const m = buildPerson({ avatar: av }); return triCount(m); }, triCount, buildPerson, buildKid, buildTata };
+window.gallery = { render, post, SECTIONS, person, A, G, tris: (av) => { const m = buildPerson({ avatar: av }); return triCount(m); }, triCount, buildPerson, buildKid, buildTata };
 const btns = document.getElementById('btns');
 Object.keys(SECTIONS).forEach((k) => { const b = document.createElement('button'); b.textContent = k; b.onclick = () => render(k, { head: document.getElementById('head').checked }); btns.appendChild(b); });
 document.getElementById('info').textContent = 'click a section to draw it';
