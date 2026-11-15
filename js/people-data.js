@@ -71,7 +71,7 @@ var People = (function () {
     var d = base || (isAdult(a) ? GROWN : DEFAULT), h = +a.height;
     var out = { v: 1, body: oneOf(a.body, BODIES, d.body), height: h === -1 || h === 1 ? h : 0, skin: hex(a.skin, d.skin), hair: hex(a.hair, d.hair),
       hairStyle: oneOf(a.hairStyle, HAIR_STYLES, d.hairStyle), eyes: hex(a.eyes, d.eyes), glasses: oneOf(a.glasses, GLASSES, d.glasses), glassCol: hex(a.glassCol, d.glassCol),
-      beard: oneOf(a.beard, BEARDS, a.beard == null ? d.beard : 'none'), freckles: flag(a.freckles, d.freckles), lashes: flag(a.lashes, d.lashes), cheeks: flag(a.cheeks, d.cheeks),
+      beard: oneOf(a.beard, BEARDS, 'none'), freckles: flag(a.freckles, d.freckles), lashes: flag(a.lashes, d.lashes), cheeks: flag(a.cheeks, d.cheeks),
       gems: flag(a.gems, d.gems), streaks: a.streaks === 'none' ? 'none' : hex(a.streaks, d.streaks),
       acc: oneOf(a.acc, ACCS, d.acc), accCol: hex(a.accCol, d.accCol) };
     if (typeof a.at === 'number' && isFinite(a.at)) out.at = a.at;
