@@ -1,4 +1,8 @@
 'use strict';
+// PEOPLE: a brand-new save (never played, never named) starts as its own player: one of the starter football kits and
+// 'PLAYER' on the back (js/people-data.js freshStart), not the owner's son's red kit. A save that was played or named
+// is never touched; when someone signs in on a new device, their cloud save replaces this one as before.
+try { if (window.People && People.freshStart && People.freshStart(S)) persist(); } catch (e) {}
 // ======================= INPUT: taps and drag-and-drop =======================
 var drag = null, suppressClick = false;
 document.addEventListener('click', function (e) {

@@ -26,6 +26,7 @@ import { LEVELS } from './quality.js';
 import { buildClassic } from './creatures/classic.js';
 import { buildHuman, kitFromSave, KIT_DEFAULT, TATA_KIT, KID } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
+import { buildPerson } from './creatures/people.js';   // PEOPLE: the player's own avatar on the title
 import { roundedBox } from './creatures/common.js';
 
 var T3 = window.T3;
@@ -127,6 +128,8 @@ var T3 = window.T3;
   // who he is, exactly as the table builds him (T3.playerSpec from player.js); a copy of its rules as a fallback
   function kidSpec() {
     var s = save(), grown = s.set && s.set.me === 'tata', o = { who: grown ? 'tata' : 'kid', name: grown ? s.name : (s.backName != null ? s.backName : 'TYSON W.'), number: s.jersey || '7' }, sp = null;
+    // PEOPLE: once this save has its own avatar, the title shows that person in the kit (or outfit) they wear
+    try { if (s.avatar && window.People) { o.avatar = window.People.own(s); o.name = s.backName != null ? s.backName : String(s.name || ''); if (window.Kit && window.Kit.current) o.kit = window.Kit.current(); } } catch (e) {}
     try { if (T3.playerSpec) sp = T3.playerSpec(o); } catch (e) { sp = null; }
     if (!sp) {
       if (grown) sp = { who: 'tata', dims: TATA, kit: kitFromSave(Object.assign({}, TATA_KIT)), num: String(o.number), name: String(s.name || ''), look: Object.assign({}, TATA_LOOK) };
@@ -135,7 +138,7 @@ var T3 = window.T3;
     sp = Object.assign({}, sp, { front: true });            // seen from the front here: his number on the chest too
     return sp;
   }
-  function specKey(sp) { try { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look]); } catch (e) { return String(Math.random()); } }
+  function specKey(sp) { try { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look, sp.body || '']); } catch (e) { return String(Math.random()); } }
   // Pip greets; up to two creatures he can already play (the newest two of the first league)
   function cast() {
     var list = [];
@@ -316,7 +319,8 @@ var T3 = window.T3;
   }
 
   function makeKid(spec, shadows) {
-    var model = buildHuman({ dims: spec.dims, kit: spec.kit, num: spec.num, name: spec.name, look: spec.look, front: true });
+    var model = spec.avatar ? buildPerson({ avatar: spec.avatar, kit: spec.kit, num: spec.num, name: spec.name, front: true })
+      : buildHuman({ dims: spec.dims, kit: spec.kit, num: spec.num, name: spec.name, look: spec.look, front: true });
     var D = spec.dims || KID, s = KID_H / ((KID.TOP - KID.FOOT) || 5.7), h = (D.TOP - D.FOOT) * s;
     model.root.scale.setScalar(s);
     model.root.traverse(function (o) { if (o.isMesh) { o.castShadow = shadows; } });
