@@ -61,6 +61,16 @@ const SECTIONS = {
     fit1: ['#a5d8ff', '#1f3a68', '#2f9e44', '#c9342c', '#b2f2bb'][i], fit2: ['#1f3a68', '#c9342c', '#f1f3f5', '#f1f3f5', '#f1f3f5'][i], fit3: ['#d9c2a0', '#868e96', '#25262b', '#1c7ed6', '#868e96'][i], beard: 'none' }), null, '9', 'ALEX')),
   shoes: () => P.SHOES.map((s, i) => person(s[0], A({ body: i % 2 ? 'teen' : 'kid', outfit: 'tee', bottom: i === 2 ? 'skirt' : 'shorts', shoes: s[0], fit1: '#f1f3f5', fit2: '#1c7ed6', fit3: '#1f3a68', shoeCol: ['#f1f3f5', '#c9342c', '#25262b', '#f5c518'][i] }), null, '4', 'JO')),
   starters: () => P.STARTERS.map((st) => person(st.name, st.avatar, kitFromSave(Object.assign({}, KIT_DEFAULT, st.kit)), st.jersey, 'SAM')),
+  // demanding poses (the same joints player.js drives: setKnees, legs' sideways swing, body lean, arm targets), on a
+  // pleated skirt and on wide trousers
+  poses: () => {
+    const who = [['skirt', A({ body: 'kid', hairStyle: 'ponytail', outfit: 'school', bottom: 'skirt', shoes: 'loafers', fit1: '#1f3a68', fit2: '#c9342c', fit3: '#868e96', shoeCol: '#25262b', lashes: true })],
+      ['jeans', A({ body: 'teen', hairStyle: 'side', outfit: 'hoodie', bottom: 'jeans', shoes: 'sneakers', fit1: '#2f9e44', fit2: '#f1f3f5', fit3: '#1c7ed6', shoeCol: '#f1f3f5' })],
+      ['cargos', G({ body: 'adult-a', hairStyle: 'bob', beard: 'none', outfit: 'cardigan', bottom: 'cargos', shoes: 'hightops', fit1: '#ffdeeb', fit2: '#f1f3f5', fit3: '#d9c2a0', shoeCol: '#f1f3f5' })]];
+    const out = [];
+    Object.keys(POSES).forEach((pn) => who.forEach((w) => { const it = person(pn + ' ' + w[0], w[1], null, '5', 'SAM'); it.pose = POSES[pn]; out.push(it); }));
+    return out;
+  },
   // the newer kid looks: every new style and accessory on the two kid bodies
   cute: () => [
     person('highpony scrunchie', A({ hairStyle: 'highpony', acc: 'scrunchie', accCol: '#e64980', lashes: true, hair: '#15110e' })),
@@ -88,6 +98,25 @@ function restArms(m, D) {
   const k = (D.L1 + D.L2) / (KID.L1 + KID.L2);
   m.arms.forEach((arm, i) => { const v = REST0[i]; arm.solve(v[0] + Math.sign(v[0]) * (D.SH_X - KID.SH_X), D.SH_Y + (v[1] - KID.SH_Y) * k, v[2] * k, 0.6, 0); });
 }
+// poses for the poses section, written like player.js applies them (kid units for the arm targets, mapped to each body)
+function armTo(m, D, i, v, al) {
+  const k = (D.L1 + D.L2) / (KID.L1 + KID.L2);
+  m.arms[i].solve(v[0] + Math.sign(v[0]) * (D.SH_X - KID.SH_X), D.SH_Y + (v[1] - KID.SH_Y) * k, v[2] * k, al == null ? 0.6 : al, 0);
+}
+function legsTo(m, D, ca, kn, h0, h1, k0, k1) {
+  m.setKnees(-ca + h0, -ca + h1, 2 * ca + kn + k0, 2 * ca + kn + k1);
+  m.root.position.y = -((D.thigh + D.shin) * (1 - Math.cos(ca)) + (D.shin + 0.13) * (1 - Math.cos(kn)) - 0.17 * D.legR * Math.sin(kn));
+}
+const POSES = {
+  crouch: (m, D) => { legsTo(m, D, 0.85, 0, 0, 0, 0, 0); m.body.rotation.set(0.14 + 0.21, 0, 0); armTo(m, D, 0, [-0.8, 0.1, 0.62], 0.85); armTo(m, D, 1, [0.8, 0.1, 0.62], 0.85); },
+  kneel: (m, D) => { legsTo(m, D, 0, Math.PI / 2, 0, 0, 0, 0); armTo(m, D, 0, [-0.55, 3.3, 0.25]); armTo(m, D, 1, [0.55, 3.3, 0.25]); },
+  slide: (m, D) => { legsTo(m, D, 0, Math.PI / 2, 0, 0, 0, 0); m.body.rotation.set(-0.35, 0.1, 0); armTo(m, D, 0, [-1.7, 2.3, 0.1]); armTo(m, D, 1, [1.7, 2.3, 0.1]); },
+  stride: (m, D) => { legsTo(m, D, 0, 0, -0.77, 0.77, 0.2, 0.2); m.body.rotation.set(0.16, 0.1, 0); armTo(m, D, 0, [-0.9, 0.4, -0.5]); armTo(m, D, 1, [0.9, 0.5, 0.6]); },
+  run: (m, D) => { legsTo(m, D, 0, 0, -0.5, 0.5, 1.3, 0.3); m.body.rotation.set(0.16, -0.1, 0); armTo(m, D, 0, [-0.9, 0.6, 0.6]); armTo(m, D, 1, [0.9, 0.4, -0.5]); },
+  heelclick: (m, D) => { legsTo(m, D, 0, 0, 0, 0, 0.9, 0.9); m.legs[0].rotation.z = 0.5; m.legs[1].rotation.z = 0.22; armTo(m, D, 0, [-0.6, 3.2, 0.2]); armTo(m, D, 1, [0.6, 3.2, 0.2]); },
+  lean: (m, D) => { legsTo(m, D, 0.3, 0, 0, 0, 0, 0); m.body.rotation.set(0.6, 0, 0); armTo(m, D, 0, [-0.5, 0.3, 1.4], 0.9); armTo(m, D, 1, [0.5, 0.3, 1.4], 0.9); },
+  belly: (m, D) => { m.root.rotation.x = 1.1; m.setKnees(-1.1 + 1.05, -1.1 + 1.05, 0.75, 0.95); armTo(m, D, 0, [-0.7, 1.9, 1.4]); armTo(m, D, 1, [0.7, 1.9, 1.4]); }
+};
 const VIEWS = { front: 0, q: Math.PI / 4, side: Math.PI / 2, back: Math.PI, qb: Math.PI * 0.8 };
 function triCount(model) { let t = 0; model.root.traverse((o) => { if (o.isMesh && o.visible) { const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return Math.round(t); }
 
@@ -103,7 +132,7 @@ function render(name, opts) {
   let H = 0; list.forEach((it) => { const D = it.dims(); H = Math.max(H, D.TOP - D.FOOT); });
   const labels = [];
   list.forEach((it, idx) => {
-    const D = it.dims(), m = it.make(); restArms(m, D); scene.add(m.root);
+    const D = it.dims(), m = it.make(); restArms(m, D); if (it.pose) it.pose(m, D); scene.add(m.root);
     const tris = triCount(m);
     const cx = (idx % cols) * per, cy = Math.floor(idx / cols) * (ch + 18);
     views.forEach((v, vi) => {

@@ -166,7 +166,7 @@ const { TORSO_CTRL, styledNumber, artCanvas, artTexture, mixHex, lumOf, star, ss
 // long: long sleeves (else the big T-shirt's wide short sleeves)
 const TOPS = {
   school: { roomy: 0.05, hem: 0.56, rib: 0, v: 1.0, long: true, arm: 1.16 },
-  cardigan: { roomy: 0.08, hem: 0.5, rib: 1, v: 1.1, long: true, arm: 1.2 },
+  cardigan: { roomy: 0.06, hem: 0.5, rib: 1, v: 1.1, long: true, arm: 1.2 },
   hoodie: { roomy: 0.1, hem: 0.52, rib: 1, v: 0, long: true, arm: 1.3 },
   varsity: { roomy: 0.08, hem: 0.38, rib: 1, v: 0, long: true, arm: 1.22 },
   tee: { roomy: 0.09, hem: 0.48, rib: 0, v: 0, long: false, arm: 1 }
@@ -203,7 +203,7 @@ export function topDims(D, outfit) {
   if (o.rib) ctrl.push([rH * 1.004, yH + 0.1], [f(0.3) * 0.99, yH + 0.2]);
   for (let y = Math.max(yH + (o.rib ? 0.3 : 0.14), 0.0); y < 1.74; y += 0.12) ctrl.push([f(Math.max(y, 0.3)), y]);
   ctrl.push([f(1.78), 1.78], [Math.max(0.4, f(1.86)), 1.86], [0.001, 1.885]);
-  const T = Object.assign({}, D, { torsoCtrl: ctrl, openHem: true, profN: 84, muscle: 0, hemY: yH * ty, top: o, outfit });
+  const T = Object.assign({}, D, { torsoCtrl: ctrl, openHem: true, profN: 60, muscle: 0, hemY: yH * ty, top: o, outfit });
   T.prof = torsoProfile(T);
   m[key] = T; return T;
 }
@@ -518,6 +518,9 @@ function dressArms(rig, T, av) {
   rig.armband.visible = false; rig.shoulderMarks.forEach((m) => { m.visible = false; });
   rig.gloves.forEach((G) => { G.parts.forEach((p) => { p.material = rig.skin; }); G.strap.visible = false; G.arm.hand.scale.setScalar(1); });
   rig.wrists.forEach((w) => { w.visible = false; });
+  // the shoulder ball sits a little lower and flatter under cloth (no puffed shoulders)
+  const ballG = new THREE.SphereGeometry(1, 18, 12).scale(1, 0.84, 1).translate(0, -0.1, 0);
+  rig.arms.forEach((arm) => { arm.sBall.geometry = ballG; });
   const sleeveM = std(new THREE.Color(kind === 'varsity' ? c2 : c1).getHex(), { roughness: kind === 'varsity' ? 0.55 : 0.9 });
   if (o.long) {
     const cuffMat = kind === 'school' ? std(new THREE.Color(lumOf(c1) > 0.85 ? '#dfe7ef' : SHIRT).getHex(), { roughness: 0.8 })
@@ -634,7 +637,7 @@ function dressBottom(rig, av) {
 // a stride, a slide or a jump carries the skirt with the legs instead of letting a knee poke through.
 function skirt(rig, col) {
   const D = rig.D, Z = rig.sizes, lr = Z.lr, sc = Z.sc, zs = Z.zs, yTop = Z.yTop, yH = Z.yH, hipX = Z.hipX, hipR = Z.hipR, wR = Z.wR;
-  const yB = yTop - Z.bandH, yHip = yH + 0.14 * sc, yHem = yH - D.thigh + 0.17 * lr, NU = 90, NP = 18, NV = 18;
+  const yB = yTop - Z.bandH, yHip = yH + 0.14 * sc, yHem = yH - D.thigh + 0.17 * lr, NU = 72, NP = 18, NV = 14;
   const rxW = wR + 0.014, rzW = (wR + 0.014) * zs, rxH = hipR + 0.05, rzH = 0.74 * hipR * zs + 0.075;
   const rxE = Math.max(rxH + 0.1, hipX + 0.2 * lr + 0.2), rzE = Math.max(rzH + 0.06, 0.2 * lr + 0.24);
   const rows = [[yTop + 0.004, rxW - 0.02, rzW - 0.02, 0, 0.6], [yTop, rxW, rzW, 0, 0.85], [yB, rxW + 0.004, rzW + 0.004, 0, 0.85]];
