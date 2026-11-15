@@ -1,5 +1,5 @@
-// The kid's own player at the near side of the table (name + number on his back), plus an optional second human
-// (Tata) at another seat. Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until
+// The device's own player at the near side of the table (name + number on his back), plus up to two other humans
+// (T3.mate, T3.mate2) at other seats. Any People avatar, or today's kid / Tata. Plugs into the 3D table through T3.ctx the same way creatures.js does. Inert until
 // T3.playerShow(true) / T3.mate({...}).
 //
 //   T3.playerShow(on)            show / hide him (hidden by default). Returns whether he is actually on screen.
@@ -15,26 +15,51 @@
 //                                'brain', 'number'), 3-6 s, once; 'slide' / 'plane' run out beside the table and back.
 //                                No name: the one saved in S.kit.celebrate. Returns true if it plays.
 //   T3.playerMoods()             list of mood names
-//   T3.playerSet(o | null)       who stands at his spot and how he looks: { who: 'kid' | 'tata', kit, name, number }.
-//                                Missing fields come from the save (S.kit, S.name, S.jersey) for the kid, or Tata's
-//                                defaults (yellow, 17). kit: the saved shape { shirt, pattern, trim, shorts, hair,
-//                                hairStyle } or a full kit object. null: back to the save.
-//   T3.playerRefresh()           re-read S.kit, S.jersey and S.name (call after the kit panel or a name change)
-//   T3.mate(o | null)            a second human: { who: 'tata' | 'kid', seat: 'left' | 'far', kit, name, number }.
-//                                'left' = beside the left end of the table, on the kid's side (Team-up).
-//                                'far'  = across the table where a creature would stand (2 Players / Online, no
-//                                creature; hidden while a creature is at the table). null removes him.
+//   T3.playerSet(o | null)       who stands at his spot and how he looks: { avatar, who: 'kid' | 'tata', kit, name, number }.
+//                                WHO STANDS THERE (every spec: playerSet, mate, mate2, playerPortrait):
+//                                - o.avatar (a People avatar, js/people-data.js; cleaned with People.clean): built with
+//                                  buildPerson (creatures/people.js), sized with personDims, grown-up reactions / stride
+//                                  when personAdult. Rebuilt when personKey changes; kit / name / number use setKit.
+//                                - no o.avatar and no o.who, for the device's player (playerSet / playerPortrait):
+//                                  this save's own avatar, People.own() (old saves: today's kid, or the grown-up when
+//                                  Settings says so), with the save's kit, back name and number.
+//                                - o.who without o.avatar: today's kid / Tata exactly as before.
+//                                KIT (o.kit: the saved shape { shirt, pattern, trim, shorts, ... } or a full kit object):
+//                                a full kit object is used as it is. With o.avatar, a saved-shape kit is filled from the
+//                                plain defaults (KIT_DEFAULT), never from this save's kit; with no o.kit the device's
+//                                player wears the save's kit (savedKit(S)), anyone else KIT_DEFAULT (TATA_KIT for a
+//                                grown-up). The save's own avatar (no avatar, no who) merges o.kit over the save's kit.
+//                                NAME / NUMBER: o.name / o.number; else the device's player: S.backName (own avatar:
+//                                'TYSON W.' when unset; another avatar: S.name), S.jersey or '7'; anyone else: '' (a
+//                                grown-up: 'Tata') and '7' (a grown-up: '17'). Today's kid / Tata: as before.
+//                                null: back to the save (= the save's own avatar).
+//   T3.playerRefresh()           re-read the save (S.avatar, S.kit, S.jersey, S.name, S.backName) for the device's player
+//   T3.mate(o | null)            a second human: { avatar | who, seat, kit, name, number, player }.
+//                                seat 'left' = beside the left end of the table, on the kid's side (Team-up).
+//                                     'far'  = across the table, in the middle, where a creature would stand.
+//                                     'farL' / 'farR' = across the table, left / right of the middle (FAR.x), turned a
+//                                     touch toward the middle: where the two creatures of a three-player game stand.
+//                                Far seats are hidden while any creature is at the table. player: the index in
+//                                G.players he plays for (stances, who to look at); default: the first other person in
+//                                the players list (mate2: the second). null removes him.
+//   T3.mate2(o | null)           a third human, same options and abilities as T3.mate (any seat; two at 'left' keep clear
+//                                of each other). T3.mate2Mood / T3.mate2Move: as T3.mateMood / T3.mateMove.
 //   T3.mateMood(name, opts)      the same moods (and celebrations) for the second human
-//   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' | 'back' |
-//                                'face' | { yaw, close } (any angle; close = head and shoulders).
-//                                For the kit designer's live preview. Drawn offscreen with the main renderer.
+//   T3.playerPortrait(o, size, view) -> Promise of a PNG data URL (or null): o like playerSet, view 'front' (3/4 front,
+//                                whole body) | 'back' | 'face' (head and shoulders) | { yaw, close } (any angle).
+//                                An avatar is framed by the figure really built, so every body size fills the picture.
+//                                The offscreen model is kept while only the kit / name / number change.
+//                                For the kit designer and the avatar maker. Drawn offscreen with the main renderer.
 //   T3.playerMove(id, zone, done, {quick}?)  he picks the cube up by hand, runs round the nearest end of the table with
 //                                it and sets it down in its slot (no throwing), then walks back to his seat. Same
 //                                contract as T3.creatureMove: done() exactly once, the moment the cube is down (~1.2-1.6 s;
 //                                at once if he can't); safety timeout. The walk back is free: a new move starts from
 //                                wherever he is. quick (Goal cubes one after another): faster, and he waits a moment
-//                                where he put the cube down instead of walking straight back. T3.mateMove: the same for
-//                                the mate.
+//                                where he put the cube down instead of walking straight back. T3.mateMove / T3.mate2Move:
+//                                the same for the mates. Nobody walks through a creature or a person across the table
+//                                (hard), and goes round the other people on the outside (soft).
+//   ctx.grips.human('me' | 'mate' | 'mate2')  the cup dump / reroll toss hands (see CUPTOSS below)
+//   T3.playerScript('me' | 'mate' | 'mate2', o, done)  scripted walks (MATCHDAY)
 //   T3.playerMoveFinish()        finish any move now (the cube goes into its slot at once, done() fires; he walks back).
 //                                T3.playerMoving(): true until the cube is down.
 //   T3.playerWalkSide(side)      'auto' | 'right' (never round the left side, e.g. a creature sits there) | 'left'
@@ -44,13 +69,15 @@
 // Placement: his home seat is the middle of the near side, his back to the seat camera, feet on the pitch just
 // outside the near rim, sized so his head just shows below the rim (see seatFor). The camera fit keeps a band of room
 // for his head (the extents hook marks those points 'soft', see table.js). If his head can't be on screen he stays
-// hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table.
+// hidden. The 'left' mate (Team-up) is placed by a small search beside the left end of the table. Sizes of different
+// bodies: see SIZE RULE (one unit system; little kids a bit bigger at the near seat and stepping back at the far ones).
 // Style rule (Tata's): at rest a person is perfectly still in a good pose (no idle sway, breathing or blink timer).
 // Everything else is one calm move in response to an event, ending in a held pose (see poses.js for the vocabulary).
 import * as THREE from 'three';
 import { clamp, lerp, sstep, easeIO, easeOut } from './creatures/common.js';
 import { buildHuman, KITS, KID, kitFromSave, KIT_DEFAULT, TATA_KIT, savedKit } from './creatures/kid.js';
 import { TATA, TATA_LOOK } from './creatures/grownup.js';
+import { buildPerson, personDims, personLook, personKey, personAdult } from './creatures/people.js';
 import { FLOOR_Y } from './environment.js';
 import { installPoses, TRAVEL } from './poses.js';
 
@@ -60,9 +87,9 @@ var CELEBS = ['jump', 'spin', 'robot', 'slide', 'plane', 'heel', 'brain', 'numbe
 if (T3 && !T3.ctx) {
   // no 3D: keep the API callable
   T3.playerShow = function () { return false; }; T3.playerMood = function () {}; T3.playerMoods = function () { return NAMES.slice(); }; T3.playerRefresh = function () {};
-  T3.playerSet = function () {}; T3.mate = function () { return false; }; T3.mateMood = function () {}; T3.playerCelebrate = function () { return false; };
+  T3.playerSet = function () {}; T3.mate = T3.mate2 = function () { return false; }; T3.mateMood = T3.mate2Mood = function () {}; T3.playerCelebrate = function () { return false; };
   T3.playerCelebrations = function () { return CELEBS.slice(); }; T3.playerPortrait = function () { return Promise.resolve(null); };
-  T3.playerMove = T3.mateMove = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
+  T3.playerMove = T3.mateMove = T3.mate2Move = function (id, zone, done) { try { if (done) done(); } catch (e) { console.warn(e); } };
   T3.playerMoveFinish = function () { return false; }; T3.playerMoving = function () { return false; }; T3.playerWalkSide = function () { return 'auto'; };
 }
 if (T3 && T3.ctx) (function () {
@@ -82,8 +109,8 @@ if (T3 && T3.ctx) (function () {
       g: null, settled: true, lastNow: 0, nextBlink: 0, blinkT0: -1e9, samples: null, head: null, over: null, seat: null, trip: null,
       wk: { x: 0, z: 0, px: 0, pz: 0, yaw: Math.PI, yawT: Math.PI, ph: 0, spd: 0, ok: false } };   // wk: where he stands / walks now
   }
-  var me = makeAvatar('main'), mate = makeAvatar('mate');
-  var needPlace = true, lastLayout = null;
+  var me = makeAvatar('main'), mate = makeAvatar('mate'), mate2 = makeAvatar('mate2');
+  var needPlace = true, lastLayout = null, nearU = 1.4;
 
   // ---------- who and which kit ----------
   function save() { return (typeof S !== 'undefined' && S) ? S : {}; }
@@ -91,20 +118,47 @@ if (T3 && T3.ctx) (function () {
     if (k && k.jersey) return k;                                   // already a full kit object
     return kitFromSave(Object.assign({}, base, k || {}));
   }
+  function PPL() { return (typeof window !== 'undefined' && window.People && window.People.clean) ? window.People : null; }
+  // The spec for one person. Three ways (see the header, "WHO STANDS THERE"):
+  //   o.avatar given            -> that avatar (People.clean), built with buildPerson; kit / name / number from o or plain defaults
+  //   no o.avatar, no o.who, main role -> this save's own avatar (People.own()), with the save's kit, name and number
+  //   o.who without o.avatar    -> today's kid / Tata exactly
   function specOf(over, role) {
     over = over || {};
+    var Pp = PPL(), main = role === 'main';
+    if (Pp && (over.avatar || (main && over.who == null))) return avatarSpec(over, role, over.avatar ? Pp.clean(over.avatar) : Pp.own(save()), !over.avatar);
+    return legacySpec(over, role);
+  }
+  function avatarSpec(over, role, av, own) {
+    var s = save(), adult = !!personAdult(av), main = role === 'main', kit, sk = null;
+    if (over.kit && over.kit.jersey) kit = over.kit;                                   // a full kit object
+    else if (own) { sk = Object.assign({}, savedKit(s), over.kit || {}); kit = normKit(sk, KIT_DEFAULT); }   // the save's own player: his kit + override
+    else if (over.kit) kit = normKit(Object.assign({}, KIT_DEFAULT, over.kit), KIT_DEFAULT);   // another player's kit (maybe partial): plain defaults fill it
+    else if (main) kit = normKit(savedKit(s), KIT_DEFAULT);                            // the device's player, no kit given: the save's kit
+    else kit = normKit(adult ? TATA_KIT : KIT_DEFAULT, KIT_DEFAULT);                   // someone else, no kit given
+    var num = String(over.number || (main ? s.jersey || '7' : adult ? '17' : '7'));
+    var name = over.name != null ? String(over.name) : main ? String(s.backName != null ? s.backName : (own ? 'TYSON W.' : (s.name || ''))) : (adult ? 'Tata' : '');
+    var look = personLook(av);
+    return { who: adult ? 'tata' : 'kid', adult: adult, avatar: av, body: 'av:' + personKey(av), dims: personDims(av), kit: kit, num: num, name: name, look: look, front: role !== 'main' };
+  }
+  function legacySpec(over, role) {
     var s = save(), who = over.who === 'tata' ? 'tata' : 'kid';
     if (who === 'tata') {
       var tk = Object.assign({}, TATA_KIT, over.kit && !over.kit.jersey ? over.kit : {});
-      return { who: 'tata', dims: TATA, kit: over.kit && over.kit.jersey ? over.kit : normKit(tk, TATA_KIT), num: String(over.number || '17'), name: over.name != null ? String(over.name) : 'Tata',
-        look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role === 'mate' };
+      return { who: 'tata', adult: true, body: 'who:tata', dims: TATA, kit: over.kit && over.kit.jersey ? over.kit : normKit(tk, TATA_KIT), num: String(over.number || '17'), name: over.name != null ? String(over.name) : 'Tata',
+        look: Object.assign({}, TATA_LOOK, tk.hair ? { hair: tk.hair } : {}, tk.hairStyle ? { hairStyle: tk.hairStyle } : {}), front: role !== 'main' };
     }
     // the kid: his saved kit, with any override on top
     var sk = Object.assign({}, savedKit(s), over.kit && !over.kit.jersey ? over.kit : {});   // the kit he wears (home / away / third)
-    return { who: 'kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.backName != null ? s.backName : 'TYSON W.'),
-      look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role === 'mate' };
+    return { who: 'kid', adult: false, body: 'who:kid', dims: KID, kit: over.kit && over.kit.jersey ? over.kit : normKit(sk, KIT_DEFAULT), num: String(over.number || s.jersey || '7'), name: over.name != null ? String(over.name) : String(s.backName != null ? s.backName : 'TYSON W.'),
+      look: { hair: sk.hair || KIT_DEFAULT.hair, hairStyle: sk.hairStyle || 'swept' }, front: role !== 'main' };
   }
-  function specKey(sp) { return JSON.stringify([sp.who, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
+  function specKey(sp) { return JSON.stringify([sp.body, sp.kit, sp.num, sp.name, sp.look.hair, sp.look.hairStyle, sp.front]); }
+  // the model for a spec: an avatar through people.js, today's kid / Tata through buildHuman
+  function buildFor(sp) {
+    if (sp.avatar) return buildPerson({ avatar: sp.avatar, kit: sp.kit, num: sp.num, name: sp.name, front: sp.front });
+    return buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front });
+  }
   function disposeModel(m) {
     if (!m) return; if (m.root.parent) m.root.parent.remove(m.root);
     m.root.traverse(function (o) { if (o.skeleton) o.skeleton.dispose(); if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (x) { if (x.map) x.map.dispose(); x.dispose(); }); });
@@ -114,15 +168,15 @@ if (T3 && T3.ctx) (function () {
     var sp = specOf(A.over, A.role), key = specKey(sp);
     if (A.model && key === A.key) return false;
     var rebuilt = false;
-    if (!A.model || sp.who !== A.who) {
+    if (!A.model || sp.body !== A.body) {
       disposeModel(A.model);
-      A.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front });
+      A.model = buildFor(sp);
       A.model.root.visible = false; (parent || ctx.scene).add(A.model.root);
-      A.who = sp.who; A.dims = sp.dims; makeSamples(A); rebuilt = true;
+      A.who = sp.who; A.adult = !!sp.adult; A.body = sp.body; A.avatar = sp.avatar || null; A.dims = sp.dims; makeSamples(A); rebuilt = true;
       for (var i = 0; i < 2; i++) { A.arm[i].rest.set(REST0[i][0], REST0[i][1], REST0[i][2]); mapArm(A, A.arm[i].rest); A.arm[i].des.copy(A.arm[i].rest); A.arm[i].goal.copy(A.arm[i].rest); }
     } else {
       A.model.setKit(sp.kit, sp.num, sp.name, sp.front);
-      A.model.setHair(sp.look.hair, sp.look.hairStyle);
+      if (!sp.avatar) A.model.setHair(sp.look.hair, sp.look.hairStyle);   // (an avatar's hair is part of its body key)
     }
     A.key = key; A.settled = false; ctx.dirty();
     return rebuilt;
@@ -151,7 +205,7 @@ if (T3 && T3.ctx) (function () {
     var hc = D.NECK_Y + D.HEAD_UP, hw = D.HEAD_R * 1.1 * (D.head ? D.head.sx : 1);
     A.head = [[0, D.TOP, 0], [-hw, hc, 0], [hw, hc, 0], [0, hc - D.HEAD_R * 1.02 * (D.head ? D.head.sy : 1), 0]];
   }
-  makeSamples(me); makeSamples(mate);
+  makeSamples(me); makeSamples(mate); makeSamples(mate2);
   var quad = [[0, 0], [0, 0], [0, 0], [0, 0]], aspect = 1;
   var pcam = new THREE.PerspectiveCamera();
   function proj(x, y, z, out) { v3.set(x, y, z).project(pcam); out[0] = v3.x; out[1] = v3.y; out[2] = v3.z; return out; }
@@ -245,8 +299,38 @@ if (T3 && T3.ctx) (function () {
     var iz = L.D / 2 - SEAT.into, ry = 0.5, lz = camPos.z - iz, ly = camPos.y - ry, len = Math.sqrt(lz * lz + ly * ly) || 1;
     return { iz: iz, ry: ry, nz: ly / len, ny: -lz / len };
   }
-  function seatFor(A, camPos, L) {
-    var D = A.dims, ln = sightLine(camPos, L), key = D === KID ? 'kid' : 'tata', lo = SEAT.minS[key], hi = SEAT.maxS[key];
+  // SIZE RULE (see the header). Every person's dims are in one unit system (the kid's), so people of different builds
+  // drawn at the same scale s have believable relative heights.
+  //   ref = the scale today's kid gets at the near seat (his head just touches the line of sight over the near rim, at
+  //     most SEAT.maxS.kid); fit(A) = the same search for A's body.
+  //   near seat (the device's player): s = min(fit(me), ref x sqrt(kidHeight / herHeight)). A grown-up is limited by
+  //     fit (his head must stay off the felt), as Tata is today. Someone shorter than the kid stands at a little more
+  //     than ref: half way (in proportion) between "same scale as the kid" (she would sink below the bottom of the
+  //     picture: the camera may only back off so far) and "head at the rim like the kid" (she would look as tall).
+  //   'left' seat: the near side's scale U = min(ref, fit(me)), like today (the same world scale as the device's
+  //     player): a grown-up there is taller than a kid, a little kid smaller.
+  //   far seats ('far', 'farL', 'farR'): FAR.s, today's size for the person across the table. Someone too small to show
+  //     the top of the shirt over the far rim at FAR.s (farFit: FAR.chest x shoulder height clears the line of sight
+  //     over the far rim) first steps back (up to FAR.back: the line drops behind the rim), and only then is drawn
+  //     bigger (at most FAR.max). She still comes out clearly smaller than a grown-up beside her.
+  // With no avatar anywhere this gives exactly today's sizes (the kid: ref; Tata: his fit; the far mate: FAR.s).
+  var REF = { dims: KID, avatar: null, adult: false };
+  var KID_H = KID.TOP - KID.FOOT, TATA_H = TATA.TOP - TATA.FOOT;
+  function sRange(A) {
+    if (!A.avatar) return A.dims === KID ? [SEAT.minS.kid, SEAT.maxS.kid] : [SEAT.minS.tata, SEAT.maxS.tata];   // today's two, exactly
+    // an avatar: the same range of world heights the kid and Tata have between them
+    var h = Math.max(1, A.dims.TOP - A.dims.FOOT);
+    return [Math.min(SEAT.minS.kid * KID_H, SEAT.minS.tata * TATA_H) / h, Math.max(SEAT.maxS.kid * KID_H, SEAT.maxS.tata * TATA_H) / h];
+  }
+  function refScale(camPos, L) { var b = seatFor(REF, camPos, L); return b ? b.s : 0; }
+  // the most the near seat may scale A (see the size rule): ref, a little more for someone shorter than the kid
+  function nearCap(A, ref) {
+    if (!(ref > 0) || !A.avatar) return ref;
+    return ref * Math.sqrt(Math.max(1, KID_H / Math.max(1, A.dims.TOP - A.dims.FOOT)));
+  }
+  function seatFor(A, camPos, L, cap) {
+    var D = A.dims, ln = sightLine(camPos, L), rg = sRange(A), lo = rg[0], hi = rg[1];
+    if (cap > 0 && cap < hi) { hi = cap; lo = Math.min(lo, hi); }
     function clear(s) { var z = seatZ(D, s, L), h = headInfo(D, s, z); return (h.z - ln.iz) * ln.nz + (h.y - ln.ry) * ln.ny - h.r; }
     if (clear(lo) < 0) return null;                    // even a small kid would cover the felt (camera too low): no seat
     if (clear(hi) >= 0) lo = hi;
@@ -264,7 +348,7 @@ if (T3 && T3.ctx) (function () {
     var A = me, L = ctx.layout;
     why.head = why.table = why.sunk = why.near = 0;
     // with the view the camera really ended up with (the fit's last pass used almost the same one)
-    var b = seatFor(A, pcam.position, L);
+    var b = seatFor(A, pcam.position, L, nearCap(A, refScale(pcam.position, L)));
     A.fits = false; A.placedOnce = true;
     if (!b) { why.table++; return; }
     // his head must really be on screen (the fit may have hit its limit on a very narrow screen)
@@ -278,16 +362,19 @@ if (T3 && T3.ctx) (function () {
   }
   // Team-up: the grown-up stands beside the left end of the table, on the kid's side of the creature (which is
   // always behind the far edge), at the same world scale as the kid (so a grown-up is taller), never on top of him.
-  function placeLeft() {
-    var A = mate, ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
-    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = me.fits ? me.place.s : 1.4, kr = me.fits ? me.place.s : 0;
+  // A second person at the left seat (two mates both 'left') keeps clear of the first one the same way.
+  function placeLeft(A, others) {
+    var ow = tbl.ow, od = tbl.od, ch = (ctx.renderer && ctx.renderer.domElement.clientHeight) || 600;
+    var MIN = Math.max(0.05, 50 / ch), best = null, bestScore = -1e9, s0 = nearU;
     drop = 0;
     [1, 0.9, 0.8].forEach(function (f) {
       var s = s0 * f;
       for (var x = -ow - 0.8; x >= -ow - 7; x -= 0.5) {
         for (var z = od - 0.5; z >= -od + 1.2; z -= 0.5) {
-          // keep clear of the kid (both bodies plus a gap)
-          if (me.fits) { var ddx = x - me.place.x, ddz = z - me.place.z; if (Math.sqrt(ddx * ddx + ddz * ddz) < 1.25 * (s + kr)) { why.near++; continue; } }
+          // keep clear of the kid and anyone already placed (both bodies plus a gap)
+          var near = false;
+          for (var q = 0; q < others.length && !near; q++) { var B = others[q]; if (!B.fits) continue; var ddx = x - B.place.x, ddz = z - B.place.z; if (Math.sqrt(ddx * ddx + ddz * ddz) < 1.25 * (s + B.place.s)) near = true; }
+          if (near) { why.near++; continue; }
           var rot = Math.atan2(-ow * 0.4 - x, -z * 0.3 - z);                      // turned toward the middle of the table
           var hd = fitsAt(A, x, z, s, rot); if (hd < MIN) continue;
           var dx = x - (-ow - 1.6), dz = z;
@@ -300,23 +387,55 @@ if (T3 && T3.ctx) (function () {
     if (best) setPlace(A, best);
   }
   // 2 Players / Online: across the table where a creature would stand, facing the camera, standing on the pitch
-  var FAR = { s: 1.35, front: 1.95, look: -0.5 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
-  function creatureHere() { try { return !!(T3.creatureVisible && T3.creatureVisible()); } catch (e) { return false; } }
-  function placeFar() {
-    var A = mate, L = ctx.layout; if (!L) { A.fits = false; return; }
-    setPlace(A, { x: 0, z: -L.D / 2 - FAR.front, s: FAR.s, rot: 0, hd: 0, drop: 0 });
+  // farL / farR (three humans, no creature): the two spots across the table, a little either side of the middle (where
+  // the two creatures of a three-player game stand), each turned a touch toward the middle. x = FAR.x[layout] (world).
+  var FAR = { s: 1.35, front: 1.95, look: -0.5, max: 1.6, chest: 0.55, back: 1.6, x: { wide: 4.6, tall: 2.9 }, turn: 0.18 };   // a little smaller than life next to the table, so his head fits the usual view like a creature's
+  var MATES = [mate, mate2], PEOPLE = [me, mate, mate2];
+  function isFar(A) { return A.seat === 'far' || A.seat === 'farL' || A.seat === 'farR'; }
+  function creatureHere() { try { return !!(T3.creatureVisible && (T3.creatureVisible(0) || T3.creatureVisible(1))); } catch (e) { return false; } }
+  function farSpot(A, L) {
+    if (A.seat === 'far') return { x: 0, rot: 0 };
+    var sg = A.seat === 'farL' ? -1 : 1, x = sg * (FAR.x[ctx.layoutName] || FAR.x.wide);
+    return { x: x, rot: -sg * FAR.turn };
+  }
+  // the smallest scale at which A, standing at the far seat, shows the upper chest (FAR.chest x shoulder height) over the far rim
+  function farFit(A, camPos, L, front) {
+    var D = A.dims, zr = -L.D / 2 - 0.55, zp = -L.D / 2 - front, ry = 0.62;
+    if (camPos.z - zr < 0.1) return FAR.s;
+    var yl = ry + (ry - camPos.y) / (zr - camPos.z) * (zp - zr) + 0.15, yc = FAR.chest * D.SH_Y - D.FOOT;
+    return (yl - FLOOR_Y) / yc;
+  }
+  // A's scale and distance behind the far rim at a far seat (see the size rule above): { s, front }. Someone small
+  // first steps back a little (up to FAR.back further: the line of sight over the rim drops behind it, so more of her
+  // shows), and only then is drawn bigger.
+  function farPlan(A, camPos, L) {
+    if (!A.avatar) return { s: FAR.s, front: FAR.front };                            // today's kid / Tata: exactly as before
+    var base = FAR.s, f;
+    for (f = FAR.front; f < FAR.front + FAR.back; f += 0.15) if (farFit(A, camPos, L, f) <= base) return { s: base, front: f };
+    f = FAR.front + FAR.back;
+    return { s: Math.min(FAR.max, Math.max(base, farFit(A, camPos, L, f))), front: f };
+  }
+  function placeFar(A, fp) {
+    var L = ctx.layout; if (!L) { A.fits = false; return; }
+    var sp = farSpot(A, L);
+    setPlace(A, { x: sp.x, z: -L.D / 2 - fp.front, s: fp.s, rot: sp.rot, hd: 0, drop: 0 });
     A.fits = !creatureHere(); A.placedOnce = true;
   }
   function computePlace() {
     needPlace = false;
-    if (!setupProj()) { me.fits = false; mate.fits = false; return; }
+    if (!setupProj()) { me.fits = false; mate.fits = false; mate2.fits = false; return; }
     placeMain();
-    if (mate.seat === 'far') placeFar(); else if (mate.seat === 'left') placeLeft();
+    var cp = pcam.position, L = ctx.layout, refS = refScale(cp, L), placed = [me];
+    // the near side's scale for the 'left' seat: the device's player's, but never more than ref (a little kid at the
+    // near seat is drawn a bit bigger than ref so she shows; the person beside her keeps the real proportions)
+    nearU = me.fits ? (refS > 0 ? Math.min(me.place.s, refS) : me.place.s) : 1.4;
+    MATES.forEach(function (B) { if (isFar(B)) { placeFar(B, farPlan(B, cp, L)); placed.push(B); } });
+    MATES.forEach(function (B) { if (B.seat === 'left') { placeLeft(B, placed); placed.push(B); } });
     applyVis();
   }
   function applyVis() {
     if (me.model) me.model.root.visible = (me.shown && me.fits) || !!me.forced;          // (MATCHDAY: forced = a scripted walk shows him anyway)
-    if (mate.model) mate.model.root.visible = (mate.shown && mate.fits) || !!mate.forced;
+    MATES.forEach(function (B) { if (B.model) B.model.root.visible = (B.shown && B.fits) || !!B.forced; });
     ctx.dirty(); ctx.startLoop();
   }
 
@@ -486,7 +605,7 @@ if (T3 && T3.ctx) (function () {
     var now = performance.now();
     if (!m) { if (A.g && !A.g.fade) A.g.fade = now; return false; }
     // Tata reacts as a proud dad: applause with a thumbs up, a calm "chin up" after a loss
-    if (A.who === 'tata') { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
+    if (A.adult) { if (m === 'clap') m = 'proudClap'; else if (m === 'aw') m = 'chinUp'; }
     A.proud = null; A.proudNext = m === 'cheer';             // a great shake: he ends with his hands on his hips
     var d = GEST[m]; if (!d) return false;
     if (document.hidden) return false;
@@ -578,7 +697,7 @@ if (T3 && T3.ctx) (function () {
   function homeOf(A) { return { x: A.place.x, z: A.place.z, yaw: A.place.rot }; }
   // running speed (world units / s). The person across the table (smaller, and every Resource is on the near half)
   // runs a little faster so his moves don't drag.
-  function runSpeed(A, quick) { return WALK.v * A.place.s * (quick ? WALK.quickV : 1) * (A === mate && mate.seat === 'far' ? 1.3 : 1); }
+  function runSpeed(A, quick) { return WALK.v * A.place.s * (quick ? WALK.quickV : 1) * (isFar(A) ? 1.3 : 1); }
   function radiusOf(A) { return 1.0 * A.dims.torsoX * A.place.s; }
   function flopLift(A) {
     // root (waist) height when he lies on his tummy: the belly clears the cubes on the felt (cube tops at y = 1)
@@ -588,14 +707,18 @@ if (T3 && T3.ctx) (function () {
   // what is in his way: a creature across the table and the person standing there are hard (never walk there), the
   // other person at the table is soft (he goes round the outside, behind him); T3.playerWalkSide rules out one side
   function obstaclesFor(A) {
-    var L = ctx.layout, out = [], other = A === me ? mate : me, rA = radiusOf(A);
-    var farBusy = (!(A === mate && mate.seat === 'far') && creatureHere()) || (A === me && mate.seat === 'far' && mate.shown && mate.fits);
+    var L = ctx.layout, out = [], rA = radiusOf(A), far = isFar(A), others = PEOPLE.filter(function (B) { return B !== A; });
+    // someone across the table (a creature, or a person at a far seat) owns the far side, unless he stands there himself;
+    // two people across the table go round each other (soft), like the people on the near side
+    var farBusy = !far && (creatureHere() || others.some(function (B) { return isFar(B) && B.shown && B.fits; }));
     if (farBusy) {
       // the creature (or the person) across the table: the whole far side is theirs, he only goes as far as its corners
       out.push({ x: 0, z: -L.D / 2 - 1.95, r: 5.2 + rA, hard: true });
       out.push({ box: [-L.W / 2 + 0.3, L.W / 2 - 0.3, -1e9, -L.D / 2 - 0.4], hard: true });
     }
-    if (other.shown && other.model && other.model.root.visible && !(other === mate && mate.seat === 'far')) out.push({ x: other.wk.x, z: other.wk.z, r: 0.88 * (radiusOf(other) + rA) + 0.2, hard: false });
+    others.forEach(function (other) {
+      if (other.shown && other.model && other.model.root.visible && !(isFar(other) && !far)) out.push({ x: other.wk.x, z: other.wk.z, r: 0.88 * (radiusOf(other) + rA) + 0.2, hard: false });
+    });
     return out;
   }
   function inObs(o, x, z) { if (o.box) return x > o.box[0] && x < o.box[1] && z > o.box[2] && z < o.box[3]; var ox = x - o.x, oz = z - o.z; return ox * ox + oz * oz < o.r * o.r; }
@@ -838,7 +961,7 @@ if (T3 && T3.ctx) (function () {
     clearTimeout(T.timer); A.trip = null; syncHome(A);
   }
   function segEnd(A, T, g) { if (g.k === 'grab') pickUp(T); else if (g.k === 'place') release(T); else if (g.k === 'walk' && (T.script || T.cup)) T.fin(); }   // (CUPTOSS cup: arrived at the spot on the rim)   // (MATCHDAY: a scripted walk has arrived)
-  document.addEventListener('visibilitychange', function () { if (document.hidden) { finishNow(me, true); finishNow(mate, true); } });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) PEOPLE.forEach(function (B) { finishNow(B, true); }); });
 
   // the trip's pose for this frame (before smoothing): where he is, which way he faces, lean / tummy, arm targets
   var PA = { x: 0, z: 0, tx: 0, tz: 0 };
@@ -891,7 +1014,7 @@ if (T3 && T3.ctx) (function () {
     for (var i = 0; i < 2; i++) {
       var ph = W.ph + i * Math.PI, AR = A.arm[i];
       if (i === ai && holding) { carryPose(A, i, tv); tv.y += 0.05 * run * Math.abs(Math.cos(W.ph)); AR.des.copy(tv); AR.dAl = 0.6; AR.dOp = 0.1; }
-      else if (!A.g) { var sa = A.who === 'tata' ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
+      else if (!A.g) { var sa = A.adult ? 0.45 : 0.65; tv.set(AR.rest.x, AR.rest.y + 0.3 * run * Math.abs(Math.sin(ph)), AR.rest.z - sa * run * Math.sin(ph)); AR.des.copy(tv); }
     }
     if (g.k === 'walk' && g.bank) P.bank += clamp(-wrap(W.yawT - W.yaw) * 1.5, -0.45, 0.45);   // banking into the curve
     if (g.fn && TRAVEL[g.fn]) TRAVEL[g.fn](A, u, k, PH);   // a celebration beat poses him on top
@@ -978,8 +1101,11 @@ if (T3 && T3.ctx) (function () {
   // which player index this avatar plays for (-1: none)
   function playerOf(A, g) {
     if (A === me) return 0;
+    if (typeof A.pidx === 'number') return A.pidx;                       // given with T3.mate / T3.mate2 ({ player })
     if (g.team) return 0;
-    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) return i;
+    // the mate plays for the first other person in the players list, the second mate for the next one
+    var skip = A === mate2 ? 1 : 0;
+    for (var i = 1; i < g.players.length; i++) if (!g.players[i].ai) { if (skip-- <= 0) return i; }
     return -1;
   }
   function isMine(A, g, idx) { if (idx !== playerOf(A, g)) return false; if (g.team && idx === 0) return (g.team.cur === 0) === (A === me); return true; }
@@ -1027,8 +1153,10 @@ if (T3 && T3.ctx) (function () {
     var mine = A.trip && A.trip.m, held = ctx.held != null && ctx.meshes[ctx.held];
     if (held && held !== mine && held.visible) return { p: AT.copy(held.position), live: true };
     if (stance === 'wait') {
-      var other = A === me ? mate : me;
-      if (other.shown && other.model && other.model.root.visible && other !== A && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
+      // the person whose go it is (with one other person: him, whenever it is a person's go)
+      var seen = PEOPLE.filter(function (B) { return B !== A && B.shown && B.model && B.model.root.visible; });
+      var other = seen.filter(function (B) { return isMine(B, g, g.turn); })[0] || (seen.length === 1 ? seen[0] : null);
+      if (other && (g.players[g.turn] && !g.players[g.turn].ai)) { other.model.head.getWorldPosition(AT); return { p: AT }; }
       try { var f = T3.creatureFocus && T3.creatureFocus(); if (f && f.head) return { p: AT.copy(f.head) }; } catch (e) {}
       return null;
     }
@@ -1078,13 +1206,17 @@ if (T3 && T3.ctx) (function () {
   // ---------- per frame ----------
   function update(now) {
     if (needPlace && ctx.layout) computePlace();   // right after a camera fit, even while hidden (the view has no offsets yet)
-    if (mate.seat === 'far' && mate.shown && mate.model) {
+    var ch = null;
+    MATES.forEach(function (B) {
+      if (!(isFar(B) && B.shown && B.model)) return;
       // a creature arriving or leaving across the table hides / shows him
-      var f = !creatureHere(); if (f !== mate.fits) { mate.fits = f; applyVis(); }
-    }
-    step(me, now); step(mate, now);
+      if (ch === null) ch = creatureHere();
+      if (!ch !== B.fits) { B.fits = !ch; applyVis(); }
+    });
+    step(me, now); step(mate, now); step(mate2, now);
     // the high five waits until the kid's celebration has finished (and gives up after 12 s)
-    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && !mate.g) highFive(); }
+    var hm = hf.pend ? hf.who : null;
+    if (hf.pend) { if (now - hf.pend > 12000) hf.pend = 0; else if (now - hf.pend > 300 && !me.trip && !me.g && hm && !hm.g) highFive(); }
   }
   function step(A, now) {
     if (!A.model || !(A.shown || A.forced) || !A.model.root.visible) { A.lastNow = now; A.hold = null; if (A.trip) finishNow(A, true); syncHome(A); if (A.shadow && A.shadow.visible) { A.shadow.visible = false; ctx.dirty(); } return; }
@@ -1115,13 +1247,13 @@ if (T3 && T3.ctx) (function () {
     var T = A.trip; A.turnStep = null;
     if (T && !tripPose(A, T, now)) T = null;
     if (!A.trip) { T = null; if (!A.hold) syncHome(A); }   // (CUPTOSS: held at a spot on the rim: he stays there)
-    if (A === mate && mate.seat === 'far' && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
+    if (A !== me && isFar(A) && !T) P.headPitch += FAR.look;   // across the table he looks up toward the camera, so his face shows
     // how fast he really moves (legs, arm swing) and which way he faces
     var mv = Math.hypot(W.x - W.px, W.z - W.pz); W.px = W.x; W.pz = W.z;
     W.spd += (mv / dt - W.spd) * (1 - Math.exp(-14 * dt)); if (!T && W.spd < 0.05) W.spd = 0;
     // gait: the stride grows with the speed (a walk takes short steps, a run long ones with a little flight), so the
     // feet keep pace with the ground instead of skating. Tata: longer, calmer steps, more upright, less bounce.
-    var grown = A.who === 'tata', vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
+    var grown = !!A.adult, vU = W.spd / A.place.s, noGait = !!(T && T.g && T.g.noGait);
     var stride = grown ? 3.0 + 0.09 * vU : 2.3 + 0.11 * vU;
     if (!noGait) W.ph += mv / (stride * A.place.s) * Math.PI;
     var wy = wrap(W.yawT - W.yaw); W.yaw += wy * (1 - Math.exp(-(T ? 16 : 10) * dt)); if (Math.abs(wy) < 1e-4) W.yaw = W.yawT;
@@ -1188,11 +1320,19 @@ if (T3 && T3.ctx) (function () {
     // his seat below the near rim needs a band of room at the bottom of the picture: table.js calls this with the
     // camera already standing at its first guess, so the seat is worked out from that view
     if (me.shown && me.model && ctx.layout) {
-      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout); if (b) seatPoints(me, b, corners); } catch (e) {}
+      try { ctx.camera.updateMatrixWorld(); var b = seatFor(me, ctx.camera.position, ctx.layout, nearCap(me, refScale(ctx.camera.position, ctx.layout))); if (b) seatPoints(me, b, corners); } catch (e) {}
     }
-    if (mate.seat === 'far' && mate.shown && mate.model && !creatureHere()) {
-      var top = FLOOR_Y + (mate.dims.TOP - mate.dims.FOOT) * FAR.s + 0.2, z = -D / 2 - FAR.front;
-      corners.push([-3.4, top, z], [3.4, top, z]);
+    // the people across the table (no creature): the tops of their heads, at the far side's scale for this view
+    var fars = MATES.filter(function (B) { return isFar(B) && B.shown && B.model; });
+    if (fars.length && ctx.layout && !creatureHere()) {
+      try {
+        ctx.camera.updateMatrixWorld();
+        var cp = ctx.camera.position, L = ctx.layout;
+        fars.forEach(function (B) {
+          var fp = farPlan(B, cp, L), fs = fp.s, z = -D / 2 - fp.front, top = FLOOR_Y + (B.dims.TOP - B.dims.FOOT) * fs + 0.2 + (B.avatar ? 0.25 * fs : 0), x = farSpot(B, L).x, hw = B.seat === 'far' ? 3.4 : 1.8;
+          corners.push([x - hw, top, z], [x + hw, top, z]);
+        });
+      } catch (e) {}
     }
   });
 
@@ -1207,9 +1347,9 @@ if (T3 && T3.ctx) (function () {
   function celebTrip(A, name) {
     celebWhy = 'not allowed';
     if ((name !== 'slide' && name !== 'plane') || calmMotion() || A.trip || !A.model || !A.shown || !A.fits || !ctx.layout || document.hidden) return false;
-    if (A === mate && mate.seat === 'far') return false;
-    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && mate.shown && mate.seat === 'left')) ? 1 : -1;
-    if (A === mate) sd = -1;                                                       // the mate at the left seat uses the left side
+    if (A !== me && isFar(A)) return false;
+    var R = ringOf(A), s = A.place.s, sd = WALK.side === 'right' || (WALK.side === 'auto' && !(A === me && leftMate(true))) ? 1 : -1;
+    if (A !== me) sd = -1;                                                         // the mate at the left seat uses the left side
     var zs = R.od * 0.3, out = 0.45 * s, x0 = sd * (R.ow + R.c + out), pz = zs, len = (name === 'slide' ? 4.2 : 6.5) * s;
     // the spots must be on screen (at head height) and clear of anyone else
     setupProj();
@@ -1244,11 +1384,13 @@ if (T3 && T3.ctx) (function () {
 
   // ---------- high five: after the kid's win celebration, Tata (at the left seat, Team-up / 3 players) walks over, they
   // high-five once, and he walks back. Started from update() once the celebration has finished.
-  var hf = { pend: 0 };
-  function highFiveLater() { hf.pend = mate.shown && mate.seat === 'left' && mate.fits ? performance.now() : 0; }
+  var hf = { pend: 0, who: null };
+  // the person at the left seat (the one who comes over for the high five); loose: shown there, fitting or not
+  function leftMate(loose) { for (var i = 0; i < MATES.length; i++) { var B = MATES[i]; if (B.shown && B.seat === 'left' && (loose || B.fits)) return B; } return null; }
+  function highFiveLater() { hf.who = leftMate(false); hf.pend = hf.who ? performance.now() : 0; }
   function highFive() {
     hf.pend = 0;
-    var A = mate; if (!A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
+    var A = hf.who; if (!A || !A.model || !A.model.root.visible || A.trip || !me.model || !me.model.root.visible || me.trip || document.hidden) return false;
     var R = ringOf(A), s = A.place.s, side = A.wk.x < me.wk.x ? -1 : 1, gap = 0.88 * (radiusOf(A) + radiusOf(me)) + 1.1;
     var sx = me.wk.x + side * gap, szz = me.wk.z, N = Math.max(16, Math.round(R.L / WALK.h)), h = R.L / N, pts = [];
     for (var k = 0; k < N; k++) pts.push(ringPt(R, k * h));
@@ -1289,41 +1431,49 @@ if (T3 && T3.ctx) (function () {
     if (me.model && me.shown && celebTrip(me, name)) { highFiveLater(); return true; }
     var ok = startMood(me, name); if (ok) highFiveLater(); return ok;
   };
-  T3.mate = function (o) {
-    var wasFar = mate.seat === 'far' && mate.shown;
-    finishNow(mate, true);
+  var SEATS = ['left', 'far', 'farL', 'farR'];
+  function setMate(A, o) {
+    var wasFar = isFar(A) && A.shown;
+    finishNow(A, true);
     if (!o) {
-      mate.shown = false; mate.g = null; mate.seat = null; applyVis();
+      A.shown = false; A.g = null; A.seat = null; A.pidx = null; applyVis();
       if (wasFar) ctx.refit();
       return false;
     }
-    mate.over = Object.assign({ who: 'tata' }, o); mate.seat = o.seat === 'far' ? 'far' : 'left'; mate.shown = true;
-    refreshAvatar(mate);
-    if (mate.seat === 'far' || wasFar) ctx.refit();                // the camera keeps his head in view (calls the extents hook)
+    A.over = Object.assign({ who: 'tata' }, o); A.seat = SEATS.indexOf(o.seat) >= 0 ? o.seat : 'left'; A.shown = true;
+    A.pidx = typeof o.player === 'number' && o.player >= 0 ? o.player : null;
+    refreshAvatar(A);
+    // the camera keeps a far person's head in view (calls the extents hook); a new body across the table changes the far scale
+    if (isFar(A) || wasFar) ctx.refit();
     computePlace();
-    return mate.fits;
-  };
-  T3.mateMood = function (m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(mate, m, opts); };
+    return A.fits;
+  }
+  T3.mate = function (o) { return setMate(mate, o); };
+  T3.mate2 = function (o) { return setMate(mate2, o); };
+  function mateMood(A, m, opts) { if (CELEBS.indexOf(m) >= 0 || NAMES.indexOf(m) >= 0 || !m) startMood(A, m, opts); }
+  T3.mateMood = function (m, opts) { mateMood(mate, m, opts); };
+  T3.mate2Mood = function (m, opts) { mateMood(mate2, m, opts); };
   // Moving a cube (same contract as T3.creatureMove): done() fires exactly once, at the release (~0.6 s), or at once
   // when he can't do it (3D off, hidden, not on screen, tab hidden, another cube in a hand); 2.5 s safety timeout.
   // opts.quick: about 20% faster (e.g. several Goal cubes in a row).
   T3.playerMove = function (id, zone, done, opts) { startTask(me, id, zone, done, opts); };
   T3.mateMove = function (id, zone, done, opts) { startTask(mate, id, zone, done, opts); };
+  T3.mate2Move = function (id, zone, done, opts) { startTask(mate2, id, zone, done, opts); };
   // finish any move right now (the cube lobs to its slot, done() fires); e.g. when the player taps during the reach
-  T3.playerMoveFinish = function () { var a = finishNow(me), b = finishNow(mate); return a || b; };
+  T3.playerMoveFinish = function () { var a = finishNow(me), b = finishNow(mate), c = finishNow(mate2); return a || b || c; };
   // which sides of the table they may walk round: 'auto' (both), 'right' (never the left side, e.g. a second creature
   // sits there), 'left'. Applies to both people. No argument: the current value.
   T3.playerWalkSide = function (side) { if (side === 'left' || side === 'right' || side === 'auto') WALK.side = side; return WALK.side; };
   // tuning / tests: T3.playerMoveTuning({ stretch, lean, fwd, safety }) ; no argument: the values
   T3.playerMoveTuning = function (o) { if (o) Object.keys(WALK).forEach(function (k) { if (typeof o[k] === typeof WALK[k]) WALK[k] = o[k]; }); return JSON.parse(JSON.stringify(WALK)); };
-  T3.playerMoving = function () { return !!((me.trip && !me.trip.released) || (mate.trip && !mate.trip.released)); };
+  T3.playerMoving = function () { return PEOPLE.some(function (B) { return !!(B.trip && !B.trip.released); }); };
   T3.playerState = function () {
     function st(A) {
       var T = A.trip, g = T && T.segs[T.i];
-      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
+      return { stance: A.st.cur, shown: A.shown, fits: A.fits, visible: !!(A.model && A.model.root.visible), who: A.who, adult: !!A.adult, avatar: A.avatar ? personKey(A.avatar) : null, player: A.pidx == null ? null : A.pidx, mood: A.g ? A.g.n : null, scale: A.place.s, at: [A.place.x, A.place.z], rot: A.place.rot, headNDC: A.place.hd, drop: A.place.drop,
         pos: [A.wk.x, A.wk.z], yaw: A.wk.yaw, trip: T ? { phase: T.phase, seg: g ? g.k : null, segs: T.segs.map(function (q) { return q.k + (q.plan ? ':' + q.plan.mode : '') + '@' + q.T.toFixed(2); }), released: T.released, tRel: T.tRel } : null, hold: A.hold ? { mode: A.hold.plan.mode, lean: +A.hold.plan.lean.toFixed(2), sl: +(A.hold.plan.sl || 0).toFixed(2) } : null };   // (CUPTOSS: hold)
     }
-    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); return o;
+    var o = st(me); o.rejected = why; o.quad = quad; o.celebWhy = celebWhy; o.mate = Object.assign(st(mate), { seat: mate.seat }); o.mate2 = Object.assign(st(mate2), { seat: mate2.seat }); return o;
   };
   // tuning hook (no effect unless called): T3.playerSeat({ into, low, gap, hair }) then it refits; no argument: the values
   T3.playerSeat = function (o) {
@@ -1334,10 +1484,10 @@ if (T3 && T3.ctx) (function () {
   // the title screen (js/three/title.js) builds its own copy of him from the same spec: { who, dims, kit, num, name, look, front }
   T3.playerSpec = function (o) { return specOf(o, 'main'); };
   // debugging / previews: the model objects (read-only use please)
-  T3.playerModels = function () { return { me: me.model, mate: mate.model }; };
+  T3.playerModels = function () { return { me: me.model, mate: mate.model, mate2: mate2.model }; };
 
   // ---------- CUPTOSS: both hands held by table.js (he dumps the cup, tosses cubes to roll them again) ----------
-  // ctx.grips.human('me' | 'mate') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
+  // ctx.grips.human('me' | 'mate' | 'mate2') -> null (not at the table / hidden) or { x, z (where he stands), fx, fz (the way he
   // faces), reach, hand (palm -> held object), set(h), hands(), holding() }. set({ far, fn }): far = the farthest world
   // point his hands will need (his body leans, lies on the rim or kneels in for it ONCE, chosen like a move's grab);
   // fn(now, out) fills out.a / out.b (world hand spots or null), out.w (0..1 free pose -> spots), out.open, out.look.
@@ -1416,7 +1566,8 @@ if (T3 && T3.ctx) (function () {
     A.trip = T; toReturn(A, T); A.settled = false; ctx.dirty(); ctx.startLoop();
   }
   ctx.grips = ctx.grips || {};
-  ctx.grips.human = function (who) { return humanGrip(who === 'mate' ? mate : me); };
+  function personBy(who) { return who === 'mate2' ? mate2 : who === 'mate' ? mate : me; }
+  ctx.grips.human = function (who) { return humanGrip(personBy(who)); };
   // the body for this frame: the reach plan (lean / tummy on the rim / kneeling in), blended by the hands' weight
   function holdPose(A, now) {
     var Hd = A.hold; HOP.a = HOP.b = HOP.look = null; HOP.w = 0; HOP.open = 0.5; HOP.armA = null;
@@ -1456,7 +1607,7 @@ if (T3 && T3.ctx) (function () {
 
   // ---------- MATCHDAY (js/three/matchday.js): a scripted walk along a path (the walk-out, the trophy podium) ----------
   // T3.playerScript(who, o, done) / T3.playerScript(who, null)
-  //   who: 'me' (this device's player) | 'mate'. o: { path: [[x, z], ...] (world, on the pitch), v: world units / s,
+  //   who: 'me' (this device's player) | 'mate' | 'mate2'. o: { path: [[x, z], ...] (world, on the pitch), v: world units / s,
   //   yaw: the way he faces at the end (default: his seat's), startYaw, stay: true = he stays at the end of the path
   //   (until T3.playerScript(who, null)); otherwise the path ends at his seat and the walk is over there.
   //   force: show him even if his seat does not fit / the avatar is switched off (he is hidden again afterwards),
@@ -1493,12 +1644,12 @@ if (T3 && T3.ctx) (function () {
       return true;
     } catch (e) { console.warn('playerScript', e); try { endScript(A); } catch (e2) {} fin(); return false; }
   }
-  T3.playerScript = function (who, o, done) { return scriptTrip(who === 'mate' ? mate : me, o, done); };
-  T3.playerScripted = function (who) { var A = who === 'mate' ? mate : me; return !!(A.trip && A.trip.script); };
+  T3.playerScript = function (who, o, done) { return scriptTrip(personBy(who), o, done); };
+  T3.playerScripted = function (who) { var A = personBy(who); return !!(A.trip && A.trip.script); };
   // ---------- end MATCHDAY ----------
 
   // ---------- portraits for the kit designer ----------
-  var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {} };
+  var pv = { scene: null, cam: null, model: null, who: '', style: '', busy: false, next: {}, boxes: {} };
   function pvStage() {
     if (pv.scene) return;
     pv.scene = new THREE.Scene();
@@ -1509,10 +1660,11 @@ if (T3 && T3.ctx) (function () {
     pv.cam = new THREE.PerspectiveCamera(26, 0.8, 0.1, 100);
   }
   function pvPose(sp) {
-    if (!pv.model || pv.who !== sp.who) {
+    if (!pv.model || pv.who !== sp.body) {
+      // a new body (another avatar key, or kid <-> Tata): rebuild; only the kit / name / number changed: reuse the model
       if (pv.model) { pv.scene.remove(pv.model.root); disposeModel(pv.model); }
-      pv.model = buildHuman({ dims: sp.dims, kit: sp.kit, num: sp.num, name: sp.name, look: sp.look, front: sp.front }); pv.scene.add(pv.model.root); pv.who = sp.who;
-    } else { pv.model.setKit(sp.kit, sp.num, sp.name, sp.front); pv.model.setHair(sp.look.hair, sp.look.hairStyle); }
+      pv.model = buildFor(sp); pv.scene.add(pv.model.root); pv.who = sp.body;
+    } else { pv.model.setKit(sp.kit, sp.num, sp.name, sp.front); if (!sp.avatar) pv.model.setHair(sp.look.hair, sp.look.hairStyle); }
     var m = pv.model, tmp = new THREE.Vector3(), A = { dims: sp.dims };
     m.setKnees(0, 0, 0, 0); m.body.rotation.set(0, 0, 0); m.neck.rotation.set(0.04, 0, 0); m.head.rotation.set(0.05, 0, 0);
     m.root.position.set(0, 0, 0); m.root.scale.setScalar(1); m.root.updateMatrixWorld(true);
@@ -1530,9 +1682,21 @@ if (T3 && T3.ctx) (function () {
     m.root.updateMatrixWorld(true);
     pv.cam.aspect = W / H; pv.cam.updateProjectionMatrix();
     var top, bot;
-    if (close) { var hc = D.NECK_Y + D.HEAD_UP; top = D.TOP + 0.35; bot = hc - D.HEAD_R * 1.9; }
+    var hc = D.NECK_Y + D.HEAD_UP, hw = 0;
+    if (close) { top = D.TOP + 0.35; bot = hc - D.HEAD_R * 1.9; }
     else { top = D.TOP + 0.15; bot = D.FOOT - 0.1; }
-    var h = top - bot, cy = (top + bot) / 2, dist = (h / 2) / Math.tan(pv.cam.fov * Math.PI / 360) * 1.06;
+    if (sp.avatar) {
+      // an avatar: framed by what was really built (a bun, an afro, a cap or a tall build may reach past the dims), so
+      // every body fills the picture the same way, whatever its size. The measured box is kept per body and angle.
+      var bk = sp.body + '|' + m.root.rotation.y.toFixed(3), bb = pv.boxes[bk];
+      if (!bb) { bb = new THREE.Box3().setFromObject(m.root, true); pv.boxes = {}; pv.boxes[bk] = bb; }
+      if (!bb.isEmpty()) {
+        top = Math.max(top, bb.max.y + (close ? 0.2 : 0.1));
+        if (!close) { bot = Math.min(bot, bb.min.y - 0.06); hw = Math.max(-bb.min.x, bb.max.x) + 0.08; }
+        else hw = D.HEAD_R * 1.25 * (D.head ? D.head.sx : 1) + 0.3;
+      }
+    }
+    var h = top - bot, cy = (top + bot) / 2, tf = Math.tan(pv.cam.fov * Math.PI / 360), dist = Math.max((h / 2) / tf, hw / (tf * pv.cam.aspect)) * 1.06;
     pv.cam.position.set(0, cy + dist * (close ? 0.05 : 0.12), dist); pv.cam.lookAt(0, cy, 0); pv.cam.updateMatrixWorld();
     pv.scene.environment = ctx.scene.environment || null;
     var r = ctx.renderer, rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.UnsignedByteType });
