@@ -30,7 +30,7 @@ const SECTIONS = {
   'hair-teen': () => STYLES.map((s, i) => person(s, A({ body: i % 2 ? 'teen' : 'kid-s', hairStyle: s, hair: P.HAIR_COLORS[(i * 3) % 16][0] }), KIT_B, '8')),
   'hair-colors': () => P.HAIR_COLORS.map((c, i) => person(c[1], A({ body: i % 2 ? 'adult-a' : 'kid', hairStyle: ['wavy', 'curly', 'ponytail', 'thin', 'afro', 'side', 'bob', 'braids'][i % 8], hair: c[0], beard: i === 9 ? 'beard' : 'none' }))),
   skins: () => { const out = []; SKIN3.forEach((s) => ['kid', 'adult-a', 'adult-b'].forEach((b) => out.push(person(s[0] + ' ' + b, { body: b, skin: s[1], hairStyle: b === 'kid' ? 'coils' : b === 'adult-a' ? 'bun' : 'buzz', hair: '#15110e', beard: b === 'adult-b' ? 'moustache' : 'none', glasses: b === 'adult-b' ? 'square' : 'none' }, b === 'kid' ? KIT_K : KIT_C)))); return out; },
-  'skin-tones': () => P.SKINS.map((s, i) => person(s[1], { body: i % 2 ? 'adult-a' : 'kid', skin: s[0], hairStyle: i % 2 ? 'wavy' : 'swept', hair: i > 6 ? '#15110e' : '#3b2314', freckles: i === 1, lashes: i % 2 === 1 }, KIT_C)),
+  'skin-tones': () => P.SKINS.map((s, i) => person(s[1], { body: i % 2 ? 'adult-a' : 'kid', skin: s[0], hairStyle: i % 2 ? 'wavy' : 'swept', hair: i > 6 ? '#15110e' : '#3b2314', freckles: i === 1, lashes: i % 2 === 1, beard: 'none' }, KIT_C)),
   glasses: () => [person('round black kid', A({ glasses: 'round' })), person('square red kid-s', A({ body: 'kid-s', glasses: 'square', glassCol: '#c9342c' })),
     person('round gold teen', A({ body: 'teen', glasses: 'round', glassCol: '#d4a72c', hairStyle: 'side' })), person('square blue adult-a', G({ body: 'adult-a', glasses: 'square', glassCol: '#1c7ed6', beard: 'none', hairStyle: 'bob' })),
     person('round brown adult-b', G({ glasses: 'round', glassCol: '#6b4423' })), person('square black dark', G({ glasses: 'square', skin: '#4a2a18', hairStyle: 'bald', beard: 'beard' }))],
@@ -96,7 +96,7 @@ function render(name, opts) {
       if (head) { ty = D.NECK_Y + D.HEAD_UP + 0.05; dist = D.HEAD_R * 2.9 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * 0.5 * 1.25; }
       else { ty = (D.FOOT + D.TOP) / 2 + (opts.y || 0); ty = D.FOOT + H * 0.5 - 0.1; dist = H * 0.58 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)); }
       cam.aspect = cw / ch; cam.updateProjectionMatrix();
-      const el = head ? 0.08 : 0.12;
+      const el = opts.el != null ? opts.el : head ? 0.08 : 0.12;
       cam.position.set(Math.sin(a) * dist * Math.cos(el), ty + Math.sin(el) * dist, Math.cos(a) * dist * Math.cos(el)); cam.lookAt(0, ty, 0);
       const x = cx + vi * cw, y = h - cy - ch - 18;
       renderer.setViewport(x, y, cw, ch); renderer.setScissor(x, y, cw, ch);

@@ -1485,20 +1485,21 @@ export function buildHuman(spec) {
   const cheekM = std(new THREE.Color(look.cheeks || look.skin).getHex(), { roughness: 0.75 });
   const cheeks = look.cheeks ? [-1, 1].map((s) => add(faceDisc(surf, R, s * F.cheekX, F.cheekY, F.cheekR, F.cheekR * 0.78, 0.004), cheekM, head)) : [];
   if (look.adult) cheekM.color.lerp(new THREE.Color(look.skin), 0.55);
-  let beardM = null;
+  let beardM = null, stubbleM = null, mousM = null;
   // stubble (grown-up): a dotted shadow over the jaw and upper lip
   if (look.stubble) {
     const sh = (u, v) => { const x = u * 0.6, top = -0.2 - 0.06 * Math.abs(u), yb = -1.0 + 0.25 * u * u; return [x, top + (yb - top) * v]; };
-    const sm = new THREE.MeshStandardMaterial({ map: stubbleTexture(look.stubbleCol), transparent: true, depthWrite: false, roughness: 0.9, color: 0xffffff });
+    const sm = stubbleM = new THREE.MeshStandardMaterial({ map: stubbleTexture(look.stubbleCol), transparent: true, depthWrite: false, roughness: 0.9, color: 0xffffff });
     add(faceStrip(surf, R, [sh], 0.003, 24, 10), sm, head);
     // a faint moustache over the upper lip
     const my = F.mouthY + 0.01, mu = (u, v) => [u * 0.27, my + 0.075 - 0.03 * u * u + (-0.065 + 0.02 * u * u) * v];
-    const mm = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.brows || look.hair).getHex(), transparent: true, opacity: 0.32, depthWrite: false, roughness: 0.9 });
+    const mm = mousM = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.brows || look.hair).getHex(), transparent: true, opacity: 0.32, depthWrite: false, roughness: 0.9 });
     add(faceStrip(surf, R, [mu], 0.005, 16, 2), mm, head).renderOrder = 1;
   }
 
   // eyes: sclera, iris, pupil and two glints; a skin-coloured upper lid that closes for blinks and half-closes for squints
-  const er = F.eyeR * R, scleraM = std(0xffffff, { roughness: 0.25 }), irisM = std(new THREE.Color(look.eyes).getHex(), { roughness: 0.3 });
+  // look.eyeK: bigger eyes (people.js: a kid with lashes gets big friendly eyes); 1 for the kid and Tata
+  const er = F.eyeR * R * (look.eyeK || 1), scleraM = std(0xffffff, { roughness: 0.25 }), irisM = std(new THREE.Color(look.eyes).getHex(), { roughness: 0.3 });
   const pupilM = std(0x120a06, { roughness: 0.2 }), glintM = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const lidM = std(new THREE.Color(look.skin).getHex(), { roughness: 0.68 });
   const lidGeo = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); lidGeo.scale(1.12 * er, 1.12 * er * 1.1, 1.12 * er); lidGeo.rotateX(Math.PI / 2);
@@ -1678,9 +1679,6 @@ export function buildHuman(spec) {
     mesh.renderOrder = 2; arm.sBall.add(mesh); return mesh;
   });
   setBadges(K);
-  // a wrist scrunchie (when the hair has nowhere to wear one) goes on his left wrist
-  wristHost = arms[1].hand;
-  if (look.acc === 'scrunchie' && !hairTies.length) buildAcc(HAIR_STYLES[look.hairStyle] || HAIR_STYLES.swept);
   // ----- gear: long sleeves, the captain's armband, goalkeeper gloves, boots -----
   // A band that must keep its own size on a non-uniformly scaled arm segment (scale = r, length, r): it follows its
   // parent and corrects its own matrix just before it is drawn.
@@ -1732,6 +1730,10 @@ export function buildHuman(spec) {
     const bc = k.boots || '#1f2430'; bootM.color.set(bc); soleM.color.set(lumOf(bc) > 0.55 ? '#25262b' : '#f1f3f5');
   }
   applyGear(K);
+  // a wrist scrunchie (when the hair has nowhere to wear one) on his left wrist, after the gloves have collected the
+  // hand's own parts (so the gloves never repaint it)
+  wristHost = arms[1].hand;
+  if (look.acc === 'scrunchie' && !hairTies.length) buildAcc(HAIR_STYLES[look.hairStyle] || HAIR_STYLES.swept);
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
 
   // ----- expression -----
@@ -1760,7 +1762,9 @@ export function buildHuman(spec) {
   }
   setFace({});
 
+  let kitArgs = [kit, spec.num, spec.name, spec.front];
   function setKit(k, n, nm, front) {
+    kitArgs = [k, n, nm, front];
     K = withSkin(k);
     const swap = (m, t) => { const o = m.map; m.map = t; m.needsUpdate = true; if (o && o !== t) o.dispose(); };
     swap(shirtM, kidJerseyTexture(K, n, nm, front == null ? spec.front : front, D));
@@ -1777,7 +1781,26 @@ export function buildHuman(spec) {
     // a = hip swing (rotation.x of the thigh: - forward), b = knee bend (+ shin back)
     legs[0].rotation.x = a0; legs[1].rotation.x = a1; legs[0].userData.knee.rotation.x = b0; legs[1].userData.knee.rotation.x = b1;
   }
+  // new colours for the same figure (people.js setAvatar): skin, hair (and streaks), eyes, brows, cheeks, mouth, beard,
+  // freckles, glasses and the accessory. Shapes never change here.
+  function recolor(L) {
+    const c = (m, hex) => { if (m && hex) m.color.set(hex); };
+    const skinChanged = L.skin && L.skin !== look.skin;
+    Object.assign(look, L); look.stubbleCol = L.stubbleCol; look.mouthCol = L.mouthCol;
+    c(skin, look.skin); c(lidM, look.skin); c(nose.material, look.skin); nose.material.color.multiplyScalar(0.93);
+    if (look.cheeks) { cheekM.color.set(look.cheeks); if (look.adult) cheekM.color.lerp(new THREE.Color(look.skin), 0.55); }
+    c(irisM, look.eyes); browM.color.set(look.brows || look.hair); if (!look.brows) browM.color.multiplyScalar(0.85);
+    innerM.color.set(look.mouthCol || '#5a1a20');
+    hairM.color.set(look.hair); beardMats.forEach((m) => m.color.set(look.hair));
+    if (mousM) mousM.color.set(look.brows || look.hair);
+    if (stubbleM) { const o = stubbleM.map; stubbleM.map = stubbleTexture(look.stubbleCol); stubbleM.needsUpdate = true; if (o) o.dispose(); }
+    if (freckleM) freckleM.color.set(freckleCol(look.skin));
+    c(extraMats.frame, look.glassCol);
+    // the hair and the accessory are rebuilt (cheap) so the streaks, the tint and the accessory colour all follow
+    buildHair(look.hairStyle, look.hair); if (!(HAIR_STYLES[look.hairStyle] || {}).tint && !look.highlight) paintAll();
+    if (skinChanged) setKit(kitArgs[0], kitArgs[1], kitArgs[2], kitArgs[3]);
+  }
   const dims = Object.assign({}, D);
-  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, look,
+  return { root, body, chest, neck, head, torso, arms, legs, dims, setKit, setHair, setFace, setKnees, recolor, look,
     shirt: { get band() { return band; }, crest: crestMesh, mark: markMesh, shoulderMarks, shorts: shortsMesh, get kit() { return K; } } };
 }

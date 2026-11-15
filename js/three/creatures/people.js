@@ -127,18 +127,15 @@ export function personLook(avatar) {
   });
   // the stubble's dots in the hair colour (Tata's own stay as they are); a deeper mouth on deeper skin so a closed smile still reads
   if (a.beard === 'stubble' && !(a.hair === TATA_LOOK.hair && adult)) look.stubbleCol = a.hair;
-  if (L < 0.5) look.mouthCol = L < 0.33 ? '#2a0b10' : '#43121a';
+  // a kid with lashes: a little bigger, rounder, more open eyes (the cute look; the lashes then read from the table)
+  if (!adult && a.lashes) { look.eyeK = 1.08; look.eyeH = Math.max(look.eyeH, 1.0); look.happy = Math.min(look.happy, 0.22); }
+  if (L < 0.5) look.mouthCol = L < 0.33 ? '#120306' : '#2e0a10';
   return look;
 }
 // what forces a rebuild (everything else is a colour that setAvatar can change in place)
 const SHAPE = ['body', 'height', 'hairStyle', 'glasses', 'beard', 'freckles', 'lashes', 'cheeks', 'acc', 'gems'];
 export function personKey(avatar) { const p = P(), a = cleanAv(avatar); return p ? p.pack(a) : JSON.stringify(a); }
-function sameShape(a, b) {
-  if (SHAPE.some((k) => a[k] !== b[k])) return false;
-  if ((a.streaks === 'none') !== (b.streaks === 'none')) return false;
-  const la = personLook(a), lb = personLook(b);
-  return !!la.streaks === !!lb.streaks && !!la.stubbleCol === !!lb.stubbleCol && !!la.mouthCol === !!lb.mouthCol;
-}
+function sameShape(a, b) { return !SHAPE.some((k) => a[k] !== b[k]); }
 export function buildPerson(spec) {
   spec = spec || {};
   const av = cleanAv(spec.avatar);
